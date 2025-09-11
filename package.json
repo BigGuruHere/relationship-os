@@ -16,7 +16,7 @@
 		"lint": "prettier --check . && eslint ."
 	},
 	"engines": {
-		"node": "22.12.x"
+		"node": "22.13.1"
 	},
 	"devDependencies": {
 		"@eslint/compat": "^1.2.5",

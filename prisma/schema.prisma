@@ -1,62 +1,151 @@
 // prisma/schema.prisma
-// PURPOSE: Clean MVP schema for your personal CRM.
-//
-// IMPORTANT:
-// - Do not leave extra braces `{` or `}` above/below these blocks.
-// - Keep datasource/generator exactly like this and put models AFTER them.
+// PURPOSE: Personal CRM schema with normalized tagging
+// NOTES:
+// - Postgres is assumed
+// - All IT code is commented
+// - Legacy Contact.tags String[] has been removed in favor of join tables
+// - If you still have data in Contact.tags, backfill before applying a destructive migration
 
+// ---------------------------------------------------------------------------
+// Datasource and generator
+// ---------------------------------------------------------------------------
 datasource db {
-  provider = "postgresql"           // We're using Postgres on Railway
-  url      = env("DATABASE_URL")    // Loaded from .env
+  provider = "postgresql" // Using Postgres
+  url      = env("DATABASE_URL") // Connection string from your .env
 }
 
 generator client {
-  provider = "prisma-client-js"     // Generate the TS client
+  provider = "prisma-client-js" // Generate Prisma Client for Node and TS
+}
+
+// ---------------------------------------------------------------------------
+// MODEL: Tag
+// A single tag concept. Name is human facing. Slug is machine normalized
+// to ensure uniqueness and stable lookups.
+// ---------------------------------------------------------------------------
+// MODEL: Tag - corrected self relation for merges
+model Tag {
+  id        String   @id @default(uuid()) // pk
+  name      String // human label, e.g. "vc"
+  slug      String   @unique // normalized, e.g. "climate-tech"
+  createdBy String // "ai" or "user"
+  createdAt DateTime @default(now())
+
+  // Merge governance
+  mergedIntoId String? // if this tag was merged into another
+  mergedInto   Tag?    @relation(name: "TagMerge", fields: [mergedIntoId], references: [id])
+  mergedFrom   Tag[]   @relation(name: "TagMerge") // inverse side required for self relation
+
+  // Aliases and usage relations
+  aliases      TagAlias[]
+  contacts     ContactTag[]
+  interactions InteractionTag[]
+
+  @@unique([name])
+}
+
+// ---------------------------------------------------------------------------
+// MODEL: TagAlias
+// Alternative human names and normalized slugs that point to a Tag.
+// Example: alias "venture capitalist" slug "venture-capitalist" for Tag "vc".
+// ---------------------------------------------------------------------------
+model TagAlias {
+  id String @id @default(uuid()) // Primary key
+
+  tagId String // FK to Tag
+  tag   Tag    @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  alias String // Human facing alias
+  slug  String @unique // Normalized alias for stable lookups
 }
 
 // ---------------------------------------------------------------------------
 // MODEL: Contact
-// Stores encrypted fields (xxxEnc) and deterministic HMAC indexes (xxxIdx)
-// for equality search. We add model-level indexes with @@index.
+// Stores encrypted fields and deterministic HMAC index fields for equality search.
+// Interaction history is kept in Interaction. Tags are linked via ContactTag.
 // ---------------------------------------------------------------------------
 model Contact {
-  id            String   @id @default(uuid())
+  id String @id @default(uuid()) // Primary key
 
-  // Encrypted-at-rest fields (ciphertext strings)
-  fullNameEnc   String
-  emailEnc      String?
-  phoneEnc      String?
+  // Encrypted-at-rest fields
+  fullNameEnc String
+  emailEnc    String?
+  phoneEnc    String?
 
-  // Deterministic, indexable tokens (HMACs), used in WHERE clauses
-  fullNameIdx   String
-  emailIdx      String?  @unique     // Unique when present (Postgres allows multiple NULLs)
-  phoneIdx      String?
+  // Deterministic, indexable tokens - used in WHERE clauses
+  fullNameIdx String
+  emailIdx    String? @unique // Unique when present - Postgres allows multiple NULLs
+  phoneIdx    String?
 
-  tags          String[] @default([])
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  // Relations
+  interactions Interaction[] // One-to-many - a contact has many interactions
+  tags         ContactTag[] // Many-to-many via ContactTag
 
-  interactions  Interaction[]
-
-  // Indexes (field-level @index is NOT supported; use model-level @@index)
+  // Indexes for search
   @@index([fullNameIdx])
   @@index([phoneIdx])
 }
 
 // ---------------------------------------------------------------------------
 // MODEL: Interaction
-// Minimal "note/meeting/call" history entry linked to a Contact.
-// We store the note body encrypted in rawTextEnc.
+// Minimal history entry linked to a Contact. Stores encrypted body in rawTextEnc.
+// Tags are linked via InteractionTag.
 // ---------------------------------------------------------------------------
 model Interaction {
-  id          String   @id @default(uuid())
-  contactId   String
-  contact     Contact  @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  id String @id @default(uuid()) // Primary key
 
-  occurredAt  DateTime @default(now())
-  channel     String   // 'note' | 'call' | 'meeting' | etc.
-  rawTextEnc  String   // encrypted note text
+  contactId String // FK to Contact
+  contact   Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
 
-  createdAt   DateTime @default(now())
+  occurredAt DateTime @default(now()) // When it happened
+  channel    String // Example: "note" or "call" or "meeting"
+  rawTextEnc String // Encrypted note text
+  summaryEnc String? // Optional summary if you compute one
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  tags InteractionTag[] // Many-to-many via InteractionTag
+}
+
+// ---------------------------------------------------------------------------
+// MODEL: ContactTag
+// Join table linking Contact to Tag with assignment metadata.
+// Composite primary key prevents duplicate links.
+// ---------------------------------------------------------------------------
+model ContactTag {
+  contactId String
+  tagId     String
+
+  contact Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  tag     Tag     @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  assignedBy String // "ai" or "user"
+  assignedAt DateTime @default(now()) // When the link was created
+
+  @@id([contactId, tagId]) // Composite PK - unique per pair
+  @@index([tagId]) // Fast lookup by tag
+}
+
+// ---------------------------------------------------------------------------
+// MODEL: InteractionTag
+// Join table linking Interaction to Tag with assignment metadata.
+// Composite primary key prevents duplicate links.
+// ---------------------------------------------------------------------------
+model InteractionTag {
+  interactionId String
+  tagId         String
+
+  interaction Interaction @relation(fields: [interactionId], references: [id], onDelete: Cascade)
+  tag         Tag         @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  assignedBy String // "ai" or "user"
+  assignedAt DateTime @default(now()) // When the link was created
+
+  @@id([interactionId, tagId]) // Composite PK - unique per pair
+  @@index([tagId]) // Fast lookup by tag
 }

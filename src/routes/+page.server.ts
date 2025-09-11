@@ -1,22 +1,27 @@
-// src/routes/+page.server.ts
-// NOTE: add comments per your preference. This shows a friendly 500 message if DB is unreachable.
+// PURPOSE: Load contacts and decrypt their names for display on the homepage.
+// NOTE: We pass the SAME AAD used during encryption ("contact.full_name").
 
 import { prisma } from '$lib/db';
+import { decrypt } from '$lib/crypto';
 
 export async function load() {
-  try {
-    const contacts = await prisma.contact.findMany({
-      orderBy: { createdAt: 'desc' },
-      select: { id: true, fullNameEnc: true, createdAt: true }
-    });
-    return { contacts };
-  } catch (err) {
-    // Log once in server console for debugging
-    console.error('Prisma failed to fetch contacts:', err);
-    // Return a minimal payload so the page still renders
-    return {
-      contacts: [],
-      error: 'Database connection failed. Check DATABASE_URL (SSL, host, port).'
-    };
-  }
+  // Fetch only what we need.
+  const rows = await prisma.contact.findMany({
+    orderBy: { createdAt: 'desc' },
+    select: { id: true, fullNameEnc: true, createdAt: true }
+  });
+
+  // Decrypt on the server; never decrypt in the browser.
+  const contacts = rows.map((r) => {
+    let name = 'Unknown';
+    try {
+      name = decrypt(r.fullNameEnc, 'contact.full_name'); // AAD must match writer
+    } catch {
+      // If decryption fails (e.g., wrong key/AAD), show a safe fallback.
+      name = '⚠︎ (name unavailable)';
+    }
+    return { id: r.id, name, createdAt: r.createdAt };
+  });
+
+  return { contacts };
 }

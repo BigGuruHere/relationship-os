@@ -2,7 +2,7 @@
     export let data;
   </script>
   
-  <h1>📇 My Contacts</h1>
+  <h1>📇 My Contacts:</h1>
   
   <p><a href="/contacts/new">➕ Add Contact</a></p>
   

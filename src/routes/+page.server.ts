@@ -1,5 +1,6 @@
 // PURPOSE: Load contacts and decrypt their names for display on the homepage.
 // NOTE: We pass the SAME AAD used during encryption ("contact.full_name").
+// src/routes/+page.server.ts
 
 import { prisma } from '$lib/db';
 import { decrypt } from '$lib/crypto';

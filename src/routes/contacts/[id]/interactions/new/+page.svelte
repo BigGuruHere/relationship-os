@@ -1,4 +1,7 @@
+
 <script lang="ts">
+  // src/routes/contacts/[id]/interactions/new/+page.svelte
+
   export let form;
   let text = form?.draft?.text ?? '';
   let channel = form?.draft?.channel ?? 'note';

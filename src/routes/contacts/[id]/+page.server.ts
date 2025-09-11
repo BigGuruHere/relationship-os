@@ -1,4 +1,5 @@
 // PURPOSE: Load a single contact + interactions and decrypt fields for display.
+// src/routes/contacts/[id]/+page.server.ts
 
 import { prisma } from '$lib/db';
 import { decrypt } from '$lib/crypto';

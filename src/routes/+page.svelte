@@ -1,4 +1,6 @@
 <script lang="ts">
+  // src/routes/+page.svelte
+  
   export let data;
 </script>
 

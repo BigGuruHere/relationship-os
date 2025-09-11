@@ -2,6 +2,8 @@
 // - We keep your existing `load` (decrypting the note).
 // - We add a `delete` action that removes the interaction and redirects to the contact page.
 
+// src/routes/contacts/[id]/interactions/[iid]/+page.server.ts
+
 import { prisma } from '$lib/db';
 import { decrypt } from '$lib/crypto';
 import { fail, redirect } from '@sveltejs/kit';

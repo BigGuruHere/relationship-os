@@ -4,29 +4,30 @@
 //
 // WHAT THIS DOES:
 // - Validates incoming form data (zod).
-// - Normalises inputs for index creation (HMAC).
+// - Normalizes inputs for index creation (HMAC).
 // - Encrypts plaintext fields with stable AAD strings.
-// - Inserts the row (handles duplicate email nicely).
+// - Inserts the row.
+// - Handles duplicate email nicely.
 //
 // SECURITY NOTES:
 // - Decryption is never done here. We only encrypt on write.
-// - Make sure SECRET_MASTER_KEY is set in env (local + Railway).
+// - Make sure SECRET_MASTER_KEY is set in env (local and Railway).
+// - Contact.tags is now a relation via ContactTag, so do not pass tags: [] here.
 
-// src/routes/contacts/new/+page.server.ts
 import { fail } from '@sveltejs/kit';
 import { prisma } from '$lib/db';
 import { z } from 'zod';
 import { buildIndexToken, encrypt } from '$lib/crypto';
 
-// ---- AAD constants to avoid typos across reads/writes -----------------------
+// AAD constants to avoid typos across reads and writes
 const AAD = {
   FULL_NAME: 'contact.full_name',
   EMAIL: 'contact.email',
   PHONE: 'contact.phone'
 } as const;
 
-// ---- Validation schema ------------------------------------------------------
-// Adjust to your needs (e.g., stricter phone rules, required email, etc.)
+// Validation schema
+// Adjust to your needs, for example stricter phone rules or required email
 const CreateContactSchema = z.object({
   fullName: z.string().min(1, 'Full name is required').max(200),
   email: z
@@ -35,18 +36,18 @@ const CreateContactSchema = z.object({
     .email('Invalid email')
     .max(320)
     .optional()
-    .or(z.literal('')), // allow empty string → treated as undefined
+    .or(z.literal('')), // allow empty string which we will treat as undefined
   phone: z
     .string()
     .trim()
     .max(50)
     .optional()
-    .or(z.literal('')) // allow empty string
+    .or(z.literal('')) // allow empty string which we will treat as undefined
 });
 
 export const actions = {
   default: async ({ request }) => {
-    // 1) Parse + validate the form
+    // 1) Parse and validate the form
     const form = await request.formData();
     const parsed = CreateContactSchema.safeParse({
       fullName: form.get('fullName'),
@@ -59,13 +60,13 @@ export const actions = {
       return fail(400, { error: parsed.error.flatten().formErrors.join(', ') });
     }
 
-    // 2) Normalise optional fields: empty string => undefined
+    // 2) Normalize optional fields: empty string to undefined
     const fullName = parsed.data.fullName;
     const email = parsed.data.email ? String(parsed.data.email) : undefined;
     const phone = parsed.data.phone ? String(parsed.data.phone) : undefined;
 
     // 3) Build deterministic HMAC indexes for equality queries
-    //    (Normalisation rules live inside buildIndexToken)
+    //    Normalization rules live inside buildIndexToken
     const fullNameIdx = buildIndexToken(fullName);
     const emailIdx = email ? buildIndexToken(email) : null;
     const phoneIdx = phone ? buildIndexToken(phone) : null;
@@ -75,7 +76,9 @@ export const actions = {
     const emailEnc = email ? encrypt(email, AAD.EMAIL) : null;
     const phoneEnc = phone ? encrypt(phone, AAD.PHONE) : null;
 
-    // 5) Insert into DB (handle duplicate email_idx nicely)
+    // 5) Insert into DB
+    // IMPORTANT: Contact.tags is now a relation via ContactTag
+    // Do not pass tags: [] here. Use nested writes if you want to attach tags at create time.
     try {
       const created = await prisma.contact.create({
         data: {
@@ -84,13 +87,12 @@ export const actions = {
           emailEnc,
           emailIdx,
           phoneEnc,
-          phoneIdx,
-          tags: []
+          phoneIdx
         },
         select: { id: true }
       });
 
-      // Happy path — inform the page so it can link to the contact
+      // Happy path - inform the page so it can link to the contact
       return { success: true, contactId: created.id };
     } catch (err: any) {
       // Prisma unique constraint error code

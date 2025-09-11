@@ -1,6 +1,16 @@
-<!-- src/routes/contacts/[id]/interactions/[iid]/+page.svelte -->
 <script lang="ts">
     export let data;
+    export let form;
+    // Optional: show a server error if delete failed
+    $: serverError = form?.error ?? null;
+  
+    // Simple client confirm before POST
+    function confirmDelete(e: SubmitEvent) {
+    // Only stop the submit if the user cancels
+    if (!confirm('Delete this note? This cannot be undone.')) {
+      e.preventDefault();
+    }
+  }
   </script>
   
   {#if data.notFound}
@@ -17,9 +27,25 @@
         <pre style="white-space:pre-wrap; font-family:inherit; margin:0;">
   {data.interaction.text}</pre>
   
-        <div style="margin-top:16px; display:flex; gap:10px;">
+        {#if serverError}
+          <p style="color:var(--danger); margin-top:12px;">{serverError}</p>
+        {/if}
+  
+        <div style="margin-top:16px; display:flex; gap:10px; flex-wrap:wrap;">
           <a class="btn primary" href={"/contacts/" + data.interaction.contactId + "/interactions/" + data.interaction.id + "/edit"}>Edit</a>
           <a class="btn" href={"/contacts/" + data.interaction.contactId}>Back to contact</a>
+  
+          <!-- Delete form posts to the `delete` action -->
+          <form method="post" on:submit={confirmDelete} style="margin-left:auto;">
+            <button
+              class="btn"
+              formaction="?/delete"
+              formmethod="post"
+              style="border-color: var(--danger); color: var(--danger);"
+            >
+              🗑️ Delete
+            </button>
+          </form>
         </div>
       </div>
     </div>

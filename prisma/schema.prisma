@@ -1,0 +1,62 @@
+// prisma/schema.prisma
+// PURPOSE: Clean MVP schema for your personal CRM.
+//
+// IMPORTANT:
+// - Do not leave extra braces `{` or `}` above/below these blocks.
+// - Keep datasource/generator exactly like this and put models AFTER them.
+
+datasource db {
+  provider = "postgresql"           // We're using Postgres on Railway
+  url      = env("DATABASE_URL")    // Loaded from .env
+}
+
+generator client {
+  provider = "prisma-client-js"     // Generate the TS client
+}
+
+// ---------------------------------------------------------------------------
+// MODEL: Contact
+// Stores encrypted fields (xxxEnc) and deterministic HMAC indexes (xxxIdx)
+// for equality search. We add model-level indexes with @@index.
+// ---------------------------------------------------------------------------
+model Contact {
+  id            String   @id @default(uuid())
+
+  // Encrypted-at-rest fields (ciphertext strings)
+  fullNameEnc   String
+  emailEnc      String?
+  phoneEnc      String?
+
+  // Deterministic, indexable tokens (HMACs), used in WHERE clauses
+  fullNameIdx   String
+  emailIdx      String?  @unique     // Unique when present (Postgres allows multiple NULLs)
+  phoneIdx      String?
+
+  tags          String[] @default([])
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  interactions  Interaction[]
+
+  // Indexes (field-level @index is NOT supported; use model-level @@index)
+  @@index([fullNameIdx])
+  @@index([phoneIdx])
+}
+
+// ---------------------------------------------------------------------------
+// MODEL: Interaction
+// Minimal "note/meeting/call" history entry linked to a Contact.
+// We store the note body encrypted in rawTextEnc.
+// ---------------------------------------------------------------------------
+model Interaction {
+  id          String   @id @default(uuid())
+  contactId   String
+  contact     Contact  @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  occurredAt  DateTime @default(now())
+  channel     String   // 'note' | 'call' | 'meeting' | etc.
+  rawTextEnc  String   // encrypted note text
+
+  createdAt   DateTime @default(now())
+}

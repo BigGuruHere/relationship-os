@@ -10,12 +10,25 @@
 // Datasource and generator
 // ---------------------------------------------------------------------------
 datasource db {
-  provider = "postgresql" // Using Postgres
-  url      = env("DATABASE_URL") // Connection string from your .env
+  provider          = "postgresql" // Using Postgres
+  url               = env("DATABASE_URL") // Connection string from your .env
+  shadowDatabaseUrl = env("SHADOW_DATABASE_URL") // different DB for shadows
 }
 
 generator client {
   provider = "prisma-client-js" // Generate Prisma Client for Node and TS
+}
+
+// Prevents strings like "AI " or "usr"
+// Put enum values on separate lines
+enum CreatedBy {
+  ai
+  user
+}
+
+enum AssignedBy {
+  ai
+  user
 }
 
 // ---------------------------------------------------------------------------
@@ -25,11 +38,11 @@ generator client {
 // ---------------------------------------------------------------------------
 // MODEL: Tag - corrected self relation for merges
 model Tag {
-  id        String   @id @default(uuid()) // pk
+  id        String    @id @default(uuid()) // pk
   name      String // human label, e.g. "vc"
-  slug      String   @unique // normalized, e.g. "climate-tech"
-  createdBy String // "ai" or "user"
-  createdAt DateTime @default(now())
+  slug      String    @unique // normalized, e.g. "climate-tech"
+  createdBy CreatedBy
+  createdAt DateTime  @default(now())
 
   // Merge governance
   mergedIntoId String? // if this tag was merged into another
@@ -42,6 +55,7 @@ model Tag {
   interactions InteractionTag[]
 
   @@unique([name])
+  @@index([createdBy, createdAt])
 }
 
 // ---------------------------------------------------------------------------
@@ -57,6 +71,8 @@ model TagAlias {
 
   alias String // Human facing alias
   slug  String @unique // Normalized alias for stable lookups
+
+  @@unique([tagId, slug])
 }
 
 // ---------------------------------------------------------------------------
@@ -124,8 +140,8 @@ model ContactTag {
   contact Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
   tag     Tag     @relation(fields: [tagId], references: [id], onDelete: Cascade)
 
-  assignedBy String // "ai" or "user"
-  assignedAt DateTime @default(now()) // When the link was created
+  assignedBy AssignedBy
+  assignedAt DateTime   @default(now()) // When the link was created
 
   @@id([contactId, tagId]) // Composite PK - unique per pair
   @@index([tagId]) // Fast lookup by tag
@@ -143,8 +159,8 @@ model InteractionTag {
   interaction Interaction @relation(fields: [interactionId], references: [id], onDelete: Cascade)
   tag         Tag         @relation(fields: [tagId], references: [id], onDelete: Cascade)
 
-  assignedBy String // "ai" or "user"
-  assignedAt DateTime @default(now()) // When the link was created
+  assignedBy AssignedBy
+  assignedAt DateTime   @default(now()) // When the link was created
 
   @@id([interactionId, tagId]) // Composite PK - unique per pair
   @@index([tagId]) // Fast lookup by tag

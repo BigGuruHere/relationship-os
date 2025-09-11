@@ -1,6 +1,6 @@
 <script lang="ts">
     export let data;
-    // NOTE: For MVP we show encrypted values as placeholders.
+    // NOTE: For  MVP we show encrypted values as placeholders.
     // In a follow-up, decrypt on server and pass plaintext to the page when needed.
   </script>
   

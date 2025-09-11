@@ -1,0 +1,5 @@
+# nixpacks.toml
+# Force Nixpacks to use a nixpkgs commit where nodejs_22 is >= 22.12
+[phases.setup]
+# This commit provides Node 22.13.1 (confirmed in the wild)
+nixpkgsArchive = "51ad838b03a05b1de6f9f2a0fffecee64a9788ee"

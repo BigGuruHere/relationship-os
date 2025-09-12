@@ -111,21 +111,35 @@ model Contact {
 // Tags are linked via InteractionTag.
 // ---------------------------------------------------------------------------
 model Interaction {
-  id String @id @default(uuid()) // Primary key
-
-  contactId String // FK to Contact
+  id        String  @id @default(uuid())
+  contactId String
   contact   Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
 
-  occurredAt DateTime @default(now()) // When it happened
-  channel    String // Example: "note" or "call" or "meeting"
-  rawTextEnc String // Encrypted note text
-  summaryEnc String? // Optional summary if you compute one
+  occurredAt DateTime @default(now())
+  channel    String
+  rawTextEnc String
+  summaryEnc String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  // Relations
-  tags InteractionTag[] // Many-to-many via InteractionTag
+  // remove the embedding field here - moved to its own table
+  // embedding   Float[]? @db.Vector(1536)
+
+  tags InteractionTag[]
+
+  // no vector index here anymore
+  InteractionEmbedding InteractionEmbedding[]
+}
+
+model InteractionEmbedding {
+  interactionId String                @id
+  interaction   Interaction           @relation(fields: [interactionId], references: [id], onDelete: Cascade)
+  // Use Unsupported so Prisma does not try to map it. We will read and write via raw SQL.
+  embedding     Unsupported("vector")
+
+  // Remove any Prisma-level index declarations for this field
+  // The ivfflat index is created in SQL migration
 }
 
 // ---------------------------------------------------------------------------

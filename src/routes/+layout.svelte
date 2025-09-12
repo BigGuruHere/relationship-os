@@ -21,6 +21,7 @@
       <div style="margin-left:auto; display:flex; gap:8px;">
         <!-- simple top links for mobile -->
         <a class="btn" href="/">Home</a>
+        <a class="btn" href="/search">Search</a>
         <a class="btn primary" href="/contacts/new">Add Contact</a>
       </div>
     </header>
@@ -35,6 +36,8 @@
       <nav class="nav-group">
         <a class="nav-link" href="/">🏠 Home</a>
         <a class="nav-link" href="/contacts/new">➕ Add Contact</a>
+        <a class="nav-link" href="/search">🔎 Search</a>
+
         <!-- Add more when you have them -->
         <!-- <a class="nav-link" href="/search">🔎 Search</a> -->
         <!-- <a class="nav-link" href="/tasks">🗓 Tasks</a> -->

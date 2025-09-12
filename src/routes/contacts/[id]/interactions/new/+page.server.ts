@@ -21,6 +21,8 @@ import { prisma } from '$lib/db';
 import { encrypt } from '$lib/crypto';
 import { attachInteractionTags } from '$lib/tags';
 import { z } from 'zod';
+import { upsertInteractionEmbedding } from '$lib/embeddings';
+
 
 // Validation schema for form data
 const DraftSchema = z.object({
@@ -124,6 +126,16 @@ export const actions = {
       console.error('Failed to save interaction for contact', params.id);
       return fail(500, { error: 'Failed to save note. Please try again.' });
     }
+
+    // After interaction creation, before redirect
+    try {
+      const raw = parsed.data.text;
+      const summaryPlain = parsed.data.summary ?? null; // this is plain text before encryption
+      await upsertInteractionEmbedding(interactionId, summaryPlain, raw);
+    } catch {
+      // non critical, ignore
+    }
+
 
     // Attempt to attach tags. This is non critical and must not block the redirect.
     const candidates = parseTagCandidates(parsed.data.tags);

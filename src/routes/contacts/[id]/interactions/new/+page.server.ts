@@ -134,6 +134,8 @@ export const actions = {
       await upsertInteractionEmbedding(interactionId, summaryPlain, raw);
     } catch {
       // non critical, ignore
+      console.error('Embedding upsert failed:', e);
+
     }
 
 

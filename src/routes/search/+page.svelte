@@ -1,8 +1,5 @@
 <script lang="ts">
-    // PURPOSE: Search UI. Submits to server, shows ranked results.
     export let data;
-    export let form;
-  
   </script>
   
   <div class="container">
@@ -16,6 +13,11 @@
         />
         <button class="btn primary">Search</button>
       </form>
+      {#if data.error}
+        <p style="margin-top:10px; color: var(--warning);">
+          {data.error}. Check OPENAI_API_KEY or network and try again.
+        </p>
+      {/if}
     </div>
   
     <div class="card" style="padding:18px; margin-top:14px;">
@@ -23,10 +25,10 @@
   
       {#if !data.q}
         <p style="color:var(--muted);">Type a query above to search your memory.</p>
-      {:else if data.results.length === 0}
+      {:else if data.results.length === 0 && !data.error}
         <p>No results for <strong>{data.q}</strong>.</p>
-        <p style="color:var(--muted); font-size:0.95rem;">Tip: try a broader phrase like investor update or parenting or skiing.</p>
-      {:else}
+        <p style="color:var(--muted); font-size:0.95rem;">Tip: try a broader phrase like investor update or skiing.</p>
+      {:else if data.results.length}
         <ul style="list-style:none; padding:0; margin:0; display:grid; gap:12px;">
           {#each data.results as r}
             <li class="card" style="padding:14px;">
@@ -46,7 +48,6 @@
                 </div>
               {/if}
   
-              <!-- tags as chips -->
               <div style="margin-top:10px; display:flex; gap:8px; flex-wrap:wrap;">
                 {#if r.tags.length === 0}
                   <span style="color:var(--muted);">No tags</span>
@@ -57,7 +58,6 @@
                 {/if}
               </div>
   
-              <!-- score for debugging relevance -->
               <div style="margin-top:8px; color:var(--muted); font-size:0.9rem;">
                 score: {r.score.toFixed(4)}
               </div>

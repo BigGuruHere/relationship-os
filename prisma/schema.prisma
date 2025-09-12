@@ -131,15 +131,15 @@ model Interaction {
   // no vector index here anymore
   InteractionEmbedding InteractionEmbedding[]
 }
-
+// PURPOSE: Store interaction embeddings as a Postgres float8[] array, portable without extensions.
 model InteractionEmbedding {
-  interactionId String                @id
-  interaction   Interaction           @relation(fields: [interactionId], references: [id], onDelete: Cascade)
-  // Use Unsupported so Prisma does not try to map it. We will read and write via raw SQL.
-  embedding     Unsupported("vector")
+  interactionId String      @id
+  interaction   Interaction @relation(fields: [interactionId], references: [id], onDelete: Cascade)
 
-  // Remove any Prisma-level index declarations for this field
-  // The ivfflat index is created in SQL migration
+  // Prisma maps Float[] to Postgres double precision[]
+  embedding     Float[]
+
+  // No Prisma index here - we are not using pgvector in this fallback
 }
 
 // ---------------------------------------------------------------------------

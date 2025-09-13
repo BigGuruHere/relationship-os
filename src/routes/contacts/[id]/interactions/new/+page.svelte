@@ -10,44 +10,73 @@
   // Voice recording state
   let mediaRecorder: MediaRecorder | null = null;
   let recording = false;
+  let currentStream: MediaStream | null = null; 
+  let usedAI = false; // comment: controls tagsSource - user unless summarize ran
   let transcript = "";
 
-  async function startRecording() {
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    mediaRecorder = new MediaRecorder(stream, { mimeType: "audio/webm" });
-    const chunks: BlobPart[] = [];
+// replace your startRecording with this version
+async function startRecording() {
+  // comment: request mic and create a recorder that buffers chunks
+  currentStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  mediaRecorder = new MediaRecorder(currentStream, { mimeType: 'audio/webm' });
+  const chunks: BlobPart[] = [];
 
-    mediaRecorder.ondataavailable = (e) => chunks.push(e.data);
-    mediaRecorder.onstop = async () => {
-      const blob = new Blob(chunks, { type: "audio/webm" });
-      const fd = new FormData();
-      fd.append("file", blob, "note.webm");
+  mediaRecorder.ondataavailable = (e) => chunks.push(e.data);
+  mediaRecorder.onstop = async () => {
+    // comment: build a blob and send it to your existing transcribe endpoint
+    const blob = new Blob(chunks, { type: 'audio/webm' });
+    const fd = new FormData();
+    fd.append('file', blob, 'note.webm');
 
-      const resp = await fetch("/api/transcribe", { method: "POST", body: fd });
-      const data = await resp.json();
-      transcript = data.transcript || "";
-      text = transcript;
-    };
+    try {
+      const resp = await fetch('/api/transcribe', { method: 'POST', body: fd });
+      const data = await resp.json().catch(() => ({}));
+      // comment: support either { transcript } or { text } shapes
+      transcript = (data.transcript || data.text || '').trim();
+      // comment: append transcript so you do not lose any typed text
+      if (transcript) {
+        text = text ? `${text} ${transcript}` : transcript;
+      }
+    } catch (err) {
+      console.error('Transcribe failed', err);
+    } finally {
+      // comment: always stop mic tracks so the browser mic indicator turns off
+      currentStream?.getTracks().forEach((t) => t.stop());
+      currentStream = null;
+    }
+  };
 
-    mediaRecorder.start();
-    recording = true;
-  }
+  mediaRecorder.start();
+  recording = true;
+}
 
-  function stopRecording() {
-    mediaRecorder?.stop();
-    recording = false;
-  }
 
-  async function summarize() {
-    const resp = await fetch("/api/summarize", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text }),
+// replace your stopRecording with this version
+function stopRecording() {
+  // comment: stop triggers the onstop handler above
+  mediaRecorder?.stop();
+  recording = false;
+}
+
+
+// replace your summarize() with this version
+async function summarize() {
+  try {
+    const resp = await fetch('/api/summarize', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text })
     });
-    const data = await resp.json();
-    summary = data.summary || "";
-    tags = data.tags?.join(", ") || "";
+    const data = await resp.json().catch(() => ({}));
+    // comment: keep both fields optional - endpoint may or may not return tags
+    summary = (data.summary || '').trim();
+    tags = Array.isArray(data.tags) ? data.tags.join(', ') : (tags || '');
+    usedAI = !!summary || !!tags; // comment: flip to AI only if something was produced
+  } catch (err) {
+    console.error('Summarize failed', err);
   }
+}
+
 </script>
 
 <div class="container">
@@ -63,9 +92,11 @@
         <label for="channel">Channel</label>
         <select id="channel" name="channel" bind:value={channel}>
           <option value="note">Note</option>
-          <option value="call">Call</option>
-          <option value="meeting">Meeting</option>
-          <option value="message">Message</option>
+          <option value="Note">Note</option>
+          <option value="Call">Call</option>
+          <option value="Meeting">Meeting</option>
+          <option value="Message">Message</option>
+          
         </select>
       </div>
 

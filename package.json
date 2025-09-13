@@ -16,8 +16,9 @@
 		"lint": "prettier --check . && eslint ."
 	},
 	"engines": {
-		"node": "22.13.1"
+		"node": ">=22.13.1 <23"
 	},
+	"engineStrict": false,
 	"devDependencies": {
 		"@eslint/compat": "^1.2.5",
 		"@eslint/js": "^9.18.0",
@@ -39,6 +40,8 @@
 	},
 	"dependencies": {
 		"@prisma/client": "^6.16.0",
+		"argon2": "^0.44.0",
+		"jose": "^6.1.0",
 		"zod": "^4.1.5"
 	}
 }

@@ -1,111 +1,74 @@
 // src/routes/contacts/new/+page.server.ts
-// PURPOSE: Create a contact using HMAC indexes for equality search and
-//          AES-256-GCM encryption for at-rest confidentiality.
-//
-// WHAT THIS DOES:
-// - Validates incoming form data (zod).
-// - Normalizes inputs for index creation (HMAC).
-// - Encrypts plaintext fields with stable AAD strings.
-// - Inserts the row.
-// - Handles duplicate email nicely.
-//
-// SECURITY NOTES:
-// - Decryption is never done here. We only encrypt on write.
-// - Make sure SECRET_MASTER_KEY is set in env (local and Railway).
-// - Contact.tags is now a relation via ContactTag, so do not pass tags: [] here.
+// PURPOSE: Show the create contact form and handle the POST to create a contact.
+// MULTI TENANT: Requires login and always sets userId on create.
+// SECURITY: Do not decrypt here. Validate inputs. Do not log PII.
 
-import { fail } from '@sveltejs/kit';
+import { fail, redirect } from '@sveltejs/kit';
+import type { Actions, PageServerLoad } from './$types';
 import { prisma } from '$lib/db';
-import { z } from 'zod';
-import { buildIndexToken, encrypt } from '$lib/crypto';
+import { encrypt, buildIndexToken } from '$lib/crypto';
 
-// AAD constants to avoid typos across reads and writes
-const AAD = {
-  FULL_NAME: 'contact.full_name',
-  EMAIL: 'contact.email',
-  PHONE: 'contact.phone'
-} as const;
+export const load: PageServerLoad = async ({ locals }) => {
+  // Require login before showing the form
+  if (!locals.user) throw redirect(303, '/auth/login');
+  return {};
+};
 
-// Validation schema
-// Adjust to your needs, for example stricter phone rules or required email
-const CreateContactSchema = z.object({
-  fullName: z.string().min(1, 'Full name is required').max(200),
-  email: z
-    .string()
-    .trim()
-    .email('Invalid email')
-    .max(320)
-    .optional()
-    .or(z.literal('')), // allow empty string which we will treat as undefined
-  phone: z
-    .string()
-    .trim()
-    .max(50)
-    .optional()
-    .or(z.literal('')) // allow empty string which we will treat as undefined
-});
+export const actions: Actions = {
+  // Default form action - creates a contact
+  default: async ({ request, locals }) => {
+    // Require login
+    if (!locals.user) throw redirect(303, '/auth/login');
 
-export const actions = {
-  default: async ({ request }) => {
-    // 1) Parse and validate the form
     const form = await request.formData();
-    const parsed = CreateContactSchema.safeParse({
-      fullName: form.get('fullName'),
-      email: form.get('email'),
-      phone: form.get('phone')
-    });
 
-    if (!parsed.success) {
-      // Return a friendly error back to the form
-      return fail(400, { error: parsed.error.flatten().formErrors.join(', ') });
+    // Collect and trim inputs
+    const fullName = String(form.get('fullName') || '').trim();
+    const email = String(form.get('email') || '').trim();
+    const phone = String(form.get('phone') || '').trim();
+
+    if (!fullName) {
+      // Return a 400 with an error message that +page.svelte shows via {form.error}
+      return fail(400, { error: 'Full name is required.' });
     }
 
-    // 2) Normalize optional fields: empty string to undefined
-    const fullName = parsed.data.fullName;
-    const email = parsed.data.email ? String(parsed.data.email) : undefined;
-    const phone = parsed.data.phone ? String(parsed.data.phone) : undefined;
-
-    // 3) Build deterministic HMAC indexes for equality queries
-    //    Normalization rules live inside buildIndexToken
-    const fullNameIdx = buildIndexToken(fullName);
-    const emailIdx = email ? buildIndexToken(email) : null;
-    const phoneIdx = phone ? buildIndexToken(phone) : null;
-
-    // 4) Encrypt plaintexts with stable AADs so we can decrypt later
-    const fullNameEnc = encrypt(fullName, AAD.FULL_NAME);
-    const emailEnc = email ? encrypt(email, AAD.EMAIL) : null;
-    const phoneEnc = phone ? encrypt(phone, AAD.PHONE) : null;
-
-    // 5) Insert into DB
-    // IMPORTANT: Contact.tags is now a relation via ContactTag
-    // Do not pass tags: [] here. Use nested writes if you want to attach tags at create time.
+    let id = '';
     try {
-      const created = await prisma.contact.create({
-        data: {
-          fullNameEnc,
-          fullNameIdx,
-          emailEnc,
-          emailIdx,
-          phoneEnc,
-          phoneIdx
-        },
-        select: { id: true }
-      });
+      // Prepare encrypted fields and deterministic equality indexes
+      const data: any = {
+        userId: locals.user.id,                             // tenant ownership
+        fullNameEnc: encrypt(fullName, 'contact.full_name'),// AES-GCM ciphertext
+        fullNameIdx: buildIndexToken(fullName)              // HMAC index for equality search
+      };
 
-      // Happy path - inform the page so it can link to the contact
-      return { success: true, contactId: created.id };
-    } catch (err: any) {
-      // Prisma unique constraint error code
-      if (err?.code === 'P2002' && err?.meta?.target?.includes('emailIdx')) {
-        return fail(409, {
-          error:
-            'A contact with this email already exists. Try searching instead or use a different email.'
-        });
+      if (email) {
+        data.emailEnc = encrypt(email, 'contact.email');
+        data.emailIdx = buildIndexToken(email);
+      }
+      if (phone) {
+        data.phoneEnc = encrypt(phone, 'contact.phone');
+        data.phoneIdx = buildIndexToken(phone);
       }
 
+      // Insert the contact and capture the id for redirect
+      const created = await prisma.contact.create({
+        data,
+        select: { id: true }
+      });
+      id = created.id;
+    } catch (err: any) {
+      // Handle unique constraint on emailIdx if enforced in schema
+      if (err?.code === 'P2002' && Array.isArray(err?.meta?.target) && err.meta.target.includes('emailIdx')) {
+        return fail(409, {
+          error: 'A contact with this email already exists. Try searching instead or use a different email.'
+        });
+      }
       // Generic error
       console.error('Failed to create contact:', err);
       return fail(500, { error: 'Failed to save contact. Please try again.' });
     }
+
+    // Redirect outside the try/catch so it is not caught as an error
+    throw redirect(303, `/contacts/${id}`);
   }
 };

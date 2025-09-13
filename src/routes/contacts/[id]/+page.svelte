@@ -1,89 +1,151 @@
 <!-- src/routes/contacts/[id]/+page.svelte -->
 <script lang="ts">
-  export let data;
+  // Page data comes from +page.server.ts. We guard all optional fields.
+  export let data: {
+    contact?: {
+      id: string;
+      name: string;
+      email: string | null;
+      phone: string | null;
+      createdAt: string | Date;
+      tags?: { name: string; slug: string }[];
+    };
+    interactions?: {
+      id: string;
+      channel: string;
+      occurredAt: string | Date | null;
+      preview: string;
+      tags: { name: string; slug: string }[];
+    }[];
+  };
 
-  // Autocomplete state
-  let query = '';
-  let suggestions: { name: string; slug: string }[] = [];
+  // Safe fallbacks so template never hits undefined.length
+  const contact = data?.contact ?? null;
+  const tags = contact?.tags ?? [];
+  const interactions = data?.interactions ?? [];
 
-  async function fetchSuggestions() {
-    if (!query.trim()) { suggestions = []; return; }
-    try {
-      const res = await fetch(`/api/tags?q=${encodeURIComponent(query)}`);
-      const j = await res.json();
-      suggestions = j.tags || [];
-    } catch {
-      suggestions = [];
-    }
+  // Simple date formatting helper
+  function fmt(d: string | Date | null | undefined) {
+    if (!d) return '';
+    const dt = typeof d === 'string' ? new Date(d) : d;
+    return dt.toLocaleString();
   }
 </script>
 
-{#if data.notFound}
-  <div class="container"><div class="card" style="padding:20px;"><h1>Contact not found</h1></div></div>
+{#if !contact}
+  <div class="container">
+    <div class="card" style="padding:20px; max-width:680px; margin:0 auto;">
+      <h1 style="margin-top:0;">Contact not found</h1>
+      <p>Head back to the <a href="/">home page</a>.</p>
+    </div>
+  </div>
 {:else}
-  <div class="container" style="display:grid; gap:16px;">
-    <div class="card" style="padding:20px;">
-      <h1 style="margin-top:0;">{data.contact.name}</h1>
-      {#if data.contact.email}<p>Email: <strong>{data.contact.email}</strong></p>{/if}
-      {#if data.contact.phone}<p>Phone: <strong>{data.contact.phone}</strong></p>{/if}
+  <div class="container">
+    <div class="card" style="padding:20px; max-width:820px; margin:0 auto;">
+      <h1 style="margin-top:0;">{contact.name}</h1>
 
-      <!-- Tags section -->
-      <div style="margin-top:16px;">
-        <h3 style="margin:0 0 8px;">Tags</h3>
+      <div class="grid">
+        <div><strong>Email</strong></div>
+        <div>{contact.email ?? ' - '}</div>
 
-        <!-- Existing tags as chips with remove -->
-        <div style="display:flex; gap:8px; flex-wrap:wrap;">
-          {#if data.contact.tags.length === 0}
-            <span style="color:var(--muted);">No tags yet.</span>
-          {:else}
-            {#each data.contact.tags as t}
+        <div><strong>Phone</strong></div>
+        <div>{contact.phone ?? ' - '}</div>
+
+        <div><strong>Created</strong></div>
+        <div>{fmt(contact.createdAt)}</div>
+      </div>
+
+      <!-- Tags section - styling comes from app.css -->
+      <div style="margin-top:12px;">
+        <strong>Tags</strong>
+        {#if tags.length > 0}
+          <div class="tag-row">
+            {#each tags as t}
               <form method="post" action="?/removeTag">
                 <input type="hidden" name="slug" value={t.slug} />
-                <button class="btn" title={`Remove ${t.name}`} style="padding:6px 10px;">
-                  #{t.name} ✕
+                <button class="chip" title="Remove tag">
+                  <span class="chip-text">{t.name}</span>
+                  <span class="chip-x" aria-hidden="true">×</span>
                 </button>
               </form>
             {/each}
-          {/if}
-        </div>
+          </div>
+        {:else}
+          <p class="muted" style="margin-top:8px;">No tags yet.</p>
+        {/if}
 
-        <!-- Add tag with autocomplete -->
-        <form method="post" action="?/addTag" style="margin-top:10px; display:flex; gap:8px; max-width:420px;">
+        <!-- Add tag -->
+        <form method="post" action="?/addTag" class="tag-add" style="margin-top:10px; display:flex; gap:8px;">
           <input
-            name="tag"
-            placeholder="Add tag, e.g. follow-up"
-            bind:value={query}
-            on:input={fetchSuggestions}
-            list="tag-suggestions" />
-          <button class="btn">Add</button>
-          <datalist id="tag-suggestions">
-            {#each suggestions as s}
-              <option value={s.name}></option>
-            {/each}
-          </datalist>
+            name="name"
+            placeholder="Add a tag"
+            aria-label="Tag name"
+            required
+            style="flex:1; padding:8px; border:1px solid var(--border); border-radius:8px;"
+          />
+          <button class="btn primary" type="submit">Add</button>
         </form>
       </div>
 
-      <div style="margin-top:14px;">
-        <a class="btn primary" href={"/contacts/" + data.contact.id + "/interactions/new"}>Add note</a>
-      </div>
-    </div>
+      <!-- Recent notes list - also styled by app.css -->
+      <div style="margin-top:24px;">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <strong>Recent notes</strong>
+          <a class="btn" href={`/contacts/${contact.id}/interactions/new`}>New note</a>
+        </div>
 
-    <div class="card" style="padding:20px;">
-      <h2 style="margin-top:0;">Recent interactions</h2>
-      {#if data.interactions.length === 0}
-        <p style="color:var(--muted);">No interactions yet.</p>
-      {:else}
-        <ul style="list-style:none; padding:0; margin:0;">
-          {#each data.interactions as i}
-            <li style="padding:12px; border-top:1px solid var(--border);">
-              <a href={"/contacts/" + data.contact.id + "/interactions/" + i.id} style="text-decoration:none;">
-                {new Date(i.occurredAt).toLocaleString()} - <strong>{i.channel}</strong>
-              </a>
-            </li>
-          {/each}
-        </ul>
-      {/if}
+        {#if interactions.length === 0}
+          <p class="muted" style="margin-top:8px;">No notes yet. Add the first one.</p>
+        {:else}
+          <ul class="notes">
+            {#each interactions as n}
+              <li class="note">
+                <div class="note-meta">
+                  <span class="pill">{n.channel}</span>
+                  <span class="muted">{fmt(n.occurredAt)}</span>
+                </div>
+                <a class="note-link" href={`/contacts/${contact.id}/interactions/${n.id}`}>
+                  {n.preview || '(empty)'}
+                </a>
+                {#if n.tags.length > 0}
+                  <div class="tag-row small" style="margin-top:6px;">
+                    {#each n.tags as t}
+                      <span class="chip chip-static">
+                        <span class="chip-text">{t.name}</span>
+                      </span>
+                    {/each}
+                  </div>
+                {/if}
+              </li>
+            {/each}
+          </ul>
+        {/if}
+      </div>
+
+      <div style="display:flex; gap:10px; margin-top:16px;">
+        <a class="btn" href="/">Back</a>
+      </div>
     </div>
   </div>
 {/if}
+
+<style>
+  /* Layout helpers - no colors set here so theme controls them */
+  .container { padding: 12px; }
+  .grid { display: grid; grid-template-columns: 120px 1fr; gap: 8px; margin-bottom: 8px; }
+  .muted { color: var(--muted-foreground, #666); }
+  .btn {
+    display: inline-block;
+    padding: 8px 12px;
+    border-radius: 8px;
+    border: 1px solid var(--border, #ddd);
+    text-decoration: none;
+    background: transparent;
+    color: inherit;
+  }
+  .btn.primary {
+    border-color: transparent;
+    background: var(--primary, #111);
+    color: #fff;
+  }
+</style>

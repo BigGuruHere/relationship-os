@@ -1,121 +1,202 @@
+// src/routes/auth/google/callback/+server.ts
 // PURPOSE: exchange code for tokens, verify ID token, upsert OAuthAccount, create first party session
 // SECURITY NOTES:
 // - Validate state to prevent CSRF
 // - Validate nonce in ID token to stop replay
 // - Verify ID token signature and audience using Google's JWKS
 // - Link to an existing user by OAuthAccount or by email, or create a new user
+// - Clear temporary OAuth cookies after use
+// - All IT code is commented and avoids emdash characters
 
 import type { RequestHandler } from './$types'
-import { json, redirect } from '@sveltejs/kit'
+import { redirect, error } from '@sveltejs/kit'
 import { prisma } from '$lib/db'
 import { createSession, sessionCookieAttributes, SESSION_COOKIE_NAME } from '$lib/auth'
-import * as jose from 'jose' // npm i jose
+import * as jose from 'jose'
 import { dev } from '$app/environment'
 
+// Google endpoints
 const TOKEN_ENDPOINT = 'https://oauth2.googleapis.com/token'
 const JWKS_URI = 'https://www.googleapis.com/oauth2/v3/certs'
 
-// JWK set is cached by jose to avoid repeated network calls
-const jwks = jose.createRemoteJWKSet(new URL(JWKS_URI))
+// Simple best effort rate limit - 5 hits per 60s per IP for local dev
+const WINDOW_MS = 60_000
+const MAX_HITS = 5
+const rl = new Map<string, { count: number; resetAt: number }>()
+function checkRateLimit(key: string) {
+  const now = Date.now()
+  const e = rl.get(key)
+  if (!e || e.resetAt < now) {
+    rl.set(key, { count: 1, resetAt: now + WINDOW_MS })
+    return
+  }
+  e.count += 1
+  if (e.count > MAX_HITS) throw error(429, 'Too many login attempts. Please try again shortly.')
+}
 
-export const GET: RequestHandler = async ({ url, cookies }) => {
-  const code = url.searchParams.get('code')
-  const state = url.searchParams.get('state')
+// Helper to clear our short lived OAuth cookies
+function clearTempCookies(cookies: import('@sveltejs/kit').Cookies) {
+  const base = { path: '/', httpOnly: true, sameSite: 'lax' as const, secure: !dev, maxAge: 0 }
+  cookies.set('oauth_state', '', base)
+  cookies.set('oauth_nonce', '', base)
+  cookies.set('oauth_pkce', '', base)
+}
 
-  // Read and clear CSRF state, nonce, and PKCE verifier
-  const storedState = cookies.get('oauth_state') || null
-  const storedNonce = cookies.get('oauth_nonce') || null
-  const codeVerifier = cookies.get('oauth_pkce') || null
-  cookies.delete('oauth_state', { path: '/' })
-  cookies.delete('oauth_nonce', { path: '/' })
-  cookies.delete('oauth_pkce', { path: '/' })
+// Optional email domain guard for early testing
+function isEmailAllowed(email: string): boolean {
+  const one = process.env.ALLOWED_GOOGLE_DOMAIN || ''
+  const many = process.env.ALLOWED_EMAIL_DOMAINS || ''
+  if (!one && !many) return true
+  const domain = email.split('@')[1]?.toLowerCase() || ''
+  if (one && domain === one.toLowerCase()) return true
+  if (many) {
+    const set = new Set(
+      many
+        .split(',')
+        .map((s) => s.trim().toLowerCase())
+        .filter(Boolean)
+    )
+    if (set.has(domain) || set.has(email.toLowerCase())) return true
+  }
+  return false
+}
 
-  if (!code || !state || !storedState || state !== storedState || !codeVerifier) {
-    return json({ error: 'Invalid state or code' }, { status: 400 })
+export const GET: RequestHandler = async ({ url, cookies, getClientAddress }) => {
+  // Rate limit by IP
+  const ip = getClientAddress?.() || 'unknown'
+  checkRateLimit(`oauth:${ip}`)
+
+  // Required query params
+  const code = url.searchParams.get('code') || ''
+  const state = url.searchParams.get('state') || ''
+
+  // Cookies that the start route set
+  const storedState = cookies.get('oauth_state') || ''
+  const nonceCookie = cookies.get('oauth_nonce') || ''
+  const codeVerifier = cookies.get('oauth_pkce') || '' // FIX - match start route cookie name
+
+  // Basic validation
+  if (!code || !state || !storedState || !codeVerifier) {
+    clearTempCookies(cookies)
+    throw error(400, 'Invalid OAuth callback')
+  }
+  if (state !== storedState) {
+    clearTempCookies(cookies)
+    throw error(400, 'State mismatch')
   }
 
-  // Exchange authorization code for tokens
-  const body = new URLSearchParams({
-    code,
-    client_id: process.env.GOOGLE_CLIENT_ID || '',
-    client_secret: process.env.GOOGLE_CLIENT_SECRET || '',
-    redirect_uri: process.env.OAUTH_REDIRECT_URI || '',
+  // Exchange code for tokens at Google
+  const clientId = process.env.GOOGLE_CLIENT_ID || ''
+  const clientSecret = process.env.GOOGLE_CLIENT_SECRET || ''
+  const redirectUri = process.env.OAUTH_REDIRECT_URI || 'http://localhost:5173/auth/google/callback'
+
+  const form = new URLSearchParams({
     grant_type: 'authorization_code',
+    code,
+    client_id: clientId,
+    client_secret: clientSecret,
+    redirect_uri: redirectUri,
     code_verifier: codeVerifier
   })
 
   const tokenRes = await fetch(TOKEN_ENDPOINT, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body
+    body: form
   })
 
   if (!tokenRes.ok) {
-    const text = await tokenRes.text()
-    return json({ error: 'Token exchange failed', detail: text }, { status: 400 })
+    const body = await tokenRes.text().catch(() => '')
+    clearTempCookies(cookies)
+    throw error(400, `Token exchange failed: ${body.slice(0, 200)}`)
   }
 
-  const token = await tokenRes.json() as {
-    id_token: string
-    access_token?: string
-    refresh_token?: string
-    expires_in?: number
+  const token = await tokenRes.json()
+
+  // Verify ID token with Google's JWKS
+  const idToken = token.id_token as string
+  if (!idToken) {
+    clearTempCookies(cookies)
+    throw error(400, 'Missing id_token')
   }
 
-  // Verify ID token
-  const { payload } = await jose.jwtVerify(token.id_token, jwks, {
-    issuer: ['https://accounts.google.com', 'accounts.google.com'],
-    audience: process.env.GOOGLE_CLIENT_ID
-  })
+  const jwks = jose.createRemoteJWKSet(new URL(JWKS_URI))
+  const { payload } = await jose.jwtVerify(idToken, jwks, { audience: clientId })
 
-  // Validate nonce to prevent replay
-  if (!storedNonce || payload.nonce !== storedNonce) {
-    return json({ error: 'Invalid nonce' }, { status: 400 })
+  // Optional nonce binding if you set one during start
+  if (nonceCookie && payload.nonce && payload.nonce !== nonceCookie) {
+    clearTempCookies(cookies)
+    throw error(400, 'Nonce mismatch')
   }
 
-  // Extract Google subject and email
-  const googleSub = String(payload.sub || '')
-  const email = payload.email ? String(payload.email) : ''
-  if (!googleSub) return json({ error: 'Missing Google subject' }, { status: 400 })
+  // Extract identity
+  const sub = String(payload.sub)
+  const email = String(payload.email || '')
+  const emailVerified = Boolean(payload.email_verified)
+  if (!email || !emailVerified) {
+    clearTempCookies(cookies)
+    throw error(400, 'Email not verified with Google')
+  }
 
-  // Try to find an existing account link
-  let account = await prisma.oAuthAccount.findUnique({
-    where: { provider_providerAccountId: { provider: 'google', providerAccountId: googleSub } },
-    include: { user: true }
-  })
+  // Optional allowlist
+  if (!isEmailAllowed(email)) {
+    clearTempCookies(cookies)
+    throw error(403, 'This email is not allowed for login')
+  }
 
-  let user = account?.user || null
+  // Upsert user and OAuth account
+  const provider = 'google' as const
+  let user = await prisma.user.findFirst({ where: { email } })
 
-  // If no linked account, try to link by email or create a new user
   if (!user) {
-    if (email) {
-      user = await prisma.user.findUnique({ where: { email } })
-    }
-    if (!user) {
-      // Create user with placeholder passwordHash since login is via Google
-      user = await prisma.user.create({
-        data: { email: email || `user-${googleSub}@example.local`, passwordHash: 'oauth' }
-      })
-    }
-
-    // Create the OAuth link
-    await prisma.oAuthAccount.create({
+    user = await prisma.user.create({
       data: {
-        userId: user.id,
-        provider: 'google',
-        providerAccountId: googleSub,
-        email: email || null,
-        accessToken: token.access_token || null,
-        refreshToken: token.refresh_token || null,
-        expiresAt: token.expires_in ? new Date(Date.now() + token.expires_in * 1000) : null
+        email,
+        oauthAccounts: {
+          create: {
+            provider,
+            providerAccountId: sub,
+            accessToken: token.access_token || null,
+            refreshToken: token.refresh_token || null,
+            expiresAt: token.expires_in ? new Date(Date.now() + token.expires_in * 1000) : null
+          }
+        }
       }
     })
+  } else {
+    const existing = await prisma.oAuthAccount.findFirst({
+      where: { userId: user.id, provider, providerAccountId: sub }
+    })
+    if (!existing) {
+      await prisma.oAuthAccount.create({
+        data: {
+          userId: user.id,
+          provider,
+          providerAccountId: sub,
+          accessToken: token.access_token || null,
+          refreshToken: token.refresh_token || null,
+          expiresAt: token.expires_in ? new Date(Date.now() + token.expires_in * 1000) : null
+        }
+      })
+    } else {
+      await prisma.oAuthAccount.update({
+        where: { id: existing.id },
+        data: {
+          accessToken: token.access_token || null,
+          refreshToken: token.refresh_token || null,
+          expiresAt: token.expires_in ? new Date(Date.now() + token.expires_in * 1000) : null
+        }
+      })
+    }
   }
 
-  // Create a first party session cookie exactly like password login
+  // Clear temp cookies after successful verification
+  clearTempCookies(cookies)
+
+  // Create a first party session cookie
   const { cookie, expiresAt } = await createSession(user.id)
   cookies.set(SESSION_COOKIE_NAME, cookie, sessionCookieAttributes(expiresAt))
 
-  // Redirect to home after successful login
+  // Home sweet home
   throw redirect(303, '/')
 }

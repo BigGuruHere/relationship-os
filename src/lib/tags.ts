@@ -1,91 +1,140 @@
 // src/lib/tags.ts
-// PURPOSE: normalize tags, resolve to Tag or TagAlias, attach to Interaction or Contact.
-// SECURITY: do not log plaintext user content.
+// PURPOSE: Normalize tags and attach or detach them from Contacts and Interactions using explicit join tables.
+// MULTI TENANT: Verify parent ownership by userId and constrain Tag lookups to the same userId.
+// SECURITY: Never log plaintext PII. Only log ids or slugs. All IT code is commented and uses hyphens only.
 
 import { prisma } from '$lib/db';
 
+// Simple slug generator - lowercase and hyphenate.
 const TAG_SLUG_RE = /[^a-z0-9]+/g;
-
-// Slugify a human tag to a stable machine slug
 export function slugifyTag(input: string) {
   return input.trim().toLowerCase().replace(TAG_SLUG_RE, '-').replace(/^-+|-+$/g, '');
 }
 
-// Resolve or create Tags for an array of candidate names
-async function resolveOrCreateTags(
-  names: string[],
-  createdBy: 'ai' | 'user'
-): Promise<{ id: string; slug: string }[]> {
-  const slugs = Array.from(new Set(names.map(slugifyTag).filter((s) => s.length >= 2 && s.length <= 24)));
-  if (slugs.length === 0) return [];
+/**
+ * Resolve or create a Tag in a tenant by display name.
+ * - Uses slug for equality and alias resolution.
+ * - Returns the Tag id and slug.
+ * - createdBy in the Tag table is set from the provenance argument.
+ */
+async function resolveOrCreateTagForTenant(
+  userId: string,
+  name: string,
+  provenance: 'user' | 'ai' = 'user'
+): Promise<{ id: string; slug: string }> {
+  const slug = slugifyTag(name);
+  if (!slug) throw new Error('Empty tag');
 
-  // Find existing by slug or alias
-  const existing = await prisma.tag.findMany({
-    where: { OR: [{ slug: { in: slugs } }, { aliases: { some: { slug: { in: slugs } } } }] },
+  // Try exact Tag by slug for this tenant.
+  const existing = await prisma.tag.findFirst({
+    where: { userId, slug },
     select: { id: true, slug: true }
   });
+  if (existing) return existing;
 
-  const found = new Set(existing.map((t) => t.slug));
-  const missing = slugs.filter((s) => !found.has(s));
+  // Try TagAlias - tenant is implicit via the related Tag.userId.
+  const alias = await prisma.tagAlias.findFirst({
+    where: { slug, tag: { userId } },
+    select: { tag: { select: { id: true, slug: true } } }
+  });
+  if (alias?.tag) return { id: alias.tag.id, slug: alias.tag.slug };
 
-  // Create any missing tags
-  const created = await prisma.$transaction(
-    missing.map((slug) => prisma.tag.create({ data: { name: slug, slug, createdBy } }))
-  );
-
-  return [...existing, ...created];
+  // Create a new Tag for this tenant - store original human name plus slug.
+  try {
+    const created = await prisma.tag.create({
+      data: { userId, name, slug, createdBy: provenance }
+    });
+    return { id: created.id, slug: created.slug };
+  } catch {
+    // Race guard - requery if another request created it first.
+    const again = await prisma.tag.findFirst({
+      where: { userId, slug },
+      select: { id: true, slug: true }
+    });
+    if (again) return again;
+    throw new Error('Failed to create tag');
+  }
 }
 
-// Attach tags to an Interaction by id
-export async function attachInteractionTags(
-  interactionId: string,
-  candidates: string[],
-  assignedBy: 'ai' | 'user' = 'ai'
-) {
-  const tags = await resolveOrCreateTags(candidates, assignedBy);
-  if (tags.length === 0) return;
-
-  await prisma.$transaction(
-    tags.map((t) =>
-      prisma.interactionTag.upsert({
-        where: { interactionId_tagId: { interactionId, tagId: t.id } },
-        update: {},
-        create: { interactionId, tagId: t.id, assignedBy }
-      })
-    )
-  );
-}
-
-// Attach tags to a Contact by id
+/**
+ * Attach tags to a Contact by names using the ContactTag join model.
+ * - Verifies the contact belongs to the tenant.
+ * - Upserts join rows by composite key to be idempotent.
+ * - Sets assignedBy from provenance since the join column is required.
+ */
 export async function attachContactTags(
+  userId: string,
   contactId: string,
-  candidates: string[],
-  assignedBy: 'ai' | 'user' = 'user'
+  names: string[],
+  provenance: 'user' | 'ai' = 'user'
 ) {
-  const tags = await resolveOrCreateTags(candidates, assignedBy);
-  if (tags.length === 0) return;
+  // Verify parent ownership in this tenant.
+  const contact = await prisma.contact.findFirst({ where: { id: contactId, userId }, select: { id: true } });
+  if (!contact) throw new Error('Contact not found in tenant');
 
-  await prisma.$transaction(
-    tags.map((t) =>
-      prisma.contactTag.upsert({
-        where: { contactId_tagId: { contactId, tagId: t.id } },
-        update: {},
-        create: { contactId, tagId: t.id, assignedBy }
-      })
-    )
-  );
+  // Resolve each tag id then upsert the join row.
+  const unique = Array.from(new Set(names.map((n) => n.trim()).filter(Boolean)));
+  for (const name of unique) {
+    const { id: tagId } = await resolveOrCreateTagForTenant(userId, name, provenance);
+    await prisma.contactTag.upsert({
+      where: { contactId_tagId: { contactId, tagId } },
+      update: {},
+      create: { contactId, tagId, assignedBy: provenance }
+    });
+  }
 }
 
-// Detach a single tag from a Contact by slug
-export async function detachContactTag(contactId: string, slug: string) {
-  const tag = await prisma.tag.findUnique({ where: { slug }, select: { id: true } });
+/**
+ * Detach a single tag from a Contact by slug within a tenant.
+ */
+export async function detachContactTag(userId: string, contactId: string, slug: string) {
+  // Verify parent ownership.
+  const contact = await prisma.contact.findFirst({ where: { id: contactId, userId }, select: { id: true } });
+  if (!contact) throw new Error('Contact not found in tenant');
+
+  // Find tag id limited to tenant.
+  const tag = await prisma.tag.findFirst({ where: { userId, slug }, select: { id: true } });
   if (!tag) return;
+
   await prisma.contactTag.deleteMany({ where: { contactId, tagId: tag.id } });
 }
 
-// Detach a single tag from an Interaction by slug
-export async function detachInteractionTag(interactionId: string, slug: string) {
-  const tag = await prisma.tag.findUnique({ where: { slug }, select: { id: true } });
+/**
+ * Attach tags to an Interaction by names using the InteractionTag join model.
+ * - Verifies interaction belongs to the tenant.
+ * - Sets assignedBy from provenance since the join column is required.
+ */
+export async function attachInteractionTags(
+  userId: string,
+  interactionId: string,
+  names: string[],
+  provenance: 'user' | 'ai' = 'user'
+) {
+  // Verify parent ownership.
+  const it = await prisma.interaction.findFirst({ where: { id: interactionId, userId }, select: { id: true } });
+  if (!it) throw new Error('Interaction not found in tenant');
+
+  const unique = Array.from(new Set(names.map((n) => n.trim()).filter(Boolean)));
+  for (const name of unique) {
+    const { id: tagId } = await resolveOrCreateTagForTenant(userId, name, provenance);
+    await prisma.interactionTag.upsert({
+      where: { interactionId_tagId: { interactionId, tagId } },
+      update: {},
+      create: { interactionId, tagId, assignedBy: provenance }
+    });
+  }
+}
+
+/**
+ * Detach a single tag from an Interaction by slug within a tenant.
+ */
+export async function detachInteractionTag(userId: string, interactionId: string, slug: string) {
+  // Verify parent ownership.
+  const it = await prisma.interaction.findFirst({ where: { id: interactionId, userId }, select: { id: true } });
+  if (!it) throw new Error('Interaction not found in tenant');
+
+  const tag = await prisma.tag.findFirst({ where: { userId, slug }, select: { id: true } });
   if (!tag) return;
+
   await prisma.interactionTag.deleteMany({ where: { interactionId, tagId: tag.id } });
 }

@@ -1,129 +1,83 @@
 // src/lib/embeddings.ts
-// PURPOSE: Embeddings stored as Postgres double precision[] and ranked via cosine_similarity() SQL.
-// PORTABLE: No pgvector extension required.
+// PURPOSE: Generate and upsert embeddings for interactions using OpenAI.
+// MULTI TENANT: Verifies the interaction belongs to the user before writing.
+// STORAGE: Prisma maps number[] to Postgres double precision[].
+// All IT code is commented and uses hyphens only.
 
 import { prisma } from '$lib/db';
 
+// Comment: keep the model configurable via env with a sensible default.
+const EMBEDDING_MODEL = process.env.OPENAI_EMBEDDING_MODEL || 'text-embedding-3-small';
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY || '';
-const EMBEDDING_MODEL = 'text-embedding-3-small'; // 1536 dims
-const TIMEOUT_MS = 12000;
 
-// Call OpenAI JSON REST with a timeout
-async function openaiJson<T>(path: string, body: unknown): Promise<T> {
-  if (!OPENAI_API_KEY) throw new Error('OPENAI_API_KEY is missing');
+/**
+ * Generate an embedding vector for a text using OpenAI's embeddings API.
+ * - Returns a number array or null if the call fails.
+ */
+async function generateEmbedding(text: string): Promise<number[] | null> {
+  // Guardrails - skip empty text or missing API key.
+  const input = (text || '').trim();
+  if (!input || !OPENAI_API_KEY) return null;
 
-  const ctrl = new AbortController();
-  const t = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
+  // Trim very long inputs to keep request size reasonable.
+  const MAX_CHARS = 8000;
+  const toEmbed = input.length > MAX_CHARS ? input.slice(0, MAX_CHARS) : input;
 
-  try {
-    const res = await fetch(`https://api.openai.com/v1${path}`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${OPENAI_API_KEY}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(body),
-      signal: ctrl.signal
-    });
-    if (!res.ok) {
-      const text = await res.text().catch(() => '');
-      throw new Error(`OpenAI ${path} ${res.status} ${text}`);
-    }
-    return res.json() as Promise<T>;
-  } finally {
-    clearTimeout(t);
-  }
-}
-
-// Normalize to keep token count in check
-function normalizeForEmbedding(input: string): string {
-  return input.replace(/\s+/g, ' ').trim();
-}
-
-// Build the text to embed for an interaction
-export function buildInteractionEmbeddingText(args: { summary?: string | null; raw: string }) {
-  const parts: string[] = [];
-  if (args.summary && args.summary.trim()) parts.push(args.summary.trim());
-  const tail = args.raw.trim().slice(0, 800);
-  if (tail) parts.push(tail);
-  return parts.join('\n\n');
-}
-
-// Create a 1536 vector as number[]
-export async function embedText(text: string): Promise<number[]> {
-  const prompt = normalizeForEmbedding(text);
-  type EmbResp = { data: { embedding: number[] }[] };
-  const resp = await openaiJson<EmbResp>('/embeddings', {
-    model: EMBEDDING_MODEL,
-    input: prompt
+  const res = await fetch('https://api.openai.com/v1/embeddings', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${OPENAI_API_KEY}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      model: EMBEDDING_MODEL,
+      input: toEmbed
+    })
   });
-  const vec = resp.data?.[0]?.embedding;
-  if (!Array.isArray(vec) || vec.length !== 1536) {
-    throw new Error('Unexpected embedding shape');
+
+  if (!res.ok) {
+    // Non fatal - let caller continue without embeddings.
+    const body = await res.text().catch(() => '');
+    console.error('Embedding request failed:', res.status, body.slice(0, 200));
+    return null;
   }
-  return vec;
+
+  const json = (await res.json().catch(() => null)) as any;
+  const vec = json?.data?.[0]?.embedding;
+  if (!Array.isArray(vec)) return null;
+
+  // Ensure numbers - filter out any non numeric values defensively.
+  return vec.map((v: any) => Number(v)).filter((v: number) => Number.isFinite(v));
 }
 
-// PURPOSE: compute embedding and store it using a raw SQL upsert
-// - avoids Prisma upsert on a model that may be out of sync
-// - writes to InteractionEmbedding(interactionId text, embedding float8[])
-
-export async function upsertInteractionEmbedding(interactionId: string, summary: string | null, raw: string) {
-    // Build the text we want to embed
-    const text = buildInteractionEmbeddingText({ summary, raw });
-    if (!text) return;
-  
-    // Call OpenAI to get a 1536-d vector
-    const vec = await embedText(text);
-  
-    // Build a Postgres ARRAY[...] literal with double precision numbers
-    // We keep 6 decimal places for compactness
-    const numbers = vec.map((v) => (Number.isFinite(v) ? Number(v).toFixed(6) : '0'));
-    const arrLiteral = `ARRAY[${numbers.join(',')}]::double precision[]`;
-  
-    // Upsert using raw SQL so we do not rely on Prisma's CRUD model generation
-    await prisma.$executeRawUnsafe(
-      `
-      INSERT INTO "InteractionEmbedding" ("interactionId", "embedding")
-      VALUES ($1, ${arrLiteral})
-      ON CONFLICT ("interactionId")
-      DO UPDATE SET "embedding" = EXCLUDED."embedding"
-      `,
-      interactionId
-    );
+/**
+ * Upsert the embedding row for an interaction.
+ * - Verifies the interaction belongs to the given user id.
+ * - Creates or replaces the InteractionEmbedding record.
+ */
+export async function upsertInteractionEmbedding(
+  userId: string,
+  interactionId: string,
+  plaintext: string
+): Promise<void> {
+  // Verify tenant ownership first.
+  const exists = await prisma.interaction.findFirst({
+    where: { id: interactionId, userId },
+    select: { id: true }
+  });
+  if (!exists) {
+    console.warn('upsertInteractionEmbedding - interaction not in tenant:', interactionId);
+    return;
   }
-  
 
-// Semantic search using cosine_similarity function from migration
-export async function semanticSearchInteractions(query: string, limit = 10) {
-  const vec = await embedText(query);
+  // Generate the embedding - skip if the call fails.
+  const embedding = await generateEmbedding(plaintext);
+  if (!embedding || embedding.length === 0) return;
 
-  // Build ARRAY literal for double precision[]
-  const numbers = vec.map((v) => (Number.isFinite(v) ? Number(v).toFixed(6) : '0'));
-  const arrLiteral = `ARRAY[${numbers.join(',')}]::double precision[]`;
-
-  type Row = {
-    id: string;
-    contactId: string;
-    occurredAt: Date;
-    channel: string;
-    score: number;
-  };
-
-  const rows = await prisma.$queryRawUnsafe<Row[]>(
-    `
-    SELECT i."id",
-           i."contactId",
-           i."occurredAt",
-           i."channel",
-           cosine_similarity(ie."embedding", ${arrLiteral}) AS score
-    FROM "InteractionEmbedding" ie
-    JOIN "Interaction" i ON i."id" = ie."interactionId"
-    ORDER BY score DESC
-    LIMIT $1
-    `,
-    limit
-  );
-
-  return rows;
+  // InteractionEmbedding has a PK of interactionId.
+  await prisma.interactionEmbedding.upsert({
+    where: { interactionId },
+    update: { embedding },
+    create: { interactionId, embedding }
+  });
 }

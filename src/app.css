@@ -73,8 +73,8 @@
     background: var(--panel);
     color: var(--text);
     cursor: pointer;
-    transition: transform 0.05s ease, background 0.2s ease, border-color 0.2s ease;
-  }
+    transition: transform 0.05s ease, background-color 0.2s ease, border-color 0.2s ease, filter 0.2s ease;
+}
   .btn:hover { background: var(--panel-2); }
   .btn:active { transform: translateY(1px); }
   .btn.primary {
@@ -105,6 +105,68 @@
     grid-template-rows: auto minmax(0, 1fr) auto;
     min-height: 100dvh;
   }
+
+  /* --- Relationship OS - theme-aware chips, pills, and notes --- */
+/* Comment: uses your existing color tokens - no hardcoded colors. */
+
+/* Utility - muted text that matches your token */
+.muted { color: var(--muted); }
+
+/* Tag rows */
+.tag-row { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 8px; }
+.tag-row.small { gap: 6px; }
+
+/* Interactive tag chip - used for removable contact tags */
+.chip {
+  /* Comment: readable foreground on dark surfaces */
+  color: var(--text);
+  /* Comment: subtle surface that sits above card background */
+  background: var(--panel-2);
+  /* Comment: fallback first, enhanced mix where supported for a touch of lift */
+  background: var(--panel-2);
+  background: color-mix(in srgb, var(--panel-2), white 6%);
+  border: 1px solid var(--border);
+  border-radius: 9999px;
+  padding: 4px 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+.chip:hover {
+  /* Comment: hover lifts slightly toward accent without changing brand color */
+  background: color-mix(in srgb, var(--panel-2), white 12%);
+}
+.chip:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.chip-static { cursor: default; }            /* Comment: non clickable variant */
+.chip-text { line-height: 1; font-weight: 500; }
+.chip-x { line-height: 1; font-weight: 700; color: var(--muted); }
+
+/* Small pill for note metadata like channel */
+.pill {
+  color: var(--muted);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 9999px;
+  padding: 2px 8px;
+  font-size: 12px;
+}
+
+/* Notes list under a contact */
+.notes { list-style: none; padding: 0; margin: 12px 0 0; display: grid; gap: 12px; }
+.note {
+  background: linear-gradient(180deg, var(--panel) 0%, var(--panel-2) 100%);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px;
+}
+.note-meta { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.note-link { text-decoration: none; color: var(--text); }
+.note-link:hover { text-decoration: underline; }
+
   
   /* Desktop: sidebar + main */
   @media (min-width: 1024px) {

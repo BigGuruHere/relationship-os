@@ -1,161 +1,128 @@
 // src/routes/contacts/[id]/interactions/new/+page.server.ts
-// PURPOSE: Create a new interaction note for a contact with optional AI summary and tags.
-//          - Validates input with zod
-//          - Encrypts raw text and summary using AES-256-GCM
-//          - Saves Interaction first
-//          - Tries to attach tags to the controlled vocabulary, but never blocks save if tagging fails
-//
-// SECURITY NOTES:
-// - Do not log decrypted PII
-// - Only log minimal context like IDs
-// - Keep AAD strings stable for future decrypts
-//
-// DEPENDENCIES:
-// - prisma client from $lib/db
-// - encrypt from $lib/crypto
-// - attachInteractionTags from $lib/tags
-// - zod for validation
+// PURPOSE: Create a new interaction for a contact with optional tags and an embedding.
+// MULTI TENANT: Requires login and scopes all DB access by userId.
+// SECURITY: Do not log decrypted PII. Encrypt raw text before storing.
+// NOTE: This route exposes named actions only. Your form should post to ?/save.
 
 import { fail, redirect } from '@sveltejs/kit';
+import type { Actions, PageServerLoad } from './$types';
 import { prisma } from '$lib/db';
 import { encrypt } from '$lib/crypto';
 import { attachInteractionTags } from '$lib/tags';
-import { z } from 'zod';
 import { upsertInteractionEmbedding } from '$lib/embeddings';
+import { z } from 'zod';
 
-
-// Validation schema for form data
-const DraftSchema = z.object({
-  text: z.string().min(1, 'Please type something'),
-  occurredAt: z.string().optional(),
-  channel: z.string().default('note'),
-  summary: z.string().optional(),
-  // tags provided as comma or semicolon separated string from the client
-  tags: z.string().optional(),
-  // who proposed the tags. default to ai
-  tagsSource: z.enum(['ai', 'user']).optional()
+// Validate inputs coming from the form.
+const NewInteraction = z.object({
+  channel: z.string().min(1),
+  occurredAt: z.string().optional(), // datetime-local string
+  text: z.string().min(1, 'Note cannot be empty'),
+  tags: z.string().optional(), // comma separated names
+  tagsSource: z.enum(['user', 'ai']).optional().default('user')
 });
 
-// Helper to parse a single string into clean tag candidates
-function parseTagCandidates(raw: string | undefined): string[] {
-  if (!raw) return [];
-  return Array.from(
-    new Set(
-      raw
-        .split(/[,;]+/)
-        .map((t) => t.trim())
-        .filter(Boolean)
-    )
-  ).slice(0, 12);
-}
+export const load: PageServerLoad = async ({ locals, params }) => {
+  // Require login.
+  if (!locals.user) throw redirect(303, '/auth/login');
 
-// AAD constants for encryption to avoid typos
-const AAD = {
-  RAW: 'interaction.raw_text',
-  SUMMARY: 'interaction.summary'
-} as const;
+  // Ensure the contact exists and belongs to this tenant.
+  const contact = await prisma.contact.findFirst({
+    where: { id: params.id, userId: locals.user.id },
+    select: { id: true }
+  });
+  if (!contact) throw redirect(303, '/');
 
-export const actions = {
-  // Optional draft action if you want a preview flow
-  draft: async ({ request }) => {
-    const form = await request.formData();
-    const parsed = DraftSchema.safeParse({
-      text: form.get('text'),
-      occurredAt: form.get('occurredAt') || undefined,
-      channel: form.get('channel') ?? 'note',
-      summary: form.get('summary') || undefined,
-      tags: form.get('tags') || undefined,
-      tagsSource: (form.get('tagsSource') as 'ai' | 'user') || 'ai'
-    });
+  return { contactId: contact.id };
+};
 
-    if (!parsed.success) {
-      return fail(400, { error: parsed.error.flatten().formErrors.join(', ') });
-    }
+// Small local type so we do not depend on App.Locals.
+type SaveArgs = {
+  request: Request;
+  locals: { user?: { id: string } | null };
+  params: { id: string };
+};
 
-    return { mode: 'draft', draft: parsed.data };
-  },
+// Shared create function used by named actions.
+async function saveImpl({ request, locals, params }: SaveArgs) {
+  // Require login.
+  if (!locals.user) throw redirect(303, '/auth/login');
 
-  // Save action that persists the interaction and attempts tag linking
-  save: async ({ request, params }) => {
-    // Parse and validate form data
-    const form = await request.formData();
-    const parsed = DraftSchema.safeParse({
-      text: form.get('text'),
-      occurredAt: form.get('occurredAt') || undefined,
-      channel: form.get('channel') ?? 'note',
-      summary: form.get('summary') || undefined,
-      tags: form.get('tags') || undefined,
-      tagsSource: (form.get('tagsSource') as 'ai' | 'user') || 'ai'
-    });
+  // Parse and validate form fields.
+  const raw = Object.fromEntries(await request.formData());
+  const parsed = NewInteraction.safeParse({
+    channel: String(raw.channel || ''),
+    occurredAt: String(raw.occurredAt || ''),
+    text: String(raw.text || ''),
+    tags: String(raw.tags || ''),
+    tagsSource: String(raw.tagsSource || 'user')
+  });
+  if (!parsed.success) {
+    return fail(400, { error: parsed.error.errors[0]?.message || 'Invalid input' });
+  }
 
-    if (!parsed.success) {
-      return fail(400, { error: parsed.error.flatten().formErrors.join(', ') });
-    }
+  // Confirm the contact is in this tenant.
+  const contact = await prisma.contact.findFirst({
+    where: { id: params.id, userId: locals.user?.id || '' },
+    select: { id: true }
+  });
+  if (!contact) return fail(404, { error: 'Contact not found.' });
 
-    // Normalize occurredAt
-    const occurredAt = parsed.data.occurredAt ? new Date(parsed.data.occurredAt) : new Date();
+  // Prepare fields.
+  const occurredAt = parsed.data.occurredAt ? new Date(parsed.data.occurredAt) : null;
+  const plaintext = parsed.data.text;
+  const rawTextEnc = encrypt(plaintext, 'interaction.raw_text');
 
-    // Encrypt sensitive fields
-    const rawTextEnc = encrypt(parsed.data.text, AAD.RAW);
-    const summaryEnc = parsed.data.summary ? encrypt(parsed.data.summary, AAD.SUMMARY) : null;
-
-    // Defensive check that contact exists
-    const contact = await prisma.contact.findUnique({
-      where: { id: params.id },
+  let interactionId = '';
+  try {
+    // Create interaction under this tenant.
+    const interaction = await prisma.interaction.create({
+      data: {
+        userId: locals.user!.id,
+        contactId: contact.id,
+        channel: parsed.data.channel,
+        ...(occurredAt ? { occurredAt } : {}),
+        rawTextEnc
+      },
       select: { id: true }
     });
-    if (!contact) {
-      return fail(404, { error: 'Contact not found' });
-    }
+    interactionId = interaction.id;
 
-    // Create the Interaction first
-    let interactionId: string;
-    try {
-      const created = await prisma.interaction.create({
-        data: {
-          contactId: contact.id,
-          occurredAt,
-          channel: parsed.data.channel,
-          rawTextEnc,
-          summaryEnc
-        },
-        select: { id: true }
-      });
-      interactionId = created.id;
-    } catch (err) {
-      console.error('Failed to save interaction for contact', params.id);
-      return fail(500, { error: 'Failed to save note. Please try again.' });
-    }
-
-    // After interaction creation, before redirect
-    try {
-      const raw = parsed.data.text;
-      const summaryPlain = parsed.data.summary ?? null; // this is plain text before encryption
-      await upsertInteractionEmbedding(interactionId, summaryPlain, raw);
-    } catch {
-      // non critical, ignore
-      console.error('Embedding upsert failed:', e);
-
-    }
-
-
-    // Attempt to attach tags. This is non critical and must not block the redirect.
-    const candidates = parseTagCandidates(parsed.data.tags);
-    if (candidates.length) {
+    // Attach user provided tags if any.
+    const candidates = parsed.data.tags
+      ? parsed.data.tags.split(',').map((s) => s.trim()).filter(Boolean)
+      : [];
+    if (candidates.length > 0) {
       try {
         await attachInteractionTags(
+          locals.user!.id,
           interactionId,
           candidates,
-          parsed.data.tagsSource ?? 'ai'
+          parsed.data.tagsSource ?? 'user'
         );
       } catch (e) {
-        // Log minimal context only. Do not leak tag content or note content.
         console.error('attachInteractionTags failed for interaction', interactionId);
-        // Intentionally do not return fail here
       }
     }
-
-    // Always redirect after DB work so the user sees their saved note
-    throw redirect(303, `/contacts/${contact.id}`);
+  } catch (err) {
+    console.error('Failed to create interaction:', err);
+    return fail(500, { error: 'Failed to save note. Please try again.' });
   }
+
+  // Best effort embedding - do not fail the request if it errors.
+  try {
+    await upsertInteractionEmbedding(locals.user!.id, interactionId, plaintext);
+  } catch (e) {
+    console.error('upsertInteractionEmbedding failed for interaction', interactionId);
+  }
+
+  // Redirect outside try so it is not swallowed.
+  throw redirect(303, `/contacts/${contact.id}`);
+}
+
+export const actions: Actions = {
+  // Your form posts to ?/save.
+  save: async (args) => saveImpl(args as SaveArgs),
+
+  // Optional alias so ?/create also works.
+  create: async (args) => saveImpl(args as SaveArgs)
 };

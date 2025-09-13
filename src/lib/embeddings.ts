@@ -1,25 +1,26 @@
 // src/lib/embeddings.ts
-// PURPOSE: Generate and upsert embeddings for interactions using OpenAI.
-// MULTI TENANT: Verifies the interaction belongs to the user before writing.
-// STORAGE: Prisma maps number[] to Postgres double precision[].
-// All IT code is commented and uses hyphens only.
+// PURPOSE: OpenAI embedding helpers - generate vectors, upsert interaction embeddings,
+//          and perform semantic search over interactions.
+// MULTI TENANT: All reads and writes are scoped by userId.
+// STORAGE: Prisma maps number[] to Postgres double precision[] (no pgvector).
+// SECURITY: Never log decrypted plaintext. Only short previews. All IT code is commented and uses hyphens only.
 
 import { prisma } from '$lib/db';
+import { decrypt } from '$lib/crypto';
 
-// Comment: keep the model configurable via env with a sensible default.
+// Configurable model via env with a sensible default.
 const EMBEDDING_MODEL = process.env.OPENAI_EMBEDDING_MODEL || 'text-embedding-3-small';
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY || '';
 
 /**
- * Generate an embedding vector for a text using OpenAI's embeddings API.
- * - Returns a number array or null if the call fails.
+ * Generate an embedding vector for a text via OpenAI embeddings API.
+ * - Returns a number[] or null if the call fails or is not configured.
  */
-async function generateEmbedding(text: string): Promise<number[] | null> {
-  // Guardrails - skip empty text or missing API key.
+export async function generateEmbedding(text: string): Promise<number[] | null> {
   const input = (text || '').trim();
   if (!input || !OPENAI_API_KEY) return null;
 
-  // Trim very long inputs to keep request size reasonable.
+  // Trim extremely long inputs to keep request size reasonable.
   const MAX_CHARS = 8000;
   const toEmbed = input.length > MAX_CHARS ? input.slice(0, MAX_CHARS) : input;
 
@@ -29,14 +30,10 @@ async function generateEmbedding(text: string): Promise<number[] | null> {
       Authorization: `Bearer ${OPENAI_API_KEY}`,
       'Content-Type': 'application/json'
     },
-    body: JSON.stringify({
-      model: EMBEDDING_MODEL,
-      input: toEmbed
-    })
+    body: JSON.stringify({ model: EMBEDDING_MODEL, input: toEmbed })
   });
 
   if (!res.ok) {
-    // Non fatal - let caller continue without embeddings.
     const body = await res.text().catch(() => '');
     console.error('Embedding request failed:', res.status, body.slice(0, 200));
     return null;
@@ -46,14 +43,14 @@ async function generateEmbedding(text: string): Promise<number[] | null> {
   const vec = json?.data?.[0]?.embedding;
   if (!Array.isArray(vec)) return null;
 
-  // Ensure numbers - filter out any non numeric values defensively.
+  // Ensure numbers only.
   return vec.map((v: any) => Number(v)).filter((v: number) => Number.isFinite(v));
 }
 
 /**
  * Upsert the embedding row for an interaction.
- * - Verifies the interaction belongs to the given user id.
- * - Creates or replaces the InteractionEmbedding record.
+ * - Verifies the interaction belongs to this tenant before writing.
+ * - Creates or replaces the InteractionEmbedding record keyed by interactionId.
  */
 export async function upsertInteractionEmbedding(
   userId: string,
@@ -70,14 +67,113 @@ export async function upsertInteractionEmbedding(
     return;
   }
 
-  // Generate the embedding - skip if the call fails.
   const embedding = await generateEmbedding(plaintext);
   if (!embedding || embedding.length === 0) return;
 
-  // InteractionEmbedding has a PK of interactionId.
   await prisma.interactionEmbedding.upsert({
     where: { interactionId },
     update: { embedding },
     create: { interactionId, embedding }
   });
+}
+
+// Small helper to build a safe preview for UI lists.
+function preview(text: string, max = 280): string {
+  const t = (text || '').trim();
+  return t.length > max ? t.slice(0, max - 3) + '...' : t;
+}
+
+/**
+ * Semantic search interactions for a tenant.
+ * - Computes a query embedding, ranks interactions with cosine similarity over float8[].
+ * - Returns decrypted previews with scores, newest first among ties.
+ * - Resilient to NULL scores by coalescing to -1 so rows still appear.
+ */
+export async function semanticSearchInteractions(
+  userId: string,
+  query: string,
+  opts: { limit?: number; minScore?: number } = {}
+): Promise<
+  Array<{
+    id: string;
+    contactId: string;
+    contactName: string;
+    channel: string;
+    occurredAt: Date | null;
+    score: number;
+    preview: string;
+  }>
+> {
+  const qVec = await generateEmbedding(query);
+  if (!qVec || qVec.length === 0) {
+    // Caller can surface a friendly message like "Check OPENAI_API_KEY or network".
+    return [];
+  }
+
+  const limit = Math.max(1, Math.min(opts.limit ?? 20, 100));
+  // Keep all results by default - caller can choose to hide very low scores if desired.
+  const minScore = typeof opts.minScore === 'number' ? opts.minScore : -1;
+
+  // Use Prisma's quoted table and camelCase column names exactly as created by the schema.
+  type Row = {
+    id: string;
+    contactId: string;
+    channel: string;
+    occurredAt: Date | null;
+    rawTextEnc: string;
+    contactNameEnc: string;
+    score: number | null;
+    dim: number | null;
+  };
+
+  let rows: Row[] = [];
+  try {
+    rows = await prisma.$queryRaw<Row[]>`
+      SELECT
+        i.id,
+        i."contactId"   AS "contactId",
+        i.channel       AS "channel",
+        i."occurredAt"  AS "occurredAt",
+        i."rawTextEnc"  AS "rawTextEnc",
+        c."fullNameEnc" AS "contactNameEnc",
+        COALESCE(public.cosine_similarity(ie."embedding", ${qVec}::double precision[]), -1) AS score,
+        array_length(ie."embedding", 1) AS dim
+      FROM "Interaction" i
+      JOIN "InteractionEmbedding" ie ON ie."interactionId" = i.id
+      JOIN "Contact" c ON c.id = i."contactId"
+      WHERE i."userId" = ${userId}
+      ORDER BY score DESC, COALESCE(i."occurredAt", i."createdAt") DESC, i.id DESC
+      LIMIT ${limit}
+    `;
+  } catch (err) {
+    console.error('semanticSearchInteractions query failed:', err);
+    return [];
+  }
+
+  const out = [];
+  for (const r of rows) {
+    // If a caller set minScore, honor it - default includes everything.
+    if (minScore > -1 && !(Number(r.score ?? -1) >= minScore)) continue;
+
+    let text = '';
+    let name = '';
+    try {
+      text = r.rawTextEnc ? decrypt(r.rawTextEnc, 'interaction.raw_text') : '';
+    } catch {}
+    try {
+      name = r.contactNameEnc ? decrypt(r.contactNameEnc, 'contact.full_name') : '';
+    } catch {}
+
+    out.push({
+      id: r.id,
+      contactId: r.contactId,
+      contactName: name || '(unknown)',
+      channel: r.channel,
+      occurredAt: r.occurredAt,
+      score: Number(r.score ?? -1),
+      preview: preview(text)
+    });
+  }
+
+  return out;
 }

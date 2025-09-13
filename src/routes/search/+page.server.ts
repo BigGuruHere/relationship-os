@@ -1,69 +1,38 @@
 // src/routes/search/+page.server.ts
-// PURPOSE: Semantic search results for interactions (notes) with decrypted contact names.
-// NOTES:
-// - Requires login and scopes everything by locals.user.id.
-// - Keeps the ranking from semanticSearchInteractions (highest score first).
-// - Secondary tie breaker by occurredAt DESC.
-// SECURITY: Decrypt on the server only.
+// PURPOSE: Minimal semantic search loader for the search page.
+// MULTI TENANT: Requires login - every query is scoped by userId.
+// UX: Reads q from the URL. If the form ever posts, we redirect to a canonical GET URL.
+// NOTE: No diagnostics or plaintext fallback - just embeddings search.
 
-import { prisma } from '$lib/db';
-import { decrypt } from '$lib/crypto';
-import { semanticSearchInteractions } from '$lib/embeddings';
-import { redirect, fail } from '@sveltejs/kit';
+import { redirect } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
+import { semanticSearchInteractions } from '$lib/embeddings';
 
-export const load: PageServerLoad = async ({ url, locals }) => {
-  // Require login
+export const load: PageServerLoad = async ({ locals, url }) => {
+  // Require login for tenant scoping.
   if (!locals.user) throw redirect(303, '/auth/login');
 
+  // Read query string - empty string means no search yet.
   const q = (url.searchParams.get('q') || '').trim();
-  if (!q) return { q: '', results: [], error: null };
 
-  try {
-    // Rank interactions by semantics within this tenant
-    const hits = await semanticSearchInteractions(q, locals.user.id, 12);
-    if (hits.length === 0) return { q, results: [], error: null };
-
-    // Fetch minimal info about the related contacts scoped by user
-    const ids = hits.map((h) => h.contactId);
-    const contacts = await prisma.contact.findMany({
-      where: { userId: locals.user.id, id: { in: ids } },
-      select: { id: true, fullNameEnc: true }
-    });
-
-    const nameMap = new Map(
-      contacts.map((c) => {
-        try {
-          return [c.id, decrypt(c.fullNameEnc, 'contact.full_name') as string];
-        } catch {
-          return [c.id, '(name unavailable)'];
-        }
+  // Run semantic search when a query is present.
+  const results = q
+    ? await semanticSearchInteractions(locals.user.id, q, {
+        // comment: permissive threshold keeps rows even when score is tiny
+        // comment: change to something like 0.1 if you want to hide weak matches
+        minScore: -1,
+        limit: 50
       })
-    );
+    : [];
 
-    // Merge names into search results
-    const results = hits.map((h) => ({
-      id: h.id,
-      contactId: h.contactId,
-      contactName: nameMap.get(h.contactId) || '(unknown)',
-      occurredAt: h.occurredAt,
-      channel: h.channel,
-      score: h.score
-    }));
-
-    return { q, results, error: null };
-  } catch (e: any) {
-    const msg = typeof e?.message === 'string' ? e.message : 'Search service error';
-    return { q, results: [], error: msg };
-  }
+  return { q, results };
 };
 
+// Optional safety - if the form posts by mistake, redirect to GET so load() sees q.
 export const actions: Actions = {
-  // POST from the search form redirects to GET so the URL is shareable
-  search: async ({ request }) => {
-    const form = await request.formData();
-    const q = String(form.get('q') || '').trim();
-    if (!q) return fail(400, { error: 'Please enter a search query' });
-    throw redirect(303, `/search?q=${encodeURIComponent(q)}`);
+  default: async ({ request }) => {
+    const data = await request.formData();
+    const q = String(data.get('q') || '').trim();
+    throw redirect(303, q ? `/search?q=${encodeURIComponent(q)}` : '/search');
   }
 };

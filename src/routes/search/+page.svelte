@@ -1,70 +1,88 @@
+<!-- src/routes/search/+page.svelte -->
 <script lang="ts">
-    export let data;
+    // PURPOSE: Simple semantic search UI - GET form, list results, no diagnostics.
+    export let data: {
+      q: string;
+      results: Array<{
+        id: string;
+        contactId: string;
+        contactName: string;
+        channel: string;
+        occurredAt: string | Date | null;
+        score: number;
+        preview: string;
+      }>;
+    };
+  
+    // Format timestamp safely for display.
+    function fmt(d: string | Date | null) {
+      if (!d) return '';
+      const dt = typeof d === 'string' ? new Date(d) : d;
+      return dt.toLocaleString();
+    }
   </script>
   
   <div class="container">
-    <div class="card" style="padding:18px;">
-      <form method="post" action="?/search" style="display:flex; gap:8px; align-items:center;">
+    <div class="card" style="padding:16px; margin-bottom:16px;">
+      <!-- GET keeps q in the URL so server load reads it reliably -->
+      <form method="get" style="display:flex; gap:10px; align-items:center;">
         <input
           name="q"
-          placeholder="Search people or notes... try fundraising in March"
           value={data.q}
-          aria-label="Search"
+          placeholder="Search your notes - try a word or a phrase"
+          aria-label="Search notes"
         />
-        <button class="btn primary">Search</button>
+        <button class="btn primary" type="submit">Search</button>
       </form>
-      {#if data.error}
-        <p style="margin-top:10px; color: var(--warning);">
-          {data.error}. Check OPENAI_API_KEY or network and try again.
-        </p>
-      {/if}
     </div>
   
-    <div class="card" style="padding:18px; margin-top:14px;">
-      <h2 style="margin:0 0 10px;">Results</h2>
+    {#if data.q && data.results.length === 0}
+      <div class="card" style="padding:16px; margin-bottom:16px;">
+        <h3 style="margin-top:0;">No results for {data.q}.</h3>
+        <p class="muted" style="margin:8px 0 0;">Try a longer phrase for a stronger match.</p>
+      </div>
+    {/if}
   
-      {#if !data.q}
-        <p style="color:var(--muted);">Type a query above to search your memory.</p>
-      {:else if data.results.length === 0 && !data.error}
-        <p>No results for <strong>{data.q}</strong>.</p>
-        <p style="color:var(--muted); font-size:0.95rem;">Tip: try a broader phrase like investor update or skiing.</p>
-      {:else if data.results.length}
-        <ul style="list-style:none; padding:0; margin:0; display:grid; gap:12px;">
+    {#if data.results.length > 0}
+      <div class="card" style="padding:16px;">
+        <h3 style="margin-top:0;">Results</h3>
+        <ul style="list-style:none; margin:0; padding:0; display:grid; gap:12px;">
           {#each data.results as r}
-            <li class="card" style="padding:14px;">
-              <div style="display:flex; justify-content:space-between; gap:10px; flex-wrap:wrap;">
+            <li class="card" style="padding:12px;">
+              <div style="display:flex; justify-content:space-between; gap:10px; align-items:baseline;">
                 <div>
-                  <a class="btn" href={"/contacts/" + r.contactId} title="Open contact">{r.contactName}</a>
-                  <small style="color:var(--muted); margin-left:8px;">
-                    {new Date(r.occurredAt).toLocaleString()} - {r.channel}
-                  </small>
+                  <a href={`/contacts/${r.contactId}/interactions/${r.id}`} class="note-link">
+                    <strong>{r.contactName}</strong>
+                  </a>
+                  <span class="pill" style="margin-left:8px;">{r.channel}</span>
+                  <span class="muted" style="margin-left:8px;">{fmt(r.occurredAt)}</span>
                 </div>
-                <a class="btn" href={"/contacts/" + r.contactId + "/interactions/" + r.id} title="Open note">Open note</a>
+                <!-- keep score visible for a bit while validating - easy to remove later -->
+                <div class="pill" title="Cosine similarity score">score {r.score.toFixed(3)}</div>
               </div>
-  
-              {#if r.summary}
-                <div style="margin-top:10px;">
-                  <pre style="white-space:pre-wrap; font-family:inherit; margin:0;">{r.summary}</pre>
-                </div>
-              {/if}
-  
-              <div style="margin-top:10px; display:flex; gap:8px; flex-wrap:wrap;">
-                {#if r.tags.length === 0}
-                  <span style="color:var(--muted);">No tags</span>
-                {:else}
-                  {#each r.tags as t}
-                    <span class="btn" style="padding:6px 10px; cursor:default;">#{t.name}</span>
-                  {/each}
-                {/if}
-              </div>
-  
-              <div style="margin-top:8px; color:var(--muted); font-size:0.9rem;">
-                score: {r.score.toFixed(4)}
+              <div style="margin-top:8px;">
+                <span class="muted">{r.preview}</span>
               </div>
             </li>
           {/each}
         </ul>
-      {/if}
-    </div>
+      </div>
+    {/if}
   </div>
+  
+  <style>
+    /* local helpers that align with your theme tokens */
+    .muted { color: var(--muted); }
+    .pill {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 9999px;
+      border: 1px solid var(--border);
+      background: var(--panel);
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .note-link { color: var(--text); text-decoration: none; }
+    .note-link:hover { text-decoration: underline; }
+  </style>
   

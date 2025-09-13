@@ -1,26 +1,87 @@
 // prisma/schema.prisma
-// PURPOSE: Personal CRM schema with normalized tagging
+// PURPOSE: Personal CRM schema with multi tenant auth and normalized tagging
 // NOTES:
 // - Postgres is assumed
 // - All IT code is commented
-// - Legacy Contact.tags String[] has been removed in favor of join tables
-// - If you still have data in Contact.tags, backfill before applying a destructive migration
+// - Tenant scoping is enforced by required userId on Contact, Interaction, and Tag
+// - Embeddings are stored as double precision[] - no pgvector required
 
 // ---------------------------------------------------------------------------
 // Datasource and generator
 // ---------------------------------------------------------------------------
-datasource db {
-  provider          = "postgresql" // Using Postgres
-  url               = env("DATABASE_URL") // Connection string from your .env
-  shadowDatabaseUrl = env("SHADOW_DATABASE_URL") // different DB for shadows
-}
-
 generator client {
   provider = "prisma-client-js" // Generate Prisma Client for Node and TS
 }
 
-// Prevents strings like "AI " or "usr"
-// Put enum values on separate lines
+datasource db {
+  provider          = "postgresql"           // Using Postgres
+  url               = env("DATABASE_URL")    // Connection string from your .env
+  shadowDatabaseUrl = env("SHADOW_DATABASE_URL") // optional - only used by migrate dev
+}
+
+// ---------------------------------------------------------------------------
+// AUTH MODELS
+// ---------------------------------------------------------------------------
+// MODEL: User
+// - Primary account for a single tenant
+// - Email is unique per deployment
+model User {
+  id           String    @id @default(uuid())         // pk stored as text uuid
+  email        String    @unique                      // login identifier
+  passwordHash String                                 // Argon2id hash string
+
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  // Owned data - tenant boundaries
+  sessions      Session[]
+  contacts      Contact[]
+  interactions  Interaction[]
+  tags          Tag[]
+  oauthAccounts OAuthAccount[] // external accounts linked to this user
+
+}
+
+// PURPOSE: link external OAuth providers like Google to a local User
+model OAuthAccount {
+  id                String   @id @default(uuid()) // pk
+
+  userId            String
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  provider          String   // e.g. "google"
+  providerAccountId String   // stable provider user id - for Google this is the "sub" claim
+  email             String?  // convenience copy of provider email
+  accessToken       String?  // optional if you request additional API scopes
+  refreshToken      String?  // optional if you request offline access
+  expiresAt         DateTime?
+
+  createdAt         DateTime @default(now())
+
+  @@unique([provider, providerAccountId]) // prevent duplicate links
+  @@index([userId])
+}
+
+
+// MODEL: Session
+// - Stores session token hash and expiry
+// - tokenHash is a server side HMAC of a random token sent to the browser
+model Session {
+  id         String   @id @default(uuid())                   // pk
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  tokenHash  String   @unique                                // HMAC of random token
+  createdAt  DateTime @default(now())
+  expiresAt  DateTime                                        // absolute expiry
+
+  @@index([userId])
+}
+
+// ---------------------------------------------------------------------------
+// ENUMS
+// ---------------------------------------------------------------------------
+// Prevents strings like "ai " etc
 enum CreatedBy {
   ai
   user
@@ -33,85 +94,94 @@ enum AssignedBy {
 
 // ---------------------------------------------------------------------------
 // MODEL: Tag
-// A single tag concept. Name is human facing. Slug is machine normalized
-// to ensure uniqueness and stable lookups.
+// A single tag concept - tenant scoped
+// name and slug are unique per user to avoid cross tenant collisions
 // ---------------------------------------------------------------------------
-// MODEL: Tag - corrected self relation for merges
 model Tag {
   id        String    @id @default(uuid()) // pk
-  name      String // human label, e.g. "vc"
-  slug      String    @unique // normalized, e.g. "climate-tech"
+  userId    String                                // tenant owner - required
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  name      String                                // human label, e.g. "vc"
+  slug      String                                // normalized, e.g. "climate-tech"
   createdBy CreatedBy
   createdAt DateTime  @default(now())
 
-  // Merge governance
-  mergedIntoId String? // if this tag was merged into another
+  // Merge governance - same self relation pattern as before
+  mergedIntoId String?
   mergedInto   Tag?    @relation(name: "TagMerge", fields: [mergedIntoId], references: [id])
-  mergedFrom   Tag[]   @relation(name: "TagMerge") // inverse side required for self relation
+  mergedFrom   Tag[]   @relation(name: "TagMerge")
 
   // Aliases and usage relations
   aliases      TagAlias[]
   contacts     ContactTag[]
   interactions InteractionTag[]
 
-  @@unique([name])
-  @@index([createdBy, createdAt])
+  // Tenant aware uniqueness and indexes
+  @@unique([userId, name])
+  @@unique([userId, slug])
+  @@index([userId, createdBy, createdAt])
 }
 
 // ---------------------------------------------------------------------------
 // MODEL: TagAlias
-// Alternative human names and normalized slugs that point to a Tag.
-// Example: alias "venture capitalist" slug "venture-capitalist" for Tag "vc".
+// Alternative names mapped to a Tag - tenant scoped implicitly via Tag.userId
 // ---------------------------------------------------------------------------
 model TagAlias {
-  id String @id @default(uuid()) // Primary key
+  id    String @id @default(uuid())
 
-  tagId String // FK to Tag
+  tagId String
   tag   Tag    @relation(fields: [tagId], references: [id], onDelete: Cascade)
 
-  alias String // Human facing alias
-  slug  String @unique // Normalized alias for stable lookups
+  alias String                     // human facing alias
+  slug  String                     // normalized alias for lookups
 
-  @@unique([tagId, slug])
+  @@unique([tagId, slug])          // alias slug unique per tag
 }
 
 // ---------------------------------------------------------------------------
 // MODEL: Contact
-// Stores encrypted fields and deterministic HMAC index fields for equality search.
-// Interaction history is kept in Interaction. Tags are linked via ContactTag.
+// Encrypted PII plus deterministic HMAC index columns - tenant scoped
 // ---------------------------------------------------------------------------
 model Contact {
-  id String @id @default(uuid()) // Primary key
+  id     String @id @default(uuid()) // pk
 
-  // Encrypted-at-rest fields
+  // Tenant ownership - required
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Encrypted at rest fields
   fullNameEnc String
   emailEnc    String?
   phoneEnc    String?
 
-  // Deterministic, indexable tokens - used in WHERE clauses
+  // Deterministic indexable tokens - used in WHERE clauses
   fullNameIdx String
-  emailIdx    String? @unique // Unique when present - Postgres allows multiple NULLs
+  emailIdx    String? @unique // unique when present - Postgres allows multiple NULLs
   phoneIdx    String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   // Relations
-  interactions Interaction[] // One-to-many - a contact has many interactions
-  tags         ContactTag[] // Many-to-many via ContactTag
+  interactions Interaction[]
+  tags         ContactTag[]
 
-  // Indexes for search
+  // Indexes for search and tenancy
+  @@index([userId])
   @@index([fullNameIdx])
   @@index([phoneIdx])
 }
 
 // ---------------------------------------------------------------------------
 // MODEL: Interaction
-// Minimal history entry linked to a Contact. Stores encrypted body in rawTextEnc.
-// Tags are linked via InteractionTag.
+// Minimal history entry linked to a Contact - encrypted raw text - tenant scoped
 // ---------------------------------------------------------------------------
 model Interaction {
   id        String  @id @default(uuid())
+  userId    String                               // tenant owner - required
+  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
   contactId String
   contact   Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
 
@@ -123,59 +193,61 @@ model Interaction {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  // remove the embedding field here - moved to its own table
-  // embedding   Float[]? @db.Vector(1536)
+  // Relations
+  tags                 InteractionTag[]
+  InteractionEmbedding InteractionEmbedding?
 
-  tags InteractionTag[]
-
-  // no vector index here anymore
-  InteractionEmbedding InteractionEmbedding[]
+  @@index([userId])
+  @@index([contactId])
+  @@index([occurredAt])
 }
-// PURPOSE: Store interaction embeddings as a Postgres float8[] array, portable without extensions.
+
+// ---------------------------------------------------------------------------
+// MODEL: InteractionEmbedding
+// Store interaction embeddings as Postgres double precision[] - no pgvector
+// ---------------------------------------------------------------------------
 model InteractionEmbedding {
-  interactionId String      @id
+  interactionId String      @id                                // pk mirrors parent id
   interaction   Interaction @relation(fields: [interactionId], references: [id], onDelete: Cascade)
 
   // Prisma maps Float[] to Postgres double precision[]
   embedding     Float[]
-
-  // No Prisma index here - we are not using pgvector in this fallback
 }
 
 // ---------------------------------------------------------------------------
 // MODEL: ContactTag
-// Join table linking Contact to Tag with assignment metadata.
-// Composite primary key prevents duplicate links.
+// Join table linking Contact to Tag with assignment metadata - tenant handled by FKs
+// Composite primary key prevents duplicate links
 // ---------------------------------------------------------------------------
 model ContactTag {
-  contactId String
-  tagId     String
+  contactId  String
+  tagId      String
 
-  contact Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
-  tag     Tag     @relation(fields: [tagId], references: [id], onDelete: Cascade)
+  contact    Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  tag        Tag     @relation(fields: [tagId], references: [id], onDelete: Cascade)
 
   assignedBy AssignedBy
   assignedAt DateTime   @default(now()) // When the link was created
 
   @@id([contactId, tagId]) // Composite PK - unique per pair
-  @@index([tagId]) // Fast lookup by tag
+  @@index([tagId])
 }
 
 // ---------------------------------------------------------------------------
 // MODEL: InteractionTag
-// Join table linking Interaction to Tag with assignment metadata.
-// Composite primary key prevents duplicate links.
+// Join table linking Interaction to Tag with assignment metadata - tenant handled by FKs
+// Composite primary key prevents duplicate links
 // ---------------------------------------------------------------------------
 model InteractionTag {
   interactionId String
   tagId         String
 
-  interaction Interaction @relation(fields: [interactionId], references: [id], onDelete: Cascade)
-  tag         Tag         @relation(fields: [tagId], references: [id], onDelete: Cascade)
+  interaction   Interaction @relation(fields: [interactionId], references: [id], onDelete: Cascade)
+  tag           Tag         @relation(fields: [tagId], references: [id], onDelete: Cascade)
 
-  assignedBy AssignedBy
-  assignedAt DateTime   @default(now()) // When the link was created
+  assignedBy    AssignedBy
+  assignedAt    DateTime   @default(now()) // When the link was created
 
   @@id([interactionId, tagId]) // Composite PK - unique per pair
-  @@index([tagId]) // Fast lookup by tag
+  @@index([tagId])
 }

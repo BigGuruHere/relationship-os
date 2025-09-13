@@ -1,6 +1,3 @@
--- CreateSchema
-CREATE SCHEMA IF NOT EXISTS "public";
-
 -- CreateEnum
 CREATE TYPE "public"."CreatedBy" AS ENUM ('ai', 'user');
 
@@ -8,8 +5,31 @@ CREATE TYPE "public"."CreatedBy" AS ENUM ('ai', 'user');
 CREATE TYPE "public"."AssignedBy" AS ENUM ('ai', 'user');
 
 -- CreateTable
+CREATE TABLE "public"."User" (
+    "id" TEXT NOT NULL,
+    "email" TEXT NOT NULL,
+    "passwordHash" TEXT NOT NULL,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "User_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "public"."Session" (
+    "id" TEXT NOT NULL,
+    "userId" TEXT NOT NULL,
+    "tokenHash" TEXT NOT NULL,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "expiresAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "Session_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
 CREATE TABLE "public"."Tag" (
     "id" TEXT NOT NULL,
+    "userId" TEXT NOT NULL,
     "name" TEXT NOT NULL,
     "slug" TEXT NOT NULL,
     "createdBy" "public"."CreatedBy" NOT NULL,
@@ -32,6 +52,7 @@ CREATE TABLE "public"."TagAlias" (
 -- CreateTable
 CREATE TABLE "public"."Contact" (
     "id" TEXT NOT NULL,
+    "userId" TEXT NOT NULL,
     "fullNameEnc" TEXT NOT NULL,
     "emailEnc" TEXT,
     "phoneEnc" TEXT,
@@ -47,6 +68,7 @@ CREATE TABLE "public"."Contact" (
 -- CreateTable
 CREATE TABLE "public"."Interaction" (
     "id" TEXT NOT NULL,
+    "userId" TEXT NOT NULL,
     "contactId" TEXT NOT NULL,
     "occurredAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "channel" TEXT NOT NULL,
@@ -56,6 +78,14 @@ CREATE TABLE "public"."Interaction" (
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
     CONSTRAINT "Interaction_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "public"."InteractionEmbedding" (
+    "interactionId" TEXT NOT NULL,
+    "embedding" DOUBLE PRECISION[],
+
+    CONSTRAINT "InteractionEmbedding_pkey" PRIMARY KEY ("interactionId")
 );
 
 -- CreateTable
@@ -79,16 +109,22 @@ CREATE TABLE "public"."InteractionTag" (
 );
 
 -- CreateIndex
-CREATE UNIQUE INDEX "Tag_slug_key" ON "public"."Tag"("slug");
+CREATE UNIQUE INDEX "User_email_key" ON "public"."User"("email");
 
 -- CreateIndex
-CREATE INDEX "Tag_createdBy_createdAt_idx" ON "public"."Tag"("createdBy", "createdAt");
+CREATE UNIQUE INDEX "Session_tokenHash_key" ON "public"."Session"("tokenHash");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "Tag_name_key" ON "public"."Tag"("name");
+CREATE INDEX "Session_userId_idx" ON "public"."Session"("userId");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "TagAlias_slug_key" ON "public"."TagAlias"("slug");
+CREATE INDEX "Tag_userId_createdBy_createdAt_idx" ON "public"."Tag"("userId", "createdBy", "createdAt");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "Tag_userId_name_key" ON "public"."Tag"("userId", "name");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "Tag_userId_slug_key" ON "public"."Tag"("userId", "slug");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "TagAlias_tagId_slug_key" ON "public"."TagAlias"("tagId", "slug");
@@ -97,10 +133,22 @@ CREATE UNIQUE INDEX "TagAlias_tagId_slug_key" ON "public"."TagAlias"("tagId", "s
 CREATE UNIQUE INDEX "Contact_emailIdx_key" ON "public"."Contact"("emailIdx");
 
 -- CreateIndex
+CREATE INDEX "Contact_userId_idx" ON "public"."Contact"("userId");
+
+-- CreateIndex
 CREATE INDEX "Contact_fullNameIdx_idx" ON "public"."Contact"("fullNameIdx");
 
 -- CreateIndex
 CREATE INDEX "Contact_phoneIdx_idx" ON "public"."Contact"("phoneIdx");
+
+-- CreateIndex
+CREATE INDEX "Interaction_userId_idx" ON "public"."Interaction"("userId");
+
+-- CreateIndex
+CREATE INDEX "Interaction_contactId_idx" ON "public"."Interaction"("contactId");
+
+-- CreateIndex
+CREATE INDEX "Interaction_occurredAt_idx" ON "public"."Interaction"("occurredAt");
 
 -- CreateIndex
 CREATE INDEX "ContactTag_tagId_idx" ON "public"."ContactTag"("tagId");
@@ -109,13 +157,28 @@ CREATE INDEX "ContactTag_tagId_idx" ON "public"."ContactTag"("tagId");
 CREATE INDEX "InteractionTag_tagId_idx" ON "public"."InteractionTag"("tagId");
 
 -- AddForeignKey
+ALTER TABLE "public"."Session" ADD CONSTRAINT "Session_userId_fkey" FOREIGN KEY ("userId") REFERENCES "public"."User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "public"."Tag" ADD CONSTRAINT "Tag_userId_fkey" FOREIGN KEY ("userId") REFERENCES "public"."User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
 ALTER TABLE "public"."Tag" ADD CONSTRAINT "Tag_mergedIntoId_fkey" FOREIGN KEY ("mergedIntoId") REFERENCES "public"."Tag"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "public"."TagAlias" ADD CONSTRAINT "TagAlias_tagId_fkey" FOREIGN KEY ("tagId") REFERENCES "public"."Tag"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
+ALTER TABLE "public"."Contact" ADD CONSTRAINT "Contact_userId_fkey" FOREIGN KEY ("userId") REFERENCES "public"."User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "public"."Interaction" ADD CONSTRAINT "Interaction_userId_fkey" FOREIGN KEY ("userId") REFERENCES "public"."User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
 ALTER TABLE "public"."Interaction" ADD CONSTRAINT "Interaction_contactId_fkey" FOREIGN KEY ("contactId") REFERENCES "public"."Contact"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "public"."InteractionEmbedding" ADD CONSTRAINT "InteractionEmbedding_interactionId_fkey" FOREIGN KEY ("interactionId") REFERENCES "public"."Interaction"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "public"."ContactTag" ADD CONSTRAINT "ContactTag_contactId_fkey" FOREIGN KEY ("contactId") REFERENCES "public"."Contact"("id") ON DELETE CASCADE ON UPDATE CASCADE;
@@ -128,4 +191,3 @@ ALTER TABLE "public"."InteractionTag" ADD CONSTRAINT "InteractionTag_interaction
 
 -- AddForeignKey
 ALTER TABLE "public"."InteractionTag" ADD CONSTRAINT "InteractionTag_tagId_fkey" FOREIGN KEY ("tagId") REFERENCES "public"."Tag"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-

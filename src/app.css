@@ -466,3 +466,61 @@ label { display: block; color: var(--muted); font-size: 0.95rem; margin-bottom: 
 @media (min-width: 1024px) {
   .mobile-only { display: none !important; } /* comment: ensure desktop hides it */
 }
+
+/* Mobile topbar - make actions responsive and prevent overflow */
+@media (max-width: 1023px) {
+  .topbar {
+    display: flex;                 /* single row */
+    align-items: center;
+    gap: 8px;
+  }
+
+  /* Keep brand fixed width on the left */
+  .topbar .brand {
+    flex: 0 0 auto;                /* do not shrink */
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 0;
+  }
+
+  /* Let the actions take remaining space and allow scrolling if needed */
+  .topbar-actions {
+    margin-left: auto;
+    flex: 1 1 auto;                /* can grow and shrink */
+    min-width: 0;                  /* critical so flex children can shrink */
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: nowrap;             /* stay on one line */
+    overflow-x: auto;              /* scroll instead of overflowing */
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Compact buttons on mobile */
+  .topbar-actions .btn {
+    padding: 8px 10px;             /* slightly smaller */
+    font-size: 0.95rem;            /* slightly smaller label */
+    white-space: nowrap;           /* keep each button on one line */
+  }
+}
+
+/* Extra small phones - tighten a bit more */
+@media (max-width: 400px) {
+  .topbar-actions {
+    gap: 4px;
+  }
+  .topbar-actions .btn {
+    padding: 6px 8px;              /* tighter padding */
+    font-size: 0.9rem;             /* smaller text */
+  }
+}
+
+/* Last resort on very narrow widths - allow wrap to two lines */
+@media (max-width: 340px) {
+  .topbar-actions {
+    flex-wrap: wrap;               /* wrap if still too tight */
+    row-gap: 6px;
+    overflow-x: visible;           /* no horizontal scroll once wrapping is on */
+  }
+}

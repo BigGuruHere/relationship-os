@@ -22,7 +22,7 @@
           <label for="password">Password</label>
           <input id="password" name="password" type="password" autocomplete="current-password" required />
         </div>
-        <button class="btn primary" type="submit" style="width:100%;">Sign in</button>
+        <button class="btn primary" type="submit" style="width:100%;  justify-content:center;">Sign in</button>
       </form>
   
       <div style="display:flex; align-items:center; gap:10px; margin:16px 0;">

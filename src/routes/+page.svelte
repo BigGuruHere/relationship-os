@@ -8,7 +8,7 @@
   <div class="card" style="padding:18px 18px 8px;">
     <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px;">
       <h1 style="margin:0;">📇 My Contacts</h1>
-      <a class="btn primary" href="/contacts/new">➕ Add Contact</a>
+      <a class="btn primary" href="/contacts/new"> + Contact</a>
     </div>
 
     {#if data.contacts.length === 0}

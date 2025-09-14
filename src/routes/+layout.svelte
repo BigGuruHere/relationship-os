@@ -11,29 +11,59 @@
   
   <div class="layout">
     <!-- Mobile topbar -->
-    <header class="topbar mobile-only">
-      <a class="brand" href="/" aria-label="Relish home">
-        <div class="logo">
-          <img src="/relish-logo.png" alt="Relish logo" width="28" height="28" />
-        </div>
-        <div>Relish</div>
+<!-- Mobile topbar -->
+<header class="topbar mobile-only">
+  <a class="brand" href="/" aria-label="Relish home">
+    <div class="logo">
+      <img src="/relish-logo.png" alt="Relish logo" width="28" height="28" />
+    </div>
+    <div>Relish</div>
+  </a>
+
+  <!-- Compact mobile actions - icons prevent overflow on small phones -->
+  <nav class="topbar-actions" aria-label="Primary">
+    <!-- Contacts -->
+    <a class="btn icon" href="/" aria-label="Contacts">
+      <span class="btn-icon" aria-hidden="true">📇</span>
+    </a>
+
+    <!-- Search -->
+    <a class="btn icon" href="/search" aria-label="Search">
+      <span class="btn-icon" aria-hidden="true">🔎</span>
+    </a>
+
+      <!-- Add Contact - keep visible on mobile -->
+      <a class="btn primary icon" href="/contacts/new" aria-label="Add Contact">
+        <span class="btn-icon" aria-hidden="true">➕</span>
       </a>
-    
-      <!-- add a class so we can style it cleanly -->
-      <div class="topbar-actions">
-        <a class="btn" href="/">Contacts</a>
-        <a class="btn" href="/search">Search</a>
-        {#if data.user}
-          <a class="btn primary" href="/contacts/new">+Contact</a>
-          <form method="POST" action="/auth/logout">
-            <button class="btn" type="submit">Logout</button>
-          </form>
-        {:else}
-          <a class="btn" href="/auth/login">Login</a>
-          <a class="btn" href="/auth/register">Register</a>
-        {/if}
-      </div>
-    </header>
+
+<!-- back to login -->
+<form method="POST" action="/auth/logout?redirect=/auth/login">
+  <button class="btn primary icon" type="submit" aria-label="Logout">
+    <span class="btn-icon" aria-hidden="true">
+      <!-- simple black and white logout icon - inherits currentColor -->
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"
+           width="18" height="18" fill="currentColor">
+        <path d="M3 3h12v2H5v14h10v2H3V3z"/>
+        <path d="M13 12l5-5v3h6v4h-6v3l-5-5z"/>
+      </svg>
+    </span>
+  </button>
+</form>
+
+<!-- or, back to home -->
+<!-- <form method="POST" action="/auth/logout?redirect=/"> ... </form> -->
+
+
+      
+      
+
+      <!-- More menu groups the less used item to avoid overflow -->
+  
+
+  </nav>
+</header>
+
     
   
     <!-- Desktop sidebar -->
@@ -101,4 +131,20 @@
 
 
   </div>
+
+  <style>
+    .btn.icon {
+  width: 44px;       /* or match the average text button width */
+  height: 40px;      /* same vertical height */
+  justify-content: center;
+  padding: 0;        /* center icon without extra padding */
+}
+
+/* Keep the logout form inline so it looks like a button in the row */
+.topbar-actions form {
+  display: inline-flex;   /* comment: aligns with other .btn items */
+  margin: 0;              /* comment: remove default margins */
+}
+
+  </style>
   

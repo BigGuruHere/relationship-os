@@ -524,3 +524,82 @@ label { display: block; color: var(--muted); font-size: 0.95rem; margin-bottom: 
     overflow-x: visible;           /* no horizontal scroll once wrapping is on */
   }
 }
+
+/* Mobile topbar - logo left, buttons right */
+@media (max-width: 1023px) {
+  .topbar {
+    display: flex;                 
+    align-items: center;           
+    justify-content: space-between; /* logo on left, actions pushed right */
+    gap: 0;
+  }
+
+  .topbar .brand {
+    flex: 0 0 auto;                /* logo does not stretch */
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 0;
+  }
+
+  .topbar-actions {
+    display: flex;                 /* row of buttons */
+    align-items: center;
+    gap: 10px;                     /* spacing between buttons */
+    flex-wrap: nowrap;             /* keep on one line */
+  }
+
+  .topbar-actions form {
+    display: inline-flex;          /* logout behaves like a button */
+    margin: 0;
+  }
+
+  .topbar-actions .btn {
+    padding: 8px 10px;             
+    font-size: 0.95rem;
+    white-space: nowrap;           /* prevent text wrapping */
+  }
+}
+
+/* --- Mobile topbar - force all buttons to sit on the right --- */
+/* Place this block at the very end of app.css so it overrides earlier rules */
+@media (max-width: 1023px) {
+  .topbar {
+    display: flex;                 /* row layout for header */
+    align-items: center;           /* vertical centering */
+    justify-content: flex-start;   /* brand on the left by default */
+    gap: 0;                        /* no extra gap - spacing is controlled in actions */
+  }
+
+  .topbar .brand {
+    flex: 0 0 auto;                /* brand keeps natural width */
+    display: flex;                 /* logo + text inline */
+    align-items: center;           /* vertical centering for logo + text */
+    gap: 8px;                      /* space between logo and text */
+    padding: 8px 0;                /* comfy vertical padding */
+  }
+
+  .topbar .topbar-actions {
+    margin-left: auto;             /* critical - pushes actions block to the far right */
+    display: flex;                 /* lay out buttons in a row */
+    align-items: center;           /* vertical centering */
+    gap: 10px;                     /* spacing between buttons */
+    flex: 1 1 auto;                /* allow the actions block to shrink and grow */
+    min-width: 0;                  /* allow flex children to shrink properly */
+    justify-content: flex-end;     /* pack the buttons to the right inside their container */
+    flex-wrap: nowrap;             /* keep buttons on one line */
+    white-space: nowrap;           /* prevent button labels from wrapping */
+    overflow-x: auto;              /* if it still gets tight, allow horizontal scroll */
+    -webkit-overflow-scrolling: touch; /* smooth scroll on iOS */
+  }
+
+  .topbar .topbar-actions form {
+    display: inline-flex;          /* make the logout form behave like a button */
+    margin: 0;                     /* remove default margins */
+  }
+
+  .topbar .topbar-actions .btn {
+    padding: 8px 10px;             /* compact buttons on mobile */
+    font-size: 0.95rem;            /* slightly smaller label */
+  }
+}

@@ -24,7 +24,7 @@
         <a class="btn" href="/">Contacts</a>
         <a class="btn" href="/search">Search</a>
         {#if data.user}
-          <a class="btn primary" href="/contacts/new">Add Contact</a>
+          <a class="btn primary" href="/contacts/new">+Contact</a>
           <form method="POST" action="/auth/logout">
             <button class="btn" type="submit">Logout</button>
           </form>

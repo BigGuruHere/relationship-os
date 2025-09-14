@@ -13,8 +13,12 @@
     <!-- Mobile topbar -->
     <header class="topbar mobile-only">
       <div class="brand">
-        <div class="logo">✺</div>
-        <div>Relationship OS</div>
+      <!-- with this - uses the static asset -->
+      <div class="logo">
+        <!-- width and height lock the box so layout does not shift -->
+        <img src="/relish-logo.png" alt="Relish logo" width="28" height="28" />
+      </div>
+        <div>Relish</div>
       </div>
       <div style="margin-left:auto; display:flex; gap:8px; align-items:center;">
         <a class="btn" href="/">Home</a>
@@ -34,8 +38,11 @@
     <!-- Desktop sidebar -->
     <aside class="sidebar desktop-only">
       <div class="brand" style="margin-bottom:4px;">
-        <div class="logo">✺</div>
-        <div>Relationship OS</div>
+        <div class="logo">
+          <!-- width and height lock the box so layout does not shift -->
+          <img src="/relish-logo.png" alt="Relish logo" width="28" height="28" />
+        </div>
+      <div>Relish</div>
       </div>
   
       <nav class="nav-group">

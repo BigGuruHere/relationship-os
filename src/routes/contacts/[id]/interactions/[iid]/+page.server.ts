@@ -1,116 +1,159 @@
-// src/routes/contacts/[id]/interactions/[iid]/+page.server.ts
-// PURPOSE: View, tag, and delete a single interaction. Decrypt note on the server.
-// MULTI TENANT: All operations require locals.user and are scoped by userId.
+// PURPOSE: Interaction detail - show one note and manage its tags.
+// TENANCY: Every read and write is scoped by userId from locals.
+// SECURITY: Decrypt only on the server.
+// ACTIONS: Named actions addTag and removeTag. No default action is exported.
 
+import type { Actions, PageServerLoad } from './$types';
+import { redirect, error } from '@sveltejs/kit';
 import { prisma } from '$lib/db';
 import { decrypt } from '$lib/crypto';
-import { fail, redirect } from '@sveltejs/kit';
-import { attachInteractionTags, detachInteractionTag } from '$lib/tags';
-import type { Actions, PageServerLoad } from './$types';
+
+// Small util - normalize a human tag to a slug
+function slugify(input: string): string {
+  return input
+    .toLowerCase()
+    .trim()
+    .replace(/['"]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 64);
+}
 
 export const load: PageServerLoad = async ({ params, locals }) => {
+  // Require login
   if (!locals.user) throw redirect(303, '/auth/login');
 
-  // Fetch interaction plus tags within this tenant and ensure it belongs to the contact
+  const userId = locals.user.id;
+  const contactId = params.id;
+  const interactionId = params.iid;
+
+  // Fetch the interaction for this tenant - include contact and tags
   const row = await prisma.interaction.findFirst({
-    where: { id: params.iid, contactId: params.id, userId: locals.user.id },
+    where: { id: interactionId, userId },
     select: {
       id: true,
-      contactId: true,
       channel: true,
       occurredAt: true,
       rawTextEnc: true,
-      // The `tags` relation on Interaction points to InteractionTag rows.
-      // Filter by nested Tag.userId and select Tag fields via tag{}
+      summaryEnc: true,
+      contactId: true,
+      contact: { select: { fullNameEnc: true } },
       tags: {
-        where: { tag: { userId: locals.user.id } },
         select: { tag: { select: { name: true, slug: true } } },
-        orderBy: { tag: { name: 'asc' } }
+        orderBy: { assignedAt: 'asc' }
       }
     }
   });
+  if (!row) throw error(404, 'Interaction not found');
 
-  if (!row) return { notFound: true };
-
-  // Decrypt on server
-  let text = '(unavailable)';
-  try {
-    text = row.rawTextEnc ? decrypt(row.rawTextEnc, 'interaction.raw_text') : '(empty)';
-  } catch {}
-
-  const tags = row.tags.map((it) => ({ name: it.tag.name, slug: it.tag.slug }));
+  // Decrypt minimal fields for display
+  let contactName = '';
+  let text = '';
+  let summary = '';
+  try { contactName = row.contact?.fullNameEnc ? decrypt(row.contact.fullNameEnc, 'contact.full_name') : ''; } catch {}
+  try { text = row.rawTextEnc ? decrypt(row.rawTextEnc, 'interaction.raw_text') : ''; } catch {}
+  try { summary = row.summaryEnc ? decrypt(row.summaryEnc, 'interaction.summary') : ''; } catch {}
 
   return {
     interaction: {
       id: row.id,
       contactId: row.contactId,
+      contactName,
       channel: row.channel,
       occurredAt: row.occurredAt,
       text,
-      tags
-    }
+      summary
+    },
+    // Flatten to what your chip UI expects
+    tags: row.tags.map((t) => ({ name: t.tag.name, slug: t.tag.slug })),
+    // Absolute href back to this page - used for safe redirects
+    selfHref: `/contacts/${contactId}/interactions/${interactionId}`
   };
 };
 
 export const actions: Actions = {
-  addTag: async ({ request, params, locals }) => {
+  // Add a user defined tag to this interaction - creates Tag if missing
+  addTag: async ({ params, locals, request }) => {
     if (!locals.user) throw redirect(303, '/auth/login');
+    const userId = locals.user.id;
+    const interactionId = params.iid;
 
-    const form = await request.formData();
-    const name = String(form.get('name') || '').trim();
-    if (!name) return fail(400, { error: 'Missing tag name.' });
-
-    // Ensure row exists and is in this tenant
+    // Ensure this interaction belongs to the tenant
     const exists = await prisma.interaction.findFirst({
-      where: { id: params.iid, contactId: params.id, userId: locals.user.id },
+      where: { id: interactionId, userId },
       select: { id: true }
     });
-    if (!exists) return fail(404, { error: 'Interaction not found.' });
+    if (!exists) throw error(404, 'Interaction not found');
 
-    try {
-      await attachInteractionTags(locals.user.id, params.iid, [name], 'user');
-    } catch (e) {
-      console.error('attachInteractionTags failed for interaction', params.iid);
-      return fail(500, { error: 'Failed to add tag.' });
+    const data = await request.formData();
+    // Support input named "name" or "tag" - optional comma separated
+    const raw = String(data.get('name') ?? data.get('tag') ?? '').trim();
+    if (!raw) {
+      // Empty input - go back without error
+      throw redirect(303, `/contacts/${params.id}/interactions/${params.iid}`);
     }
 
-    // Redirect outside the try/catch
-    throw redirect(303, `/contacts/${params.id}/interactions/${params.iid}`);
-  },
+    const names = raw
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .slice(0, 10); // safety bound
 
-  removeTag: async ({ request, params, locals }) => {
-    if (!locals.user) throw redirect(303, '/auth/login');
+    for (const name of names) {
+      const slug = slugify(name);
+      if (!slug) continue;
 
-    const form = await request.formData();
-    const slug = String(form.get('slug') || '').trim();
-    if (!slug) return fail(400, { error: 'Missing tag.' });
-
-    try {
-      await detachInteractionTag(locals.user.id, params.iid, slug);
-    } catch (e) {
-      console.error('detachInteractionTag failed for interaction', params.iid);
-      return fail(500, { error: 'Failed to remove tag.' });
-    }
-
-    // Redirect outside the try/catch
-    throw redirect(303, `/contacts/${params.id}/interactions/${params.iid}`);
-  },
-
-  delete: async ({ params, locals }) => {
-    if (!locals.user) throw redirect(303, '/auth/login');
-
-    try {
-      // Restrict delete to rows in this tenant and belonging to this contact
-      const res = await prisma.interaction.deleteMany({
-        where: { id: params.iid, contactId: params.id, userId: locals.user.id }
+      // Upsert the tag for this tenant
+      const tag = await prisma.tag.upsert({
+        where: { userId_slug: { userId, slug } },
+        update: { name },
+        create: { userId, name, slug, createdBy: 'user' }
       });
-      if (res.count === 0) return fail(404, { error: 'Interaction not found or already deleted.' });
-    } catch (err) {
-      console.error('Failed to delete interaction:', err);
-      return fail(500, { error: 'Failed to delete note. Please try again.' });
+
+      // Link to the interaction - ignore if already linked
+      await prisma.interactionTag.upsert({
+        where: { interactionId_tagId: { interactionId, tagId: tag.id } },
+        update: {},
+        create: { interactionId, tagId: tag.id, assignedBy: 'user' }
+      });
     }
 
-    // Redirect outside the try/catch
-    throw redirect(303, `/contacts/${params.id}`);
+    // Important - redirect to the absolute URL so we never drop the iid
+    throw redirect(303, `/contacts/${params.id}/interactions/${params.iid}`);
+  },
+
+  // Remove a tag from this interaction by slug
+  removeTag: async ({ params, locals, request }) => {
+    if (!locals.user) throw redirect(303, '/auth/login');
+    const userId = locals.user.id;
+    const interactionId = params.iid;
+
+    // Ensure this interaction belongs to the tenant
+    const exists = await prisma.interaction.findFirst({
+      where: { id: interactionId, userId },
+      select: { id: true }
+    });
+    if (!exists) throw error(404, 'Interaction not found');
+
+    const data = await request.formData();
+    const slug = slugify(String(data.get('slug') || ''));
+    if (!slug) {
+      throw redirect(303, `/contacts/${params.id}/interactions/${params.iid}`);
+    }
+
+    // Find the tag id for this tenant
+    const tag = await prisma.tag.findFirst({
+      where: { userId, slug },
+      select: { id: true }
+    });
+
+    if (tag) {
+      await prisma.interactionTag.deleteMany({
+        where: { interactionId, tagId: tag.id }
+      });
+    }
+
+    // Redirect back to the same interaction page
+    throw redirect(303, `/contacts/${params.id}/interactions/${params.iid}`);
   }
 };

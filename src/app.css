@@ -18,6 +18,9 @@
   --success:      #16A34A;
   --danger:       #DC2626;
   --warning:      #F59E0B;
+  /* Relish edge teal */
+--relish-edge: #9ebebd;
+
 
   /* ---- Shadows & radii ---- */
   --shadow-1:     0 8px 24px rgba(20, 32, 37, 0.08);
@@ -318,3 +321,39 @@ label { display: block; color: var(--muted); font-size: 0.95rem; margin-bottom: 
   border-color: #FFD7B7;
   color: #8A4B14;
 }
+
+/* --- Relish edge teal placements - color only --- */
+
+/* Desktop - left sidebar uses edge teal as background */
+@media (min-width: 1024px) {
+  .sidebar {
+    /* solid teal background on desktop sidebar */
+    background: var(--relish-edge) !important; /* override previous translucent bg */
+  }
+}
+
+/* Desktop footer - teal background */
+@media (min-width: 1024px) {
+  .footer {
+    background: var(--relish-edge) !important;
+  }
+}
+
+/* Mobile - top panel and footer use teal background */
+@media (max-width: 1023px) {
+  .topbar {
+    background: var(--relish-edge) !important;
+  }
+  .footer {
+    background: var(--relish-edge) !important;
+  }
+}
+
+/* Footer links - ensure contrast against teal */
+.footer a {
+  color: #FFFFFF !important;              /* readable on teal */
+}
+.footer a:hover {
+  text-decoration: underline;             /* keep hover affordance */
+}
+

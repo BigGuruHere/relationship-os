@@ -357,3 +357,112 @@ label { display: block; color: var(--muted); font-size: 0.95rem; margin-bottom: 
   text-decoration: underline;             /* keep hover affordance */
 }
 
+/* --- Relish - separators under logo and app links - color only --- */
+
+/* Desktop - in the left sidebar, add a divider under the logo block */
+@media (min-width: 1024px) {
+  /* comment: the brand area sits at the top of the sidebar */
+  .sidebar .brand {
+    border-bottom: 1px solid rgba(255, 255, 255, 0.24); /* readable over edge teal */
+    padding-bottom: 12px;   /* space before the line */
+    margin-bottom: 12px;    /* space after the line */
+  }
+}
+
+/* Desktop - in the left sidebar, add a divider under each app-links group */
+@media (min-width: 1024px) {
+  /* comment: your links live inside .nav-group */
+  .sidebar .nav-group {
+    border-bottom: 1px solid rgba(255, 255, 255, 0.24); /* subtle line on teal */
+    padding-bottom: 10px;
+    margin-bottom: 10px;
+  }
+}
+
+/* Mobile - add a separator under the top bar that contains the logo */
+@media (max-width: 1023px) {
+  .topbar {
+    border-bottom: 1px solid rgba(255, 255, 255, 0.024); /* over teal background */
+  }
+}
+
+/* Mobile - add a divider under app-links blocks when they appear in content */
+@media (max-width: 1023px) {
+  /* comment: outside the sidebar, nav groups sit on light surfaces */
+  .nav-group {
+    border-bottom: 1px solid var(--border); /* light theme line */
+    padding-bottom: 10px;
+    margin-bottom: 10px;
+  }
+}
+
+
+
+/* Mobile topbar - add extra vertical padding around the brand block */
+@media (max-width: 1023px) {
+  .topbar .brand {
+    /* comment: increase top and bottom padding without changing layout */
+    padding-top: 12px;
+    padding-bottom: 12px;
+  }
+}
+
+
+/* Mobile topbar - keep logo left and actions right on one line */
+@media (max-width: 1023px) {
+  .topbar {
+    /* already display:flex in your base - reaffirm here for clarity */
+    display: flex;                 /* row layout */
+    align-items: center;           /* vertical centering */
+    gap: 8px;                      /* small gap between brand and actions */
+  }
+
+  .topbar .brand {
+    display: flex;                 /* logo and title inline */
+    align-items: center;           /* vertical centering */
+    gap: 8px;                      /* logo - title spacing */
+    padding: 8px 0;                /* a little vertical breathing room */
+  }
+
+  .topbar-actions {
+    margin-left: auto;             /* push actions to the right */
+    display: flex;                 /* place buttons on one row */
+    align-items: center;           /* vertical centering */
+    gap: 12px;                      /* tighter spacing on mobile */
+    flex-wrap: nowrap;             /* prevent wrapping to a second line */
+    white-space: nowrap;           /* keep items on one row */
+    overflow-x: auto;              /* allow horizontal scroll if it still overflows */
+    -webkit-overflow-scrolling: touch; /* smooth scroll on iOS */
+  }
+
+  /* Make the form with the logout button behave like a plain inline item */
+  .topbar-actions form {
+    display: inline-flex;          /* keep the button inline with the others */
+    margin: 0;                     /* remove default margins */
+  }
+
+  /* Slightly denser buttons in the topbar to save space */
+  .topbar-actions .btn {
+    padding: 8px 10px;             /* compact padding for mobile */
+    font-size: 0.95rem;            /* optional - slightly smaller label */
+  }
+}
+
+/* app.css - add at the end */
+/* Make brand wrapper a link without changing colors */
+.brand { color: inherit; text-decoration: none; }
+.brand:hover { text-decoration: none; }
+
+/* make the mobile footer links a row on small screens only */
+@media (max-width: 1023px) {
+  .footer-links {
+    display: flex;        /* row layout for the links */
+    gap: 10px;            /* spacing between items */
+    align-items: center;
+  }
+}
+
+/* hard hide anything marked mobile-only on desktop - beats inline mishaps */
+@media (min-width: 1024px) {
+  .mobile-only { display: none !important; } /* comment: ensure desktop hides it */
+}

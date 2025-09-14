@@ -12,16 +12,16 @@
   <div class="layout">
     <!-- Mobile topbar -->
     <header class="topbar mobile-only">
-      <div class="brand">
-      <!-- with this - uses the static asset -->
-      <div class="logo">
-        <!-- width and height lock the box so layout does not shift -->
-        <img src="/relish-logo.png" alt="Relish logo" width="28" height="28" />
-      </div>
+      <a class="brand" href="/" aria-label="Relish home">
+        <div class="logo">
+          <img src="/relish-logo.png" alt="Relish logo" width="28" height="28" />
+        </div>
         <div>Relish</div>
-      </div>
-      <div style="margin-left:auto; display:flex; gap:8px; align-items:center;">
-        <a class="btn" href="/">Home</a>
+      </a>
+    
+      <!-- add a class so we can style it cleanly -->
+      <div class="topbar-actions">
+        <a class="btn" href="/">Contacts</a>
         <a class="btn" href="/search">Search</a>
         {#if data.user}
           <a class="btn primary" href="/contacts/new">Add Contact</a>
@@ -34,19 +34,20 @@
         {/if}
       </div>
     </header>
+    
   
     <!-- Desktop sidebar -->
     <aside class="sidebar desktop-only">
-      <div class="brand" style="margin-bottom:4px;">
+      <a class="brand" href="/" aria-label="Relish home">
         <div class="logo">
-          <!-- width and height lock the box so layout does not shift -->
           <img src="/relish-logo.png" alt="Relish logo" width="28" height="28" />
         </div>
-      <div>Relish</div>
-      </div>
+        <div>Relish</div>
+      </a>
+
   
       <nav class="nav-group">
-        <a class="nav-link" href="/">🏠 Home</a>
+        <a class="nav-link" href="/">📇 Contacts</a>
         <a class="nav-link" href="/search">🔎 Search</a>
         {#if data.user}
           <a class="nav-link" href="/contacts/new">➕ Add Contact</a>
@@ -77,19 +78,27 @@
     </main>
   
     <!-- Footer -->
-    <footer class="footer">
-      <div class="container" style="display:flex; align-items:center; gap:12px; justify-content:space-between;">
-        <div>© {new Date().getFullYear()} Relationship OS</div>
-        <div style="display:flex; gap:10px;">
-          <a href="/" aria-label="Home">Home</a>
-          <span aria-hidden="true">·</span>
-          {#if data.user}
-            <a href="/contacts/new" aria-label="Add Contact">Add Contact</a>
-          {:else}
-            <a href="/auth/login" aria-label="Login">Login</a>
-          {/if}
-        </div>
-      </div>
-    </footer>
+<!-- Footer - links only on mobile -->
+<!-- Footer - links only on mobile -->
+<!-- links only on mobile - no inline display styles -->
+<footer class="footer">
+  <div class="container" style="display:flex; align-items:center; gap:12px; justify-content:space-between;">
+    <div>© {new Date().getFullYear()} Relationship OS</div>
+
+    <!-- use both classes so we can style and hide correctly -->
+    <div class="mobile-only footer-links">
+      <a href="/" aria-label="Home">Contacts</a>
+      <span aria-hidden="true">·</span>
+      {#if data.user}
+        <a href="/contacts/new" aria-label="Add Contact">Add Contact</a>
+      {:else}
+        <a href="/auth/login" aria-label="Login">Login</a>
+      {/if}
+    </div>
+  </div>
+</footer>
+
+
+
   </div>
   

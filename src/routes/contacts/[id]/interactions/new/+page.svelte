@@ -24,11 +24,52 @@
   let summarizing = false;
   let saving = false;
 
+  // Pick a recorder mime that works cross browser.
+  // Chrome supports audio/webm;codecs=opus. Safari iOS often records audio/mp4.
+  function pickRecorderMime(): string {
+    const preferred = "audio/webm;codecs=opus";
+    const fallback = "audio/mp4";
+    const MR: any = (window as any).MediaRecorder;
+    if (MR && typeof MR.isTypeSupported === "function" && MR.isTypeSupported(preferred)) {
+      return preferred;
+    }
+    return fallback;
+  }
+
+  // Map a mime type to a sensible file extension so Whisper sees a correct filename.
+  function extFromMime(mime: string): string {
+    if (!mime) return "webm";
+    const m = mime.toLowerCase();
+    if (m.includes("webm")) return "webm";
+    if (m.includes("mp4")) return "mp4";
+    if (m.includes("m4a")) return "m4a";
+    if (m.includes("wav")) return "wav";
+    if (m.includes("ogg")) return "ogg";
+    if (m.includes("mpeg")) return "mp3";
+    return "webm";
+  }
+
   // Start microphone capture and record into memory.
   async function startRecording() {
-    // Request mic access - browser will show a prompt.
-    currentStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    mediaRecorder = new MediaRecorder(currentStream, { mimeType: "audio/webm" });
+    // Request mic access with quality-reducing constraints to shrink file size.
+    // Note: some browsers treat these as hints. Even when partially ignored, mono often sticks.
+    const constraints: MediaStreamConstraints = {
+      audio: {
+        channelCount: 1,        // mono - halves data vs stereo
+        sampleRate: 16000,      // 16 kHz - ideal for speech and Whisper
+        sampleSize: 16,         // 16-bit samples
+        echoCancellation: true, // optional clarity improvements
+        noiseSuppression: true, // optional clarity improvements
+        autoGainControl: true   // optional clarity improvements
+      },
+      video: false
+    };
+
+    currentStream = await navigator.mediaDevices.getUserMedia(constraints);
+
+    // Choose a compatible mime for the recorder.
+    const mimeType = pickRecorderMime();
+    mediaRecorder = new MediaRecorder(currentStream, { mimeType });
 
     const chunks: BlobPart[] = [];
     mediaRecorder.ondataavailable = (e) => {
@@ -39,14 +80,26 @@
     mediaRecorder.onstop = async () => {
       try {
         transcribing = true; // show spinner while we wait
-        const blob = new Blob(chunks, { type: "audio/webm" });
-        const fd = new FormData();
-        // Your existing endpoint expects "file" - keep the same field name.
-        fd.append("file", blob, "note.webm");
 
+        // Build a blob with the same type the recorder produced.
+        const blobType = (chunks[0] as any)?.type || mimeType || "audio/webm";
+        const blob = new Blob(chunks, { type: blobType });
+
+        // Wrap in a File so name and type travel together.
+        const ext = extFromMime(blob.type || "");
+        const fileForUpload = new File([blob], `note.${ext}`, { type: blob.type || blobType });
+
+        // Build the request body expected by the API route.
+        const fd = new FormData();
+        fd.append("file", fileForUpload); // name must be "file"
+
+        // Call your server endpoint which calls Whisper.
         const resp = await fetch("/api/transcribe", { method: "POST", body: fd });
-        const data = await resp.json().catch(() => ({}));
-        // Support either { transcript } or { text } response shapes.
+
+        // Try to parse JSON even on non 2xx to surface errors during testing.
+        const data = await resp.json().catch(() => ({} as any));
+
+        // Support either { transcript } or { text } shapes.
         transcript = (data.transcript || data.text || "").trim();
 
         // Append the transcript to any typed text instead of overwriting.
@@ -54,6 +107,7 @@
           text = text ? `${text} ${transcript}` : transcript;
         }
       } catch (err) {
+        // Surface in console so mobile debugging is possible.
         console.error("Transcribe failed", err);
       } finally {
         transcribing = false;
@@ -85,9 +139,16 @@
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text })
       });
-      const data = await resp.json().catch(() => ({}));
+
+      // If the server returns an error JSON, we still parse it so UI does not hang silently.
+      const data = await resp.json().catch(() => ({} as any));
+      if (!resp.ok) {
+        console.error("Summarize failed", data?.error || "Unknown error");
+        return;
+      }
+
       summary = (data.summary || "").trim();
-      // Your endpoint may return tags as an array - support that shape.
+      // Endpoint may return tags as an array - support that shape.
       tags = Array.isArray(data.tags) ? data.tags.join(", ") : (tags || "");
     } catch (err) {
       console.error("Summarize failed", err);

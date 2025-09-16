@@ -1,31 +1,25 @@
 <!-- src/routes/contacts/[id]/interactions/new/+page.svelte -->
 <script lang="ts">
   // PURPOSE: Simple new note UI with voice record, summarize, and save.
-  // ENHANCEMENTS: Show movement indicators while transcribing, summarizing, and saving.
+  // ENHANCEMENTS: Uses lower-quality constraints and timeslice to keep files small and reliable.
 
-  // Svelte action data from server - may include draft on error.
   export let form;
 
-  // Form fields restored from a failed submit or default values.
   let text = form?.draft?.text ?? "";
   let channel = form?.draft?.channel ?? "note";
   let occurredAt = form?.draft?.occurredAt ?? "";
   let summary = form?.draft?.summary ?? "";
   let tags = form?.draft?.tags?.join(", ") ?? "";
 
-  // Voice recording state.
   let mediaRecorder: MediaRecorder | null = null;
-  let currentStream: MediaStream | null = null; // track active mic stream so we can stop tracks
+  let currentStream: MediaStream | null = null;
   let recording = false;
   let transcript = "";
 
-  // UI busy flags for movement indicators.
   let transcribing = false;
   let summarizing = false;
   let saving = false;
 
-  // Pick a recorder mime that works cross browser.
-  // Chrome supports audio/webm;codecs=opus. Safari iOS often records audio/mp4.
   function pickRecorderMime(): string {
     const preferred = "audio/webm;codecs=opus";
     const fallback = "audio/mp4";
@@ -36,7 +30,6 @@
     return fallback;
   }
 
-  // Map a mime type to a sensible file extension so Whisper sees a correct filename.
   function extFromMime(mime: string): string {
     if (!mime) return "webm";
     const m = mime.toLowerCase();
@@ -49,25 +42,20 @@
     return "webm";
   }
 
-  // Start microphone capture and record into memory.
   async function startRecording() {
-    // Request mic access with quality-reducing constraints to shrink file size.
-    // Note: some browsers treat these as hints. Even when partially ignored, mono often sticks.
     const constraints: MediaStreamConstraints = {
       audio: {
-        channelCount: 1,        // mono - halves data vs stereo
-        sampleRate: 16000,      // 16 kHz - ideal for speech and Whisper
-        sampleSize: 16,         // 16-bit samples
-        echoCancellation: true, // optional clarity improvements
-        noiseSuppression: true, // optional clarity improvements
-        autoGainControl: true   // optional clarity improvements
+        channelCount: 1,        // mono
+        sampleRate: 16000,      // 16 kHz
+        sampleSize: 16,         // 16-bit
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true
       },
       video: false
     };
-
     currentStream = await navigator.mediaDevices.getUserMedia(constraints);
 
-    // Choose a compatible mime for the recorder.
     const mimeType = pickRecorderMime();
     mediaRecorder = new MediaRecorder(currentStream, { mimeType });
 
@@ -76,61 +64,48 @@
       if (e.data && e.data.size > 0) chunks.push(e.data);
     };
 
-    // When recording stops we will send audio to the server for transcription.
     mediaRecorder.onstop = async () => {
       try {
-        transcribing = true; // show spinner while we wait
+        transcribing = true;
 
-        // Build a blob with the same type the recorder produced.
-        const blobType = (chunks[0] as any)?.type || mimeType || "audio/webm";
-        const blob = new Blob(chunks, { type: blobType });
+        if (!chunks.length) return;
+        const firstType = (chunks[0] as any)?.type || mimeType || "audio/webm";
+        const blob = new Blob(chunks, { type: firstType });
 
-        // Wrap in a File so name and type travel together.
+        if (!blob.size) return;
+
         const ext = extFromMime(blob.type || "");
-        const fileForUpload = new File([blob], `note.${ext}`, { type: blob.type || blobType });
+        const fileForUpload = new File([blob], `note.${ext}`, { type: blob.type || firstType });
 
-        // Build the request body expected by the API route.
         const fd = new FormData();
-        fd.append("file", fileForUpload); // name must be "file"
+        fd.append("file", fileForUpload);
 
-        // Call your server endpoint which calls Whisper.
         const resp = await fetch("/api/transcribe", { method: "POST", body: fd });
-
-        // Try to parse JSON even on non 2xx to surface errors during testing.
         const data = await resp.json().catch(() => ({} as any));
 
-        // Support either { transcript } or { text } shapes.
         transcript = (data.transcript || data.text || "").trim();
-
-        // Append the transcript to any typed text instead of overwriting.
         if (transcript) {
           text = text ? `${text} ${transcript}` : transcript;
         }
-      } catch (err) {
-        // Surface in console so mobile debugging is possible.
-        console.error("Transcribe failed", err);
       } finally {
         transcribing = false;
-        // Always stop mic tracks so the browser mic indicator turns off.
         currentStream?.getTracks().forEach((t) => t.stop());
         currentStream = null;
       }
     };
 
-    mediaRecorder.start();
+    // timeslice = 1000ms ensures chunks arrive every second (fixes long recordings)
+    mediaRecorder.start(1000);
     recording = true;
   }
 
-  // Stop recording - triggers onstop which starts transcription.
   function stopRecording() {
     if (!recording) return;
     recording = false;
-    // Setting transcribing here gives immediate feedback before onstop runs.
     transcribing = true;
     mediaRecorder?.stop();
   }
 
-  // Ask your summarize endpoint to summarize current notes and suggest tags.
   async function summarize() {
     try {
       summarizing = true;
@@ -140,27 +115,18 @@
         body: JSON.stringify({ text })
       });
 
-      // If the server returns an error JSON, we still parse it so UI does not hang silently.
       const data = await resp.json().catch(() => ({} as any));
-      if (!resp.ok) {
-        console.error("Summarize failed", data?.error || "Unknown error");
-        return;
-      }
+      if (!resp.ok) return;
 
       summary = (data.summary || "").trim();
-      // Endpoint may return tags as an array - support that shape.
       tags = Array.isArray(data.tags) ? data.tags.join(", ") : (tags || "");
-    } catch (err) {
-      console.error("Summarize failed", err);
     } finally {
       summarizing = false;
     }
   }
 
-  // When the form submits to ?/save we flip saving=true for a spinner on the button.
   function handleSubmit() {
     saving = true;
-    // No preventDefault - we want the normal navigation to occur.
   }
 </script>
 
@@ -168,7 +134,6 @@
   <div class="card" style="padding:20px; max-width:800px; margin:0 auto;">
     <h1>Add note</h1>
 
-    <!-- Hidden fields carry AI output to the server -->
     <form method="post" on:submit={handleSubmit}>
       <input type="hidden" name="summary" value={summary} />
       <input type="hidden" name="tags" value={tags} />
@@ -192,7 +157,6 @@
       <div class="field">
         <label for="text">Your note</label>
 
-        <!-- Voice controls row -->
         <div style="display:flex; gap:10px; align-items:center; margin-bottom:8px;">
           {#if !recording}
             <button type="button" class="btn" on:click={startRecording} disabled={transcribing || saving}>
@@ -209,7 +173,6 @@
             </button>
           {/if}
 
-          <!-- Live feedback while audio is being transcribed -->
           {#if transcribing}
             <span class="inline-wait">
               <span class="spinner" aria-hidden="true"></span>
@@ -268,7 +231,6 @@
 </div>
 
 <style>
-  /* Small, theme-friendly spinner that uses your CSS vars */
   .spinner {
     width: 16px;
     height: 16px;
@@ -280,7 +242,6 @@
   }
   @keyframes spin { to { transform: rotate(360deg); } }
 
-  /* Inline wait indicator layout */
   .inline-wait {
     display: inline-flex;
     align-items: center;

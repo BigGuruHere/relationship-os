@@ -73,7 +73,7 @@
   // Chunked uploader
   // -----------------------
   // CHUNK_SIZE should be comfortably under the server body limit (512KB).
-  const CHUNK_SIZE = 480 * 1024; // 256 KB
+  const CHUNK_SIZE = 256 * 1024; // 256 KB
 
   // Upload a Blob or File in sequential chunks to /api/upload-chunk?key=...&index=...&last=...
   // The server is expected to return the transcript JSON in the final chunk response.

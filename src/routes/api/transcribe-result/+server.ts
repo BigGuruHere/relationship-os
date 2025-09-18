@@ -1,7 +1,5 @@
 // src/routes/api/transcribe-result/+server.ts
-// PURPOSE:
-// - Return the status of a transcription job created by /api/upload-chunk.
-// - Client polls this until status === "done" or "error".
+// PURPOSE - client polls this to get job status
 
 import type { RequestHandler } from "./$types";
 import { json } from "@sveltejs/kit";

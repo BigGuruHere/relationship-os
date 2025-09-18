@@ -177,7 +177,7 @@
           notify("Uploading for transcription...");
           log("upload start");
 
-          const resp = await fetch("/api/transcribe", { method: "POST", body: fd });
+          const resp = await fetch("/api/echo-upload", { method: "POST", body: fd });
 
           // Try to parse JSON no matter what to see error bodies
           const data = await resp.json().catch(() => ({} as any));

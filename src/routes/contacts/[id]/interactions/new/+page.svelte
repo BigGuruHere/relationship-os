@@ -1,62 +1,44 @@
 <!-- src/routes/contacts/[id]/interactions/new/+page.svelte -->
 <script lang="ts">
-  // PURPOSE: New note UI with voice record, summarize, and save.
-  // - Lower quality constraints and 1s timeslice for reliable long recordings.
-  // - Filename extension matches actual blob type so Whisper accepts it.
-  // - Robust lifecycle: UI tracks actual MediaRecorder state.
-  // - On-screen notifications at each stage, plus a rolling event log panel.
+  // PURPOSE:
+  // - New note UI with voice record, summarize, and save.
+  // - Uses lower-quality constraints and 1s timeslice to keep files small and reliable.
+  // - Uploads audio in sequential chunks to avoid server body size limits.
+  // - Parses final server response (transcript) and appends to the note.
+  //
+  // NOTES:
+  // - This file is client-side only. Server must implement /api/upload-chunk
+  //   which accepts raw chunk bytes with query params: key, index, last.
+  // - The final chunk request should trigger assembly + transcription and
+  //   return JSON { transcript: "..." }.
 
   export let form;
 
-  // Form state
+  // Form fields restored from a failed submit or default values.
   let text = form?.draft?.text ?? "";
   let channel = form?.draft?.channel ?? "note";
   let occurredAt = form?.draft?.occurredAt ?? "";
   let summary = form?.draft?.summary ?? "";
   let tags = form?.draft?.tags?.join(", ") ?? "";
 
-  // Recorder state
+  // Recording state
   let mediaRecorder: MediaRecorder | null = null;
   let currentStream: MediaStream | null = null;
   let recording = false;
   let transcript = "";
 
-  // Busy flags
+  // UI busy flags
   let transcribing = false;
   let summarizing = false;
   let saving = false;
 
-  // Debug UI
-  let showLog = true;                 // toggle event log panel
-  let logLines: string[] = [];        // most recent events
-  let lastBlobType = "";
-  let lastBlobSize = 0;
-
-  // Toast notifications
-  type Toast = { id: number; text: string };
-  let toasts: Toast[] = [];
-  let toastSeq = 1;
-
-  // Add a toast chip that auto disappears
-  function notify(text: string, ttlMs = 5000) {
-    const t = { id: toastSeq++, text };
-    toasts = [t, ...toasts].slice(0, 8); // cap to 8 visible
-    const id = t.id;
-    setTimeout(() => {
-      toasts = toasts.filter((x) => x.id !== id);
-    }, ttlMs);
-  }
-
-  // Add a line to the event log with a timestamp
-  function log(msg: string, data?: Record<string, unknown>) {
-    const time = new Date().toLocaleTimeString();
-    const line = `[${time}] ${msg}` + (data ? ` ${JSON.stringify(data)}` : "");
-    logLines = [line, ...logLines].slice(0, 40); // keep last 40 lines
-  }
+  // -----------------------
+  // Audio helpers
+  // -----------------------
 
   // Choose recorder mime by browser capability
   function pickRecorderMime(): string {
-    const preferred = "audio/webm;codecs=opus"; // Chrome
+    const preferred = "audio/webm;codecs=opus"; // best for Chrome/Android
     const fallback = "audio/mp4";               // Safari iOS often uses mp4
     const MR: any = (window as any).MediaRecorder;
     if (MR && typeof MR.isTypeSupported === "function" && MR.isTypeSupported(preferred)) {
@@ -65,7 +47,7 @@
     return fallback;
   }
 
-  // Map mime to file extension for server upload
+  // Map mime type to a sensible file extension for naming
   function extFromMime(mime: string): string {
     if (!mime) return "webm";
     const m = mime.toLowerCase();
@@ -78,17 +60,88 @@
     return "webm";
   }
 
-  // Start recording - fully instrumented with notifications and logs
+  // Minimal UUID v4 generator - replace with a proper lib if preferred
+  function uuidv4() {
+    return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, function (c) {
+      const r = (Math.random() * 16) | 0;
+      const v = c === "x" ? r : (r & 0x3) | 0x8;
+      return v.toString(16);
+    });
+  }
+
+  // -----------------------
+  // Chunked uploader
+  // -----------------------
+  // CHUNK_SIZE should be comfortably under the server body limit (512KB).
+  const CHUNK_SIZE = 256 * 1024; // 256 KB
+
+  // Upload a Blob or File in sequential chunks to /api/upload-chunk?key=...&index=...&last=...
+  // The server is expected to return the transcript JSON in the final chunk response.
+  async function uploadInChunks(blobOrFile: Blob | File) {
+    const key = uuidv4();
+    const total = blobOrFile.size;
+    let offset = 0;
+    let index = 0;
+    let lastResponse: any = null;
+
+    while (offset < total) {
+      const end = Math.min(offset + CHUNK_SIZE, total);
+      const slice = blobOrFile.slice(offset, end);
+      const isLast = end >= total;
+
+      // Convert slice to raw bytes
+      const body = await slice.arrayBuffer();
+
+      const params = new URLSearchParams({
+        key,
+        index: String(index),
+        last: isLast ? "1" : "0"
+      });
+
+      // Send raw bytes as application/octet-stream to keep request small
+      const resp = await fetch(`/api/upload-chunk?${params.toString()}`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/octet-stream"
+        },
+        body
+      });
+
+      // If a chunk upload fails, throw with a helpful message
+      if (!resp.ok) {
+        const errBody = await resp.text().catch(() => "");
+        throw new Error(`Chunk upload failed index=${index} status=${resp.status} body=${errBody}`);
+      }
+
+      // Parse json for the last chunk - server should return transcript here
+      if (isLast) {
+        // capture the final response body (should include { transcript })
+        lastResponse = await resp.json().catch(() => ({}));
+      }
+
+      // Advance
+      offset = end;
+      index += 1;
+    }
+
+    // Return final response from the server (may include transcript)
+    return lastResponse;
+  }
+
+  // -----------------------
+  // Recorder lifecycle
+  // -----------------------
+
+  // Start microphone capture and record into memory.
   async function startRecording() {
     try {
-      notify("Requesting microphone...");
-      log("getUserMedia requested");
-
+      // Request mic access with quality-reducing constraints to shrink file size.
+      // Browsers may treat these as hints. channelCount:1 is commonly applied.
       const constraints: MediaStreamConstraints = {
         audio: {
-          channelCount: 1,       // mono
-          sampleRate: 16000,     // 16 kHz
-          sampleSize: 16,        // 16 bit
+          channelCount: 1,        // mono
+          sampleRate: 16000,      // 16 kHz - good for speech
+          sampleSize: 16,         // 16-bit
           echoCancellation: true,
           noiseSuppression: true,
           autoGainControl: true
@@ -97,148 +150,109 @@
       };
 
       currentStream = await navigator.mediaDevices.getUserMedia(constraints);
-      notify("Microphone granted");
-      log("getUserMedia ok", { tracks: currentStream.getTracks().length });
 
       const mimeType = pickRecorderMime();
       mediaRecorder = new MediaRecorder(currentStream, { mimeType });
-      log("MediaRecorder created", { mimeType });
-      notify(`Recorder ready: ${mimeType}`);
 
       const chunks: BlobPart[] = [];
 
-      // Gather chunks over time - with timeslice this fires roughly every second
+      // Collect data as it becomes available - with timeslice this fires roughly every second.
       mediaRecorder.ondataavailable = (e) => {
-        const size = e?.data?.size || 0;
-        const type = e?.data?.type || "";
-        if (size > 0) chunks.push(e.data);
-        log("ondataavailable", { size, type, chunkCount: chunks.length });
+        if (e.data && e.data.size > 0) chunks.push(e.data);
       };
 
-      // Only mark recording true when onstart fires
+      // Only set UI state to recording when the recorder actually starts.
       mediaRecorder.onstart = () => {
         recording = true;
-        notify("Recording started");
-        log("onstart");
       };
 
-      mediaRecorder.onpause = () => {
-        notify("Recording paused");
-        log("onpause");
-      };
-
-      mediaRecorder.onresume = () => {
-        notify("Recording resumed");
-        log("onresume");
-      };
-
+      // If an error occurs, reset state and close streams.
       mediaRecorder.onerror = (err: any) => {
-        notify("Recorder error");
-        log("onerror", { name: err?.name, message: err?.message });
+        // reflect actual recorder state
         recording = false;
         transcribing = false;
-        // Clean up stream on error
-        currentStream?.getTracks().forEach((t) => t.stop());
+        try { currentStream?.getTracks().forEach((t) => t.stop()); } catch {}
         currentStream = null;
+        console.error("MediaRecorder error", err);
       };
 
-      // When recording stops, build the blob and upload
+      // When recording stops we assemble chunks, upload in chunks to server, and set transcript.
       mediaRecorder.onstop = async () => {
+        // ensure UI reflects recorder stopped
         recording = false;
-        notify("Recording stopped");
-        log("onstop", { chunkCount: chunks.length });
-
         try {
           transcribing = true;
-          notify("Building audio for upload...");
+
           if (!chunks.length) {
-            notify("No audio captured");
-            log("no chunks present");
+            // nothing captured
             return;
           }
 
+          // Build a blob using the first chunk's type where possible
           const firstType = (chunks[0] as any)?.type || mimeType || "audio/webm";
           const blob = new Blob(chunks, { type: firstType });
-          lastBlobType = blob.type || firstType;
-          lastBlobSize = blob.size || 0;
-          log("built blob", { type: lastBlobType, size: lastBlobSize });
-          if (!blob.size) {
-            notify("Audio blob was empty");
-            return;
-          }
 
+          if (!blob.size) return;
+
+          // Name file extension sensibly for server-side assembly (server may ignore the name)
           const ext = extFromMime(blob.type || "");
           const fileForUpload = new File([blob], `note.${ext}`, { type: blob.type || firstType });
 
-          // Prepare upload
-          const fd = new FormData();
-          fd.append("file", fileForUpload);
+          // Upload in chunks to the server which will assemble + transcribe on final chunk
+          const finalResp = await uploadInChunks(fileForUpload);
 
-          notify("Uploading for transcription...");
-          log("upload start");
-
-          const resp = await fetch("/api/echo-upload", { method: "POST", body: fd });
-
-          // Try to parse JSON no matter what to see error bodies
-          const data = await resp.json().catch(() => ({} as any));
-          log("upload done", { ok: resp.ok, status: resp.status, keys: Object.keys(data || {}) });
-
-          const extracted = (data.transcript || data.text || "").trim();
+          // Server should return { transcript } when last chunk is processed
+          const extracted = (finalResp?.transcript || finalResp?.text || "").trim();
           if (extracted) {
             transcript = extracted;
             text = text ? `${text} ${extracted}` : extracted;
-            notify("Transcription received");
-          } else if (!resp.ok) {
-            notify(`Transcription failed - status ${resp.status}`);
-          } else {
-            notify("No transcript returned");
+          } else if (finalResp && finalResp.error) {
+            // surface server error to console during testing
+            console.error("Transcription server error:", finalResp);
           }
+        } catch (err) {
+          console.error("Chunked upload/transcribe failed", err);
         } finally {
           transcribing = false;
-          // Always stop mic tracks
-          currentStream?.getTracks().forEach((t) => t.stop());
+          // Always stop mic tracks so the browser mic indicator turns off.
+          try { currentStream?.getTracks().forEach((t) => t.stop()); } catch {}
           currentStream = null;
         }
       };
 
-      // Start recorder with 1s timeslice - improves reliability on mobile
+      // timeslice = 1000ms ensures ondataavailable fires periodically - improves long recording reliability
       mediaRecorder.start(1000);
-      notify("Recorder start requested");
-      log("mediaRecorder.start(1000)");
-    } catch (err: any) {
-      notify("Mic access failed");
-      log("startRecording error", { message: err?.message || String(err) });
-      // Clean up on failure
-      currentStream?.getTracks().forEach((t) => t.stop());
+    } catch (err) {
+      // ensure we clean up on failure
+      try { currentStream?.getTracks().forEach((t) => t.stop()); } catch {}
       currentStream = null;
       mediaRecorder = null;
       recording = false;
+      console.error("startRecording error", err);
     }
   }
 
-  // Stop recording - safe and idempotent
+  // Stop recording - only call stop if recorder is actually recording
   function stopRecording() {
     const state = mediaRecorder?.state;
-    if (state !== "recording") {
-      notify("Stop ignored - not recording");
-      return;
-    }
+    if (state !== "recording") return;
     transcribing = true; // immediate feedback while onstop work runs
     try {
       mediaRecorder?.stop();
-      notify("Stopping...");
-      log("stop called");
-    } catch {
+    } catch (err) {
       transcribing = false;
-      notify("Stop threw an error");
+      console.error("stopRecording error", err);
     }
   }
 
-  // Call summarize endpoint with simple error surface
+  // -----------------------
+  // Summarize and submit
+  // -----------------------
+
+  // Ask summarize endpoint to summarize current notes and suggest tags.
   async function summarize() {
     try {
       summarizing = true;
-      notify("Summarizing...");
       const resp = await fetch("/api/summarize", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -246,24 +260,22 @@
       });
       const data = await resp.json().catch(() => ({} as any));
       if (!resp.ok) {
-        notify(`Summary failed - status ${resp.status}`);
-        log("summarize non 2xx", { status: resp.status, error: data?.error });
+        console.error("Summarize failed", data?.error || "Unknown error");
         return;
       }
       summary = (data.summary || "").trim();
       tags = Array.isArray(data.tags) ? data.tags.join(", ") : (tags || "");
-      notify("Summary ready");
-    } catch (err: any) {
-      notify("Summary error");
-      log("summarize error", { message: err?.message || String(err) });
+    } catch (err) {
+      console.error("Summarize failed", err);
     } finally {
       summarizing = false;
     }
   }
 
-  // Submit handler toggles saving until nav
+  // When the form submits to ?/save we flip saving=true for a spinner on the button.
   function handleSubmit() {
     saving = true;
+    // No preventDefault - we want the normal navigation to occur.
   }
 </script>
 
@@ -295,7 +307,7 @@
       <div class="field">
         <label for="text">Your note</label>
 
-        <!-- Voice controls -->
+        <!-- Voice controls row -->
         <div style="display:flex; gap:10px; align-items:center; margin-bottom:8px;">
           {#if !recording}
             <button type="button" class="btn" on:click={startRecording} disabled={transcribing || saving}>
@@ -312,7 +324,7 @@
             </button>
           {/if}
 
-          <!-- Inline feedback while server work runs -->
+          <!-- Live feedback while audio is being transcribed -->
           {#if transcribing}
             <span class="inline-wait">
               <span class="spinner" aria-hidden="true"></span>
@@ -367,37 +379,11 @@
     {#if form?.error}
       <p style="color:var(--danger); margin-top:12px;">{form.error}</p>
     {/if}
-
-    <!-- Event log panel -->
-    {#if showLog}
-      <div class="card" style="padding:12px; margin-top:16px;">
-        <div style="display:flex; align-items:center; justify-content:space-between; gap:8px;">
-          <strong>Recorder log</strong>
-          <label style="font-size:0.9rem;">
-            <input type="checkbox" bind:checked={showLog} />
-            Show
-          </label>
-        </div>
-        <div style="margin:8px 0; color:var(--muted); font-size:0.9rem;">
-          Last blob: {lastBlobType || "n/a"} - {lastBlobSize ? (lastBlobSize/1024).toFixed(1) + " KB" : "0 KB"}
-        </div>
-        <pre style="white-space:pre-wrap; max-height:200px; overflow:auto; font-size:0.85rem; background:var(--surface-muted); padding:8px; border-radius:8px;">
-{logLines.join("\n")}
-        </pre>
-      </div>
-    {/if}
   </div>
 </div>
 
-<!-- Toast chips - fixed position top right -->
-<div class="toasts">
-  {#each toasts as t (t.id)}
-    <div class="toast">{t.text}</div>
-  {/each}
-</div>
-
 <style>
-  /* Small, theme-friendly spinner */
+  /* Small, theme-friendly spinner that uses your CSS vars */
   .spinner {
     width: 16px;
     height: 16px;
@@ -415,26 +401,6 @@
     gap: 8px;
     color: var(--muted);
   }
-  .muted { color: var(--muted); }
 
-  /* Toast chips container */
-  .toasts {
-    position: fixed;
-    top: 10px;
-    right: 10px;
-    display: grid;
-    gap: 8px;
-    z-index: 9999;
-    pointer-events: none; /* clicks pass through */
-  }
-  .toast {
-    pointer-events: auto;
-    background: var(--surface, #fff);
-    color: var(--text, #111);
-    border: 1px solid var(--border, #ddd);
-    border-radius: 9999px;
-    padding: 6px 10px;
-    box-shadow: 0 2px 10px rgba(0,0,0,0.06);
-    font-size: 0.9rem;
-  }
+  .muted { color: var(--muted); }
 </style>

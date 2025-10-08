@@ -92,25 +92,29 @@ enum AssignedBy {
   user
 }
 
-// ---------------------------------------------------------------------------
 // MODEL: Tag
 // A single tag concept - tenant scoped
 // name and slug are unique per user to avoid cross tenant collisions
-// ---------------------------------------------------------------------------
 model Tag {
-  id        String    @id @default(uuid()) // pk
-  userId    String                                // tenant owner - required
-  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id        String   @id @default(uuid()) // pk
+  userId    String                              // tenant owner - required
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  name      String                                // human label, e.g. "vc"
-  slug      String                                // normalized, e.g. "climate-tech"
+  name      String                              // human label, e.g. "vc"
+  slug      String                              // normalized, e.g. "climate-tech"
+
   createdBy CreatedBy
-  createdAt DateTime  @default(now())
+  createdAt DateTime @default(now())
 
-  // Merge governance - same self relation pattern as before
+  // Store an embedding for the tag vocabulary to enable cosine similarity
+  // Prisma maps Float[] to Postgres double precision[]
+  // Lists cannot be optional in Prisma, so default to an empty array to mean "not computed yet"
+  embedding Float[] @default([])
+
+  // Merge governance - self relation pattern
   mergedIntoId String?
-  mergedInto   Tag?    @relation(name: "TagMerge", fields: [mergedIntoId], references: [id])
-  mergedFrom   Tag[]   @relation(name: "TagMerge")
+  mergedInto   Tag?   @relation(name: "TagMerge", fields: [mergedIntoId], references: [id])
+  mergedFrom   Tag[]  @relation(name: "TagMerge")
 
   // Aliases and usage relations
   aliases      TagAlias[]
@@ -121,7 +125,10 @@ model Tag {
   @@unique([userId, name])
   @@unique([userId, slug])
   @@index([userId, createdBy, createdAt])
+  @@map("Tag")
 }
+
+
 
 // ---------------------------------------------------------------------------
 // MODEL: TagAlias

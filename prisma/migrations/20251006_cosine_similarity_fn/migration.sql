@@ -14,3 +14,4 @@ AS $$
        * sqrt((SELECT SUM(y * y) FROM unnest(b) AS t(y))))
   END;
 $$;
+

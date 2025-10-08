@@ -1,94 +1,113 @@
 // src/routes/api/upload-chunk/+server.ts
 // PURPOSE:
-// - Receive small binary audio chunks and append to a temp file.
-// - When the final chunk is received (last=1), assemble and call transcribeAudio(Buffer).
-// - Return JSON with transcript or clear error info.
+// - Accept audio chunks (Content-Type: application/octet-stream)
+// - Append to a temp .part file identified by ?key=...
+// - On the last chunk (?last=1) enqueue an async transcription job and return { jobId } immediately
+// - Client polls /api/transcribe-result for completion
 //
-// NOTES:
-// - Each upload request must include ?key=<string> to identify the file assembly.
-// - Each request should include query params: index (0-based) and last (0 or 1).
-// - This endpoint expects the request body to be the raw chunk bytes (Content-Type: application/octet-stream).
+// LOGGING:
+// - All console logs are safe: only print lengths, IDs, and messages (never full objects)
 
 import type { RequestHandler } from "./$types";
 import { json } from "@sveltejs/kit";
 import fs from "fs/promises";
 import path from "path";
 import os from "os";
-import { transcribeAudio } from "$lib/ai";
 
+// Job store in memory (per instance only)
+type Job = { status: "queued" | "processing" | "done" | "error"; transcript?: string; error?: string };
+const jobs = new Map<string, Job>();
+
+// Exported so /api/transcribe-result can read job state
+export function getJob(jobId: string): Job | undefined {
+  return jobs.get(jobId);
+}
+
+// Minimal uuid v4
+function uuidv4() {
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, c => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === "x" ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+}
+
+// Temp dir for chunk assembly
 const ASSEMBLE_DIR = path.join(os.tmpdir(), "relish_audio_assemblies");
-
 async function ensureDir() {
-  try {
-    await fs.mkdir(ASSEMBLE_DIR, { recursive: true });
-  } catch {
-    // ignore
-  }
+  await fs.mkdir(ASSEMBLE_DIR, { recursive: true }).catch(() => {});
 }
 
 export const POST: RequestHandler = async ({ request, url }) => {
-  const key = url.searchParams.get("key");
-  const indexStr = url.searchParams.get("index") ?? "0";
-  const lastStr = url.searchParams.get("last") ?? "0";
-
-  if (!key) {
-    return json({ error: "Missing key param" }, { status: 400 });
-  }
-
-  const index = parseInt(indexStr, 10);
-  const last = lastStr === "1" || lastStr === "true";
-
-  // Read raw request body as ArrayBuffer
-  let buffer: ArrayBuffer;
-  try {
-    buffer = await request.arrayBuffer();
-  } catch (err: any) {
-    console.error("[upload-chunk] failed to read body", err);
-    return json({ error: "Failed to read request body", message: err?.message }, { status: 400 });
-  }
-
-  const bytes = Buffer.from(buffer);
-  const tmpFilePath = path.join(ASSEMBLE_DIR, `${key}.part`);
-
-  await ensureDir();
+  console.log("[upload-chunk] handler entered");
 
   try {
-    // Append chunk bytes to the partial file
-    await fs.appendFile(tmpFilePath, bytes);
-    console.log(`[upload-chunk] appended key=${key} index=${index} bytes=${bytes.length}`);
-  } catch (err: any) {
-    console.error("[upload-chunk] append failed", err);
-    return json({ error: "Failed to append chunk", message: err?.message }, { status: 500 });
-  }
+    const key = url.searchParams.get("key");
+    const indexStr = url.searchParams.get("index") ?? "0";
+    const lastStr = url.searchParams.get("last") ?? "0";
 
-  if (!last) {
-    // Not the final chunk - return success for this chunk
-    return json({ ok: true, appended: bytes.length });
-  }
-
-  // Final chunk received - assemble and transcribe
-  try {
-    // Read full assembled bytes into a Buffer
-    const assembled = await fs.readFile(tmpFilePath);
-    console.log(`[upload-chunk] final assemble key=${key} totalBytes=${assembled.length}`);
-
-    if (!assembled.length) {
-      return json({ error: "Assembled file is empty" }, { status: 400 });
+    if (!key) {
+      console.error("[upload-chunk] missing key");
+      return json({ error: "Missing key param" }, { status: 400 });
     }
 
-    // IMPORTANT: call transcribeAudio with a Buffer so ai.ts turns it into a Blob
-    // and appends a Blob to FormData - this avoids passing Node streams into FormData.
-    const transcript = await transcribeAudio(assembled);
+    const index = Number.parseInt(indexStr, 10) || 0;
+    const last = lastStr === "1" || lastStr === "true";
 
-    // Clean up assembled temp file
+    // Read raw bytes
+    let ab: ArrayBuffer;
     try {
-      await fs.unlink(tmpFilePath).catch(() => {});
-    } catch {}
+      ab = await request.arrayBuffer();
+      console.log(`[upload-chunk] got arrayBuffer length=${ab.byteLength}`);
+    } catch (err: any) {
+      console.error("[upload-chunk] arrayBuffer failed:", err?.message);
+      return json({ error: "Failed to read body", message: err?.message }, { status: 400 });
+    }
+    const bytes = Buffer.from(ab);
 
-    return json({ transcript });
+    await ensureDir();
+    const tmpFilePath = path.join(ASSEMBLE_DIR, `${key}.part`);
+
+    try {
+      await fs.appendFile(tmpFilePath, bytes);
+      console.log(`[upload-chunk] appended ${bytes.length} bytes to ${tmpFilePath}`);
+    } catch (err: any) {
+      console.error("[upload-chunk] appendFile failed:", err?.message);
+      return json({ error: "Failed to append chunk", message: err?.message }, { status: 500 });
+    }
+
+    if (!last) {
+      console.log(`[upload-chunk] chunk index=${index} complete (not last)`);
+      return json({ ok: true, appended: bytes.length });
+    }
+
+    console.log("[upload-chunk] last chunk received, enqueueing job");
+
+    const jobId = uuidv4();
+    jobs.set(jobId, { status: "queued" });
+
+    // Fire-and-forget background worker
+    void (async () => {
+      try {
+        jobs.set(jobId, { status: "processing" });
+        const assembled = await fs.readFile(tmpFilePath);
+        console.log(`[upload-chunk] worker assembled file length=${assembled.length}`);
+
+        const { transcribeAudio } = await import("$lib/ai");
+        const text = await transcribeAudio(assembled);
+        console.log(`[upload-chunk] transcription done, chars=${text.length}`);
+
+        jobs.set(jobId, { status: "done", transcript: text });
+        await fs.unlink(tmpFilePath).catch(() => {});
+      } catch (err: any) {
+        console.error("[upload-chunk] worker error:", err?.message);
+        jobs.set(jobId, { status: "error", error: err?.message || "Transcription failed" });
+      }
+    })();
+
+    return json({ jobId }, { status: 202 });
   } catch (err: any) {
-    console.error("[upload-chunk] final assemble/transcribe error", err);
-    // Keep the tmp file for debugging - return a clear error payload
-    return json({ error: "Failed to assemble/transcribe", message: err?.message }, { status: 500 });
+    console.error("[upload-chunk] unhandled error:", err?.message);
+    return json({ error: "Internal error", message: err?.message || String(err) }, { status: 500 });
   }
 };

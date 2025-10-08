@@ -1,21 +1,47 @@
-// src/routes/api/summarize/+server.ts
-// PURPOSE: Accept text and return summary + tag suggestions.
+// IT: summarize endpoint - return vector-based suggestions from existing tags only
+import { json } from '@sveltejs/kit';
+import { prisma } from '$lib/db';
+import { summarizeText } from '$lib/ai';                 // IT: your existing summarizer
+import { suggestTagsForInteraction } from '$lib/tag_suggestions'; // IT: your vector suggester
 
-import { json } from "@sveltejs/kit";
-import type { RequestHandler } from "./$types";
-import { summarizeText } from "$lib/ai";
-
-export const POST: RequestHandler = async ({ request }) => {
-  const { text } = await request.json();
-  if (!text || typeof text !== "string") {
-    return json({ error: "Missing text" }, { status: 400 });
+export const POST = async ({ locals, request }) => {
+  // IT: tenant guard
+  if (!locals.user) {
+    return new Response('Unauthorized', { status: 401 });
   }
 
-  try {
-    const { summary, tags } = await summarizeText(text);
-    return json({ summary, tags });
-  } catch (err: any) {
-    console.error("Summarization failed:", err);
-    return json({ error: "Failed to summarize" }, { status: 500 });
+  // IT: read payload
+  const body = await request.json();
+  const interactionId = String(body.interactionId || '');
+  if (!interactionId) {
+    return new Response('interactionId required', { status: 400 });
   }
+
+  // IT: fetch the raw text for summarization with strict tenant scoping
+  const interaction = await prisma.interaction.findFirst({
+    where: { id: interactionId, userId: locals.user.id },
+    select: { raw_text: true }
+  });
+  if (!interaction) {
+    return new Response('Interaction not found', { status: 404 });
+  }
+
+  // IT: create the summary with your existing model
+  const summary = await summarizeText(interaction.raw_text);
+
+  // IT: get suggestions from existing tags using pgvector - no persistence here
+  // - suggestTagsForInteraction should already read InteractionEmbedding.vec
+  // - and rank against Tag.embedding_vec for this same tenant
+  const suggestedTags = await suggestTagsForInteraction({
+    userId: locals.user.id,
+    interactionId,
+    topK: 8,        // IT: small list for UI chips
+    minScore: 0.25  // IT: nudge threshold if suggestions feel noisy
+  });
+
+  // IT: return summary plus suggestions - do not write any tag rows here
+  return json({
+    summary,
+    suggestedTags    // IT: array of { id, name, score } or your existing shape
+  });
 };

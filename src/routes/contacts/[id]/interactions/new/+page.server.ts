@@ -1,14 +1,16 @@
 // src/routes/contacts/[id]/interactions/new/+page.server.ts
-// PURPOSE: Create a new interaction for a contact with optional summary, tags, and an embedding.
+// PURPOSE: Create a new interaction for a contact with optional summary and a vector embedding.
 // MULTI TENANT: Requires login and scopes all DB access by userId.
 // SECURITY: Encrypt raw text and summary on the server only. Never log plaintext.
 // ACTIONS: Named actions only - your form posts to ?/save.
+// TAG BEHAVIOR: Tags are attached to the Contact only - never to the Interaction.
 
 import { fail, redirect } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import { prisma } from '$lib/db';
 import { encrypt } from '$lib/crypto';
-import { attachInteractionTags } from '$lib/tags';
+// IT: we attach tags to the Contact, so we need a helper to resolve or create tag ids
+import { resolveOrCreateTagForTenant } from '$lib/tags';
 import { upsertInteractionEmbedding } from '$lib/embeddings';
 import { z } from 'zod';
 
@@ -18,7 +20,7 @@ const NewInteraction = z.object({
   occurredAt: z.string().optional(),       // datetime-local string
   text: z.string().min(1, 'Note cannot be empty'),
   summary: z.string().optional(),          // optional AI or user summary
-  tags: z.string().optional(),             // comma separated names
+  tags: z.string().optional(),             // comma separated names the user typed
   tagsSource: z.enum(['user', 'ai']).optional().default('user')
 });
 
@@ -58,7 +60,7 @@ async function saveImpl({ request, locals, params }: SaveArgs) {
     tagsSource: String(raw.tagsSource || 'user')
   });
   if (!parsed.success) {
-    // Fix: Zod uses error.issues, not error.errors
+    // IT: Zod uses error.issues, not error.errors
     const first = parsed.error.issues?.[0]?.message || 'Invalid input';
     return fail(400, { error: first });
   }
@@ -74,7 +76,7 @@ async function saveImpl({ request, locals, params }: SaveArgs) {
   const occurredAt = parsed.data.occurredAt ? new Date(parsed.data.occurredAt) : null;
   const plaintext = parsed.data.text;
   const summaryPlain = parsed.data.summary?.trim() || '';
-  const rawTextEnc = encrypt(plaintext, 'interaction.raw_text');
+  const rawTextEnc = encrypt(plaintext, 'interaction.raw_text'); // IT: AAD string is stable
   const summaryEnc = summaryPlain ? encrypt(summaryPlain, 'interaction.raw_text') : undefined;
 
   let interactionId = '';
@@ -82,8 +84,8 @@ async function saveImpl({ request, locals, params }: SaveArgs) {
     // Create interaction under this tenant.
     const created = await prisma.interaction.create({
       data: {
-        userId: locals.user!.id,
-        contactId: contact.id,
+        userId: locals.user!.id,              // IT: tenant scope on create
+        contactId: contact.id,               // IT: link to parent contact
         channel: parsed.data.channel,
         ...(occurredAt ? { occurredAt } : {}),
         rawTextEnc,
@@ -93,20 +95,41 @@ async function saveImpl({ request, locals, params }: SaveArgs) {
     });
     interactionId = created.id;
 
-    // Attach tags if provided - non fatal if helper fails.
+    // IT: attach any typed tags to the Contact - not to the Interaction
+    // - We ignore AI tags here. If the UI wants AI suggestions, it should display chips and let the user click to add.
     const candidates = parsed.data.tags
       ? parsed.data.tags.split(',').map((s) => s.trim()).filter(Boolean)
       : [];
+
     if (candidates.length > 0) {
-      try {
-        await attachInteractionTags(
-          locals.user!.id,
-          interactionId,
-          candidates,
-          parsed.data.tagsSource ?? 'user'
-        );
-      } catch (e) {
-        console.error('attachInteractionTags failed for interaction', interactionId);
+      // IT: resolve or create each tag for this tenant
+      const resolved = [];
+      for (const name of candidates) {
+        try {
+          const tag = await resolveOrCreateTagForTenant(
+            locals.user!.id,          // IT: tenant owner
+            name,                     // IT: human label or slug source
+            parsed.data.tagsSource    // IT: provenance for auditing
+          );
+          resolved.push(tag);
+        } catch {
+          // IT: continue on a single tag failure
+        }
+      }
+
+      // IT: link each resolved tag to the Contact via ContactTag
+      for (const tag of resolved) {
+        try {
+          await prisma.contactTag.create({
+            data: {
+              contactId: contact.id,
+              tagId: tag.id,
+              assignedBy: parsed.data.tagsSource // IT: enum AssignedBy
+            }
+          });
+        } catch {
+          // IT: ignore if the link already exists due to composite PK or unique constraint
+        }
       }
     }
   } catch (err) {
@@ -116,6 +139,7 @@ async function saveImpl({ request, locals, params }: SaveArgs) {
 
   // Best effort embedding - do not block on failures.
   try {
+    // IT: upsertInteractionEmbedding should compute the vector and write InteractionEmbedding.vec
     await upsertInteractionEmbedding(locals.user!.id, interactionId, plaintext);
   } catch (e) {
     console.error('upsertInteractionEmbedding failed for interaction', interactionId);

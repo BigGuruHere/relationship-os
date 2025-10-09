@@ -1,25 +1,35 @@
-// IT: use only pgvector for tag suggestions - no float8[] fallback
-import { prisma } from '$lib/db';
+// src/routes/contacts/[id]/interactions/[iid]/suggest-tags/+server.ts
+// PURPOSE: Return tag suggestions from the existing Tag list using pgvector.
+// SECURITY: Tenant scoped by userId. No persistence here. All IT code is commented.
 
-// IT: helper - read the interaction's pgvector embedding with strict tenant scoping
-async function loadInteractionVecStrict(userId: string, interactionId: string): Promise<number[]> {
-  // IT: select only what we need - the vec column
-  const rec = await prisma.interactionEmbedding.findFirst({
-    where: { userId, interactionId },
-    select: { vec: true }
-  });
+import { json } from '@sveltejs/kit';
+import type { RequestHandler } from './$types';
+import { suggestTagsForInteraction } from '$lib/tag_suggestions';
 
-  // IT: fail early if the vector is missing - this keeps the pipeline honest
-  if (!rec?.vec) {
-    throw new Error('No vector found for this interaction. Ensure you write InteractionEmbedding.vec at creation time.');
+export const POST: RequestHandler = async ({ locals, params, request }) => {
+  // IT: require login
+  if (!locals.user) {
+    return new Response('Unauthorized', { status: 401 });
   }
 
-  // IT: many pg drivers return vector as a string like "[0.1,-0.2]". Normalize to number[]
-  if (Array.isArray(rec.vec)) return rec.vec as number[];
-  const s = String(rec.vec).trim().replace(/^\[/, '').replace(/\]$/, '');
-  return s ? s.split(',').map((x) => Number(x)) : [];
-}
+  // IT: optional overrides from the request body
+  let topK = 8;
+  let minScore = 0.25;
+  try {
+    const body = await request.json();
+    if (typeof body?.topK === 'number') topK = Math.max(1, body.topK);
+    if (typeof body?.minScore === 'number') minScore = body.minScore;
+  } catch {
+    // IT: ignore parse errors - defaults are fine
+  }
 
-// IT: inside your POST handler, replace the old loader call with:
-const vec = await loadInteractionVecStrict(locals.user.id, params.iid);
-// IT: then pass `vec` into your tag suggestion search as before
+  // IT: compute suggestions using InteractionEmbedding.vec and Tag.embedding_vec
+  const suggestions = await suggestTagsForInteraction({
+    userId: locals.user.id,
+    interactionId: params.iid,
+    topK,
+    minScore
+  });
+
+  return json({ suggestions });
+};

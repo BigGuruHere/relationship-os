@@ -52,3 +52,56 @@ export async function upsertInteractionEmbedding(
     interactionId
   );
 }
+
+// IT: semanticSearchInteractions - rank this tenant's notes by similarity to a query
+// - Computes an embedding for the query text
+// - Uses pgvector cosine distance against InteractionEmbedding.vec
+// - Returns top matches with scores in 0..1 where 1 is most similar
+export async function semanticSearchInteractions(params: {
+  userId: string;
+  query: string;
+  topK?: number;
+  minScore?: number;
+}): Promise<Array<{ interactionId: string; score: number }>> {
+  const { userId } = params;
+  const query = (params.query || '').trim();
+  const topK = Math.max(1, params.topK ?? 20);
+  const minScore = params.minScore ?? 0.2;
+
+  // IT: short circuit on empty query
+  if (!userId || !query) return [];
+
+  // IT: embed the query
+  const qvec = await createEmbeddingForText(query);
+  if (!Array.isArray(qvec) || qvec.length === 0) return [];
+
+  // IT: convert to pgvector literal and run the search
+  const literal = `[${qvec.join(',')}]`;
+
+  // IT: join InteractionEmbedding to Interaction to enforce tenant scoping by userId
+  // - distance operator <=> gives cosine distance in 0..2 for normalized vectors, we bound to [0,1] via 1 - distance
+  const rows = await prisma.$queryRawUnsafe<
+    Array<{ interactionId: string; score: number }>
+  >(
+    `
+    SELECT ie."interactionId",
+           GREATEST(0, LEAST(1, 1 - (ie."vec" <=> $1::vector))) AS score
+    FROM "InteractionEmbedding" ie
+    JOIN "Interaction" i ON i."id" = ie."interactionId"
+    WHERE i."userId" = $2
+      AND ie."vec" IS NOT NULL
+    ORDER BY ie."vec" <=> $1::vector ASC
+    LIMIT $3
+    `,
+    literal,
+    userId,
+    topK
+  );
+
+  // IT: apply minScore guard in JS and return clean array
+  return (rows ?? []).filter(r => Number(r.score) >= minScore).map(r => ({
+    interactionId: r.interactionId,
+    score: Number(r.score)
+  }));
+}
+

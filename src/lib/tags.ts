@@ -4,12 +4,35 @@
 // SECURITY: Never log plaintext PII. Only log ids or slugs. All IT code is commented and uses hyphens only.
 
 import { prisma } from '$lib/db';
+import { createEmbeddingForText } from './embeddings_api'; // IT: reuse the same helper
+
 
 // Simple slug generator - lowercase and hyphenate.
 const TAG_SLUG_RE = /[^a-z0-9]+/g;
 export function slugifyTag(input: string) {
   return input.trim().toLowerCase().replace(TAG_SLUG_RE, '-').replace(/^-+|-+$/g, '');
 }
+
+// IT: helper - store a pgvector for a tag's display name
+async function ensureTagEmbeddingVec(tagId: string, userId: string, label: string) {
+  try {
+    // IT: compute tag vocabulary vector
+    const vec = await createEmbeddingForText(label);
+    if (!Array.isArray(vec) || vec.length === 0) return;
+
+    // IT: convert to pgvector text literal and persist via raw SQL
+    const literal = `[${vec.join(',')}]`;
+    await prisma.$executeRawUnsafe(
+      'UPDATE "Tag" SET "embedding_vec" = $1::vector WHERE "id" = $2 AND "userId" = $3',
+      literal,
+      tagId,
+      userId
+    );
+  } catch {
+    // IT: best effort only - suggestions will just skip this tag until next write
+  }
+}
+
 
 /**
  * Resolve or create a Tag in a tenant by display name.
@@ -44,6 +67,10 @@ async function resolveOrCreateTagForTenant(
     const created = await prisma.tag.create({
       data: { userId, name, slug, createdBy: provenance }
     });
+
+    // IT: seed pgvector for this tag so suggestions work immediately
+    await ensureTagEmbeddingVec(created.id, userId, name);
+
     return { id: created.id, slug: created.slug };
   } catch {
     // Race guard - requery if another request created it first.
@@ -55,6 +82,7 @@ async function resolveOrCreateTagForTenant(
     throw new Error('Failed to create tag');
   }
 }
+
 
 /**
  * Attach tags to a Contact by names using the ContactTag join model.

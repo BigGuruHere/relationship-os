@@ -92,41 +92,33 @@ enum AssignedBy {
   user
 }
 
-// MODEL: Tag
-// A single tag concept - tenant scoped
-// name and slug are unique per user to avoid cross tenant collisions
+// IT: Tag - pgvector tracked by Prisma without a native type
 model Tag {
-  id        String   @id @default(uuid()) // pk
-  userId    String                              // tenant owner - required
+  id        String   @id @default(uuid())
+  userId    String
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  name      String                              // human label, e.g. "vc"
-  slug      String                              // normalized, e.g. "climate-tech"
-
+  name      String
+  slug      String
   createdBy CreatedBy
   createdAt DateTime @default(now())
 
-  // Store an embedding for the tag vocabulary to enable cosine similarity
-  // Prisma maps Float[] to Postgres double precision[]
-  // Lists cannot be optional in Prisma, so default to an empty array to mean "not computed yet"
-  embedding Float[] @default([])
+  // IT: pgvector column - Prisma tracks but does not parse
+  embeddingVec Unsupported("vector")? @map("embedding_vec")
 
-  // Merge governance - self relation pattern
   mergedIntoId String?
   mergedInto   Tag?   @relation(name: "TagMerge", fields: [mergedIntoId], references: [id])
   mergedFrom   Tag[]  @relation(name: "TagMerge")
 
-  // Aliases and usage relations
   aliases      TagAlias[]
   contacts     ContactTag[]
-  interactions InteractionTag[]
 
-  // Tenant aware uniqueness and indexes
   @@unique([userId, name])
   @@unique([userId, slug])
   @@index([userId, createdBy, createdAt])
   @@map("Tag")
 }
+
 
 
 
@@ -201,7 +193,6 @@ model Interaction {
   updatedAt DateTime @updatedAt
 
   // Relations
-  tags                 InteractionTag[]
   InteractionEmbedding InteractionEmbedding?
 
   @@index([userId])
@@ -209,16 +200,14 @@ model Interaction {
   @@index([occurredAt])
 }
 
-// ---------------------------------------------------------------------------
-// MODEL: InteractionEmbedding
-// Store interaction embeddings as Postgres double precision[] - no pgvector
-// ---------------------------------------------------------------------------
+// IT: InteractionEmbedding - pgvector tracked the same way
 model InteractionEmbedding {
-  interactionId String      @id                                // pk mirrors parent id
+  interactionId String      @id
   interaction   Interaction @relation(fields: [interactionId], references: [id], onDelete: Cascade)
 
-  // Prisma maps Float[] to Postgres double precision[]
-  embedding     Float[]
+  vec Unsupported("vector")? @map("vec")
+
+  @@map("InteractionEmbedding")
 }
 
 // ---------------------------------------------------------------------------
@@ -240,21 +229,3 @@ model ContactTag {
   @@index([tagId])
 }
 
-// ---------------------------------------------------------------------------
-// MODEL: InteractionTag
-// Join table linking Interaction to Tag with assignment metadata - tenant handled by FKs
-// Composite primary key prevents duplicate links
-// ---------------------------------------------------------------------------
-model InteractionTag {
-  interactionId String
-  tagId         String
-
-  interaction   Interaction @relation(fields: [interactionId], references: [id], onDelete: Cascade)
-  tag           Tag         @relation(fields: [tagId], references: [id], onDelete: Cascade)
-
-  assignedBy    AssignedBy
-  assignedAt    DateTime   @default(now()) // When the link was created
-
-  @@id([interactionId, tagId]) // Composite PK - unique per pair
-  @@index([tagId])
-}

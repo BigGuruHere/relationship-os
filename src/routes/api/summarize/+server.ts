@@ -3,6 +3,7 @@ import { json } from '@sveltejs/kit';
 import { prisma } from '$lib/db';
 import { summarizeText } from '$lib/ai';                 // IT: your existing summarizer
 import { suggestTagsForInteraction } from '$lib/tag_suggestions'; // IT: your vector suggester
+import { decrypt } from '$lib/crypto';
 
 export const POST = async ({ locals, request }) => {
   // IT: tenant guard
@@ -17,17 +18,22 @@ export const POST = async ({ locals, request }) => {
     return new Response('interactionId required', { status: 400 });
   }
 
-  // IT: fetch the raw text for summarization with strict tenant scoping
-  const interaction = await prisma.interaction.findFirst({
-    where: { id: interactionId, userId: locals.user.id },
-    select: { raw_text: true }
-  });
-  if (!interaction) {
-    return new Response('Interaction not found', { status: 404 });
-  }
+// IT: replace the interaction fetch and summary lines with the following
 
-  // IT: create the summary with your existing model
-  const summary = await summarizeText(interaction.raw_text);
+// IT: fetch encrypted raw text with strict tenant scoping
+const interaction = await prisma.interaction.findFirst({
+  where: { id: interactionId, userId: locals.user.id },
+  select: { rawTextEnc: true }
+});
+if (!interaction) {
+  return new Response('Interaction not found', { status: 404 });
+}
+
+// IT: decrypt on the server only
+const plaintext = decrypt(interaction.rawTextEnc);
+
+// IT: create the summary from plaintext
+const summary = await summarizeText(plaintext);
 
   // IT: get suggestions from existing tags using pgvector - no persistence here
   // - suggestTagsForInteraction should already read InteractionEmbedding.vec

@@ -1,4 +1,7 @@
 <script lang="ts">
+
+import { page } from '$app/stores';
+
   // PURPOSE: Render one interaction plus its tags. Allow add and remove via named actions.
   export let data: {
     interaction: {
@@ -18,6 +21,8 @@
     const dt = typeof d === 'string' ? new Date(d) : d;
     return dt.toLocaleString();
   }
+
+
 </script>
 
 <div class="container">
@@ -72,5 +77,21 @@
     <div style="display:flex; gap:10px; margin-top:16px;">
       <a class="btn" href={"/contacts/" + data.interaction.contactId}>Back to contact</a>
     </div>
+
+<!-- Minimal delete form - lets the server redirect to /contacts/{contactId} -->
+<!-- IT: disable SvelteKit enhancement so the 303 redirect goes to /contacts/{contactId} -->
+<!-- IT: Replace the old POST form with this link - server GET endpoint will delete then redirect -->
+<!-- IT: absolute link to the GET delete endpoint - forces full reload so redirect lands on /contacts/{id} -->
+<a
+  data-sveltekit-reload
+  href={`/contacts/${$page.params.id}/interactions/${$page.params.iid}/delete`}
+  class="px-3 py-2 rounded bg-red-600 text-white text-sm hover:bg-red-700"
+>
+  Delete note
+</a>
+
+
+
+
   </div>
 </div>

@@ -4,7 +4,7 @@
 // ACTIONS: Named actions addTag and removeTag. No default action is exported.
 
 import type { Actions, PageServerLoad } from './$types';
-import { redirect, error } from '@sveltejs/kit';
+import { redirect, error,fail } from '@sveltejs/kit';
 import { prisma } from '$lib/db';
 import { decrypt } from '$lib/crypto';
 
@@ -72,88 +72,29 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 };
 
 export const actions: Actions = {
-  // Add a user defined tag to this interaction - creates Tag if missing
-  addTag: async ({ params, locals, request }) => {
+  // IT: hard delete this note, then redirect back to its parent contact
+  delete: async ({ locals, params }) => {
+    // IT: require login
     if (!locals.user) throw redirect(303, '/auth/login');
-    const userId = locals.user.id;
-    const interactionId = params.iid;
 
-    // Ensure this interaction belongs to the tenant
-    const exists = await prisma.interaction.findFirst({
-      where: { id: interactionId, userId },
-      select: { id: true }
+    // IT: fetch the note and capture its contactId before deleting
+    const note = await prisma.interaction.findFirst({
+      where: { id: params.iid, userId: locals.user.id },
+      select: { id: true, contactId: true }
     });
-    if (!exists) throw error(404, 'Interaction not found');
+    if (!note) return fail(404, { error: 'Note not found' });
 
-    const data = await request.formData();
-    // Support input named "name" or "tag" - optional comma separated
-    const raw = String(data.get('name') ?? data.get('tag') ?? '').trim();
-    if (!raw) {
-      // Empty input - go back without error
-      throw redirect(303, `/contacts/${params.id}/interactions/${params.iid}`);
+    const contactId = note.contactId;
+
+    try {
+      await prisma.interaction.delete({ where: { id: note.id } }); // IT: delete the note
+    } catch (err) {
+      console.error('delete note failed', err);
+      return fail(500, { error: 'Failed to delete note' });
     }
 
-    const names = raw
-      .split(',')
-      .map((s) => s.trim())
-      .filter(Boolean)
-      .slice(0, 10); // safety bound
-
-    for (const name of names) {
-      const slug = slugify(name);
-      if (!slug) continue;
-
-      // Upsert the tag for this tenant
-      const tag = await prisma.tag.upsert({
-        where: { userId_slug: { userId, slug } },
-        update: { name },
-        create: { userId, name, slug, createdBy: 'user' }
-      });
-
-      // Link to the interaction - ignore if already linked
-      await prisma.interactionTag.upsert({
-        where: { interactionId_tagId: { interactionId, tagId: tag.id } },
-        update: {},
-        create: { interactionId, tagId: tag.id, assignedBy: 'user' }
-      });
-    }
-
-    // Important - redirect to the absolute URL so we never drop the iid
-    throw redirect(303, `/contacts/${params.id}/interactions/${params.iid}`);
-  },
-
-  // Remove a tag from this interaction by slug
-  removeTag: async ({ params, locals, request }) => {
-    if (!locals.user) throw redirect(303, '/auth/login');
-    const userId = locals.user.id;
-    const interactionId = params.iid;
-
-    // Ensure this interaction belongs to the tenant
-    const exists = await prisma.interaction.findFirst({
-      where: { id: interactionId, userId },
-      select: { id: true }
-    });
-    if (!exists) throw error(404, 'Interaction not found');
-
-    const data = await request.formData();
-    const slug = slugify(String(data.get('slug') || ''));
-    if (!slug) {
-      throw redirect(303, `/contacts/${params.id}/interactions/${params.iid}`);
-    }
-
-    // Find the tag id for this tenant
-    const tag = await prisma.tag.findFirst({
-      where: { userId, slug },
-      select: { id: true }
-    });
-
-    if (tag) {
-      await prisma.interactionTag.deleteMany({
-        where: { interactionId, tagId: tag.id }
-      });
-    }
-
-    // Redirect back to the same interaction page
-    throw redirect(303, `/contacts/${params.id}/interactions/${params.iid}`);
+    // IT: redirect to the contact page
+    throw redirect(303, `/contacts/${contactId}`);
   }
 };
+

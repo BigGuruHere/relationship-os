@@ -1,52 +1,71 @@
 // src/lib/tag_suggestions.ts
-// PURPOSE: suggest existing user-created tags for a given embedding vector
+// PURPOSE: Suggest existing tags for an interaction using pgvector cosine ranking.
+// SCOPE: tenant scoped by userId. Returns suggestions only - no persistence.
 // NOTES:
-// - Uses pgvector distance on Tag.embedding_vec only
-// - Every query is tenant scoped by userId
-// - All IT code is commented and uses hyphens instead of em dashes
+// - Requires InteractionEmbedding.vec and Tag.embedding_vec to be present
+// - Score is 1 - cosine_distance so it falls in [0,1] where higher is better
+// - All IT code is commented
 
 import { prisma } from '$lib/db';
-
-/** Convert a JS number[] to a pgvector text literal like [0.1,-0.2,0.3] */
-function toPgVectorLiteral(vec: number[]): string {
-  return `[${vec.join(',')}]`;
-}
 
 export type TagSuggestion = {
   id: string;
   name: string;
-  distance: number; // smaller is better
-  score: number;    // convenience score 1 - distance for UI
+  score: number; // 0..1 where 1 is most similar
 };
 
-export async function suggestTagsForVector(
-  userId: string,
-  queryVec: number[],
-  topK = 8,
-  minScore = 0.32 // tune as you like
-): Promise<TagSuggestion[]> {
-  const v = toPgVectorLiteral(queryVec);
+type Params = {
+  userId: string;
+  interactionId: string;
+  topK?: number;
+  minScore?: number;
+};
 
-  // IT: rank by pgvector cosine distance - lower distance is more similar
+export async function suggestTagsForInteraction({
+  userId,
+  interactionId,
+  topK = 8,
+  minScore = 0.25
+}: Params): Promise<TagSuggestion[]> {
+  // IT: guard inputs
+  if (!userId || !interactionId) return [];
+
+  // IT: SQL plan
+  // 1) Pull the interaction vector for this interaction and user
+  // 2) Rank this tenant's tags by cosine distance using pgvector operator
+  // 3) Convert distance to similarity = 1 - distance
+  // 4) Filter by minScore and limit to topK
   const rows = await prisma.$queryRawUnsafe<
-    { id: string; name: string; distance: number }[]
+    Array<{ id: string; name: string; score: number }>
   >(
     `
-    SELECT t."id", t."name",
-           (t."embedding_vec" <-> $1::vector) AS distance
-    FROM "Tag" t
+    WITH q AS (
+      SELECT ie."vec" AS v
+      FROM "InteractionEmbedding" ie
+      JOIN "Interaction" i ON i."id" = ie."interactionId"
+      WHERE ie."interactionId" = $1
+        AND i."userId" = $2
+        AND ie."vec" IS NOT NULL
+      LIMIT 1
+    )
+    SELECT t."id",
+           t."name",
+           GREATEST(0, LEAST(1, 1 - (t."embedding_vec" <=> q.v))) AS score
+    FROM "Tag" t, q
     WHERE t."userId" = $2
       AND t."embedding_vec" IS NOT NULL
-    ORDER BY distance ASC
+    ORDER BY score DESC
     LIMIT $3
     `,
-    v,
+    interactionId,
     userId,
-    topK
+    Math.max(1, topK)
   );
 
-  // IT: convert to a simple score for UI filtering
-  return rows
-    .map(r => ({ ...r, score: 1 - r.distance }))
-    .filter(r => r.score >= minScore);
+  // IT: apply minScore in JS as a safety net and return clean objects
+  return (rows ?? []).filter(r => r.score >= minScore).map(r => ({
+    id: r.id,
+    name: r.name,
+    score: Number(r.score)
+  }));
 }

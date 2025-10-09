@@ -5,7 +5,7 @@
 
 import type { RequestHandler } from "./$types";
 import { json } from "@sveltejs/kit";
-import { getJob } from "../upload-chunk/+server";
+import { _getJob } from "../upload-chunk/+server";
 
 export const GET: RequestHandler = async ({ url }) => {
   const jobId = url.searchParams.get("jobId");

@@ -19,7 +19,7 @@ type Job = { status: "queued" | "processing" | "done" | "error"; transcript?: st
 const jobs = new Map<string, Job>();
 
 // Exported so /api/transcribe-result can read job state
-export function getJob(jobId: string): Job | undefined {
+export function _getJob(jobId: string): Job | undefined {
   return jobs.get(jobId);
 }
 

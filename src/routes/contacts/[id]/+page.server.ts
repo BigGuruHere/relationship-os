@@ -51,39 +51,37 @@ export const load: PageServerLoad = async ({ params, locals }) => {
   // Comment: map ContactTag rows to a simple tag array.
   const tags = row.tags.map((ct) => ({ name: ct.tag.name, slug: ct.tag.slug }));
 
-  // Comment: fetch recent interactions for this contact within this tenant and decrypt previews.
-  const interactionsRaw = await prisma.interaction.findMany({
-    where: { userId: locals.user.id, contactId: params.id },
-    select: {
-      id: true,
-      channel: true,
-      occurredAt: true,
-      rawTextEnc: true,
-      tags: {
-        where: { tag: { userId: locals.user.id } },
-        select: { tag: { select: { name: true, slug: true } } },
-        orderBy: { tag: { name: 'asc' } }
-      }
-    },
-    orderBy: [{ occurredAt: 'desc' }, { id: 'desc' }],
-    take: 50 // Comment: cap for UI - adjust as needed.
-  });
+// Comment: fetch recent interactions for this contact within this tenant and decrypt previews.
+// Comment: tags on interactions were removed - do not select interaction tags here.
+const interactionsRaw = await prisma.interaction.findMany({
+  where: { userId: locals.user.id, contactId: params.id },
+  select: {
+    id: true,
+    channel: true,
+    occurredAt: true,
+    rawTextEnc: true
+  },
+  orderBy: [{ occurredAt: 'desc' }, { id: 'desc' }],
+  take: 50 // Comment: cap for UI - adjust as needed.
+});
 
-  // Comment: decrypt note previews - keep it short for the list.
-  const interactions = interactionsRaw.map((it) => {
-    let text = '';
-    try {
-      text = it.rawTextEnc ? decrypt(it.rawTextEnc, 'interaction.raw_text') : '';
-    } catch {}
-    const preview = text.length > 280 ? text.slice(0, 277) + '...' : text;
-    return {
-      id: it.id,
-      channel: it.channel,
-      occurredAt: it.occurredAt,
-      preview,
-      tags: it.tags.map((t) => ({ name: t.tag.name, slug: t.tag.slug }))
-    };
-  });
+// Comment: decrypt note previews - keep it short for the list.
+// Comment: since interaction tags were removed, return an empty array for tags to avoid UI breakage.
+const interactions = interactionsRaw.map((it) => {
+  let text = '';
+  try {
+    text = it.rawTextEnc ? decrypt(it.rawTextEnc, 'interaction.raw_text') : '';
+  } catch {}
+  const preview = text.length > 280 ? text.slice(0, 277) + '...' : text;
+  return {
+    id: it.id,
+    channel: it.channel,
+    occurredAt: it.occurredAt,
+    preview,
+    tags: [] as { name: string; slug: string }[] // Comment: remove when UI no longer expects tags on notes
+  };
+});
+
 
   return {
     contact: { id: row.id, name, email, phone, createdAt: row.createdAt, tags },
@@ -93,23 +91,57 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 
 export const actions: Actions = {
   addTag: async ({ request, params, locals }) => {
-    // Comment: require login for writes.
+    // require login
     if (!locals.user) throw redirect(303, '/auth/login');
-
+  
     const form = await request.formData();
-    const name = String(form.get('name') || '').trim();
-    if (!name) return fail(400, { error: 'Missing tag name.' });
-
+    const raw = String(form.get('name') ?? form.get('tag') ?? '').trim();
+  
+    // debug - log the incoming payload
+    console.log('[contacts:addTag] start', {
+      userId: locals.user.id,
+      contactId: params.id,
+      raw
+    });
+  
+    if (!raw) {
+      console.warn('[contacts:addTag] empty input');
+      return fail(400, { error: 'Missing tag name.' });
+    }
+  
+    // allow comma-separated input
+    const names = raw
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .slice(0, 10);
+  
+    console.log('[contacts:addTag] normalized names', names);
+  
     try {
-      await attachContactTags(locals.user.id, params.id, [name], 'user');
-    } catch (e) {
-      console.error('attachContactTags failed for contact', params.id);
+      // IMPORTANT - call with the expected object args
+      await attachContactTags({
+        userId: locals.user.id,
+        contactId: params.id,
+        names,
+        provenance: 'user'
+      });
+  
+      console.log('[contacts:addTag] attachContactTags OK', { contactId: params.id, count: names.length });
+    } catch (e: any) {
+      console.error('[contacts:addTag] attachContactTags failed', {
+        contactId: params.id,
+        message: e?.message,
+        code: e?.code,
+        stack: e?.stack
+      });
       return fail(500, { error: 'Failed to add tag.' });
     }
-
-    // Comment: redirect outside try so it is not swallowed.
+  
+    // redirect back to the contact page
     throw redirect(303, `/contacts/${params.id}`);
   },
+  
 
   removeTag: async ({ request, params, locals }) => {
     // Comment: require login for writes.

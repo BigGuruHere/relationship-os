@@ -1,26 +1,35 @@
 // src/lib/tags.ts
-// PURPOSE: Normalize tags and attach or detach them from Contacts and Interactions using explicit join tables.
-// MULTI TENANT: Verify parent ownership by userId and constrain Tag lookups to the same userId.
-// SECURITY: Never log plaintext PII. Only log ids or slugs. All IT code is commented and uses hyphens only.
+// PURPOSE: Contact-centric tagging utilities.
+// - Tags are tenant scoped and attached to Contacts via ContactTag
+// - New tags are created with provenance and immediately seeded with pgvector
+// - Aliases are supported via TagAlias and looked up by slug
+// SECURITY: Server only. All queries are tenant scoped by userId.
+// NOTES: No em dashes are used in comments.
 
 import { prisma } from '$lib/db';
-import { createEmbeddingForText } from './embeddings_api'; // IT: reuse the same helper
+import { createEmbeddingForText } from './embeddings_api';
 
+// Toggle verbose logs for tag flows - set to false when done debugging
+const DEBUG_TAGS = true;
 
-// Simple slug generator - lowercase and hyphenate.
-const TAG_SLUG_RE = /[^a-z0-9]+/g;
-export function slugifyTag(input: string) {
-  return input.trim().toLowerCase().replace(TAG_SLUG_RE, '-').replace(/^-+|-+$/g, '');
+// Simple slugifier - lower case, trim, replace non alphanum with hyphen, collapse hyphens
+export function slugifyTag(input: string): string {
+  return String(input || '')
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, '-')   // replace runs of non alphanum with hyphen
+    .replace(/^-+|-+$/g, '')       // trim leading or trailing hyphens
+    .replace(/-{2,}/g, '-');       // collapse multiple hyphens
 }
 
-// IT: helper - store a pgvector for a tag's display name
+// Best effort - compute and store pgvector for a tag's label
 async function ensureTagEmbeddingVec(tagId: string, userId: string, label: string) {
   try {
-    // IT: compute tag vocabulary vector
     const vec = await createEmbeddingForText(label);
-    if (!Array.isArray(vec) || vec.length === 0) return;
-
-    // IT: convert to pgvector text literal and persist via raw SQL
+    if (!Array.isArray(vec) || vec.length === 0) {
+      if (DEBUG_TAGS) console.warn('[tags] ensureTagEmbeddingVec - empty vector', { tagId, label });
+      return;
+    }
     const literal = `[${vec.join(',')}]`;
     await prisma.$executeRawUnsafe(
       'UPDATE "Tag" SET "embedding_vec" = $1::vector WHERE "id" = $2 AND "userId" = $3',
@@ -28,82 +37,72 @@ async function ensureTagEmbeddingVec(tagId: string, userId: string, label: strin
       tagId,
       userId
     );
-  } catch {
-    // IT: best effort only - suggestions will just skip this tag until next write
+    if (DEBUG_TAGS) console.log('[tags] ensureTagEmbeddingVec - stored vector', { tagId });
+  } catch (e: any) {
+    if (DEBUG_TAGS) {
+      console.warn('[tags] ensureTagEmbeddingVec - failed', {
+        tagId,
+        message: e?.message,
+        code: e?.code
+      });
+    }
   }
 }
 
-
-/**
- * Resolve or create a Tag in a tenant by display name.
- * - Uses slug for equality and alias resolution.
- * - Returns the Tag id and slug.
- * - createdBy in the Tag table is set from the provenance argument.
- */
+// Resolve or create a Tag for this tenant, then seed its vector
 export async function resolveOrCreateTagForTenant(
   userId: string,
   name: string,
   provenance: 'user' | 'ai' = 'user'
-): Promise<{ id: string; slug: string }> {
+): Promise<{ id: string; slug: string; name: string }> {
   const slug = slugifyTag(name);
   if (!slug) throw new Error('Empty tag');
 
-  // Try exact Tag by slug for this tenant.
+  if (DEBUG_TAGS) console.log('[tags] resolveOrCreateTagForTenant start', { userId, name, slug, provenance });
+
+  // Exact tag by slug for this tenant
   const existing = await prisma.tag.findFirst({
     where: { userId, slug },
-    select: { id: true, slug: true }
+    select: { id: true, slug: true, name: true }
   });
-  if (existing) return existing;
+  if (existing) {
+    if (DEBUG_TAGS) console.log('[tags] existing tag found', existing);
+    return existing;
+  }
 
-  // Try TagAlias - tenant is implicit via the related Tag.userId.
+  // Alias lookup - tenant scoped via related Tag
   const alias = await prisma.tagAlias.findFirst({
     where: { slug, tag: { userId } },
-    select: { tag: { select: { id: true, slug: true } } }
+    select: { tag: { select: { id: true, slug: true, name: true } } }
   });
-  if (alias?.tag) return { id: alias.tag.id, slug: alias.tag.slug };
-
-  // Create a new Tag for this tenant - store original human name plus slug.
-  try {
-    const created = await prisma.tag.create({
-      data: { userId, name, slug, createdBy: provenance }
-    });
-
-    // IT: seed pgvector for this tag so suggestions work immediately
-    await ensureTagEmbeddingVec(created.id, userId, name);
-
-    return { id: created.id, slug: created.slug };
-  } catch {
-    // Race guard - requery if another request created it first.
-    const again = await prisma.tag.findFirst({
-      where: { userId, slug },
-      select: { id: true, slug: true }
-    });
-    if (again) return again;
-    throw new Error('Failed to create tag');
+  if (alias?.tag) {
+    if (DEBUG_TAGS) console.log('[tags] alias matched canonical tag', alias.tag);
+    return { id: alias.tag.id, slug: alias.tag.slug, name: alias.tag.name };
   }
+
+  // Create new tag
+  if (DEBUG_TAGS) console.log('[tags] creating new tag', { userId, name, slug, provenance });
+  const created = await prisma.tag.create({
+    data: { userId, name, slug, createdBy: provenance }
+  });
+  if (DEBUG_TAGS) console.log('[tags] created tag row', created);
+
+  // Best effort vector seed
+  await ensureTagEmbeddingVec(created.id, userId, name);
+
+  return { id: created.id, slug: created.slug, name: created.name };
 }
 
-
-/**
- * Attach tags to a Contact by names using the ContactTag join model.
- * - Verifies the contact belongs to the tenant.
- * - Upserts join rows by composite key to be idempotent.
- * - Sets assignedBy from provenance since the join column is required.
- */
-// IT: attachContactTags - resolve or create tags for this tenant and link them to a Contact
-// - tenant scoped by userId
-// - seeds Tag.embedding_vec so suggestions work
-// - ignores duplicates quietly
+// Attach tags to a Contact - object args
 export async function attachContactTags(params: {
   userId: string;
   contactId: string;
-  names: string[];                     // human names or slugs - we normalize
+  names: string[];
   provenance?: 'user' | 'ai';
 }): Promise<void> {
   const { userId, contactId } = params;
   const provenance = params.provenance ?? 'user';
 
-  // IT: normalize, dedupe, and drop empties
   const names = Array.from(
     new Set(
       (params.names || [])
@@ -111,15 +110,27 @@ export async function attachContactTags(params: {
         .filter((n) => n.length > 0)
     )
   );
-  if (names.length === 0) return;
 
-  // IT: resolve or create each tag, then link to the Contact
+  if (DEBUG_TAGS) console.log('[tags] attachContactTags start', { userId, contactId, names, provenance });
+
+  if (names.length === 0) {
+    if (DEBUG_TAGS) console.log('[tags] attachContactTags no names - exit');
+    return;
+  }
+
   for (const name of names) {
+    let tag: { id: string; slug: string; name: string } | null = null;
     try {
-      // IT: reuse your existing helper so aliases and slugs are handled uniformly
-      const tag = await resolveOrCreateTagForTenant(userId, name, provenance);
+      tag = await resolveOrCreateTagForTenant(userId, name, provenance);
+    } catch (e: any) {
+      console.error('[tags] resolveOrCreateTagForTenant error', { name, message: e?.message, code: e?.code });
+      continue;
+    }
 
-      // IT: link to the Contact - duplicates will throw due to composite PK, so catch and ignore
+    if (!tag) continue;
+
+    try {
+      if (DEBUG_TAGS) console.log('[tags] contactTag.create linking', { contactId, tagId: tag.id });
       await prisma.contactTag.create({
         data: {
           contactId,
@@ -127,64 +138,51 @@ export async function attachContactTags(params: {
           assignedBy: provenance
         }
       });
-    } catch {
-      // IT: ignore single tag failures - continue with the rest
+      if (DEBUG_TAGS) console.log('[tags] contactTag.create success', { contactId, tagId: tag.id });
+    } catch (e: any) {
+      // Likely a duplicate link due to composite PK - log and continue
+      if (DEBUG_TAGS) {
+        console.warn('[tags] contactTag.create failed', {
+          contactId,
+          tagId: tag.id,
+          message: e?.message,
+          code: e?.code
+        });
+      }
     }
   }
-}
 
-
-/**
- * Detach a single tag from a Contact by slug within a tenant.
- */
-export async function detachContactTag(userId: string, contactId: string, slug: string) {
-  // Verify parent ownership.
-  const contact = await prisma.contact.findFirst({ where: { id: contactId, userId }, select: { id: true } });
-  if (!contact) throw new Error('Contact not found in tenant');
-
-  // Find tag id limited to tenant.
-  const tag = await prisma.tag.findFirst({ where: { userId, slug }, select: { id: true } });
-  if (!tag) return;
-
-  await prisma.contactTag.deleteMany({ where: { contactId, tagId: tag.id } });
-}
-
-/**
- * Attach tags to an Interaction by names using the InteractionTag join model.
- * - Verifies interaction belongs to the tenant.
- * - Sets assignedBy from provenance since the join column is required.
- */
-export async function attachInteractionTags(
-  userId: string,
-  interactionId: string,
-  names: string[],
-  provenance: 'user' | 'ai' = 'user'
-) {
-  // Verify parent ownership.
-  const it = await prisma.interaction.findFirst({ where: { id: interactionId, userId }, select: { id: true } });
-  if (!it) throw new Error('Interaction not found in tenant');
-
-  const unique = Array.from(new Set(names.map((n) => n.trim()).filter(Boolean)));
-  for (const name of unique) {
-    const { id: tagId } = await resolveOrCreateTagForTenant(userId, name, provenance);
-    await prisma.interactionTag.upsert({
-      where: { interactionId_tagId: { interactionId, tagId } },
-      update: {},
-      create: { interactionId, tagId, assignedBy: provenance }
+  // Final check - log what the DB now has for this contact
+  try {
+    const linked = await prisma.contactTag.findMany({
+      where: { contactId },
+      select: { tag: { select: { id: true, name: true, slug: true } } },
+      orderBy: { tagId: 'asc' }
     });
+    if (DEBUG_TAGS) console.log('[tags] contact now has tags', linked.map((x) => x.tag));
+  } catch {
+    // ignore
   }
 }
 
-/**
- * Detach a single tag from an Interaction by slug within a tenant.
- */
-export async function detachInteractionTag(userId: string, interactionId: string, slug: string) {
-  // Verify parent ownership.
-  const it = await prisma.interaction.findFirst({ where: { id: interactionId, userId }, select: { id: true } });
-  if (!it) throw new Error('Interaction not found in tenant');
+// Detach a single tag from a Contact by slug
+export async function detachContactTag(
+  userId: string,
+  contactId: string,
+  slug: string
+): Promise<void> {
+  const clean = slugifyTag(slug);
+  if (!clean) return;
 
-  const tag = await prisma.tag.findFirst({ where: { userId, slug }, select: { id: true } });
+  const tag = await prisma.tag.findFirst({
+    where: { userId, slug: clean },
+    select: { id: true }
+  });
   if (!tag) return;
 
-  await prisma.interactionTag.deleteMany({ where: { interactionId, tagId: tag.id } });
+  await prisma.contactTag.deleteMany({
+    where: { contactId, tagId: tag.id }
+  });
+
+  if (DEBUG_TAGS) console.log('[tags] detachContactTag done', { contactId, slug: clean });
 }

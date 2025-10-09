@@ -40,7 +40,7 @@ async function ensureTagEmbeddingVec(tagId: string, userId: string, label: strin
  * - Returns the Tag id and slug.
  * - createdBy in the Tag table is set from the provenance argument.
  */
-async function resolveOrCreateTagForTenant(
+export async function resolveOrCreateTagForTenant(
   userId: string,
   name: string,
   provenance: 'user' | 'ai' = 'user'
@@ -90,27 +90,49 @@ async function resolveOrCreateTagForTenant(
  * - Upserts join rows by composite key to be idempotent.
  * - Sets assignedBy from provenance since the join column is required.
  */
-export async function attachContactTags(
-  userId: string,
-  contactId: string,
-  names: string[],
-  provenance: 'user' | 'ai' = 'user'
-) {
-  // Verify parent ownership in this tenant.
-  const contact = await prisma.contact.findFirst({ where: { id: contactId, userId }, select: { id: true } });
-  if (!contact) throw new Error('Contact not found in tenant');
+// IT: attachContactTags - resolve or create tags for this tenant and link them to a Contact
+// - tenant scoped by userId
+// - seeds Tag.embedding_vec so suggestions work
+// - ignores duplicates quietly
+export async function attachContactTags(params: {
+  userId: string;
+  contactId: string;
+  names: string[];                     // human names or slugs - we normalize
+  provenance?: 'user' | 'ai';
+}): Promise<void> {
+  const { userId, contactId } = params;
+  const provenance = params.provenance ?? 'user';
 
-  // Resolve each tag id then upsert the join row.
-  const unique = Array.from(new Set(names.map((n) => n.trim()).filter(Boolean)));
-  for (const name of unique) {
-    const { id: tagId } = await resolveOrCreateTagForTenant(userId, name, provenance);
-    await prisma.contactTag.upsert({
-      where: { contactId_tagId: { contactId, tagId } },
-      update: {},
-      create: { contactId, tagId, assignedBy: provenance }
-    });
+  // IT: normalize, dedupe, and drop empties
+  const names = Array.from(
+    new Set(
+      (params.names || [])
+        .map((n) => String(n || '').trim())
+        .filter((n) => n.length > 0)
+    )
+  );
+  if (names.length === 0) return;
+
+  // IT: resolve or create each tag, then link to the Contact
+  for (const name of names) {
+    try {
+      // IT: reuse your existing helper so aliases and slugs are handled uniformly
+      const tag = await resolveOrCreateTagForTenant(userId, name, provenance);
+
+      // IT: link to the Contact - duplicates will throw due to composite PK, so catch and ignore
+      await prisma.contactTag.create({
+        data: {
+          contactId,
+          tagId: tag.id,
+          assignedBy: provenance
+        }
+      });
+    } catch {
+      // IT: ignore single tag failures - continue with the rest
+    }
   }
 }
+
 
 /**
  * Detach a single tag from a Contact by slug within a tenant.

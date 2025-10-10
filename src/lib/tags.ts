@@ -49,7 +49,6 @@ async function ensureTagEmbeddingVec(tagId: string, userId: string, label: strin
   }
 }
 
-// Resolve or create a Tag for this tenant, then seed its vector
 export async function resolveOrCreateTagForTenant(
   userId: string,
   name: string,
@@ -71,13 +70,99 @@ export async function resolveOrCreateTagForTenant(
   }
 
   // Alias lookup - tenant scoped via related Tag
-  const alias = await prisma.tagAlias.findFirst({
+  const aliasRow = await prisma.tagAlias.findFirst({
     where: { slug, tag: { userId } },
     select: { tag: { select: { id: true, slug: true, name: true } } }
   });
-  if (alias?.tag) {
-    if (DEBUG_TAGS) console.log('[tags] alias matched canonical tag', alias.tag);
-    return { id: alias.tag.id, slug: alias.tag.slug, name: alias.tag.name };
+  if (aliasRow?.tag) {
+    if (DEBUG_TAGS) console.log('[tags] alias matched canonical tag', aliasRow.tag);
+    return { id: aliasRow.tag.id, slug: aliasRow.tag.slug, name: aliasRow.tag.name };
+  }
+
+    // Acronym fallback - map short slugs like "vc" to existing tags whose initials match
+    try {
+      const plain = slug.replace(/-/g, '');             // "venture-capital" -> "venturecapital", "vc" -> "vc"
+      if (plain.length > 0 && plain.length <= 4) {      // keep it conservative
+        // Load this tenant's tag names to compare initials
+        const existingTags = await prisma.tag.findMany({
+          where: { userId },
+          select: { id: true, slug: true, name: true }
+        });
+  
+        // Helper to compute initials: "Venture Capital" -> "vc"
+        const initials = (s: string) =>
+          s
+            .split(/\s+/)
+            .map(w => w.trim())
+            .filter(Boolean)
+            .map(w => w[0]?.toLowerCase() ?? '')
+            .join('');
+  
+        // Try to find a tag whose initials match the proposed short slug
+        const hit = existingTags.find(t => initials(t.name) === plain);
+        if (hit) {
+          if (DEBUG_TAGS) console.log('[tags] acronym fallback matched', { input: name, hit });
+          // Persist alias so next time we do not compute again
+          try {
+            await prisma.tagAlias.create({
+              data: { tagId: hit.id, alias: name, slug }
+            });
+          } catch {
+            // ignore unique conflicts
+          }
+          return { id: hit.id, slug: hit.slug, name: hit.name };
+        }
+      }
+    } catch {
+      // best effort only
+    }
+  
+
+  // NEW - vector fallback to auto-map similar names to an existing tag
+  try {
+    const probeVec = await createEmbeddingForText(name);
+    if (Array.isArray(probeVec) && probeVec.length > 0) {
+      const literal = `[${probeVec.join(',')}]`;
+
+      const rows = await prisma.$queryRawUnsafe<
+        Array<{ id: string; slug: string; name: string; score: number }>
+      >(
+        `
+        SELECT t."id", t."slug", t."name",
+               GREATEST(0, LEAST(1, 1 - (t."embedding_vec" <=> $1::vector))) AS score
+        FROM "Tag" t
+        WHERE t."userId" = $2
+          AND t."embedding_vec" IS NOT NULL
+        ORDER BY t."embedding_vec" <=> $1::vector ASC
+        LIMIT 1
+        `,
+        literal,
+        userId
+      );
+
+      const best = rows?.[0];
+      const THRESHOLD = 0.82; // tune as needed
+      if (best && Number(best.score) >= THRESHOLD) {
+        if (DEBUG_TAGS) console.log('[tags] vector fallback matched', best);
+
+        // Write a TagAlias so future lookups hit without vectors
+        try {
+          await prisma.tagAlias.create({
+            data: {
+              tagId: best.id,
+              alias: name,
+              slug // alias slug for the user input
+            }
+          });
+        } catch {
+          // ignore unique conflicts
+        }
+
+        return { id: best.id, slug: best.slug, name: best.name };
+      }
+    }
+  } catch {
+    // best effort - ignore vector issues and continue to create
   }
 
   // Create new tag
@@ -92,6 +177,7 @@ export async function resolveOrCreateTagForTenant(
 
   return { id: created.id, slug: created.slug, name: created.name };
 }
+
 
 // Attach tags to a Contact - object args
 export async function attachContactTags(params: {

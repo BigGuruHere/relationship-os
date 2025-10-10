@@ -7,15 +7,23 @@
 //
 // LOGGING:
 // - All console logs are safe: only print lengths, IDs, and messages (never full objects)
+// - Set DEBUG_AUDIO to true to trace the full flow
 
 import type { RequestHandler } from "./$types";
-import { json } from "@sveltejs/kit";
+import { json, redirect } from "@sveltejs/kit";
 import fs from "fs/promises";
 import path from "path";
 import os from "os";
 
+// Toggle detailed logs
+const DEBUG_AUDIO = true;
+
 // Job store in memory (per instance only)
-type Job = { status: "queued" | "processing" | "done" | "error"; transcript?: string; error?: string };
+type Job = {
+  status: "queued" | "processing" | "done" | "error";
+  transcript?: string;
+  error?: string;
+};
 const jobs = new Map<string, Job>();
 
 // Exported so /api/transcribe-result can read job state
@@ -38,8 +46,11 @@ async function ensureDir() {
   await fs.mkdir(ASSEMBLE_DIR, { recursive: true }).catch(() => {});
 }
 
-export const POST: RequestHandler = async ({ request, url }) => {
-  console.log("[upload-chunk] handler entered");
+export const POST: RequestHandler = async ({ request, url, locals }) => {
+  // Require login for uploads
+  if (!locals.user) throw redirect(303, "/auth/login");
+
+  if (DEBUG_AUDIO) console.log("[upload-chunk] handler entered");
 
   try {
     const key = url.searchParams.get("key");
@@ -53,12 +64,21 @@ export const POST: RequestHandler = async ({ request, url }) => {
 
     const index = Number.parseInt(indexStr, 10) || 0;
     const last = lastStr === "1" || lastStr === "true";
+    const contentType = request.headers.get("content-type") || "unknown";
 
     // Read raw bytes
     let ab: ArrayBuffer;
     try {
       ab = await request.arrayBuffer();
-      console.log(`[upload-chunk] got arrayBuffer length=${ab.byteLength}`);
+      if (DEBUG_AUDIO) {
+        console.log("[upload-chunk] read body ok", {
+          key,
+          index,
+          last,
+          contentType,
+          byteLength: ab.byteLength
+        });
+      }
     } catch (err: any) {
       console.error("[upload-chunk] arrayBuffer failed:", err?.message);
       return json({ error: "Failed to read body", message: err?.message }, { status: 400 });
@@ -70,18 +90,26 @@ export const POST: RequestHandler = async ({ request, url }) => {
 
     try {
       await fs.appendFile(tmpFilePath, bytes);
-      console.log(`[upload-chunk] appended ${bytes.length} bytes to ${tmpFilePath}`);
+      if (DEBUG_AUDIO) {
+        console.log("[upload-chunk] appended chunk", {
+          key,
+          index,
+          last,
+          appended: bytes.length,
+          file: tmpFilePath
+        });
+      }
     } catch (err: any) {
       console.error("[upload-chunk] appendFile failed:", err?.message);
       return json({ error: "Failed to append chunk", message: err?.message }, { status: 500 });
     }
 
     if (!last) {
-      console.log(`[upload-chunk] chunk index=${index} complete (not last)`);
+      if (DEBUG_AUDIO) console.log("[upload-chunk] not last chunk - returning ok", { key, index });
       return json({ ok: true, appended: bytes.length });
     }
 
-    console.log("[upload-chunk] last chunk received, enqueueing job");
+    if (DEBUG_AUDIO) console.log("[upload-chunk] last chunk received - enqueue job");
 
     const jobId = uuidv4();
     jobs.set(jobId, { status: "queued" });
@@ -90,21 +118,44 @@ export const POST: RequestHandler = async ({ request, url }) => {
     void (async () => {
       try {
         jobs.set(jobId, { status: "processing" });
+
         const assembled = await fs.readFile(tmpFilePath);
-        console.log(`[upload-chunk] worker assembled file length=${assembled.length}`);
+        if (DEBUG_AUDIO) {
+          console.log("[upload-chunk] worker assembled file", {
+            key,
+            jobId,
+            length: assembled.length
+          });
+        }
 
+        // Import your speech to text helper
         const { transcribeAudio } = await import("$lib/ai");
-        const text = await transcribeAudio(assembled);
-        console.log(`[upload-chunk] transcription done, chars=${text.length}`);
 
-        jobs.set(jobId, { status: "done", transcript: text });
+        if (DEBUG_AUDIO) console.log("[upload-chunk] start transcribe", { jobId });
+
+        // Call the transcriber - it should accept a Buffer and return a string
+        const text = await transcribeAudio(assembled);
+
+        if (DEBUG_AUDIO) {
+          console.log("[upload-chunk] transcribe ok", {
+            jobId,
+            chars: text?.length ?? 0
+          });
+        }
+
+        jobs.set(jobId, { status: "done", transcript: text || "" });
+
+        // Clean up the assembled temp file
         await fs.unlink(tmpFilePath).catch(() => {});
       } catch (err: any) {
-        console.error("[upload-chunk] worker error:", err?.message);
+        console.error("[upload-chunk] worker error:", err?.message || String(err));
         jobs.set(jobId, { status: "error", error: err?.message || "Transcription failed" });
+        // Attempt cleanup but do not fail on it
+        await fs.unlink(tmpFilePath).catch(() => {});
       }
     })();
 
+    // Return the job id so the client can poll /api/transcribe-result?jobId=...
     return json({ jobId }, { status: 202 });
   } catch (err: any) {
     console.error("[upload-chunk] unhandled error:", err?.message);

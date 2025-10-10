@@ -68,64 +68,96 @@
 
   // Upload a Blob or File in sequential chunks to /api/upload-chunk
   // The server assembles and queues transcription and responds with { jobId } on the last chunk.
-  async function uploadInChunks(blobOrFile: Blob | File): Promise<{ jobId: string }> {
-    const key = uuidv4(); // unique assembly key on server
-    const total = blobOrFile.size;
-    let offset = 0;
-    let index = 0;
-    let finalJob: string | null = null;
-
-    while (offset < total) {
-      const end = Math.min(offset + CHUNK_SIZE, total);
-      const slice = blobOrFile.slice(offset, end);
-      const isLast = end >= total;
-
-      const body = await slice.arrayBuffer();
-
-      const params = new URLSearchParams({
-        key,
-        index: String(index),
-        last: isLast ? "1" : "0"
-      });
-
-      const resp = await fetch(`/api/echo-bytes?${params.toString()}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/octet-stream" },
-        body
-      });
-
-      if (!resp.ok) {
-        const errText = await resp.text().catch(() => "");
-        throw new Error(`Chunk upload failed index=${index} status=${resp.status} body=${errText}`);
-      }
-
-      // On the last chunk, server returns { jobId }
-      if (isLast) {
-        const data = await resp.json().catch(() => ({} as any));
-        finalJob = data?.jobId || null;
-      }
-
-      offset = end;
-      index += 1;
-    }
-
-    if (!finalJob) throw new Error("No jobId returned from server");
-    return { jobId: finalJob };
+// IT: uploadInChunks - sends raw bytes to /api/upload-chunk with key, index, and last flags
+// - Adds detailed logs so we can see server responses
+// - Ensures last=1 is sent on the final chunk
+async function uploadInChunks(bytes: Uint8Array, key: string, chunkSize = 256 * 1024): Promise<string> {
+  // IT: split into chunks
+  const chunks: Uint8Array[] = [];
+  for (let o = 0; o < bytes.length; o += chunkSize) {
+    chunks.push(bytes.subarray(o, Math.min(o + chunkSize, bytes.length)));
   }
 
-  // Poll for the transcription result until done or timeout
-  async function pollResult(jobId: string, intervalMs = 1500, timeoutMs = 120000): Promise<string> {
-    const start = Date.now();
-    while (Date.now() - start < timeoutMs) {
-      const r = await fetch(`/api/transcribe-result?jobId=${encodeURIComponent(jobId)}`);
-      if (!r.ok) throw new Error(`Polling failed status=${r.status}`);
-      const body = await r.json().catch(() => ({} as any));
-      if (body.status === "done" && typeof body.transcript === "string") return body.transcript;
-      if (body.status === "error") throw new Error(body.error || "Transcription error");
-      await new Promise(res => setTimeout(res, intervalMs));
+  let jobId = '';
+  for (let i = 0; i < chunks.length; i++) {
+    const last = i === chunks.length - 1;
+
+    // IT: build URL with required query params
+    const qs = new URLSearchParams({
+      key,
+      index: String(i),
+      last: last ? '1' : '0'
+    });
+    const url = `/api/upload-chunk?${qs.toString()}`;
+
+    // IT: send raw chunk
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'content-type': 'application/octet-stream' },
+      body: chunks[i]
+    });
+
+    let data: any = null;
+    try {
+      data = await res.json();
+    } catch {
+      // IT: not JSON - try to read text for diagnostics
+      const text = await res.text().catch(() => '');
+      console.error('[voice] non-json response', { status: res.status, text });
+      throw new Error(`upload failed - status ${res.status}`);
     }
-    throw new Error("Polling timed out");
+
+    console.log('[voice] chunk result', {
+      i,
+      last,
+      status: res.status,
+      data
+    });
+
+    // IT: on the final chunk we expect 202 and a jobId
+    if (last) {
+      if (res.status === 202 && data?.jobId) {
+        jobId = String(data.jobId);
+      } else {
+        throw new Error('No jobId returned from server');
+      }
+    } else {
+      // IT: non-final chunks should return ok: true
+      if (!res.ok || data?.ok !== true) {
+        throw new Error(`chunk ${i} failed - status ${res.status}`);
+      }
+    }
   }
+
+  return jobId;
+}
+
+
+// IT: poll the server for a finished transcript using the returned jobId
+async function pollResult(jobId: string): Promise<string> {
+  if (!jobId) throw new Error('No jobId to poll');
+
+  for (let i = 0; i < 60; i++) {
+    const res = await fetch(`/api/transcribe-result?jobId=${encodeURIComponent(jobId)}`);
+    let data: any = {};
+    try {
+      data = await res.json();
+    } catch {
+      // IT: keep polling on non JSON
+    }
+
+    console.log('[voice] poll', { i, status: res.status, data });
+
+    if (res.ok && data?.status === 'done') {
+      return String(data.transcript || '');
+    }
+    if (res.status === 500 || data?.status === 'error') {
+      throw new Error(`Polling failed status=${res.status}`);
+    }
+    await new Promise((r) => setTimeout(r, 1500));
+  }
+  throw new Error('Polling timed out');
+}
 
   // -----------------------
   // Recorder lifecycle
@@ -168,39 +200,38 @@
         currentStream = null;
       };
 
-      mediaRecorder.onstop = async () => {
-        recording = false;
-        try {
-          transcribing = true;
+// IT: when recording stops, upload bytes and capture the returned jobId
+mediaRecorder.onstop = async () => {
+  try {
+    // IT: assemble the Blob from recorded chunks
+    const blob = new Blob(chunks, { type: 'audio/webm' });
+    const bytes = new Uint8Array(await blob.arrayBuffer());
 
-          if (!chunks.length) return;
+    // IT: upload and get a job id from the server
+    const key = crypto.randomUUID();
+    const jobId = await uploadInChunks(bytes, key);
 
-          const firstType = (chunks[0] as any)?.type || mimeType || "audio/webm";
-          const blob = new Blob(chunks, { type: firstType });
-          if (!blob.size) return;
+    console.log('[voice] got jobId', jobId);
 
-          const ext = extFromMime(blob.type || "");
-          const fileForUpload = new File([blob], `note.${ext}`, { type: blob.type || firstType });
+    // IT: guard - do not start polling without a job id
+    if (!jobId) {
+      throw new Error('No jobId returned from server');
+    }
 
-          // Upload in chunks - server will return { jobId } on the final chunk
-          const { jobId } = await uploadInChunks(fileForUpload);
+    // IT: poll until transcript is ready
+    const transcript = await pollResult(jobId);
+    console.log('[voice] transcript', transcript);
 
-          // Poll for job result without blocking UI thread
-          const result = await pollResult(jobId);
-          const extracted = (result || "").trim();
-          if (extracted) {
-            transcript = extracted;
-            text = text ? `${text} ${extracted}` : extracted;
-          }
-        } catch (err) {
-          // Optional: surface to UI
-          console.error("Transcribe pipeline failed", err);
-        } finally {
-          transcribing = false;
-          currentStream?.getTracks().forEach(t => t.stop());
-          currentStream = null;
-        }
-      };
+    // TODO: put transcript into your note input or state here
+
+  } catch (err) {
+    console.error('Transcribe pipeline failed', err);
+    // IT: optional user toast here
+  } finally {
+    // IT: clear chunks for next recording if you keep a global chunks array
+    chunks.length = 0;
+  }
+};
 
       // 1s timeslice - improves reliability for long recordings
       mediaRecorder.start(1000);

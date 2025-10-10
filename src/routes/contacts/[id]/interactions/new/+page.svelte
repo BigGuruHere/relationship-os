@@ -200,38 +200,44 @@ async function pollResult(jobId: string): Promise<string> {
         currentStream = null;
       };
 
-// IT: when recording stops, upload bytes and capture the returned jobId
+// IT: when recording stops, upload, poll, put transcript into `text`, and always clear spinner
 mediaRecorder.onstop = async () => {
+  // IT: show spinner while we transcribe
+  transcribing = true;
+
   try {
-    // IT: assemble the Blob from recorded chunks
+    // IT: assemble the Blob from recorded chunks captured in this closure
     const blob = new Blob(chunks, { type: 'audio/webm' });
     const bytes = new Uint8Array(await blob.arrayBuffer());
 
     // IT: upload and get a job id from the server
     const key = crypto.randomUUID();
     const jobId = await uploadInChunks(bytes, key);
-
     console.log('[voice] got jobId', jobId);
-
-    // IT: guard - do not start polling without a job id
-    if (!jobId) {
-      throw new Error('No jobId returned from server');
-    }
+    if (!jobId) throw new Error('No jobId returned from server');
 
     // IT: poll until transcript is ready
-    const transcript = await pollResult(jobId);
-    console.log('[voice] transcript', transcript);
+    const t = await pollResult(jobId);
+    console.log('[voice] transcript', t);
 
-    // TODO: put transcript into your note input or state here
+    // IT: keep a copy in the transcript flag for your "Transcript captured" hint
+    transcript = t;
 
+    // IT: write transcript into the textarea value - append if user typed already
+    text = text ? text + '\n' + t : t;
   } catch (err) {
     console.error('Transcribe pipeline failed', err);
-    // IT: optional user toast here
   } finally {
-    // IT: clear chunks for next recording if you keep a global chunks array
+    // IT: always clear UI state and media resources
+    transcribing = false;       // - hide spinner
+    recording = false;          // - ensure UI shows start button again
+    currentStream?.getTracks().forEach((trk) => trk.stop()); // - free mic
+    currentStream = null;
+    // IT: clear local chunk buffer for the next recording session
     chunks.length = 0;
   }
 };
+
 
       // 1s timeslice - improves reliability for long recordings
       mediaRecorder.start(1000);

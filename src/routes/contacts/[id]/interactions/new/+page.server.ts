@@ -95,6 +95,20 @@ async function saveImpl({ request, locals, params }: SaveArgs) {
     });
     interactionId = created.id;
 
+        // IT: bump the contact's lastContactedAt when a new interaction is created
+    try {
+      await prisma.contact.updateMany({
+        // Tenant guard - only update this user's contact
+        where: { id: contact.id, userId: locals.user!.id },
+        // Use the interaction occurredAt if provided, else now
+        data: { lastContactedAt: occurredAt ?? new Date() }
+      });
+    } catch (e) {
+      // Non fatal - do not block the note save if this fails
+      console.error('[interactions:new] failed to update lastContactedAt', { contactId: contact.id });
+    }
+
+
     // IT: attach any typed tags to the Contact - not to the Interaction
     // - We ignore AI tags here. If the UI wants AI suggestions, it should display chips and let the user click to add.
     const candidates = parsed.data.tags

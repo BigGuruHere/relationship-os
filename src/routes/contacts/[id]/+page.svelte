@@ -23,6 +23,8 @@
   const contact = data?.contact ?? null;
   const tags = contact?.tags ?? [];
   const interactions = data?.interactions ?? [];
+  let showCadenceEditor = false;
+
 
   // Simple date formatting helper
   function fmt(d: string | Date | null | undefined) {
@@ -43,6 +45,66 @@
   <div class="container">
     <div class="card" style="padding:20px; max-width:820px; margin:0 auto;">
       <h1 style="margin-top:0;">{contact.name}</h1>
+
+
+
+
+
+      <div style="padding-bottom:20px;">
+
+    <!-- Header row with a small pill that shows current cadence - click to expand -->
+
+      <button
+        type="button"
+        class="btn"
+        on:click={() => (showCadenceEditor = !showCadenceEditor)}
+        aria-expanded={showCadenceEditor}
+        aria-controls="cadence-editor"
+        title="Edit cadence"
+      >
+        {#if data.contact.reconnectEveryDays}
+          Every {data.contact.reconnectEveryDays} day{data.contact.reconnectEveryDays === 1 ? '' : 's'}
+        {:else}
+          No cadence
+        {/if}
+      </button>
+
+      <!-- IT: quick action to mark as contacted today - posts to ?/markContactedToday -->
+<form method="post" action="?/markContactedToday" style="display:inline;">
+  <button class="btn" title="Set last contacted to now">Mark contacted today</button>
+</form>
+
+
+  
+    {#if showCadenceEditor}
+      <div id="cadence-editor" style="margin-top:10px;">
+        <p class="muted" style="margin:0 0 8px 0;">
+          Set how often you want to reconnect with this contact. Leave empty to clear.
+        </p>
+  
+        <!-- IT: set or clear cadence - posts to ?/setCadence -->
+        <form method="post" action="?/setCadence" style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+          <label for="cadenceDays" style="min-width:120px;">Every N days</label>
+          <input
+            id="cadenceDays"
+            name="days"
+            type="number"
+            min="1"
+            max="3650"
+            placeholder="e.g. 60"
+            value={data.contact.reconnectEveryDays ?? ''}
+            style="width:120px;"
+          />
+          <button class="btn primary">Save</button>
+          <button class="btn" name="days" value="" title="Clear cadence">Clear</button>
+          <button type="button" class="btn" on:click={() => (showCadenceEditor = false)}>Close</button>
+        </form>
+      </div>
+    {/if}
+  </div>
+
+  
+
 
       <div class="grid">
         <div><strong>Email</strong></div>
@@ -148,4 +210,26 @@
     background: var(--primary, #111);
     color: #fff;
   }
+
+  /* reuse your existing btn styles - this tweaks size to stay compact */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 10px;
+    border-radius: 8px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    text-decoration: none;
+    cursor: pointer;
+  }
+  .btn:hover { background: var(--surface-3); }
+  .btn.primary {
+    background: var(--accent);
+    color: white;
+    border-color: var(--accent);
+  }
+  .btn.primary:hover { filter: brightness(0.95); }
+  .muted { color: var(--muted); }
 </style>

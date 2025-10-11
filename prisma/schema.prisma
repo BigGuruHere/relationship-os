@@ -14,8 +14,8 @@ generator client {
 }
 
 datasource db {
-  provider          = "postgresql"           // Using Postgres
-  url               = env("DATABASE_URL")    // Connection string from your .env
+  provider          = "postgresql" // Using Postgres
+  url               = env("DATABASE_URL") // Connection string from your .env
   shadowDatabaseUrl = env("SHADOW_DATABASE_URL") // optional - only used by migrate dev
 }
 
@@ -26,12 +26,12 @@ datasource db {
 // - Primary account for a single tenant
 // - Email is unique per deployment
 model User {
-  id           String    @id @default(uuid())         // pk stored as text uuid
-  email        String    @unique                      // login identifier
-  passwordHash   String?   // was String
+  id           String  @id @default(uuid()) // pk stored as text uuid
+  email        String  @unique // login identifier
+  passwordHash String? // was String
 
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   // Owned data - tenant boundaries
   sessions      Session[]
@@ -40,40 +40,41 @@ model User {
   tags          Tag[]
   oauthAccounts OAuthAccount[] // external accounts linked to this user
 
+  // IT: back-relation for one-shot reminders
+  reminders Reminder[]
 }
 
 // PURPOSE: link external OAuth providers like Google to a local User
 model OAuthAccount {
-  id                String   @id @default(uuid()) // pk
+  id String @id @default(uuid()) // pk
 
-  userId            String
-  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  provider          String   // e.g. "google"
-  providerAccountId String   // stable provider user id - for Google this is the "sub" claim
-  email             String?  // convenience copy of provider email
-  accessToken       String?  // optional if you request additional API scopes
-  refreshToken      String?  // optional if you request offline access
+  provider          String // e.g. "google"
+  providerAccountId String // stable provider user id - for Google this is the "sub" claim
+  email             String? // convenience copy of provider email
+  accessToken       String? // optional if you request additional API scopes
+  refreshToken      String? // optional if you request offline access
   expiresAt         DateTime?
 
-  createdAt         DateTime @default(now())
+  createdAt DateTime @default(now())
 
   @@unique([provider, providerAccountId]) // prevent duplicate links
   @@index([userId])
 }
 
-
 // MODEL: Session
 // - Stores session token hash and expiry
 // - tokenHash is a server side HMAC of a random token sent to the browser
 model Session {
-  id         String   @id @default(uuid())                   // pk
-  userId     String
-  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id     String @id @default(uuid()) // pk
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  tokenHash  String   @unique                                // HMAC of random token
-  createdAt  DateTime @default(now())
-  expiresAt  DateTime                                        // absolute expiry
+  tokenHash String   @unique // HMAC of random token
+  createdAt DateTime @default(now())
+  expiresAt DateTime // absolute expiry
 
   @@index([userId])
 }
@@ -94,24 +95,24 @@ enum AssignedBy {
 
 // IT: Tag - pgvector tracked by Prisma without a native type
 model Tag {
-  id        String   @id @default(uuid())
-  userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   name      String
   slug      String
   createdBy CreatedBy
-  createdAt DateTime @default(now())
+  createdAt DateTime  @default(now())
 
   // IT: pgvector column - Prisma tracks but does not parse
   embeddingVec Unsupported("vector")? @map("embedding_vec")
 
   mergedIntoId String?
-  mergedInto   Tag?   @relation(name: "TagMerge", fields: [mergedIntoId], references: [id])
-  mergedFrom   Tag[]  @relation(name: "TagMerge")
+  mergedInto   Tag?    @relation(name: "TagMerge", fields: [mergedIntoId], references: [id])
+  mergedFrom   Tag[]   @relation(name: "TagMerge")
 
-  aliases      TagAlias[]
-  contacts     ContactTag[]
+  aliases  TagAlias[]
+  contacts ContactTag[]
 
   @@unique([userId, name])
   @@unique([userId, slug])
@@ -119,23 +120,20 @@ model Tag {
   @@map("Tag")
 }
 
-
-
-
 // ---------------------------------------------------------------------------
 // MODEL: TagAlias
 // Alternative names mapped to a Tag - tenant scoped implicitly via Tag.userId
 // ---------------------------------------------------------------------------
 model TagAlias {
-  id    String @id @default(uuid())
+  id String @id @default(uuid())
 
   tagId String
   tag   Tag    @relation(fields: [tagId], references: [id], onDelete: Cascade)
 
-  alias String                     // human facing alias
-  slug  String                     // normalized alias for lookups
+  alias String // human facing alias
+  slug  String // normalized alias for lookups
 
-  @@unique([tagId, slug])          // alias slug unique per tag
+  @@unique([tagId, slug]) // alias slug unique per tag
 }
 
 // ---------------------------------------------------------------------------
@@ -143,7 +141,7 @@ model TagAlias {
 // Encrypted PII plus deterministic HMAC index columns - tenant scoped
 // ---------------------------------------------------------------------------
 model Contact {
-  id     String @id @default(uuid()) // pk
+  id String @id @default(uuid()) // pk
 
   // Tenant ownership - required
   userId String
@@ -153,23 +151,35 @@ model Contact {
   fullNameEnc String
   emailEnc    String?
   phoneEnc    String?
+  companyEnc  String? // IT: new
 
   // Deterministic indexable tokens - used in WHERE clauses
   fullNameIdx String
   emailIdx    String? @unique // unique when present - Postgres allows multiple NULLs
   phoneIdx    String?
+  companyIdx  String? // IT: new
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  // IT: new - how often to reconnect in days, null means no cadence
+  reconnectEveryDays Int? // e.g. 60
+
+  // IT: new - when we last interacted - maintained by server on interaction create
+  lastContactedAt DateTime? // used to compute next reconnect
 
   // Relations
   interactions Interaction[]
   tags         ContactTag[]
 
+  // IT: back-relation for one-shot reminders
+  reminders Reminder[]
+
   // Indexes for search and tenancy
   @@index([userId])
   @@index([fullNameIdx])
   @@index([phoneIdx])
+  @@index([companyIdx]) // IT: new
 }
 
 // ---------------------------------------------------------------------------
@@ -177,9 +187,9 @@ model Contact {
 // Minimal history entry linked to a Contact - encrypted raw text - tenant scoped
 // ---------------------------------------------------------------------------
 model Interaction {
-  id        String  @id @default(uuid())
-  userId    String                               // tenant owner - required
-  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id     String @id @default(uuid())
+  userId String // tenant owner - required
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   contactId String
   contact   Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
@@ -216,11 +226,11 @@ model InteractionEmbedding {
 // Composite primary key prevents duplicate links
 // ---------------------------------------------------------------------------
 model ContactTag {
-  contactId  String
-  tagId      String
+  contactId String
+  tagId     String
 
-  contact    Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
-  tag        Tag     @relation(fields: [tagId], references: [id], onDelete: Cascade)
+  contact Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  tag     Tag     @relation(fields: [tagId], references: [id], onDelete: Cascade)
 
   assignedBy AssignedBy
   assignedAt DateTime   @default(now()) // When the link was created
@@ -229,3 +239,26 @@ model ContactTag {
   @@index([tagId])
 }
 
+// IT: one-shot reminders with optional auto-roll if you want later
+model Reminder {
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  contactId String
+  contact   Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  // IT: due date for notification
+  dueAt DateTime
+
+  // IT: optional note like "send deck"
+  note String?
+
+  // IT: status - completed when user marks done
+  completedAt DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@index([userId, dueAt])
+  @@index([userId, contactId, dueAt])
+}

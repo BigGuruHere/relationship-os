@@ -6,7 +6,7 @@
 
 <script lang="ts">
     import "../app.css"; // ensure global styles load
-    export let data: { user: { id: string; email: string } | null };
+    export let data: { user: { id: string; email: string } | null; reconnectDue: number };
   </script>
   
   <div class="layout">
@@ -36,6 +36,21 @@
       <a class="btn primary icon" href="/contacts/new" aria-label="Add Contact">
         <span class="btn-icon" aria-hidden="true">➕</span>
       </a>
+
+      {#if data.user}
+      <div class="nav-right">
+        <a href="/reconnect" class="btn">
+          Reconnect
+          {#if data.reconnectDue > 0}
+            <span class="pill">{data.reconnectDue}</span>
+          {/if}
+        </a>
+        <form method="post" action="/auth/logout">
+          <button class="btn">Logout</button>
+        </form>
+      </div>
+
+    {/if}
 
 <!-- back to login -->
 <form method="POST" action="/auth/logout?redirect=/auth/login">
@@ -81,6 +96,19 @@
         <a class="nav-link" href="/search">🔎 Search</a>
         {#if data.user}
           <a class="nav-link" href="/contacts/new">➕ Add Contact</a>
+          {#if data.user}
+          <div class="nav-right">
+            <a href="/reconnect" class="btn">
+              Reconnect
+              {#if data.reconnectDue > 0}
+                <span class="pill">{data.reconnectDue}</span>
+              {/if}
+            </a>
+            <form method="post" action="/auth/logout">
+              <button class="btn">Logout</button>
+            </form>
+          </div>
+        {/if}
           <form method="POST" action="/auth/logout">
             <button class="btn" type="submit" style="width:100%;">Logout</button>
           </form>
@@ -145,6 +173,42 @@
   display: inline-flex;   /* comment: aligns with other .btn items */
   margin: 0;              /* comment: remove default margins */
 }
+
+.topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface-1);
+  }
+  .brand { font-weight: 600; text-decoration: none; color: var(--text); }
+  .nav-right { display: flex; align-items: center; gap: 8px; }
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 10px;
+    border-radius: 8px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    text-decoration: none;
+    cursor: pointer;
+  }
+  .btn:hover { background: var(--surface-3); }
+  .pill {
+    display: inline-block;
+    min-width: 20px;
+    padding: 2px 6px;
+    border-radius: 9999px;
+    font-size: 12px;
+    text-align: center;
+    background: #e5f4ff;
+    color: #0369a1;
+    border: 1px solid #bae6fd;
+  }
 
   </style>
   

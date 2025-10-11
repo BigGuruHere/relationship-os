@@ -2,26 +2,31 @@
 <script lang="ts">
   // PURPOSE:
   // - New note UI with voice record, summarize, and save.
-  // - Lower quality constraints and 1s timeslice keep files small and reliable.
-  // - Chunked upload avoids body size limits.
-  // - Async server job returns a jobId, client polls for result, so UX is snappy.
+  // - Stream-upload chunks while recording so transcription starts faster.
+  // - Final tiny request sends last=1 to enqueue the job and return { jobId }.
   //
-  // All IT code is commented. No decryption on client.
+  // SECURITY:
+  // - No decryption on client.
+  // - Server endpoints require login.
 
   export let form;
 
-  // Form fields
-  let text = form?.draft?.text ?? "";
-  let channel = form?.draft?.channel ?? "note";
-  let occurredAt = form?.draft?.occurredAt ?? "";
-  let summary = form?.draft?.summary ?? "";
-  let tags = form?.draft?.tags?.join(", ") ?? "";
+  // Form fields - bound to inputs
+  let text = form?.draft?.text ?? '';
+  let channel = form?.draft?.channel ?? 'note';
+  let occurredAt = form?.draft?.occurredAt ?? '';
+  let summary = form?.draft?.summary ?? '';
+  let tags = form?.draft?.tags?.join(', ') ?? '';
 
   // Recorder state
   let mediaRecorder: MediaRecorder | null = null;
   let currentStream: MediaStream | null = null;
   let recording = false;
-  let transcript = "";
+  let transcript = '';
+
+  // Upload streaming state
+  let uploadKey = '';   // assembly key used by the server to collect chunks
+  let nextIndex = 0;    // sequential index for each chunk we send
 
   // UI flags
   let transcribing = false;
@@ -30,142 +35,114 @@
 
   // Choose recorder mime by capability
   function pickRecorderMime(): string {
-    const preferred = "audio/webm;codecs=opus"; // Chrome or Android
-    const fallback = "audio/mp4";               // iOS Safari often uses mp4
+    const preferred = 'audio/webm;codecs=opus'; // Chrome or Android
+    const fallback = 'audio/mp4';               // iOS Safari often uses mp4
     const MR: any = (window as any).MediaRecorder;
-    if (MR && typeof MR.isTypeSupported === "function" && MR.isTypeSupported(preferred)) return preferred;
+    if (MR && typeof MR.isTypeSupported === 'function' && MR.isTypeSupported(preferred)) return preferred;
     return fallback;
   }
 
-  // Map mime to a friendly extension for naming
-  function extFromMime(mime: string): string {
-    if (!mime) return "webm";
-    const m = mime.toLowerCase();
-    if (m.includes("webm")) return "webm";
-    if (m.includes("mp4")) return "mp4";
-    if (m.includes("m4a")) return "m4a";
-    if (m.includes("wav")) return "wav";
-    if (m.includes("ogg")) return "ogg";
-    if (m.includes("mpeg")) return "mp3";
-    return "webm";
-  }
+  // -----------------------
+  // Summarize - calls /api/summarize
+  // -----------------------
+  async function summarize() {
+    try {
+      summarizing = true;
 
-  // Minimal uuid v4
-  function uuidv4() {
-    return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, c => {
-      const r = (Math.random() * 16) | 0;
-      const v = c === "x" ? r : (r & 0x3) | 0x8;
-      return v.toString(16);
-    });
+      const input = String(text || '').trim();
+      if (!input) {
+        console.warn('[summarize] no text to summarize');
+        return;
+      }
+
+      const resp = await fetch('/api/summarize', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: input })
+      });
+
+      let data: any = {};
+      try {
+        data = await resp.json();
+      } catch {
+        console.error('[summarize] non json response');
+        return;
+      }
+
+      if (!resp.ok) {
+        console.error('[summarize] server error', data?.error || 'Unknown error');
+        return;
+      }
+
+      // Server normalizes summary to a plain string
+      summary = typeof data.summary === 'string' ? data.summary : '';
+
+      // Server also returns suggestedTags plus a tags string list for backward compatibility
+      if (Array.isArray(data.tags) && data.tags.length > 0) {
+        tags = data.tags.map((t: any) => String(t || '')).filter(Boolean).join(', ');
+      } else if (Array.isArray(data.suggestedTags)) {
+        const names = data.suggestedTags.map((t: any) => String(t?.name || '')).filter(Boolean);
+        if (names.length > 0) tags = names.join(', ');
+      }
+    } catch (err) {
+      console.error('Summarize failed', err);
+    } finally {
+      summarizing = false;
+    }
   }
 
   // -----------------------
-  // Chunked upload + async job
+  // Transcription helpers
   // -----------------------
 
-  // Use a chunk size under the 512 KB server limit to reduce request count
-  const CHUNK_SIZE = 480 * 1024; // 384 KB
-
-  // Upload a Blob or File in sequential chunks to /api/upload-chunk
-  // The server assembles and queues transcription and responds with { jobId } on the last chunk.
-// IT: uploadInChunks - sends raw bytes to /api/upload-chunk with key, index, and last flags
-// - Adds detailed logs so we can see server responses
-// - Ensures last=1 is sent on the final chunk
-async function uploadInChunks(bytes: Uint8Array, key: string, chunkSize = 256 * 1024): Promise<string> {
-  // IT: split into chunks
-  const chunks: Uint8Array[] = [];
-  for (let o = 0; o < bytes.length; o += chunkSize) {
-    chunks.push(bytes.subarray(o, Math.min(o + chunkSize, bytes.length)));
-  }
-
-  let jobId = '';
-  for (let i = 0; i < chunks.length; i++) {
-    const last = i === chunks.length - 1;
-
-    // IT: build URL with required query params
-    const qs = new URLSearchParams({
-      key,
-      index: String(i),
-      last: last ? '1' : '0'
-    });
-    const url = `/api/upload-chunk?${qs.toString()}`;
-
-    // IT: send raw chunk
-    const res = await fetch(url, {
+  // Send one chunk - index increments per chunk, last tells server to enqueue job
+  async function uploadChunk(key: string, index: number, last: boolean, bytes: Uint8Array) {
+    const qs = new URLSearchParams({ key, index: String(index), last: last ? '1' : '0' });
+    const res = await fetch(`/api/upload-chunk?${qs.toString()}`, {
       method: 'POST',
       headers: { 'content-type': 'application/octet-stream' },
-      body: chunks[i]
+      body: bytes
     });
-
-    let data: any = null;
-    try {
-      data = await res.json();
-    } catch {
-      // IT: not JSON - try to read text for diagnostics
-      const text = await res.text().catch(() => '');
-      console.error('[voice] non-json response', { status: res.status, text });
-      throw new Error(`upload failed - status ${res.status}`);
-    }
-
-    console.log('[voice] chunk result', {
-      i,
-      last,
-      status: res.status,
-      data
-    });
-
-    // IT: on the final chunk we expect 202 and a jobId
-    if (last) {
-      if (res.status === 202 && data?.jobId) {
-        jobId = String(data.jobId);
-      } else {
-        throw new Error('No jobId returned from server');
-      }
-    } else {
-      // IT: non-final chunks should return ok: true
-      if (!res.ok || data?.ok !== true) {
-        throw new Error(`chunk ${i} failed - status ${res.status}`);
-      }
-    }
-  }
-
-  return jobId;
-}
-
-
-// IT: poll the server for a finished transcript using the returned jobId
-async function pollResult(jobId: string): Promise<string> {
-  if (!jobId) throw new Error('No jobId to poll');
-
-  for (let i = 0; i < 60; i++) {
-    const res = await fetch(`/api/transcribe-result?jobId=${encodeURIComponent(jobId)}`);
     let data: any = {};
     try {
       data = await res.json();
     } catch {
-      // IT: keep polling on non JSON
+      // swallow - caller will treat as error if needed
     }
-
-    console.log('[voice] poll', { i, status: res.status, data });
-
-    if (res.ok && data?.status === 'done') {
-      return String(data.transcript || '');
-    }
-    if (res.status === 500 || data?.status === 'error') {
-      throw new Error(`Polling failed status=${res.status}`);
-    }
-    await new Promise((r) => setTimeout(r, 1500));
+    return { status: res.status, data };
   }
-  throw new Error('Polling timed out');
-}
+
+  // Poll /api/transcribe-result until status is done or error
+  async function pollResult(jobId: string): Promise<string> {
+    if (!jobId) throw new Error('No jobId to poll');
+
+    for (let i = 0; i < 60; i++) {
+      const res = await fetch(`/api/transcribe-result?jobId=${encodeURIComponent(jobId)}`);
+      let data: any = {};
+      try {
+        data = await res.json();
+      } catch {
+        // non json - keep polling
+      }
+
+      if (res.ok && data?.status === 'done') {
+        return String(data.transcript || '');
+      }
+      if (res.status === 500 || data?.status === 'error') {
+        throw new Error(`Polling failed status=${res.status}`);
+      }
+      await new Promise((r) => setTimeout(r, 1500));
+    }
+    throw new Error('Polling timed out');
+  }
 
   // -----------------------
-  // Recorder lifecycle
+  // Recorder lifecycle - stream upload while recording
   // -----------------------
 
   async function startRecording() {
     try {
-      // Lower quality to shrink files - browsers may treat as hints
+      // Lower quality hints to shrink files - browsers may treat these as hints only
       const constraints: MediaStreamConstraints = {
         audio: {
           channelCount: 1,
@@ -183,10 +160,23 @@ async function pollResult(jobId: string): Promise<string> {
       const mimeType = pickRecorderMime();
       mediaRecorder = new MediaRecorder(currentStream, { mimeType });
 
-      const chunks: BlobPart[] = [];
+      // Initialize streaming state for this session
+      uploadKey = crypto.randomUUID();
+      nextIndex = 0;
 
-      mediaRecorder.ondataavailable = (e) => {
-        if (e.data && e.data.size > 0) chunks.push(e.data);
+      // Stream each emitted blob in smaller sub-chunks so each request is modest size
+      mediaRecorder.ondataavailable = async (e) => {
+        if (!e.data || e.data.size === 0) return;
+        const full = new Uint8Array(await e.data.arrayBuffer());
+        const CHUNK = 256 * 1024; // 256 KB per request is a good balance
+
+        for (let o = 0; o < full.length; o += CHUNK) {
+          const part = full.subarray(o, Math.min(o + CHUNK, full.length));
+          const { status, data } = await uploadChunk(uploadKey, nextIndex++, false, part);
+          if (!(status >= 200 && status < 300) || data?.ok !== true) {
+            console.error('[voice] stream chunk failed', { status, data });
+          }
+        }
       };
 
       mediaRecorder.onstart = () => {
@@ -196,120 +186,54 @@ async function pollResult(jobId: string): Promise<string> {
       mediaRecorder.onerror = () => {
         recording = false;
         transcribing = false;
-        currentStream?.getTracks().forEach(t => t.stop());
+        currentStream?.getTracks().forEach((t) => t.stop());
         currentStream = null;
       };
 
-// IT: when recording stops, upload, poll, put transcript into `text`, and always clear spinner
-mediaRecorder.onstop = async () => {
-  // IT: show spinner while we transcribe
-  transcribing = true;
+      // When stopped, send the final "last=1" request and start polling
+      mediaRecorder.onstop = async () => {
+        transcribing = true;
+        try {
+          // Final tiny request that flips the server into transcription and returns a jobId
+          const { status, data } = await uploadChunk(uploadKey, nextIndex, true, new Uint8Array());
+          if (status !== 202 || !data?.jobId) throw new Error('No jobId from server on last');
 
-  try {
-    // IT: assemble the Blob from recorded chunks captured in this closure
-    const blob = new Blob(chunks, { type: 'audio/webm' });
-    const bytes = new Uint8Array(await blob.arrayBuffer());
+          const jobId: string = String(data.jobId);
+          const t = await pollResult(jobId);
 
-    // IT: upload and get a job id from the server
-    const key = crypto.randomUUID();
-    const jobId = await uploadInChunks(bytes, key);
-    console.log('[voice] got jobId', jobId);
-    if (!jobId) throw new Error('No jobId returned from server');
+          // Keep a copy and write into the main textarea - append if the user typed already
+          transcript = t;
+          text = text ? text + '\n' + t : t;
+        } catch (err) {
+          console.error('Transcribe pipeline failed', err);
+        } finally {
+          transcribing = false;
+          recording = false;
+          currentStream?.getTracks().forEach((trk) => trk.stop());
+          currentStream = null;
+        }
+      };
 
-    // IT: poll until transcript is ready
-    const t = await pollResult(jobId);
-    console.log('[voice] transcript', t);
-
-    // IT: keep a copy in the transcript flag for your "Transcript captured" hint
-    transcript = t;
-
-    // IT: write transcript into the textarea value - append if user typed already
-    text = text ? text + '\n' + t : t;
-  } catch (err) {
-    console.error('Transcribe pipeline failed', err);
-  } finally {
-    // IT: always clear UI state and media resources
-    transcribing = false;       // - hide spinner
-    recording = false;          // - ensure UI shows start button again
-    currentStream?.getTracks().forEach((trk) => trk.stop()); // - free mic
-    currentStream = null;
-    // IT: clear local chunk buffer for the next recording session
-    chunks.length = 0;
-  }
-};
-
-
-      // 1s timeslice - improves reliability for long recordings
+      // 1s timeslice - reliable on long recordings and enables progressive ondataavailable
       mediaRecorder.start(1000);
     } catch (err) {
-      currentStream?.getTracks().forEach(t => t.stop());
+      currentStream?.getTracks().forEach((t) => t.stop());
       currentStream = null;
       mediaRecorder = null;
       recording = false;
-      console.error("startRecording error", err);
+      console.error('startRecording error', err);
     }
   }
 
   function stopRecording() {
     const state = mediaRecorder?.state;
-    if (state !== "recording") return;
-    transcribing = true;
+    if (state !== 'recording') return;
     try {
       mediaRecorder?.stop();
     } catch (err) {
-      transcribing = false;
-      console.error("stopRecording error", err);
+      console.error('stopRecording error', err);
     }
   }
-
-// Summarize
-async function summarize() {
-  try {
-    summarizing = true;
-
-    const input = String(text || '').trim();
-    if (!input) {
-      console.warn('[summarize] no text to summarize');
-      return;
-    }
-
-    const resp = await fetch('/api/summarize', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text: input })
-    });
-
-    let data: any = {};
-    try {
-      data = await resp.json();
-    } catch {
-      console.error('[summarize] non json response');
-      return;
-    }
-
-    if (!resp.ok) {
-      console.error('[summarize] server error', data?.error || 'Unknown error');
-      return;
-    }
-
-    // Safe coercion - avoid calling .trim on non strings
-    const s = typeof data.summary === 'string' ? data.summary : '';
-    summary = s;
-
-    // Server returns suggestedTags: Array<{ id, name, score }>
-    if (Array.isArray(data.suggestedTags)) {
-      const names = data.suggestedTags.map((t: any) => String(t?.name || '')).filter(Boolean);
-      if (names.length > 0) {
-        tags = names.join(', ');
-      }
-    }
-  } catch (err) {
-    console.error('Summarize failed', err);
-  } finally {
-    summarizing = false;
-  }
-}
-
 
   function handleSubmit() {
     saving = true;
@@ -321,6 +245,7 @@ async function summarize() {
     <h1>Add note</h1>
 
     <form method="post" on:submit={handleSubmit}>
+      <!-- hidden fields for AI generated content -->
       <input type="hidden" name="summary" value={summary} />
       <input type="hidden" name="tags" value={tags} />
       <input type="hidden" name="tagsSource" value="ai" />
@@ -346,12 +271,7 @@ async function summarize() {
         <div style="display:flex; gap:10px; align-items:center; margin-bottom:8px;">
           {#if !recording}
             <button type="button" class="btn" on:click={startRecording} disabled={transcribing || saving}>
-              {#if transcribing}
-                <span class="spinner" aria-hidden="true"></span>
-                <span>Preparing mic...</span>
-              {:else}
-                <span>🎤 Start Recording</span>
-              {/if}
+              <span>🎤 Start Recording</span>
             </button>
           {:else}
             <button type="button" class="btn" on:click={stopRecording} disabled={saving}>
@@ -436,4 +356,34 @@ async function summarize() {
   }
 
   .muted { color: var(--muted); }
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    border-radius: 8px;
+    background: var(--surface-2);
+    color: var(--text);
+    text-decoration: none;
+    border: 1px solid var(--border);
+    cursor: pointer;
+  }
+  .btn:hover { background: var(--surface-3); }
+  .btn.primary {
+    background: var(--accent);
+    color: white;
+    border-color: var(--accent);
+  }
+  .btn.primary:hover { filter: brightness(0.95); }
+
+  .field { margin: 12px 0; }
+  label { display: block; margin-bottom: 6px; }
+  textarea, input, select {
+    width: 100%;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px;
+    font: inherit;
+  }
 </style>

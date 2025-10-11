@@ -262,28 +262,54 @@ mediaRecorder.onstop = async () => {
     }
   }
 
-  // Summarize
-  async function summarize() {
-    try {
-      summarizing = true;
-      const resp = await fetch("/api/summarize", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text })
-      });
-      const data = await resp.json().catch(() => ({} as any));
-      if (!resp.ok) {
-        console.error("Summarize failed", data?.error || "Unknown error");
-        return;
-      }
-      summary = (data.summary || "").trim();
-      tags = Array.isArray(data.tags) ? data.tags.join(", ") : (tags || "");
-    } catch (err) {
-      console.error("Summarize failed", err);
-    } finally {
-      summarizing = false;
+// Summarize
+async function summarize() {
+  try {
+    summarizing = true;
+
+    const input = String(text || '').trim();
+    if (!input) {
+      console.warn('[summarize] no text to summarize');
+      return;
     }
+
+    const resp = await fetch('/api/summarize', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: input })
+    });
+
+    let data: any = {};
+    try {
+      data = await resp.json();
+    } catch {
+      console.error('[summarize] non json response');
+      return;
+    }
+
+    if (!resp.ok) {
+      console.error('[summarize] server error', data?.error || 'Unknown error');
+      return;
+    }
+
+    // Safe coercion - avoid calling .trim on non strings
+    const s = typeof data.summary === 'string' ? data.summary : '';
+    summary = s;
+
+    // Server returns suggestedTags: Array<{ id, name, score }>
+    if (Array.isArray(data.suggestedTags)) {
+      const names = data.suggestedTags.map((t: any) => String(t?.name || '')).filter(Boolean);
+      if (names.length > 0) {
+        tags = names.join(', ');
+      }
+    }
+  } catch (err) {
+    console.error('Summarize failed', err);
+  } finally {
+    summarizing = false;
   }
+}
+
 
   function handleSubmit() {
     saving = true;

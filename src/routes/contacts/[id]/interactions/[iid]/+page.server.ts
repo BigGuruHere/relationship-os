@@ -19,17 +19,13 @@ function slugify(input: string): string {
     .slice(0, 64);
 }
 
-export const load: PageServerLoad = async ({ params, locals }) => {
-  // Require login
+export const load: PageServerLoad = async ({ locals, params }) => {
+  // require login
   if (!locals.user) throw redirect(303, '/auth/login');
 
-  const userId = locals.user.id;
-  const contactId = params.id;
-  const interactionId = params.iid;
-
-  // Fetch the interaction for this tenant - include contact and tags
+  // fetch the interaction - tags field was removed with InteractionTag
   const row = await prisma.interaction.findFirst({
-    where: { id: interactionId, userId },
+    where: { id: params.iid, userId: locals.user.id },
     select: {
       id: true,
       channel: true,
@@ -37,39 +33,44 @@ export const load: PageServerLoad = async ({ params, locals }) => {
       rawTextEnc: true,
       summaryEnc: true,
       contactId: true,
-      contact: { select: { fullNameEnc: true } },
-      tags: {
-        select: { tag: { select: { name: true, slug: true } } },
-        orderBy: { assignedAt: 'asc' }
+      contact: {
+        select: { fullNameEnc: true }
       }
+      // removed: tags: { ... }
     }
   });
   if (!row) throw error(404, 'Interaction not found');
 
-  // Decrypt minimal fields for display
-  let contactName = '';
+  // decrypt safe fields
+  let contactName = '(name unavailable)';
+  try {
+    contactName = decrypt(row.contact.fullNameEnc, 'contact.full_name');
+  } catch {}
+
   let text = '';
+  try {
+    text = row.rawTextEnc ? decrypt(row.rawTextEnc, 'interaction.raw_text') : '';
+  } catch {}
+
   let summary = '';
-  try { contactName = row.contact?.fullNameEnc ? decrypt(row.contact.fullNameEnc, 'contact.full_name') : ''; } catch {}
-  try { text = row.rawTextEnc ? decrypt(row.rawTextEnc, 'interaction.raw_text') : ''; } catch {}
-  try { summary = row.summaryEnc ? decrypt(row.summaryEnc, 'interaction.summary') : ''; } catch {}
+  try {
+    summary = row.summaryEnc ? decrypt(row.summaryEnc, 'interaction.raw_text') : '';
+  } catch {}
 
   return {
     interaction: {
       id: row.id,
-      contactId: row.contactId,
-      contactName,
       channel: row.channel,
       occurredAt: row.occurredAt,
       text,
-      summary
-    },
-    // Flatten to what your chip UI expects
-    tags: row.tags.map((t) => ({ name: t.tag.name, slug: t.tag.slug })),
-    // Absolute href back to this page - used for safe redirects
-    selfHref: `/contacts/${contactId}/interactions/${interactionId}`
+      summary,
+      contactId: row.contactId,
+      contactName
+      // removed: tags
+    }
   };
 };
+
 
 export const actions: Actions = {
   // IT: hard delete this note, then redirect back to its parent contact

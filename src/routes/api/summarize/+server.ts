@@ -1,53 +1,103 @@
-// IT: summarize endpoint - return vector-based suggestions from existing tags only
-import { json } from '@sveltejs/kit';
+// src/routes/api/summarize/+server.ts
+// PURPOSE: Summarize note text and suggest tags from the existing Tag list.
+// INPUT:
+// - { text: string }  - preferred for new notes before save
+// - or { interactionId: string } - will decrypt the note on the server
+// OUTPUT:
+// - { summary: string, suggestedTags: Array<{ id: string; name: string; score: number }> }
+//
+// SECURITY: Requires login. All queries are tenant scoped by userId.
+// NOTES: Uses pgvector to rank Tag.embedding_vec against a fresh embedding of the input text.
+
+import { json, redirect } from '@sveltejs/kit';
+import type { RequestHandler } from './$types';
 import { prisma } from '$lib/db';
-import { summarizeText } from '$lib/ai';                 // IT: your existing summarizer
-import { suggestTagsForInteraction } from '$lib/tag_suggestions'; // IT: your vector suggester
 import { decrypt } from '$lib/crypto';
+import { summarizeText } from '$lib/ai';
+import { createEmbeddingForText } from '$lib/embeddings_api';
 
-export const POST = async ({ locals, request }) => {
-  // IT: tenant guard
-  if (!locals.user) {
-    return new Response('Unauthorized', { status: 401 });
-  }
-
-  // IT: read payload
-  const body = await request.json();
-  const interactionId = String(body.interactionId || '');
-  if (!interactionId) {
-    return new Response('interactionId required', { status: 400 });
-  }
-
-// IT: replace the interaction fetch and summary lines with the following
-
-// IT: fetch encrypted raw text with strict tenant scoping
-const interaction = await prisma.interaction.findFirst({
-  where: { id: interactionId, userId: locals.user.id },
-  select: { rawTextEnc: true }
-});
-if (!interaction) {
-  return new Response('Interaction not found', { status: 404 });
+// helper - vector literal for pgvector
+function toVecLiteral(vec: number[]) {
+  return `[${vec.join(',')}]`;
 }
 
-// IT: decrypt on the server only
-const plaintext = decrypt(interaction.rawTextEnc);
+export const POST: RequestHandler = async ({ locals, request }) => {
+  if (!locals.user) throw redirect(303, '/auth/login');
 
-// IT: create the summary from plaintext
-const summary = await summarizeText(plaintext);
+  // parse body
+  let body: any = {};
+  try {
+    body = await request.json();
+  } catch {
+    return json({ error: 'Invalid JSON' }, { status: 400 });
+  }
 
-  // IT: get suggestions from existing tags using pgvector - no persistence here
-  // - suggestTagsForInteraction should already read InteractionEmbedding.vec
-  // - and rank against Tag.embedding_vec for this same tenant
-  const suggestedTags = await suggestTagsForInteraction({
-    userId: locals.user.id,
-    interactionId,
-    topK: 8,        // IT: small list for UI chips
-    minScore: 0.25  // IT: nudge threshold if suggestions feel noisy
-  });
+  const interactionId = String(body.interactionId || '').trim();
+  const textIn = String(body.text || '').trim();
 
-  // IT: return summary plus suggestions - do not write any tag rows here
-  return json({
-    summary,
-    suggestedTags    // IT: array of { id, name, score } or your existing shape
-  });
+  // get plaintext - prefer provided text since new note is not saved yet
+  let plaintext = textIn;
+
+  if (!plaintext && interactionId) {
+    // fetch and decrypt the interaction text if an id is provided
+    const row = await prisma.interaction.findFirst({
+      where: { id: interactionId, userId: locals.user.id },
+      select: { rawTextEnc: true }
+    });
+    if (!row) return json({ error: 'Interaction not found' }, { status: 404 });
+
+    try {
+      plaintext = row.rawTextEnc ? decrypt(row.rawTextEnc, 'interaction.raw_text') : '';
+    } catch {
+      plaintext = '';
+    }
+  }
+
+  if (!plaintext) {
+    return json({ error: 'No text to summarize' }, { status: 400 });
+  }
+
+  // create the summary
+  const rawSummary = await summarizeText(plaintext);
+  const summary =
+  typeof rawSummary === 'string'
+  ? rawSummary
+  : (rawSummary && typeof (rawSummary as any).summary === 'string'
+  ? (rawSummary as any).summary
+  : '');
+  
+  // build tag suggestions by embedding the text and ranking tenant tags
+  let suggestedTags: Array<{ id: string; name: string; score: number }> = [];
+  try {
+    const q = await createEmbeddingForText(plaintext);
+    if (Array.isArray(q) && q.length > 0) {
+      const literal = toVecLiteral(q);
+      const rows = await prisma.$queryRawUnsafe<
+        Array<{ id: string; name: string; score: number }>
+      >(
+        `
+        SELECT t."id",
+               t."name",
+               GREATEST(0, LEAST(1, 1 - (t."embedding_vec" <=> $1::vector))) AS score
+        FROM "Tag" t
+        WHERE t."userId" = $2
+          AND t."embedding_vec" IS NOT NULL
+        ORDER BY t."embedding_vec" <=> $1::vector ASC
+        LIMIT 8
+        `,
+        literal,
+        locals.user.id
+      );
+
+      const MIN = typeof body.minScore === 'number' ? Number(body.minScore) : 0.25;
+      suggestedTags = (rows || [])
+        .filter(r => Number(r.score) >= MIN)
+        .map(r => ({ id: r.id, name: r.name, score: Number(r.score) }));
+    }
+  } catch {
+    // best effort - suggestions can be empty
+  }
+  const tagsList = suggestedTags.map(t => t.name);
+
+  return json({ summary, suggestedTags, tags: tagsList });
 };

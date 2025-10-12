@@ -76,19 +76,29 @@ export const load: PageServerLoad = async ({ params, locals }) => {
     };
   });
 
-  return {
-    contact: {
-      id: row.id,
-      name,
-      email,
-      phone,
-      createdAt: row.createdAt,
-      reconnectEveryDays: row.reconnectEveryDays ?? null,
-      lastContactedAt: row.lastContactedAt ?? null,
-      tags
-    },
-    interactions
-  };
+// IT: fetch open reminders for this contact - due soon to later
+const reminders = await prisma.reminder.findMany({
+  where: { userId: locals.user.id, contactId: params.id, completedAt: null },
+  select: { id: true, dueAt: true, note: true },
+  orderBy: { dueAt: 'asc' }
+});
+
+// ...later in the return
+return {
+  contact: {
+    id: row.id,
+    name,
+    email,
+    phone,
+    createdAt: row.createdAt,
+    reconnectEveryDays: row.reconnectEveryDays ?? null,
+    lastContactedAt: row.lastContactedAt ?? null,
+    tags
+  },
+  interactions,
+  reminders // IT: added
+};
+
 };
 
 
@@ -221,6 +231,94 @@ markContactedToday: async ({ locals, params }) => {
 
   throw redirect(303, `/contacts/${params.id}`);
 },
+
+// IT: create a one-shot reminder for this contact
+createReminder: async ({ request, params, locals }) => {
+  // Comment: require login
+  if (!locals.user) throw redirect(303, '/auth/login');
+
+  // Comment: parse and validate fields from the form
+  const form = await request.formData();
+  const dueAtRaw = String(form.get('dueAt') ?? '').trim();   // expected datetime-local
+  const note = String(form.get('note') ?? '').trim();
+
+  // Comment: datetime-local comes without timezone, treat as local and construct Date
+  if (!dueAtRaw) return fail(400, { error: 'Due date is required' });
+  const dueAt = new Date(dueAtRaw);
+  if (isNaN(dueAt.getTime())) {
+    return fail(400, { error: 'Invalid due date' });
+  }
+
+  // Comment: ensure this contact belongs to the tenant
+  const exists = await prisma.contact.findFirst({
+    where: { id: params.id, userId: locals.user.id },
+    select: { id: true }
+  });
+  if (!exists) return fail(404, { error: 'Contact not found' });
+
+  try {
+    // Comment: insert the reminder - tenant scoped by userId and contactId
+    await prisma.reminder.create({
+      data: {
+        userId: locals.user.id,
+        contactId: params.id,
+        dueAt,
+        note: note || null
+      }
+    });
+  } catch (e) {
+    console.error('[contacts:createReminder] failed', { contactId: params.id, err: e });
+    return fail(500, { error: 'Failed to create reminder' });
+  }
+
+  // Comment: back to the contact page
+  throw redirect(303, `/contacts/${params.id}`);
+},
+
+
+// IT: mark a reminder complete - sets completedAt and bumps lastContactedAt optionally later
+completeReminder: async ({ locals, params, request }) => {
+  if (!locals.user) throw redirect(303, '/auth/login');
+
+  const form = await request.formData();
+  const reminderId = String(form.get('reminderId') ?? '').trim();
+  if (!reminderId) return fail(400, { error: 'Missing reminder id' });
+
+  try {
+    const res = await prisma.reminder.updateMany({
+      where: { id: reminderId, userId: locals.user.id, contactId: params.id, completedAt: null },
+      data: { completedAt: new Date() }
+    });
+    if (!res.count) return fail(404, { error: 'Reminder not found' });
+  } catch (e) {
+    console.error('[contacts:completeReminder] failed', { contactId: params.id, reminderId, err: e });
+    return fail(500, { error: 'Failed to complete reminder' });
+  }
+
+  throw redirect(303, `/contacts/${params.id}`);
+},
+
+// IT: delete a reminder entirely
+deleteReminder: async ({ locals, params, request }) => {
+  if (!locals.user) throw redirect(303, '/auth/login');
+
+  const form = await request.formData();
+  const reminderId = String(form.get('reminderId') ?? '').trim();
+  if (!reminderId) return fail(400, { error: 'Missing reminder id' });
+
+  try {
+    const res = await prisma.reminder.deleteMany({
+      where: { id: reminderId, userId: locals.user.id, contactId: params.id }
+    });
+    if (!res.count) return fail(404, { error: 'Reminder not found' });
+  } catch (e) {
+    console.error('[contacts:deleteReminder] failed', { contactId: params.id, reminderId, err: e });
+    return fail(500, { error: 'Failed to delete reminder' });
+  }
+
+  throw redirect(303, `/contacts/${params.id}`);
+},
+
 
 
 };

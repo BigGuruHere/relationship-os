@@ -6,7 +6,7 @@
 
 <script lang="ts">
     import "../app.css"; // ensure global styles load
-    export let data: { user: { id: string; email: string } | null; reconnectDue: number };
+    export let data: { user: { id: string; email: string } | null; reconnectDue: number; remindersOpenCount: number };
   </script>
   
   <div class="layout">
@@ -49,6 +49,12 @@
           <button class="btn">Logout</button>
         </form>
       </div>
+      <a href="/reminders" class="btn">
+        Reminders
+        {#if data.remindersOpenCount > 0}
+          <span class="pill">{data.remindersOpenCount}</span>
+        {/if}
+      </a>
 
     {/if}
 
@@ -147,9 +153,8 @@
     <div class="mobile-only footer-links">
       <a href="/" aria-label="Home">Contacts</a>
       <span aria-hidden="true">·</span>
-      {#if data.user}
-        <a href="/contacts/new" aria-label="Add Contact">Add Contact</a>
-      {:else}
+      {#if !data.user}
+
         <a href="/auth/login" aria-label="Login">Login</a>
       {/if}
     </div>

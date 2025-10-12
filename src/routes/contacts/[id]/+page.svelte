@@ -24,6 +24,7 @@
   const tags = contact?.tags ?? [];
   const interactions = data?.interactions ?? [];
   let showCadenceEditor = false;
+  let showReminderForm = false;
 
 
   // Simple date formatting helper
@@ -32,27 +33,33 @@
     const dt = typeof d === 'string' ? new Date(d) : d;
     return dt.toLocaleString();
   }
+
+  // IT: local toggle to show or hide the reminder panel
+  let showReminderPanel = false;
+  // IT: derive open count from loader data
+  const openCount: number = Array.isArray(data.reminders) ? data.reminders.length : 0;
 </script>
 
 {#if !contact}
   <div class="container">
-    <div class="card" style="padding:20px; max-width:680px; margin:0 auto;">
+    <div class="card" style="padding:5px; max-width:680px; margin:0 auto;">
       <h1 style="margin-top:0;">Contact not found</h1>
       <p>Head back to the <a href="/">home page</a>.</p>
     </div>
   </div>
 {:else}
   <div class="container">
-    <div class="card" style="padding:20px; max-width:820px; margin:0 auto;">
+    <div class="card" style="padding:20px; max-width:820px; margin:auto;">
       <h1 style="margin-top:0;">{contact.name}</h1>
 
 
 
 
 
-      <div style="padding-bottom:20px;">
+      <div style="">
 
-    <!-- Header row with a small pill that shows current cadence - click to expand -->
+    <!-- Cadence Pill - Header row with a small pill that shows current cadence - click to expand -->
+    <div style="padding-bottom:5px;">
 
       <button
         type="button"
@@ -63,16 +70,33 @@
         title="Edit cadence"
       >
         {#if data.contact.reconnectEveryDays}
-          Every {data.contact.reconnectEveryDays} day{data.contact.reconnectEveryDays === 1 ? '' : 's'}
+          Cadence Every {data.contact.reconnectEveryDays} day{data.contact.reconnectEveryDays === 1 ? '' : 's'}
         {:else}
           No cadence
         {/if}
       </button>
 
-      <!-- IT: quick action to mark as contacted today - posts to ?/markContactedToday -->
+      <button
+      type="button"
+      class="btn"
+      on:click={() => (showReminderPanel = !showReminderPanel)}
+      aria-expanded={showReminderPanel}
+      aria-controls="reminder-panel"
+      title="View or add reminders"
+    >
+      {#if openCount > 0}
+        {openCount} open reminder{openCount === 1 ? '' : 's'}
+      {:else}
+        No open reminders
+      {/if}
+    </button>
+
+            <!-- IT: quick action to mark as contacted today - posts to ?/markContactedToday -->
 <form method="post" action="?/markContactedToday" style="display:inline;">
   <button class="btn" title="Set last contacted to now">Mark contacted today</button>
 </form>
+      </div>
+
 
 
   
@@ -103,9 +127,84 @@
     {/if}
   </div>
 
-  
+
+<!-- IT: compact pill button - click to open the panel -->
+<div style="padding-bottom:20px;">
 
 
+  {#if showReminderPanel}
+    <div id="reminder-panel" style="margin-top:10px;">
+      <p class="muted" style="margin:0 0 8px 0;">
+        Create a one shot reminder or complete any open ones.
+      </p>
+
+      <!-- IT: create reminder form -->
+      <form method="post" action="?/createReminder" style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:10px;">
+        <label for="dueAt" style="min-width:100px;">Due at</label>
+        <input id="dueAt" name="dueAt" type="datetime-local" required style="width:220px;" />
+
+        <label for="note" style="min-width:60px;">Note</label>
+        <input id="note" name="note" type="text" placeholder="e.g. send deck" style="flex:1; min-width:220px;" />
+
+        <button class="btn primary">Save</button>
+        <button type="button" class="btn" on:click={() => (showReminderPanel = false)}>Close</button>
+      </form>
+
+      <!-- IT: open reminders list -->
+      {#if openCount > 0}
+        <table style="width:100%; border-collapse:collapse;">
+          <thead>
+            <tr>
+              <th style="text-align:left; padding:6px 4px;">Due</th>
+              <th style="text-align:left; padding:6px 4px;">Note</th>
+              <th style="padding:6px 4px;"></th>
+            </tr>
+          </thead>
+          <tbody>
+            {#each data.reminders as r}
+              <tr>
+                <td style="padding:6px 4px; white-space:nowrap;">
+                  {new Date(r.dueAt).toLocaleString()}
+                </td>
+                <td style="padding:6px 4px;">{r.note || ''}</td>
+                <td style="padding:6px 4px; display:flex; gap:6px; justify-content:flex-end;">
+                  <form method="post" action="?/completeReminder">
+                    <input type="hidden" name="reminderId" value={r.id} />
+                    <button class="btn" title="Mark done">Done</button>
+                  </form>
+                  <form method="post" action="?/deleteReminder" on:submit={(e) => {
+                    if (!confirm('Delete this reminder')) e.preventDefault();
+                  }}>
+                    <input type="hidden" name="reminderId" value={r.id} />
+                    <button class="btn" title="Delete">Delete</button>
+                  </form>
+                </td>
+              </tr>
+            {/each}
+          </tbody>
+        </table>
+      {:else}
+        <p class="muted" style="margin:6px 0;">No open reminders.</p>
+      {/if}
+    </div>
+  {/if}
+
+
+</div>
+
+
+
+</div>
+
+
+
+
+
+
+
+
+
+<div style="margin-top:12px;margin-left:12px">
       <div class="grid">
         <div><strong>Email</strong></div>
         <div>{contact.email ?? ' - '}</div>
@@ -232,4 +331,23 @@
   }
   .btn.primary:hover { filter: brightness(0.95); }
   .muted { color: var(--muted); }
+
+    /* reuse existing styles */
+    .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 10px;
+    border-radius: 8px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    text-decoration: none;
+    cursor: pointer;
+  }
+  .btn:hover { background: var(--surface-3); }
+  .btn.primary { background: var(--accent); color: white; border-color: var(--accent); }
+  .btn.primary:hover { filter: brightness(0.95); }
+  .muted { color: var(--muted); }
+
 </style>

@@ -29,7 +29,7 @@
   
   <div class="container">
     <div class="card" style="padding:16px; max-width:900px; margin:0 auto;">
-      <h1 style="margin:0 0 8px 0;">Reconnect - due now</h1>
+      <h1 style="margin:0 0 8px 0;">Reconnect</h1>
       <p class="muted" style="margin:0 0 16px 0;">As of {fmt(data.now)}</p>
   
       {#if data.due.length === 0}

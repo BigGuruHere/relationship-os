@@ -1,93 +1,197 @@
-<!-- src/routes/search/+page.svelte -->
 <script lang="ts">
-  // PURPOSE: Simple semantic search UI - GET form, list results, no diagnostics.
+  // src/routes/search/+page.svelte
+  // PURPOSE: Render a scoped search UI and results.
+  // SECURITY: No decryption in the client - server returns safe display strings only.
+
+  // SvelteKit provides data from +page.server.ts
   export let data: {
     q: string;
-    results: Array<{
-      id: string;
-      contactId: string;
-      contactName: string;
-      channel: string;
-      occurredAt: string | Date | null;
-      score: number;
-      preview: string;
-    }>;
+    scope: 'all' | 'contacts' | 'notes' | 'tags';
+    results: {
+      contacts: Array<{ id: string; name: string; email: string; phone: string; company: string; tags: { name: string }[] }>;
+      notes: Array<{ id: string; contactId: string; contactName: string; occurredAt: string | Date; preview: string }>;
+      tags: Array<{ id: string; name: string; contactCount: number }>;
+    };
   };
 
-  // Format timestamp safely for display.
-  function fmt(d: string | Date | null) {
-    if (!d) return '';
-    const dt = typeof d === 'string' ? new Date(d) : d;
-    return dt.toLocaleString();
-  }
+  // IT: local bindings for the form controls - initialized from server data so the UI reflects the URL
+  let q = data.q || '';
+  let scope: 'all' | 'contacts' | 'notes' | 'tags' = (data.scope || 'all') as any;
+
+  // IT: submit handler - we use plain GET so the URL is shareable - no work needed here
+  function submit(_evt: Event) {}
 </script>
 
 <div class="container">
-  <!-- Page header -->
-  <div class="card" style="padding:20px; margin-bottom:20px;">
-    <h1 style="margin:0; font-size:1.8rem; font-weight:600;">Search Notes</h1>
-  </div>
-
-  <!-- Search form -->
-  <div class="card" style="padding:16px; margin-bottom:16px;">
-    <!-- GET keeps q in the URL so server load reads it reliably -->
-    <form method="get" style="display:flex; gap:10px; align-items:center;">
+  <div class="card" style="padding:16px; margin-bottom:12px;">
+    <!-- Search controls row - input grows, dropdown has a max width, button is content sized -->
+    <form method="GET" on:submit={submit} class="search-bar">
       <input
+        type="text"
         name="q"
-        value={data.q}
-        placeholder="Search your notes - try a word or a phrase"
-        aria-label="Search notes"
+        bind:value={q}
+        placeholder="Search notes, contacts, or tags"
+        class="search-input"
+        aria-label="Search query"
       />
+
+      <select
+        name="scope"
+        bind:value={scope}
+        aria-label="Search scope"
+        title="Search scope"
+        class="scope-select"
+      >
+        <option value="all">All</option>
+        <option value="contacts">Contacts</option>
+        <option value="notes">Notes</option>
+        <option value="tags">Tags</option>
+      </select>
+
       <button class="btn primary" type="submit">Search</button>
     </form>
   </div>
 
-  {#if data.q && data.results.length === 0}
-    <div class="card" style="padding:16px; margin-bottom:16px;">
-      <h3 style="margin-top:0;">No results for {data.q}.</h3>
-      <p class="muted" style="margin:8px 0 0;">Try a longer phrase for a stronger match.</p>
-    </div>
-  {/if}
-
-  {#if data.results.length > 0}
-    <div class="card" style="padding:16px;">
-      <h3 style="margin-top:0;">Results</h3>
-      <ul style="list-style:none; margin:0; padding:0; display:grid; gap:12px;">
-        {#each data.results as r}
-          <li class="card" style="padding:12px;">
-            <div style="display:flex; justify-content:space-between; gap:10px; align-items:baseline;">
-              <div>
-                <a href={`/contacts/${r.contactId}/interactions/${r.id}`} class="note-link">
-                  <strong>{r.contactName}</strong>
-                </a>
-                <span class="pill" style="margin-left:8px;">{r.channel}</span>
-                <span class="muted" style="margin-left:8px;">{fmt(r.occurredAt)}</span>
+  {#if data.q}
+    {#if data.scope === 'all'}
+      {#if data.results.contacts.length}
+        <h3 style="margin:12px 0 6px 0;">Contacts ({data.results.contacts.length})</h3>
+        {#each data.results.contacts as c}
+          <div class="card" style="padding:10px; margin:6px 0;">
+            <a href={"/contacts/" + c.id} class="link" style="font-weight:600;">{c.name}</a>
+            {#if c.company}<div style="color:#666;">{c.company}</div>{/if}
+            <div style="color:#666; font-size:0.9rem;">
+              {#if c.email}{c.email}{/if}{#if c.email && c.phone} · {/if}{#if c.phone}{c.phone}{/if}
+            </div>
+            {#if c.tags.length > 0}
+              <div class="tag-row small" style="margin-top:6px;">
+                {#each c.tags as t}
+                  <span class="chip chip-static"><span class="chip-text">{t.name}</span></span>
+                {/each}
               </div>
-              <!-- keep score visible for a bit while validating - easy to remove later -->
-              <div class="pill" title="Cosine similarity score">score {r.score.toFixed(3)}</div>
-            </div>
-            <div style="margin-top:8px;">
-              <span class="muted">{r.preview}</span>
-            </div>
-          </li>
+            {/if}
+          </div>
         {/each}
-      </ul>
-    </div>
+      {/if}
+
+      {#if data.results.notes.length}
+        <h3 style="margin:12px 0 6px 0;">Notes ({data.results.notes.length})</h3>
+        {#each data.results.notes as n}
+          <div class="card" style="padding:10px; margin:6px 0;">
+            <a href={"/contacts/" + n.contactId} class="link" style="font-weight:600;">{n.contactName}</a>
+            <div style="color:#666; font-size:0.9rem;">{new Date(n.occurredAt).toLocaleDateString()}</div>
+            <div style="margin-top:6px;">{n.preview}</div>
+          </div>
+        {/each}
+      {/if}
+
+      {#if data.results.tags.length}
+        <h3 style="margin:12px 0 6px 0;">Tags ({data.results.tags.length})</h3>
+        {#each data.results.tags as t}
+          <div class="card" style="padding:10px; margin:6px 0;">
+            <div style="font-weight:600;">{t.name}</div>
+            <div style="color:#666; font-size:0.9rem;">{t.contactCount} contact{t.contactCount === 1 ? '' : 's'}</div>
+          </div>
+        {/each}
+      {/if}
+
+      {#if !data.results.contacts.length && !data.results.notes.length && !data.results.tags.length}
+        <div style="color:#666;">No results - try another term or switch scope.</div>
+      {/if}
+    {:else if data.scope === 'contacts'}
+      {#if data.results.contacts.length}
+        <h3 style="margin:12px 0 6px 0;">Contacts ({data.results.contacts.length})</h3>
+        {#each data.results.contacts as c}
+          <div class="card" style="padding:10px; margin:6px 0;">
+            <a href={"/contacts/" + c.id} class="link" style="font-weight:600;">{c.name}</a>
+            {#if c.company}<div style="color:#666;">{c.company}</div>{/if}
+            <div style="color:#666; font-size:0.9rem;">
+              {#if c.email}{c.email}{/if}{#if c.email && c.phone} · {/if}{#if c.phone}{c.phone}{/if}
+            </div>
+            {#if c.tags.length > 0}
+              <div class="tag-row small" style="margin-top:6px;">
+                {#each c.tags as t}
+                  <span class="chip chip-static"><span class="chip-text">{t.name}</span></span>
+                {/each}
+              </div>
+            {/if}
+          </div>
+        {/each}
+      {:else}
+        <div style="color:#666;">No contacts found.</div>
+      {/if}
+    {:else if data.scope === 'notes'}
+      {#if data.results.notes.length}
+        <h3 style="margin:12px 0 6px 0;">Notes ({data.results.notes.length})</h3>
+        {#each data.results.notes as n}
+          <div class="card" style="padding:10px; margin:6px 0;">
+            <a href={"/contacts/" + n.contactId} class="link" style="font-weight:600;">{n.contactName}</a>
+            <div style="color:#666; font-size:0.9rem;">{new Date(n.occurredAt).toLocaleDateString()}</div>
+            <div style="margin-top:6px;">{n.preview}</div>
+          </div>
+        {/each}
+      {:else}
+        <div style="color:#666;">No notes found.</div>
+      {/if}
+    {:else if data.scope === 'tags'}
+      {#if data.results.tags.length}
+        <h3 style="margin:12px 0 6px 0;">Tags ({data.results.tags.length})</h3>
+        {#each data.results.tags as t}
+          <div class="card" style="padding:10px; margin:6px 0;">
+            <div style="font-weight:600;">{t.name}</div>
+            <div style="color:#666; font-size:0.9rem;">{t.contactCount} contact{t.contactCount === 1 ? '' : 's'}</div>
+          </div>
+        {/each}
+      {:else}
+        <div style="color:#666;">No tags found.</div>
+      {/if}
+    {/if}
   {/if}
 </div>
 
 <style>
-  /* local helpers that align with your theme tokens */
-  .muted { color: var(--muted); }
-  .pill {
-    display: inline-block;
-    padding: 2px 8px;
-    border-radius: 9999px;
-    border: 1px solid var(--border);
-    background: var(--panel);
-    color: var(--muted);
-    font-size: 12px;
+  /* IT: horizontal layout with gaps - input flexes, others size to content */
+  .search-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
   }
-  .note-link { color: var(--text); text-decoration: none; }
-  .note-link:hover { text-decoration: underline; }
+
+  /* IT: input takes remaining space */
+  .search-input {
+    flex: 1 1 auto;                 /* grow to fill rest of the row */
+    min-width: 160px;               /* do not get too tiny on narrow screens */
+    padding: 8px 10px;
+    border: 1px solid #ddd;
+    border-radius: 10px;
+  }
+
+  /* IT: scope dropdown has a cap so it never eats the row */
+  .scope-select {
+    flex: 0 0 auto;                 /* do not grow */
+    max-width: 180px;               /* cap width - tweak to taste */
+    width: 100%;                    /* allow smaller on narrow screens */
+    padding: 8px 10px;
+    border: 1px solid #ddd;
+    border-radius: 10px;
+    background: #fff;
+  }
+
+  /* Optional - keep button from shrinking too much */
+  .btn.primary {
+    flex: 0 0 auto;
+  }
+
+  /* Mobile polish - wrap if space is too tight */
+  @media (max-width: 420px) {
+    .search-bar {
+      flex-wrap: wrap;              /* wrap to next line if needed */
+    }
+    .scope-select {
+      max-width: 48%;               /* keep reasonable width when wrapped */
+    }
+    .btn.primary {
+      width: auto;
+    }
+  }
 </style>

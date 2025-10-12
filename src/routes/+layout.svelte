@@ -23,14 +23,16 @@
     <!-- Compact mobile actions - icon only for a tidy topbar -->
     <nav class="topbar-actions" aria-label="Primary">
       <!-- Contacts -->
+     <!-- address book icon 
+
       <a class="btn icon" href="/" aria-label="Contacts">
-        <!-- address book icon -->
         <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
           <path d="M4 3h12a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H4V3zM2 6h1v2H2V6zm0 4h1v2H2v-2zm0 4h1v2H2v-2z"/>
           <circle cx="12" cy="9" r="2"/>
           <path d="M7.5 16a4.5 4.5 0 0 1 9 0H7.5z"/>
         </svg>
       </a>
+      -->
 
       <!-- Search -->
       <a class="btn icon" href="/search" aria-label="Search">
@@ -73,6 +75,16 @@
             <span class="pill">{data.remindersOpenCount}</span>
           {/if}
         </a>
+
+        <!-- In src/routes/+layout.svelte header actions -->
+        <a class="icon-btn" href="/share" aria-label="Share your link" title="Share your link">
+          <!-- Simple share icon SVG - monochrome -->
+          <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M18 8a3 3 0 1 0-2.83-4H15a3 3 0 0 0 3 3zM6 14a3 3 0 1 0 0 6 3 3 0 0 0 0-6zm12 0a3 3 0 1 0 0 6 3 3 0 0 0 0-6zM8.59 13.05l6.83-3.42.9 1.8-6.83 3.43-.9-1.81z" fill="currentColor" />
+          </svg>
+        </a>
+
+
 
         <!-- Logout -->
         <form method="POST" action="/auth/logout?redirect=/auth/login" class="inline-form" aria-label="Logout">
@@ -358,4 +370,7 @@
   color: #0369a1;
   border: 1px solid #bae6fd;
 }
+
+.icon-btn { display:inline-flex; align-items:center; justify-content:center; padding:8px; border-radius:10px; border:1px solid #ddd; text-decoration:none; }
+
 </style>

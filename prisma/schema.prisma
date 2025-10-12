@@ -21,6 +21,13 @@ datasource db {
   shadowDatabaseUrl = env("SHADOW_DATABASE_URL") // optional - only used by migrate dev
 }
 
+// IT: role for feature gating
+enum UserRole {
+  owner
+  member
+  guest
+}
+
 // ---------------------------------------------------------------------------
 // AUTH MODELS
 // ---------------------------------------------------------------------------
@@ -44,6 +51,44 @@ model User {
 
   // IT: back-relation for one-shot reminders
   reminders Reminder[]
+
+  role       UserRole @default(member)
+  publicSlug String?  @unique
+
+  // relations
+  // magic tokens issued for this user
+  magicTokens  MagicToken[]
+  // invites if this user is the owner being connected to
+  inviteTokens InviteToken[] @relation("OwnerInvites")
+
+  profiles Profile[]
+}
+
+// IT: single use sign in tokens for magic link login
+model MagicToken {
+  id        String    @id @default(uuid())
+  userId    String
+  // IT: store only an HMAC of the token - never the raw token
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+// IT: short lived token that binds a public profile page to the owner
+model InviteToken {
+  id        String    @id @default(uuid())
+  ownerId   String
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+
+  owner User @relation("OwnerInvites", fields: [ownerId], references: [id], onDelete: Cascade)
+
+  @@index([ownerId])
 }
 
 // PURPOSE: link external OAuth providers like Google to a local User
@@ -263,4 +308,41 @@ model Reminder {
 
   @@index([userId, dueAt])
   @@index([userId, contactId, dueAt])
+}
+
+// IT: types of profiles - extend later if needed
+enum ProfileKind {
+  business
+  personal
+  dating
+  custom
+}
+
+// IT: public shareable profile owned by a user
+model Profile {
+  id        String      @id @default(uuid())
+  userId    String
+  kind      ProfileKind @default(business) // default type - change per profile
+  label     String      @default("My profile") // shown in Settings list
+  slug      String      @unique // direct link like /p/{slug} (optional)
+  isDefault Boolean     @default(false) // only one per user should be true
+
+  // IT: public fields intended for sharing - plaintext is fine because these are public
+  displayName String?
+  headline    String?
+  bio         String?
+  avatarUrl   String?
+  company     String?
+  title       String?
+  websiteUrl  String?
+  emailPublic String?
+  phonePublic String?
+  socials     Json? // { twitter, linkedin, instagram, website2, etc }
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isDefault])
 }

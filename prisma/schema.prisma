@@ -1,10 +1,12 @@
-// prisma/schema.prisma
-// PURPOSE: Personal CRM schema with multi tenant auth and normalized tagging
-// NOTES:
-// - Postgres is assumed
-// - All IT code is commented
-// - Tenant scoping is enforced by required userId on Contact, Interaction, and Tag
-// - Embeddings are stored as double precision[] - no pgvector required
+/// Relationship OS - Prisma schema
+/// Vectors:
+/// - We use pgvector columns for embeddings.
+/// - InteractionEmbedding.vec and Tag.embedding_vec are type vector(1536).
+/// - Prisma maps vectors using Unsupported("vector") and we write values via raw SQL with ::vector casts.
+/// Tenant scoping:
+/// - Every model that is user data includes userId and all queries must filter by userId on read and write.
+/// Encryption:
+/// - PII fields are AES-256-GCM encrypted server side only, with deterministic HMAC indexes for equality search.
 
 // ---------------------------------------------------------------------------
 // Datasource and generator

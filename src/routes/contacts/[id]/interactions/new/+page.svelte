@@ -10,6 +10,8 @@
   // - Server endpoints require login.
 
   export let form;
+  export let data;
+
 
   // Form fields - bound to inputs
   let text = form?.draft?.text ?? '';
@@ -242,8 +244,10 @@
 
 <div class="container">
   <div class="card" style="padding:20px; max-width:800px; margin:0 auto;">
-    <h1>Add note</h1>
-
+    <h1 style="margin:0 0 6px 0;">Add note</h1>
+    <div style="margin:0 0 12px 0; color:#666;">
+      for <a href={"/contacts/" + data.contact.id} class="link">{data.contact.name}</a>
+    </div>
     <form method="post" on:submit={handleSubmit}>
       <!-- hidden fields for AI generated content -->
       <input type="hidden" name="summary" value={summary} />

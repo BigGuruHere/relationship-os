@@ -50,9 +50,25 @@
 {:else}
   <div class="container">
     <div class="card" style="padding:20px; max-width:820px; margin:auto;">
-      <h1 style="margin-top:0;">{contact.name}</h1>
 
-
+<!-- wrap the title row to place the Edit button on the right -->
+<div style="display:flex; align-items:center; justify-content:space-between; gap:10px;">
+  <h1 style="margin-top:0;">{contact.name}</h1>
+<!-- IT: icon-only Edit button - monochrome, accessible via aria-label and title -->
+<a
+  class="btn"
+  href={"/contacts/" + data.contact.id + "/edit"}
+  aria-label="Edit contact"
+  title="Edit contact"
+  style="display:inline-flex;align-items:center;justify-content:center;padding:8px 10px;"
+>
+  <!-- IT: simple pencil icon - uses currentColor so it is black on default text color and white if the button inverts -->
+  <svg width="18" height="18" viewBox="0 0 24 24" role="img" aria-hidden="true">
+    <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25z" fill="currentColor"></path>
+    <path d="M20.71 7.04c.39-.39.39-1.03 0-1.42l-2.34-2.34c-.39-.39-1.03-.39-1.42 0l-1.83 1.83 3.75 3.75 1.84-1.82z" fill="currentColor"></path>
+  </svg>
+</a>
+</div>
 
 
 
@@ -268,15 +284,16 @@
                 <a class="note-link" href={`/contacts/${contact.id}/interactions/${n.id}`}>
                   {n.preview || '(empty)'}
                 </a>
-                {#if n.tags.length > 0}
-                  <div class="tag-row small" style="margin-top:6px;">
-                    {#each n.tags as t}
-                      <span class="chip chip-static">
-                        <span class="chip-text">{t.name}</span>
-                      </span>
-                    {/each}
-                  </div>
-                {/if}
+                {#if n.tags && n.tags.length > 0}
+                <div class="tag-row small" style="margin-top:6px;">
+                  {#each n.tags as t}
+                    <span class="chip chip-static">
+                      <span class="chip-text">{t.name}</span>
+                    </span>
+                  {/each}
+                </div>
+              {/if}
+              
               </li>
             {/each}
           </ul>

@@ -8,7 +8,7 @@
 import { fail, redirect } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import { prisma } from '$lib/db';
-import { encrypt } from '$lib/crypto';
+import { encrypt, decrypt } from '$lib/crypto';
 // IT: we attach tags to the Contact, so we need a helper to resolve or create tag ids
 import { resolveOrCreateTagForTenant } from '$lib/tags';
 import { upsertInteractionEmbedding } from '$lib/embeddings';
@@ -24,18 +24,25 @@ const NewInteraction = z.object({
   tagsSource: z.enum(['user', 'ai']).optional().default('user')
 });
 
-export const load: PageServerLoad = async ({ locals, params }) => {
-  // Require login.
+
+// add this load - if you already have one, just merge the contact read and return
+export const load: PageServerLoad = async ({ params, locals }) => {
+  // Require login
   if (!locals.user) throw redirect(303, '/auth/login');
 
-  // Ensure the contact exists in this tenant.
-  const contact = await prisma.contact.findFirst({
+  // Read the contact for this tenant - only the fields we need
+  const row = await prisma.contact.findFirst({
     where: { id: params.id, userId: locals.user.id },
-    select: { id: true }
+    select: { id: true, fullNameEnc: true }
   });
-  if (!contact) throw redirect(303, '/');
+  if (!row) throw redirect(303, '/contacts');
 
-  return { contactId: contact.id };
+  // Decrypt on server only
+  let name = '(name unavailable)';
+  try { name = decrypt(row.fullNameEnc, 'contact.full_name'); } catch {}
+
+  // Keep it simple for the svelte page
+  return { contact: { id: row.id, name } };
 };
 
 // Local type so we do not rely on App.Locals here.

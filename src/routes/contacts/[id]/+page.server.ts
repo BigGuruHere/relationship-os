@@ -16,36 +16,40 @@ export const load: PageServerLoad = async ({ params, locals }) => {
   // Comment: fetch the contact for this tenant and include cadence fields and tag links.
   const row = await prisma.contact.findFirst({
     where: { id: params.id, userId: locals.user.id },
+// inside prisma.contact.findFirst select:
+select: {
+  id: true,
+  fullNameEnc: true,
+  emailEnc: true,
+  phoneEnc: true,
+  companyEnc: true, // IT: added
+  createdAt: true,
+  reconnectEveryDays: true,
+  lastContactedAt: true,
+  tags: {
     select: {
-      id: true,
-      fullNameEnc: true,
-      emailEnc: true,
-      phoneEnc: true,
-      createdAt: true,
-
-      // IT: cadence fields
-      reconnectEveryDays: true,
-      lastContactedAt: true,
-
-      // IT: tags via join table
-      tags: {
-        where: { tag: { userId: locals.user.id } },
-        select: { tag: { select: { name: true, slug: true } } },
-        orderBy: { tag: { name: 'asc' } }
-      }
+      tag: { select: { name: true } }
     }
+  }
+}
+
   });
 
   // Comment: if contact not found for this tenant, go home.
   if (!row) throw redirect(303, '/');
 
   // Comment: decrypt PII on the server with placeholders on failure.
-  let name = '(name unavailable)';
-  let email: string | null = null;
-  let phone: string | null = null;
-  try { name = decrypt(row.fullNameEnc, 'contact.full_name'); } catch {}
-  try { email = row.emailEnc ? decrypt(row.emailEnc, 'contact.email') : null; } catch {}
-  try { phone = row.phoneEnc ? decrypt(row.phoneEnc, 'contact.phone') : null; } catch {}
+// existing section that decrypts name, email, phone - extend with company
+let name = '(name unavailable)';
+let email: string | null = null;
+let phone: string | null = null;
+let company: string | null = null; // IT: new
+
+try { name = decrypt(row.fullNameEnc, 'contact.full_name'); } catch {}
+try { email = row.emailEnc ? decrypt(row.emailEnc, 'contact.email') : null; } catch {}
+try { phone = row.phoneEnc ? decrypt(row.phoneEnc, 'contact.phone') : null; } catch {}
+try { company = row.companyEnc ? decrypt(row.companyEnc, 'contact.company') : null; } catch {}
+
 
   // Comment: map ContactTag rows to a simple tag array.
   const tags = row.tags.map((ct) => ({ name: ct.tag.name, slug: ct.tag.slug }));
@@ -72,8 +76,10 @@ export const load: PageServerLoad = async ({ params, locals }) => {
       id: it.id,
       channel: it.channel,
       occurredAt: it.occurredAt,
-      preview
+      preview,
+      tags: [] // IT: interactions do not carry tags in this design - set empty array for safe rendering
     };
+    
   });
 
 // IT: fetch open reminders for this contact - due soon to later
@@ -87,14 +93,16 @@ const reminders = await prisma.reminder.findMany({
 return {
   contact: {
     id: row.id,
-    name,
-    email,
-    phone,
+    name,                               // always a string
+    email: email || '',                  // normalize null -> ''
+    phone: phone || '',                  // normalize null -> ''
+    company: company || '',              // normalize null -> ''
     createdAt: row.createdAt,
     reconnectEveryDays: row.reconnectEveryDays ?? null,
     lastContactedAt: row.lastContactedAt ?? null,
-    tags
+    tags                                   // already an array, safe to render
   },
+
   interactions,
   reminders // IT: added
 };

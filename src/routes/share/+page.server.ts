@@ -1,53 +1,32 @@
-// src/routes/share/+page.server.ts
-// PURPOSE: share options page - always provision a random publicSlug and a base profile first.
-// MULTI TENANT: reads and writes only the current user.
-// All IT code is commented and uses hyphens only.
+// PURPOSE: controller - decide where the user should land when they click Share.
+// - if no profile yet: go to /u/{slug}?edit=1&first=1
+// - if profile but no QR: go to /u/{slug}
+// - if profile and QR: go to /share/qr
+// TENANCY: only uses locals.user.id. No PII.
+// NOTE: this route does not render a page - it always redirects.
 
 import type { PageServerLoad } from './$types';
 import { redirect } from '@sveltejs/kit';
 import { ensureRandomPublicSlug } from '$lib/server/slug';
 import { ensureBaseProfile } from '$lib/server/profile';
 
-const APP_ORIGIN = process.env.APP_ORIGIN || 'http://localhost:5173';
-
-export const load: PageServerLoad = async ({ locals }) => {
+export const load: PageServerLoad = async ({ locals, url }) => {
   if (!locals.user) throw redirect(303, '/auth/login');
 
-  // 1) Make sure a slug exists for this user
+  // 1) ensure the user has a slug
   const slug = await ensureRandomPublicSlug(locals.user.id);
 
-  // 2) Make sure a base profile exists and get it back
+  // 2) ensure there is at least one profile
   const profile = await ensureBaseProfile(locals.user.id);
 
-  // 3) Compose universal link and share helpers
-  const link = `${APP_ORIGIN}/u/${slug}`;
-  const smsBody = encodeURIComponent(`Hi - here is my link to connect: ${link}`);
-  const smsUrl = `sms:?&body=${smsBody}`;
-  const waText = encodeURIComponent(`Hi - here is my link to connect: ${link}`);
-  const whatsappUrl = `https://wa.me/?text=${waText}`;
-  const vcardUrl = `/api/vcard?name=${encodeURIComponent(profile.displayName || 'Contact')}&link=${encodeURIComponent(link)}`;
+  // 3) decide where to send them
+  if (!profile.displayName && !profile.headline && !profile.company && !profile.title && !profile.websiteUrl && !profile.emailPublic && !profile.phonePublic && !profile.avatarUrl && !profile.bio) {
+    throw redirect(303, `/u/${slug}?edit=1&first=1`);
+  }
 
-  // Signal whether the profile is still blank so the UI can nudge the user
-  const isBlank =
-    !profile.displayName &&
-    !profile.headline &&
-    !profile.company &&
-    !profile.title &&
-    !profile.websiteUrl &&
-    !profile.emailPublic &&
-    !profile.phonePublic &&
-    !profile.avatarUrl &&
-    !profile.bio;
+  if (!profile.qrReady) {
+    throw redirect(303, `/u/${slug}`);
+  }
 
-  return {
-    link,
-    smsUrl,
-    whatsappUrl,
-    vcardUrl,
-    profile: {
-      id: profile.id,
-      slug: profile.slug,
-      isBlank
-    }
-  };
+  throw redirect(303, '/share/qr');
 };

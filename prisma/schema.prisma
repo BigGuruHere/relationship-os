@@ -344,5 +344,10 @@ model Profile {
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  qrReady       Boolean   @default(false)
+  qrSvg         String?
+  qrGeneratedAt DateTime?
+
+
   @@index([userId, isDefault])
 }

@@ -1,60 +1,143 @@
 <script lang="ts">
-    // PURPOSE: show the public profile plus actions
-    export let data;
-  
-    // Fallback text if no profile exists yet
-    const p = data.profile || {};
+  // PURPOSE: public profile page with owner-only edit and QR generation entry.
+  export let data;
+  export let form;
 
-  </script>
-  
-  <div class="container">
-    <div class="card" style="padding:16px; max-width:640px; margin:0 auto;">
+  // Start in edit mode if requested
+  let editing = Boolean(data.editingRequested);
+
+  // Profile fields - seeded from server data
+  const prof = data.profile || {};
+  let profileId = prof.id || '';
+  let displayName = prof.displayName || '';
+  let headline = prof.headline || '';
+  let bio = prof.bio || '';
+  let avatarUrl = prof.avatarUrl || '';
+  let company = prof.company || '';
+  let title = prof.title || '';
+  let websiteUrl = prof.websiteUrl || '';
+  let emailPublic = prof.emailPublic || '';
+  let phonePublic = prof.phonePublic || '';
+</script>
+
+<div class="container">
+  <div class="card page" style="padding:16px; max-width:720px; margin:0 auto; position:relative;">
+
+    <!-- Owner only edit icon -->
+    {#if data.isOwner}
+      <form method="get" on:submit|preventDefault={() => (editing = !editing)}>
+        <button type="submit" class="icon-btn" aria-label="Edit profile" title="Edit profile">
+          <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1.003 1.003 0 0 0 0-1.42l-2.34-2.34a1.003 1.003 0 0 0-1.42 0l-1.83 1.83 3.75 3.75 1.84-1.82z" fill="currentColor"/>
+          </svg>
+        </button>
+      </form>
+    {/if}
+
+    <!-- Create profile banner on first visit -->
+    {#if data.firstVisit}
+      <div class="note" style="margin-bottom:10px;">
+        Create profile - fill the fields below then save. This is what others will see.
+      </div>
+      <!-- Force edit mode on first visit -->
+      {#if !editing}{@html (() => { editing = true; return '' })()}{/if}
+    {/if}
+
+    <!-- View mode -->
+    {#if !editing}
       <div style="display:flex; gap:12px; align-items:center;">
-        {#if p.avatarUrl}
-          <img src={p.avatarUrl} alt="Avatar" style="width:64px; height:64px; border-radius:50%; object-fit:cover;" />
+        {#if prof.avatarUrl}
+          <img src={prof.avatarUrl} alt="Avatar" class="avatar" />
         {/if}
         <div>
-          <h1 style="margin:0;">{p.displayName || 'Public profile'}</h1>
-          {#if !data.profile}
-        <div style="margin-top:8px; color:#666;">This profile is not set up yet.</div>
-        {/if}
-          {#if p.headline}<div style="color:#666;">{p.headline}</div>{/if}
-          {#if p.company || p.title}
-            <div style="color:#666; font-size:0.95rem;">
-              {#if p.title}{p.title}{/if}{#if p.title && p.company} · {/if}{#if p.company}{p.company}{/if}
+          <h1 style="margin:0;">{prof.displayName || 'Public profile'}</h1>
+          {#if prof.headline}<div class="muted">{prof.headline}</div>{/if}
+          {#if prof.company || prof.title}
+            <div class="muted small">
+              {#if prof.title}{prof.title}{/if}{#if prof.title && prof.company} · {/if}{#if prof.company}{prof.company}{/if}
             </div>
           {/if}
         </div>
       </div>
-  
-      {#if p.bio}
-        <div style="margin-top:12px; white-space:pre-wrap;">{p.bio}</div>
+
+      {#if prof.bio}
+        <div style="margin-top:12px; white-space:pre-wrap;">{prof.bio}</div>
       {/if}
-  
-      <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:12px;">
-        <!-- vCard for easy save -->
-        <a class="btn" href={"/api/vcard?name=" + encodeURIComponent(p.displayName || 'Contact') + "&link=" + encodeURIComponent(location.origin + '/u/' + data.owner.slug)}>
+
+      <div class="btnrow" style="margin-top:12px;">
+        <a
+          class="btn"
+          href={"/api/vcard?name=" + encodeURIComponent(prof.displayName || 'Contact') + "&link=" + encodeURIComponent(data.origin + '/u/' + data.owner.slug)}
+        >
           Save contact
         </a>
-  
-        <!-- Share details - posts to your existing leads endpoint -->
+
         <form method="post" action="/api/guest/start" style="display:inline;">
           <input type="hidden" name="inviteToken" value={data.inviteToken} />
           <button class="btn" type="submit">Continue as guest</button>
         </form>
-  
-        <a class="btn" href={"/share"}>Get your own link</a>
+
+        <!-- If owner and QR not ready, show Generate QR button -->
+        {#if data.isOwner && data.profile && !data.profile.qrReady}
+          <form method="post" action="/api/profile/generate-qr" style="display:inline;">
+            <input type="hidden" name="profileId" value={profileId} />
+            <button class="btn primary" type="submit">Generate QR</button>
+          </form>
+        {/if}
       </div>
-  
-      <div style="margin-top:12px; color:#666; font-size:0.95rem;">
-        {#if p.emailPublic}<div>Email: {p.emailPublic}</div>{/if}
-        {#if p.phonePublic}<div>Phone: {p.phonePublic}</div>{/if}
-        {#if p.websiteUrl}<div>Website: <a class="link" href={p.websiteUrl} target="_blank" rel="noopener">{p.websiteUrl}</a></div>{/if}
-      </div>
-    </div>
+
+      {#if !data.profile}
+        <div class="note" style="margin-top:10px;">
+          This profile is not set up yet.
+          {#if data.isOwner}Click the pencil icon to edit.{/if}
+        </div>
+      {/if}
+    {:else}
+      <!-- Edit mode -->
+      <form method="post" action="?/save" class="grid">
+        <input type="hidden" name="profileId" value={profileId} />
+        <div class="field"><label>Name</label><input name="displayName" bind:value={displayName} /></div>
+        <div class="field"><label>Headline</label><input name="headline" bind:value={headline} /></div>
+        <div class="field span2"><label>Bio</label><textarea name="bio" rows="4" bind:value={bio}></textarea></div>
+        <div class="field"><label>Avatar URL</label><input name="avatarUrl" bind:value={avatarUrl} /></div>
+        <div class="field"><label>Company</label><input name="company" bind:value={company} /></div>
+        <div class="field"><label>Title</label><input name="title" bind:value={title} /></div>
+        <div class="field"><label>Website</label><input name="websiteUrl" bind:value={websiteUrl} /></div>
+        <div class="field"><label>Public email</label><input name="emailPublic" bind:value={emailPublic} /></div>
+        <div class="field"><label>Public phone</label><input name="phonePublic" bind:value={phonePublic} /></div>
+
+        <div class="btnrow" style="grid-column: 1 / span 2;">
+          <button class="btn primary" type="submit">Save</button>
+          <button class="btn" type="button" on:click={() => (editing = false)}>Cancel</button>
+        </div>
+
+        {#if form?.error}
+          <p style="color:var(--danger); margin-top:6px;">{form.error}</p>
+        {/if}
+      </form>
+    {/if}
   </div>
-  
-  <style>
-    .btn { padding:8px 12px; border:1px solid #ccc; border-radius:10px; text-decoration:none; }
-  </style>
-  
+</div>
+
+<style>
+  .avatar { width:64px; height:64px; border-radius:50%; object-fit:cover; }
+  .muted { color:#666; }
+  .small { font-size:0.95rem; }
+  .btnrow { display:flex; gap:8px; flex-wrap:wrap; }
+  .btn {
+    display:inline-flex; align-items:center; justify-content:center;
+    height:36px; padding:0 12px; border:1px solid #ccc; border-radius:10px;
+    text-decoration:none; background:#fff; color:inherit; line-height:1; cursor:pointer;
+  }
+  .btn.primary { background:#111; color:#fff; border-color:#111; }
+  .icon-btn {
+    position:absolute; top:10px; right:10px;
+    display:inline-flex; align-items:center; justify-content:center;
+    width:32px; height:32px; border:1px solid #ddd; border-radius:10px; background:#fff; cursor:pointer;
+  }
+  .grid { display:grid; grid-template-columns: 1fr 1fr; gap:12px; }
+  .field { display:flex; flex-direction:column; gap:6px; }
+  .field input, .field textarea { padding:8px 10px; border:1px solid #ddd; border-radius:10px; }
+  .span2 { grid-column: 1 / span 2; }
+  .note { background:#f6f7f8; border:1px solid #e3e4e6; border-radius:10px; padding:8px 10px; color:#444; }
+</style>

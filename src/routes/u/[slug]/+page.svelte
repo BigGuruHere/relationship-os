@@ -124,34 +124,40 @@
       {/if}
     {:else}
       <!-- Edit mode -->
-      <form method="post" action="?/save" class="grid">
-        <input type="hidden" name="profileId" value={profileId} />
-        <div class="field"><label>Name</label><input name="displayName" bind:value={displayName} /></div>
-        <div class="field"><label>Headline</label><input name="headline" bind:value={headline} /></div>
-        <div class="field span2"><label>Bio</label><textarea name="bio" rows="4" bind:value={bio}></textarea></div>
-        <div class="field"><label>Avatar URL</label><input name="avatarUrl" bind:value={avatarUrl} /></div>
-        <div class="field"><label>Company</label><input name="company" bind:value={company} /></div>
-        <div class="field"><label>Title</label><input name="title" bind:value={title} /></div>
-        <div class="field"><label>Website</label><input name="websiteUrl" bind:value={websiteUrl} /></div>
-        <div class="field"><label>Public email</label><input name="emailPublic" bind:value={emailPublic} /></div>
-        <div class="field"><label>Public phone</label><input name="phonePublic" bind:value={phonePublic} /></div>
-        <!-- Extra public links - driven by EXTRA_KEYS -->
-        {#each EXTRA_KEYS as spec}
-          <div class="field">
-            <label>{spec.label}</label>
-            <input name={"extra_" + spec.key} bind:value={extra_inputs[spec.key]} />
-          </div>
-        {/each}
+<!-- Edit mode -->
+<form method="post" action="?/save" class="grid">
+  <input type="hidden" name="profileId" value={profileId} />
 
-        <div class="btnrow" style="grid-column: 1 / span 2;">
-          <button class="btn primary" type="submit">Save</button>
-          <button class="btn" type="button" on:click={() => (editing = false)}>Cancel</button>
-        </div>
+  <div class="field"><label for="displayName">Name</label><input id="displayName" name="displayName" bind:value={displayName} /></div>
+  <div class="field"><label for="headline">Headline</label><input id="headline" name="headline" bind:value={headline} /></div>
+  <div class="field span2"><label for="bio">Bio</label><textarea id="bio" name="bio" rows="4" bind:value={bio}></textarea></div>
+  <div class="field"><label for="avatarUrl">Avatar URL</label><input id="avatarUrl" name="avatarUrl" bind:value={avatarUrl} /></div>
+  <div class="field"><label for="company">Company</label><input id="company" name="company" bind:value={company} /></div>
+  <div class="field"><label for="title">Title</label><input id="title" name="title" bind:value={title} /></div>
+  <div class="field"><label for="websiteUrl">Website</label><input id="websiteUrl" name="websiteUrl" bind:value={websiteUrl} /></div>
+  <div class="field"><label for="emailPublic">Public email</label><input id="emailPublic" name="emailPublic" bind:value={emailPublic} /></div>
+  <div class="field"><label for="phonePublic">Public phone</label><input id="phonePublic" name="phonePublic" bind:value={phonePublic} /></div>
 
-        {#if form?.error}
-          <p style="color:var(--danger); margin-top:6px;">{form.error}</p>
-        {/if}
-      </form>
+  <!-- Extra public links - each label paired with a unique id -->
+  {#each EXTRA_KEYS as spec}
+    {#key spec.key}
+      <div class="field">
+        <label for={"extra_"+spec.key}>{spec.label}</label>
+        <input id={"extra_"+spec.key} name={"extra_" + spec.key} bind:value={extra_inputs[spec.key]} />
+      </div>
+    {/key}
+  {/each}
+
+  <div class="btnrow" style="grid-column: 1 / span 2;">
+    <button class="btn primary" type="submit">Save</button>
+    <button class="btn" type="button" on:click={() => (editing = false)}>Cancel</button>
+  </div>
+
+  {#if form?.error}
+    <p style="color:var(--danger); margin-top:6px;">{form.error}</p>
+  {/if}
+</form>
+
     {/if}
   </div>
 </div>

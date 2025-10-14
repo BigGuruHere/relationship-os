@@ -1,23 +1,39 @@
 <script lang="ts">
   // PURPOSE: public profile page with owner-only edit and QR generation entry.
+  // RENDERS: all filled fields via a single helper so changes are centralized.
   export let data;
   export let form;
+
+  import { headerFrom, publicRows, buildVcardUrl } from '$lib/publicProfile';
 
   // Start in edit mode if requested
   let editing = Boolean(data.editingRequested);
 
   // Profile fields - seeded from server data
   const prof = data.profile || {};
-  let profileId = prof.id || '';
+  let profileId   = prof.id || '';
   let displayName = prof.displayName || '';
-  let headline = prof.headline || '';
-  let bio = prof.bio || '';
-  let avatarUrl = prof.avatarUrl || '';
-  let company = prof.company || '';
-  let title = prof.title || '';
-  let websiteUrl = prof.websiteUrl || '';
+  let headline    = prof.headline || '';
+  let bio         = prof.bio || '';
+  let avatarUrl   = prof.avatarUrl || '';
+  let company     = prof.company || '';
+  let title       = prof.title || '';
+  let websiteUrl  = prof.websiteUrl || '';
   let emailPublic = prof.emailPublic || '';
   let phonePublic = prof.phonePublic || '';
+
+  // Public URL for this page, provided by server
+  const publicLink = data.origin + '/u/' + data.owner.slug;
+
+  // Build header and rows for view mode from the same source of truth
+  $: hdr = headerFrom({ displayName, headline, avatarUrl, company, title });
+  $: rows = publicRows({ websiteUrl, emailPublic, phonePublic });
+
+  // Build a vCard URL from the same profile object
+  $: vcardUrl = buildVcardUrl(
+    { displayName, company, title, emailPublic, phonePublic },
+    publicLink
+  );
 </script>
 
 <div class="container">
@@ -39,45 +55,54 @@
       <div class="note" style="margin-bottom:10px;">
         Create profile - fill the fields below then save. This is what others will see.
       </div>
-      <!-- Force edit mode on first visit -->
       {#if !editing}{@html (() => { editing = true; return '' })()}{/if}
     {/if}
 
     <!-- View mode -->
     {#if !editing}
-      <div style="display:flex; gap:12px; align-items:center;">
-        {#if prof.avatarUrl}
-          <img src={prof.avatarUrl} alt="Avatar" class="avatar" />
+      <header style="display:flex; gap:12px; align-items:center;">
+        {#if hdr.avatarUrl}
+          <img src={hdr.avatarUrl} alt="Avatar" class="avatar" />
         {/if}
         <div>
-          <h1 style="margin:0;">{prof.displayName || 'Public profile'}</h1>
-          {#if prof.headline}<div class="muted">{prof.headline}</div>{/if}
-          {#if prof.company || prof.title}
+          <h1 style="margin:0;">{hdr.name}</h1>
+          {#if hdr.headline}<div class="muted">{hdr.headline}</div>{/if}
+          {#if hdr.company || hdr.title}
             <div class="muted small">
-              {#if prof.title}{prof.title}{/if}{#if prof.title && prof.company} · {/if}{#if prof.company}{prof.company}{/if}
+              {#if hdr.title}{hdr.title}{/if}{#if hdr.title && hdr.company} · {/if}{#if hdr.company}{hdr.company}{/if}
             </div>
           {/if}
         </div>
-      </div>
+      </header>
 
-      {#if prof.bio}
-        <div style="margin-top:12px; white-space:pre-wrap;">{prof.bio}</div>
+      {#if bio}
+        <div style="margin-top:12px; white-space:pre-wrap;">{bio}</div>
+      {/if}
+
+      <!-- Contact and links - driven by helper -->
+      {#if rows.length}
+        <div class="info-grid" style="margin-top:12px;">
+          {#each rows as r}
+            <div class="info-row">
+              <span class="label">{r.label}</span>
+              {#if r.href}
+                <a class="link" href={r.href} target={r.label === 'Website' ? '_blank' : undefined} rel="noopener">{r.value}</a>
+              {:else}
+                <span>{r.value}</span>
+              {/if}
+            </div>
+          {/each}
+        </div>
       {/if}
 
       <div class="btnrow" style="margin-top:12px;">
-        <a
-          class="btn"
-          href={"/api/vcard?name=" + encodeURIComponent(prof.displayName || 'Contact') + "&link=" + encodeURIComponent(data.origin + '/u/' + data.owner.slug)}
-        >
-          Save contact
-        </a>
+        <a class="btn" href={vcardUrl}>Save contact</a>
 
         <form method="post" action="/api/guest/start" style="display:inline;">
           <input type="hidden" name="inviteToken" value={data.inviteToken} />
           <button class="btn" type="submit">Continue as guest</button>
         </form>
 
-        <!-- If owner and QR not ready, show Generate QR button -->
         {#if data.isOwner && data.profile && !data.profile.qrReady}
           <form method="post" action="/api/profile/generate-qr" style="display:inline;">
             <input type="hidden" name="profileId" value={profileId} />
@@ -123,6 +148,9 @@
   .avatar { width:64px; height:64px; border-radius:50%; object-fit:cover; }
   .muted { color:#666; }
   .small { font-size:0.95rem; }
+  .info-grid { display:grid; gap:6px; }
+  .info-row { display:flex; gap:8px; align-items:center; }
+  .label { width:72px; color:#666; font-size:0.95rem; }
   .btnrow { display:flex; gap:8px; flex-wrap:wrap; }
   .btn {
     display:inline-flex; align-items:center; justify-content:center;

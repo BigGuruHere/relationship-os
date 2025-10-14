@@ -1,5 +1,5 @@
-// PURPOSE: one place to turn a Profile row into public display pieces and a vCard URL.
-// ADD OR REMOVE FIELDS HERE once, and all pages reflect the change.
+// PURPOSE: single source of truth to render a Profile and build a vCard URL.
+// FLEX: reads and writes extra public fields from profile.publicMeta JSON.
 // All IT code is commented and uses hyphens only.
 
 export type PublicProfile = {
@@ -13,13 +13,25 @@ export type PublicProfile = {
     websiteUrl?: string | null;
     emailPublic?: string | null;
     phonePublic?: string | null;
+    publicMeta?: any | null; // flexible JSON bag for extra public fields
   };
   
   function nonEmpty(s: string | null | undefined): s is string {
     return !!s && s.trim().length > 0;
   }
   
-  // Build the vCard download URL from a profile and a public link
+  // Known extra keys you can support without DB changes - add to this list over time
+  export const EXTRA_KEYS: Array<{ key: string; label: string }> = [
+    { key: 'linkedin', label: 'LinkedIn' },
+    { key: 'calendar', label: 'Calendar' },
+    { key: 'twitter',  label: 'Twitter' },
+    { key: 'github',   label: 'GitHub' },
+    { key: 'instagram',label: 'Instagram' },
+    { key: 'youtube',  label: 'YouTube' },
+    { key: 'x',        label: 'X' }
+  ];
+  
+  // Build the vCard URL from a profile and a public link - core fields only
   export function buildVcardUrl(profile: PublicProfile, publicLink: string): string {
     const params = new URLSearchParams();
     params.set('name', nonEmpty(profile.displayName) ? profile.displayName!.trim() : 'Contact');
@@ -31,7 +43,7 @@ export type PublicProfile = {
     return `/api/vcard?${params.toString()}`;
   }
   
-  // Header block data - keeps view templates clean
+  // Header block data for the public page
   export function headerFrom(profile: PublicProfile) {
     return {
       name: nonEmpty(profile.displayName) ? profile.displayName!.trim() : 'Public profile',
@@ -42,10 +54,11 @@ export type PublicProfile = {
     };
   }
   
-  // Rows for the contact info section - iterate these in the template
-  export function publicRows(profile: PublicProfile) {
+  // Rows for the contact info section - includes core fields plus extras from publicMeta
+  export function publicRows(profile: Pick<PublicProfile, 'websiteUrl' | 'emailPublic' | 'phonePublic' | 'publicMeta'>) {
     const rows: Array<{ label: string; value: string; href?: string }> = [];
   
+    // Core fields first
     if (nonEmpty(profile.emailPublic)) {
       const val = profile.emailPublic!.trim();
       rows.push({ label: 'Email', value: val, href: `mailto:${val}` });
@@ -59,10 +72,41 @@ export type PublicProfile = {
       rows.push({ label: 'Website', value: val, href: val });
     }
   
+    // Extras from publicMeta by known keys
+    const m = profile.publicMeta || {};
+    for (const spec of EXTRA_KEYS) {
+      const raw = typeof m[spec.key] === 'string' ? String(m[spec.key]) : '';
+      if (nonEmpty(raw)) {
+        const val = raw.trim();
+        rows.push({ label: spec.label, value: val, href: val.startsWith('http') ? val : undefined });
+      }
+    }
+  
+    // Optional free form extras array - { label, value, href? }
+    if (Array.isArray(m.extras)) {
+      for (const item of m.extras) {
+        const lbl = typeof item?.label === 'string' ? item.label.trim() : '';
+        const val = typeof item?.value === 'string' ? item.value.trim() : '';
+        const href = typeof item?.href === 'string' ? item.href : undefined;
+        if (nonEmpty(lbl) && nonEmpty(val)) rows.push({ label: lbl, value: val, href });
+      }
+    }
+  
     return rows;
   }
   
-  // Useful in controllers to decide if a profile is still blank
+  // Merge extras into an existing publicMeta object - used on save
+  export function mergeExtras(publicMeta: any, extras: Record<string, string>) {
+    const next = { ...(publicMeta || {}) };
+    for (const spec of EXTRA_KEYS) {
+      const v = (extras[spec.key] || '').trim();
+      if (v) next[spec.key] = v;
+      else delete next[spec.key];
+    }
+    return next;
+  }
+  
+  // Is the profile effectively blank for first time guidance
   export function isProfileBlank(profile: PublicProfile) {
     return !nonEmpty(profile.displayName)
       && !nonEmpty(profile.headline)

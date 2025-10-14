@@ -348,6 +348,8 @@ model Profile {
   qrSvg         String?
   qrGeneratedAt DateTime?
 
+  // in model Profile
+  publicMeta Json?
 
   @@index([userId, isDefault])
 }

@@ -69,13 +69,27 @@ export const actions: Actions = {
     const emailPublic = String(form.get('emailPublic') || '');
     const phonePublic = String(form.get('phonePublic') || '');
 
+    // Collect extras from inputs named extra_<key>
+    const extras: Record<string, string> = {};
+    for (const [k, v] of form.entries()) {
+      const name = String(k);
+      if (name.startsWith('extra_')) {
+        const key = name.slice('extra_'.length);
+        extras[key] = String(v || '');
+      }
+    }
+
     const profile = await prisma.profile.findFirst({
       where: { id: profileId, userId: locals.user.id },
-      select: { id: true }
+      select: { id: true, publicMeta: true }
     });
     if (!profile) {
       return fail(403, { error: 'You cannot edit this profile' });
     }
+
+    // Merge extras into existing publicMeta
+    const { mergeExtras } = await import('$lib/publicProfile');
+    const nextPublicMeta = mergeExtras(profile.publicMeta, extras);
 
     await prisma.profile.update({
       where: { id: profile.id },
@@ -88,10 +102,12 @@ export const actions: Actions = {
         title: title || null,
         websiteUrl: websiteUrl || null,
         emailPublic: emailPublic || null,
-        phonePublic: phonePublic || null
+        phonePublic: phonePublic || null,
+        publicMeta: nextPublicMeta
       }
     });
 
     return { ok: true };
   }
 };
+

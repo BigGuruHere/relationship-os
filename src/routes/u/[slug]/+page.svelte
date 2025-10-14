@@ -1,15 +1,14 @@
 <script lang="ts">
-  // PURPOSE: public profile page with owner-only edit and QR generation entry.
-  // RENDERS: all filled fields via a single helper so changes are centralized.
+  // PURPOSE: public profile page with owner-only edit.
+  // RENDERS: all core fields plus extras defined in publicMeta.
   export let data;
   export let form;
 
-  import { headerFrom, publicRows, buildVcardUrl } from '$lib/publicProfile';
+  import { headerFrom, publicRows, buildVcardUrl, EXTRA_KEYS } from '$lib/publicProfile';
 
-  // Start in edit mode if requested
   let editing = Boolean(data.editingRequested);
 
-  // Profile fields - seeded from server data
+  // Seed fields from server
   const prof = data.profile || {};
   let profileId   = prof.id || '';
   let displayName = prof.displayName || '';
@@ -21,20 +20,26 @@
   let websiteUrl  = prof.websiteUrl || '';
   let emailPublic = prof.emailPublic || '';
   let phonePublic = prof.phonePublic || '';
+  let publicMeta  = prof.publicMeta || {};
 
-  // Public URL for this page, provided by server
+  // Two example extras bound to inputs - add more by extending EXTRA_KEYS in the helper
+  let extra_inputs: Record<string, string> = {};
+  for (const spec of EXTRA_KEYS) {
+    extra_inputs[spec.key] = typeof publicMeta[spec.key] === 'string' ? publicMeta[spec.key] : '';
+  }
+
   const publicLink = data.origin + '/u/' + data.owner.slug;
 
-  // Build header and rows for view mode from the same source of truth
   $: hdr = headerFrom({ displayName, headline, avatarUrl, company, title });
-  $: rows = publicRows({ websiteUrl, emailPublic, phonePublic });
+  $: rows = publicRows({ websiteUrl, emailPublic, phonePublic, publicMeta });
 
-  // Build a vCard URL from the same profile object
   $: vcardUrl = buildVcardUrl(
     { displayName, company, title, emailPublic, phonePublic },
     publicLink
   );
 </script>
+
+
 
 <div class="container">
   <div class="card page" style="padding:16px; max-width:720px; margin:0 auto; position:relative;">
@@ -130,6 +135,13 @@
         <div class="field"><label>Website</label><input name="websiteUrl" bind:value={websiteUrl} /></div>
         <div class="field"><label>Public email</label><input name="emailPublic" bind:value={emailPublic} /></div>
         <div class="field"><label>Public phone</label><input name="phonePublic" bind:value={phonePublic} /></div>
+        <!-- Extra public links - driven by EXTRA_KEYS -->
+        {#each EXTRA_KEYS as spec}
+          <div class="field">
+            <label>{spec.label}</label>
+            <input name={"extra_" + spec.key} bind:value={extra_inputs[spec.key]} />
+          </div>
+        {/each}
 
         <div class="btnrow" style="grid-column: 1 / span 2;">
           <button class="btn primary" type="submit">Save</button>

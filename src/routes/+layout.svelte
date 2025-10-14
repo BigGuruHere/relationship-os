@@ -318,17 +318,9 @@
   object-fit: contain;      /* keep aspect ratio */
 }
 
-/* Brand text - truncate gracefully on small screens */
-.brand-title {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
 
-/* Option - hide the word on very narrow phones so icons never overlap */
-@media (max-width: 420px) {
-  .brand-title { display: none; }
-}
+
+
 
 /* Icon buttons - use the shared size variables */
 .btn.icon {

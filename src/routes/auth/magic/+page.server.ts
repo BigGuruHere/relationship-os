@@ -1,35 +1,37 @@
-// PURPOSE: handle magic link sign in at /auth/magic?token=... and set a session cookie.
-// This version does not import src/lib/server/session. It uses your existing auth helpers.
+// PURPOSE: handle /auth/magic?token=... without importing $lib/server/auth.
+// STRATEGY: proxy the token to your API endpoint that actually verifies the token
+// and sets the session cookie. We do a same-origin POST and then redirect.
+// This avoids build-time imports of non-existent modules.
 
 import type { PageServerLoad } from './$types';
 import { redirect } from '@sveltejs/kit';
-import { verifyMagicToken, createSessionCookie } from '$lib/server/auth'; // you already used these in the API version
-import { prisma } from '$lib/db';
 
-export const load: PageServerLoad = async ({ url, cookies }) => {
-  // 1 - Get token from query string
+export const load: PageServerLoad = async ({ url, fetch, cookies }) => {
+  // Read token from the query string
   const token = url.searchParams.get('token') || '';
 
-  // 2 - Validate token
-  const payload = await verifyMagicToken(token);
-  if (!payload) {
-    // Invalid token - send to login
-    throw redirect(303, '/auth/login?error=magic');
+  if (!token) {
+    // No token - send to login
+    throw redirect(303, '/auth/login?error=missing_token');
   }
 
-  // 3 - Look up user
-  const user = await prisma.user.findUnique({
-    where: { id: payload.userId },
-    select: { id: true }
+  // Call the API endpoint that issues the session cookie
+  // - must exist at /api/auth/magic-link with a POST handler that verifies token
+  // - must set an httpOnly cookie on success
+  const res = await fetch('/api/auth/magic-link', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ token }),
+    // include ensures cookies set by the API are persisted in the browser
+    credentials: 'include'
   });
-  if (!user) {
-    throw redirect(303, '/auth/login?error=nouser');
+
+  if (!res.ok) {
+    // Bubble a simple error redirect - keeps the page tiny
+    const code = res.status;
+    throw redirect(303, `/auth/login?error=magic_${code}`);
   }
 
-  // 4 - Mint httpOnly session cookie
-  const cookie = await createSessionCookie(user.id);
-  cookies.set(cookie.name, cookie.value, cookie.options);
-
-  // 5 - Land in app
+  // Land in the app
   throw redirect(303, '/');
 };

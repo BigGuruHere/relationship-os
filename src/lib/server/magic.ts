@@ -5,7 +5,7 @@
 // SENDING: this stub logs the link - replace the two TODO blocks with your email or SMS provider.
 // All IT code is commented and uses hyphens only.
 
-import { createMagicToken } from '$lib/server/auth'; // or '$lib/server/tokens' if that is where you defined it
+import { createMagicToken } from '$lib/server/tokens'; // or '$lib/server/tokens' if that is where you defined it
 
 const APP_ORIGIN = process.env.APP_ORIGIN || 'http://localhost:5173';
 

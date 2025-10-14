@@ -28,14 +28,21 @@ async function ensureUniqueProfileSlug(userId: string, base: string) {
 }
 
 export const load: PageServerLoad = async ({ locals }) => {
+  // Require login
   if (!locals.user) throw redirect(303, '/auth/login');
 
+  // Read the default profile
   const profile = await prisma.profile.findFirst({
     where: { userId: locals.user.id, isDefault: true }
   });
 
-  return { profile };
+  // Build absolute origin from .env with a safe dev fallback
+  const origin = (process.env.APP_ORIGIN?.trim() || 'http://localhost:5173');
+
+  // Return to page
+  return { profile, origin };
 };
+
 
 export const actions: Actions = {
   save: async ({ request, locals }) => {

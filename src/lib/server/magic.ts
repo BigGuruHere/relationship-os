@@ -1,27 +1,70 @@
-// PURPOSE: helpers to send and consume magic links for passwordless sign in.
-// SECURITY: session cookie is httpOnly - we never expose secrets to the browser.
+// PURPOSE: create and send magic links without importing a session module.
+// BUILD SAFE: no import from src/lib/server/session.
+// DEPENDENCIES: only createMagicToken from your auth or tokens helper.
+// CHANNELS: if "to" contains "@", we treat it as email, else as SMS.
+// SENDING: this stub logs the link - replace the two TODO blocks with your email or SMS provider.
 // All IT code is commented and uses hyphens only.
 
-import { createMagicToken } from '$lib/server/tokens';
-import { prisma } from '$lib/db';
-import { redirect } from '@sveltejs/kit';
+import { createMagicToken } from '$lib/server/auth'; // or '$lib/server/tokens' if that is where you defined it
 
-// IT: your existing session util - adjust import to match your project
-import { createSessionCookie } from '$lib/server/session';
+const APP_ORIGIN = process.env.APP_ORIGIN || 'http://localhost:5173';
 
-const APP_ORIGIN = process.env.APP_ORIGIN || 'https://yourapp.com';
+type SendArgs = {
+  userId: string; // recipient user id
+  to: string;     // email or phone
+};
 
-// IT: compose and "send" a magic link - you wire the actual SMS or email here
-export async function sendMagicLink(args: { userId: string; to: string }) {
-  // 1. create a short lived token
-  const { token, expiresAt } = await createMagicToken({ userId: args.userId, ttlMinutes: 30 });
-
-  // 2. link the user will click
+/**
+ * Build the one click magic link that lands on /auth/magic?token=...
+ */
+export async function buildMagicLink(userId: string) {
+  // 1 - mint a short lived single use token
+  const token = await createMagicToken({ userId });
+  // 2 - compose the link to the page route that will exchange token for a session
   const link = `${APP_ORIGIN}/auth/magic?token=${encodeURIComponent(token)}`;
+  return { token, link };
+}
 
-  // 3. TODO: integrate your SMS or email provider here
-  // For now, we store it in a debug table or log it
-  await prisma.log.create({
-    data: { level: 'info', message: `Magic link for ${args.to}: ${link} (expires ${expiresAt.toISOString()})` }
-  });
+/**
+ * Send a magic link to an email or phone.
+ * Replace the TODO sections with your real email or SMS send.
+ */
+export async function sendMagicLink({ userId, to }: SendArgs) {
+  const { link } = await buildMagicLink(userId);
+
+  // Basic channel detection - email if contains "@", otherwise SMS
+  const isEmail = to.includes('@');
+
+  if (isEmail) {
+    // TODO: send email with your provider here
+    // await sendEmail({ to, subject: 'Your sign in link', html: htmlEmail(link) });
+    console.log('[magic-link email]', to, link);
+  } else {
+    // TODO: send SMS with your provider here
+    // await sendSms({ to, message: `Sign in: ${link}` });
+    console.log('[magic-link sms]', to, link);
+  }
+
+  // No return value needed
+}
+
+// Optional tiny email body helper if you wire a provider later
+export function htmlEmail(link: string) {
+  const safe = escapeHtml(link);
+  return `
+    <div style="font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif">
+      <p>Click to sign in:</p>
+      <p><a href="${safe}">${safe}</a></p>
+      <p>This link will expire shortly.</p>
+    </div>
+  `;
+}
+
+// Minimal escaping for safety in HTML emails
+function escapeHtml(s: string) {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
 }

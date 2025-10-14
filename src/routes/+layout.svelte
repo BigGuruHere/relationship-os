@@ -117,8 +117,8 @@
     </a>
 
     <nav class="nav-group">
-      <a class="nav-link" href="/">📇 Contacts</a>
-      <a class="nav-link" href="/search">🔎 Search</a>
+      <a class="nav-link" href="/">Contacts</a>
+      <a class="nav-link" href="/search">Search</a>
       {#if data.user}
         <a class="nav-link" href="/contacts/new">➕ Add Contact</a>
 
@@ -129,6 +129,8 @@
               <span class="pill">{data.reconnectDue}</span>
             {/if}
           </a>
+          </div>
+          <div>
           <a href="/reminders" class="btn">
             Reminders
             {#if data.remindersOpenCount > 0}

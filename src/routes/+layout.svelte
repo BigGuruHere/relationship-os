@@ -182,14 +182,17 @@
 
 <style>
   /* One place to tune sizes */
-  :root {
-    --icon-size: 24px;       /* icons */
-    --icon-button-w: 48px;
-    --icon-button-h: 44px;
 
-    --logo-size: 60px;       /* logo - set this to your desired size */
-    --brand-gap: 8px;        /* gap between logo and text */
-  }
+/* Mobile tweaks - pick your breakpoint */
+:root {
+  /* clamp(min, preferred, max) - scales smoothly between widths */
+  --icon-size: clamp(20px, 2.2vw, 24px);
+  --icon-button-w: clamp(40px, 4.8vw, 48px);
+  --icon-button-h: clamp(36px, 4.2vw, 44px);
+  --logo-size: clamp(44px, 6vw, 60px);
+  --brand-gap: clamp(4px, 1vw, 8px);
+}
+
 
   /* Topbar layout */
   .topbar {

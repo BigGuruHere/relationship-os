@@ -76,13 +76,12 @@
           {/if}
         </a>
 
-        <!-- In src/routes/+layout.svelte header actions -->
-        <a class="icon-btn" href="/share" aria-label="Share your link" title="Share your link">
-          <!-- Simple share icon SVG - monochrome -->
-          <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M18 8a3 3 0 1 0-2.83-4H15a3 3 0 0 0 3 3zM6 14a3 3 0 1 0 0 6 3 3 0 0 0 0-6zm12 0a3 3 0 1 0 0 6 3 3 0 0 0 0-6zM8.59 13.05l6.83-3.42.9 1.8-6.83 3.43-.9-1.81z" fill="currentColor" />
-          </svg>
-        </a>
+<!-- After - same sizing as Reconnect and Reminders -->
+<a class="btn icon" href="/share" aria-label="Share your link" title="Share your link">
+  <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+    <path d="M18 8a3 3 0 1 0-2.83-4H15a3 3 0 0 0 3 3zM6 14a3 3 0 1 0 0 6 3 3 0 0 0 0-6zm12 0a3 3 0 1 0 0 6 3 3 0 0 0 0-6zM8.59 13.05l6.83-3.42.9 1.8-6.83 3.43-.9-1.81z"/>
+  </svg>
+</a>
 
 
 
@@ -180,72 +179,69 @@
 </div>
 
 <style>
-  /* One place to control icon and button sizing */
-/* One place to tune sizes */
-:root {
-  --icon-size: 24px;        /* icons */
-  --icon-button-w: 48px;
-  --icon-button-h: 44px;
+  /* One place to tune sizes */
+  :root {
+    --icon-size: 24px;       /* icons */
+    --icon-button-w: 48px;
+    --icon-button-h: 44px;
 
-  --logo-size: 60px;        /* logo - set this to your desired size */
-  --brand-gap: 8px;         /* gap between logo and text */
-}
-
-.logo img {
-  width: var(--logo-size);
-  height: var(--logo-size);
-  object-fit: contain;       /* keeps aspect ratio tidy */
-}
-
-
-/* Apply the variables */
-.btn.icon {
-  width: var(--icon-button-w);
-  height: var(--icon-button-h);
-  justify-content: center;
-  padding: 0;
-}
-
-.btn.icon svg {
-  /* make inline SVGs follow the global size */
-  width: var(--icon-size);
-  height: var(--icon-size);
-}
-
-
-  /* Icon button sizing - keeps a tidy row on small screens */
-  .btn.icon {
-    width: 44px;
-    height: 40px;
-    justify-content: center;
-    padding: 0;
-    position: relative; /* allows pill positioning if needed later */
+    --logo-size: 60px;       /* logo - set this to your desired size */
+    --brand-gap: 8px;        /* gap between logo and text */
   }
 
-  /* Keep the logout form inline so it looks like a button in the row */
-  .inline-form {
-    display: inline-flex;
-    margin: 0;
-  }
-
+  /* Topbar layout */
   .topbar {
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 12px;
-    padding: 10px 14px;
+    padding: 2px 14px;
     border-bottom: 1px solid var(--border);
     background: var(--surface-1);
+    box-sizing: border-box; /* ensure padding does not clip content */
   }
-  .brand { font-weight: 600; text-decoration: none; color: var(--text); }
-  .topbar-actions { display: inline-flex; align-items: center; gap: 8px; }
-  .nav-right { display: flex; align-items: center; gap: 8px; }
+  .topbar .brand {
+    /* brand expands but can shrink without overlapping actions */
+    display: flex;
+    align-items: center;
+    gap: var(--brand-gap);
+    flex: 1 1 auto;
+    min-width: 0;            /* allow text to truncate instead of pushing icons off */
+    text-decoration: none;
+    color: var(--text);
+  }
+  .topbar .topbar-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    flex: 0 0 auto;          /* keep actions fixed - no shrinking */
+  }
 
+  /* Logo box - remove phantom spacing and fit exactly */
+  .logo {
+    width: var(--logo-size);
+    height: var(--logo-size);
+    padding: 0;
+    margin: 0;
+    line-height: 0;          /* kill inline image baseline gap */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+  }
+  .logo img {
+    width: 100%;
+    height: 100%;
+    display: block;          /* no extra bottom whitespace */
+    object-fit: contain;     /* keep aspect ratio */
+  }
+
+  /* Generic button styles */
   .btn {
     display: inline-flex;
     align-items: center;
     gap: 8px;
-    padding: 6px 10px;
+    padding: 6px 6px;
     border-radius: 8px;
     background: var(--surface-2);
     border: 1px solid var(--border);
@@ -255,6 +251,32 @@
   }
   .btn:hover { background: var(--surface-3); }
 
+  /* Icon buttons - use the shared size variables */
+  .btn.icon {
+    width: var(--icon-button-w);
+    height: var(--icon-button-h);
+    justify-content: center;
+    padding: 0;
+  }
+  .btn.icon svg {
+    width: var(--icon-size);
+    height: var(--icon-size);
+  }
+
+  /* Keep the logout form inline so it looks like a button in the row */
+  .inline-form {
+    display: inline-flex;
+    margin: 0;
+  }
+
+  /* Right aligned nav cluster */
+  .nav-right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  /* Pills */
   .pill {
     display: inline-block;
     min-width: 20px;
@@ -267,102 +289,15 @@
     border: 1px solid #bae6fd;
   }
 
-
-/* Topbar layout - make brand take the leftover space, actions stay compact */
-.topbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 10px 14px;
-  border-bottom: 1px solid var(--border);
-  background: var(--surface-1);
-  box-sizing: border-box; /* ensure padding does not clip content */
-}
-
-.topbar .brand {
-  /* Comment: brand expands but can shrink without overlapping actions */
-  display: flex;
-  align-items: center;
-  gap: var(--brand-gap);
-  flex: 1 1 auto;
-  min-width: 0; /* allow text to truncate instead of pushing icons off */
-  text-decoration: none;
-  color: var(--text);
-}
-
-.topbar .topbar-actions {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  flex: 0 0 auto; /* keep actions fixed - no shrinking */
-}
-
-/* Logo box - remove phantom spacing and fit exactly */
-.logo {
-  width: var(--logo-size);
-  height: var(--logo-size);
-  padding: 0;
-  margin: 0;
-  line-height: 0;           /* kill inline image baseline gap */
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex: 0 0 auto;
-}
-
-.logo img {
-  width: 100%;
-  height: 100%;
-  display: block;           /* no extra bottom whitespace */
-  object-fit: contain;      /* keep aspect ratio */
-}
-
-
-
-
-
-/* Icon buttons - use the shared size variables */
-.btn.icon {
-  width: var(--icon-button-w);
-  height: var(--icon-button-h);
-  justify-content: center;
-  padding: 0;
-}
-
-.btn.icon svg {
-  width: var(--icon-size);
-  height: var(--icon-size);
-}
-
-/* Generic button styles */
-.btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 10px;
-  border-radius: 8px;
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  color: var(--text);
-  text-decoration: none;
-  cursor: pointer;
-}
-.btn:hover { background: var(--surface-3); }
-
-/* Pills unchanged */
-.pill {
-  display: inline-block;
-  min-width: 20px;
-  padding: 2px 6px;
-  border-radius: 9999px;
-  font-size: 12px;
-  text-align: center;
-  background: #e5f4ff;
-  color: #0369a1;
-  border: 1px solid #bae6fd;
-}
-
-.icon-btn { display:inline-flex; align-items:center; justify-content:center; padding:8px; border-radius:10px; border:1px solid #ddd; text-decoration:none; }
-
+  /* Small neutral icon button */
+  .icon-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 4px;
+    border-radius: 10px;
+    border: 1px solid #ddd;
+    text-decoration: none;
+  }
 </style>
+

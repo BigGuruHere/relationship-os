@@ -12,6 +12,7 @@ import type { Actions, PageServerLoad } from './$types';
 export const load: PageServerLoad = async ({ params, locals }) => {
   // Comment: require login before reading tenant data.
   if (!locals.user) throw redirect(303, '/auth/login');
+  const id = params.id;
 
   // Comment: fetch the contact for this tenant and include cadence fields and tag links.
   const row = await prisma.contact.findFirst({

@@ -1,8 +1,8 @@
 <script lang="ts">
-  // src/routes/contacts/new/+page.svelte
   // PURPOSE: Render the create contact form.
   // SECURITY: No decryption is done here - all data is plain inputs from the user.
-  export let form; // SvelteKit enhances this with action results
+  import { enhance } from '$app/forms'; // IT: use enhance so redirects are handled smoothly
+  export let form; // IT: SvelteKit enhances this with action results
 </script>
 
 <div class="container">
@@ -10,7 +10,7 @@
     <h1 style="margin-top:0;">Add contact</h1>
 
     <!-- IT: simple create form. Server validates and encrypts. -->
-    <form method="post">
+    <form method="post" use:enhance>
       <div class="field">
         <label for="fullName">Full name</label>
         <input id="fullName" name="fullName" required />
@@ -40,12 +40,6 @@
 
     {#if form?.error}
       <p style="color:var(--danger); margin-top:12px;">{form.error}</p>
-    {/if}
-
-    {#if form?.success && form?.contactId}
-      <p style="color:var(--success); margin-top:12px;">
-        Saved! <a href={"/contacts/" + form.contactId}>Open contact -></a>
-      </p>
     {/if}
   </div>
 </div>

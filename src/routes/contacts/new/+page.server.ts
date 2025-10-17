@@ -1,45 +1,44 @@
-// src/routes/contacts/new/+page.server.ts
 // PURPOSE: Show the create contact form and handle the POST to create a contact.
 // MULTI TENANT: Requires login and always sets userId on create.
 // SECURITY: Encrypt PII on the server. Do not log decrypted PII.
 
-import { fail, redirect } from '@sveltejs/kit';
+import { fail, redirect } from '@sveltejs/kit'; // IT: no Redirect import - SvelteKit does not export it
 import type { Actions, PageServerLoad } from './$types';
 import { prisma } from '$lib/db';
 import { encrypt, buildIndexToken } from '$lib/crypto';
 
 export const load: PageServerLoad = async ({ locals }) => {
-  // Require login before showing the form
+  // IT: require login before showing the form
   if (!locals.user) throw redirect(303, '/auth/login');
   return {};
 };
 
 export const actions: Actions = {
   default: async ({ request, locals }) => {
-    // Require login
+    // IT: require login for posting
     if (!locals.user) throw redirect(303, '/auth/login');
 
     const form = await request.formData();
 
-    // Collect and trim inputs
+    // IT: collect and trim inputs
     const fullName = String(form.get('fullName') || '').trim();
     const email = String(form.get('email') || '').trim();
     const phone = String(form.get('phone') || '').trim();
-    const company = String(form.get('company') || '').trim(); // IT: new
+    const company = String(form.get('company') || '').trim(); // IT: optional company
 
     if (!fullName) {
-      // Return a 400 with an error message that +page.svelte shows via {form.error}
+      // IT: fail returns a 400 and exposes data on `form` in +page.svelte
       return fail(400, { error: 'Full name is required.' });
     }
 
-    // Prepare insert data with encryption and deterministic index tokens
+    // IT: prepare insert data with encryption and deterministic index tokens
     const data: any = {
       userId: locals.user.id,
       fullNameEnc: encrypt(fullName, 'contact.full_name'),
       fullNameIdx: buildIndexToken(fullName)
     };
 
-    // Optional fields - only set when provided
+    // IT: set optional encrypted fields only when provided
     if (email) {
       data.emailEnc = encrypt(email, 'contact.email');
       data.emailIdx = buildIndexToken(email);
@@ -49,28 +48,30 @@ export const actions: Actions = {
       data.phoneIdx = buildIndexToken(phone);
     }
     if (company) {
-      data.companyEnc = encrypt(company, 'contact.company'); // IT: new
-      data.companyIdx = buildIndexToken(company); // IT: new
+      data.companyEnc = encrypt(company, 'contact.company');
+      data.companyIdx = buildIndexToken(company);
     }
 
-    // Execute insert and handle unique collisions on emailIdx if present
+    // IT: do the DB write inside try-catch, but DO NOT redirect here
+    let created: { id: string } | null = null;
     try {
-      const created = await prisma.contact.create({
+      created = await prisma.contact.create({
         data,
         select: { id: true }
       });
-      // On success redirect to the new contact
-      throw redirect(303, `/contacts/${created.id}`);
     } catch (err: any) {
-      // Unique constraint handling for email index
+      // IT: unique constraint handling for email index
       if (err?.code === 'P2002' && Array.isArray(err?.meta?.target) && err.meta.target.includes('emailIdx')) {
         return fail(409, {
           error: 'A contact with this email already exists. Try searching instead or use a different email.'
         });
       }
-      // Generic error
+      // IT: generic error path
       console.error('Failed to create contact:', err);
       return fail(500, { error: 'Failed to save contact. Please try again.' });
     }
+
+    // IT: throw the framework redirect outside the catch so it is never swallowed
+    throw redirect(303, `/contacts/${created!.id}`);
   }
 };

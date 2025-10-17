@@ -1,32 +1,81 @@
-// PURPOSE: controller - decide where the user should land when they click Share.
-// - if no profile yet: go to /u/{slug}?edit=1&first=1
-// - if profile but no QR: go to /u/{slug}
-// - if profile and QR: go to /share/qr
-// TENANCY: only uses locals.user.id. No PII.
-// NOTE: this route does not render a page - it always redirects.
+// src/routes/share/+page.server.ts
+// PURPOSE:
+// - Owner tools to manage public profile and sharing
+// - Build env-aware absolute links for QR and copy-link using locals.appOrigin
+// NOTES:
+// - Uses absoluteUrlFromOrigin so the same code works on local, dev, and prod
+// - All IT code is commented and uses normal hyphens
 
-import type { PageServerLoad } from './$types';
-import { redirect } from '@sveltejs/kit';
-import { ensureRandomPublicSlug } from '$lib/server/slug';
-import { ensureBaseProfile } from '$lib/server/profile';
+import type { PageServerLoad, Actions } from './$types';
+import { redirect, fail } from '@sveltejs/kit';
+import { prisma } from '$lib/db';
+import { absoluteUrlFromOrigin } from '$lib/url';
 
-export const load: PageServerLoad = async ({ locals, url }) => {
+export const load: PageServerLoad = async ({ locals }) => {
+  // Must be signed in
   if (!locals.user) throw redirect(303, '/auth/login');
 
-  // 1) ensure the user has a slug
-  const slug = await ensureRandomPublicSlug(locals.user.id);
+  // Fetch or create a default profile for this user
+  let profile = await prisma.profile.findFirst({
+    where: { userId: locals.user.id }
+  });
 
-  // 2) ensure there is at least one profile
-  const profile = await ensureBaseProfile(locals.user.id);
-
-  // 3) decide where to send them
-  if (!profile.displayName && !profile.headline && !profile.company && !profile.title && !profile.websiteUrl && !profile.emailPublic && !profile.phonePublic && !profile.avatarUrl && !profile.bio) {
-    throw redirect(303, `/u/${slug}?edit=1&first=1`);
+  if (!profile) {
+    profile = await prisma.profile.create({
+      data: {
+        userId: locals.user.id,
+        slug: crypto.randomUUID().slice(0, 8).toLowerCase(), // short slug - adjust as needed
+        publicMeta: {}
+      }
+    });
   }
 
-  if (!profile.qrReady) {
-    throw redirect(303, `/u/${slug}`);
-  }
+  // Build env-aware absolute links for sharing and QR
+  const profilePath = `/u/${profile.slug}`;
+  const profileUrl = absoluteUrlFromOrigin(locals.appOrigin, profilePath);
 
-  throw redirect(303, '/share/qr');
+  // If you render a server generated QR, you can pass profileUrl down to the page
+  return {
+    profile,
+    profileUrl
+  };
+};
+
+export const actions: Actions = {
+  // Example action to regenerate slug
+  rotate: async ({ locals }) => {
+    if (!locals.user) throw redirect(303, '/auth/login');
+
+    // Create a new slug
+    const newSlug = crypto.randomUUID().slice(0, 8).toLowerCase();
+
+    await prisma.profile.update({
+      where: { userId: locals.user.id },
+      data: { slug: newSlug }
+    });
+
+    // Back to share screen
+    throw redirect(303, '/share');
+  },
+
+  // Example action to update some public fields
+  update: async ({ locals, request }) => {
+    if (!locals.user) throw redirect(303, '/auth/login');
+
+    const form = await request.formData().catch(() => null);
+    if (!form) return fail(400, { error: 'Invalid form' });
+
+    const displayName = String(form.get('displayName') || '').trim();
+    const headline = String(form.get('headline') || '').trim();
+
+    await prisma.profile.update({
+      where: { userId: locals.user.id },
+      data: {
+        displayName: displayName || null,
+        headline: headline || null
+      }
+    });
+
+    throw redirect(303, '/share');
+  }
 };

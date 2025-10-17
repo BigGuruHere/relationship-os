@@ -45,7 +45,7 @@ export const POST: RequestHandler = async ({ request, cookies }) => {
     path: '/',
     maxAge: 60, // one minute
     httpOnly: false,
-    sameSite: 'lax'
+    sameSite: 'lax',
   });
 
   const slug = owner.publicSlug || owner.id;

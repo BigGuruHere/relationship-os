@@ -1,13 +1,14 @@
-// See https://svelte.dev/docs/kit/types#app.d.ts
-// for information about these interfaces
+// src/app.d.ts
 declare global {
 	namespace App {
-		// interface Error {}
-		// interface Locals {}
-		// interface PageData {}
-		// interface PageState {}
-		// interface Platform {}
+	  interface Locals {
+		env: import('$lib/env').RuntimeEnv;
+		appOrigin: string;
+		sessionCookie: import('$lib/cookies').CookieConfig;
+		user?: { id: string; email?: string; role?: 'owner' | 'guest' };
+		sessionId?: string; // used by logout
+	  }
 	}
-}
-
-export {};
+  }
+  export {};
+  

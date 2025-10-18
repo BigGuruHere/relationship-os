@@ -1,10 +1,8 @@
 // PURPOSE: Smart entrypoint for Share with multi profile support.
 // ROUTES TO:
-// - /settings/profile in edit mode when there is no profile
-// - /u/[slug] when the profile exists but QR is not ready
-// - Share page when the profile has QR ready
-// MULTI TENANT: Uses locals.user.id
-// SECURITY: No PII
+// - Profile editor in create mode when there is no profile
+// - Public profile preview when QR is not ready
+// - Share page when QR is ready - includes the stored qrSvg
 
 import { redirect } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
@@ -17,16 +15,20 @@ export const load: PageServerLoad = async ({ locals, url }) => {
     throw redirect(303, absoluteUrlFromOrigin(locals.appOrigin, '/auth/login'));
   }
 
-  // IT: optional specific profile slug, eg /share?profile=my-business
+  // IT: optional explicit profile
   const targetSlug = url.searchParams.get('profile') || undefined;
 
-  // IT: choose a profile - prefer explicit slug, else default, else most recent
+  // IT: choose profile - prefer explicit slug, else default, else most recent
   const profile = await prisma.profile.findFirst({
     where: {
       userId: locals.user.id,
       ...(targetSlug ? { slug: targetSlug } : {})
     },
-    select: { slug: true, qrReady: true },
+    select: {
+      slug: true,
+      qrReady: true,
+      qrSvg: true
+    },
     orderBy: targetSlug ? undefined : [{ isDefault: 'desc' }, { updatedAt: 'desc' }]
   });
 
@@ -38,11 +40,11 @@ export const load: PageServerLoad = async ({ locals, url }) => {
     );
   }
 
-  // IT: if profile exists but QR not ready, preview the public page
+  // IT: if QR not ready, preview public page
   if (!profile.qrReady) {
     throw redirect(303, absoluteUrlFromOrigin(locals.appOrigin, `/u/${profile.slug}`));
   }
 
-  // IT: if profile and QR are ready, render the share page
+  // IT: render share with svg
   return { profile };
 };

@@ -1,6 +1,6 @@
 // PURPOSE: Generate QR for a specific profile and redirect to the Share page.
-// INPUTS (one of):
-// - form field profileId
+// INPUTS:
+// - form field profileId, or
 // - query param slug
 // MULTI TENANT: Validates profile belongs to the logged-in user.
 
@@ -8,7 +8,7 @@ import { redirect } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { prisma } from '$lib/db';
 import { absoluteUrlFromOrigin } from '$lib/url';
-// import { generateQrSvg } from '$lib/qr'; // IT: enable if you have a helper
+import { generateQrSvg } from '$lib/qr';
 
 export const POST: RequestHandler = async ({ locals, request, url }) => {
   // IT: require login
@@ -20,7 +20,7 @@ export const POST: RequestHandler = async ({ locals, request, url }) => {
   const profileId = String(fd.get('profileId') || '');
   const slugFromQuery = url.searchParams.get('slug') || undefined;
 
-  // IT: resolve the profile by id or by slug, but only if it belongs to this user
+  // IT: resolve the profile to update, scoped to the current user
   const profile = await prisma.profile.findFirst({
     where: {
       userId: locals.user.id,
@@ -30,38 +30,49 @@ export const POST: RequestHandler = async ({ locals, request, url }) => {
     select: { id: true, slug: true }
   });
 
-  // IT: if no matching profile, bounce to profile setup
   if (!profile) {
+    // IT: no profile yet - send to editor flow
     throw redirect(
       303,
-      absoluteUrlFromOrigin(locals.appOrigin, '/settings/profile?mode=edit&next=preview')
+      absoluteUrlFromOrigin(locals.appOrigin, '/settings/profile?mode=edit&first=1&next=preview')
     );
   }
 
+  // IT: absolute public URL that the QR should open
   const targetUrl = absoluteUrlFromOrigin(locals.appOrigin, `/u/${profile.slug}`);
 
-  // IT: optional SVG generation
-  let qrSvg: string | null = null;
+  // IT: generate SVG using helper
+  let qrSvg: string;
   try {
-    // qrSvg = await generateQrSvg(targetUrl);
-  } catch {
-    // IT: non-fatal - we will still mark ready
+    qrSvg = await generateQrSvg(targetUrl, 256);
+  } catch (err) {
+    // IT: if generation fails, still move on to Share to avoid trapping the user
+    console.error('qr svg generation failed', err);
+    throw redirect(
+      303,
+      absoluteUrlFromOrigin(
+        locals.appOrigin,
+        `/share?profile=${encodeURIComponent(profile.slug)}`
+      )
+    );
   }
 
+  // IT: store svg and mark ready with timestamp
   try {
     await prisma.profile.update({
       where: { id: profile.id },
       data: {
         qrReady: true,
-        ...(qrSvg ? { qrSvg } : {})
+        qrSvg,
+        qrGeneratedAt: new Date()
       }
     });
   } catch (err) {
-    console.error('qr generate update failed', err);
-    // IT: still continue to Share to avoid trapping the user
+    console.error('qr persist failed', err);
+    // IT: still continue to Share so the user can copy the link
   }
 
-  // IT: go to Share for this specific profile so the user can copy and send
+  // IT: open Share for this exact profile
   throw redirect(
     303,
     absoluteUrlFromOrigin(

@@ -1,5 +1,4 @@
 <script lang="ts">
-  // src/routes/u/[slug]/+page.svelte
   // PURPOSE: public profile page with owner-only edit.
   // RENDERS: all core fields plus extras defined in publicMeta.
   // NOTE: uses data.origin so SSR can build absolute links without window.
@@ -10,10 +9,10 @@
   import { headerFrom, publicRows, buildVcardUrl, EXTRA_KEYS } from '$lib/publicProfile';
 
   // IT: start in edit mode if the server requested it
-  let editing = Boolean(data.editingRequested);
+  let editing = Boolean(data?.editingRequested);
 
   // IT: seed fields from server profile or defaults
-  const prof = data.profile || {};
+  const prof = data?.profile || {};
   let profileId   = prof.id || '';
   let displayName = prof.displayName || '';
   let headline    = prof.headline || '';
@@ -32,8 +31,11 @@
     extra_inputs[spec.key] = typeof publicMeta[spec.key] === 'string' ? publicMeta[spec.key] : '';
   }
 
-  // IT: public link is used for copy and vCard related links
-  const publicLink = data.origin + '/u/' + data.owner.slug;
+  // IT: pick a safe slug for link building
+  const ownerSlug = (data?.owner && data.owner.slug) || (data?.profile && data.profile.slug) || data?.slugParam || '';
+
+  // IT: public link is used for copy and vCard related links - guard against empty slug
+  const publicLink = ownerSlug ? data.origin + '/u/' + ownerSlug : data.origin + '/u';
 
   // IT: derived header and rows for view mode
   $: hdr = headerFrom({ displayName, headline, avatarUrl, company, title });
@@ -50,7 +52,7 @@
   <div class="card page" style="padding:16px; max-width:720px; margin:0 auto; position:relative;">
 
     <!-- IT: owner only edit icon - toggles edit mode on this page -->
-    {#if data.isOwner}
+    {#if data?.isOwner}
       <form method="get" on:submit|preventDefault={() => (editing = !editing)}>
         <button type="submit" class="icon-btn" aria-label="Edit profile" title="Edit profile">
           <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
@@ -61,7 +63,7 @@
     {/if}
 
     <!-- IT: first time banner - auto switch into edit mode -->
-    {#if data.firstVisit}
+    {#if data?.firstVisit}
       <div class="note" style="margin-bottom:10px;">
         Create profile - fill the fields below then save. This is what others will see.
       </div>
@@ -75,7 +77,7 @@
           <img src={hdr.avatarUrl} alt="Avatar" class="avatar" />
         {/if}
         <div>
-          <h1 style="margin:0;">{hdr.name}</h1>
+          <h1 style="margin:0;">{hdr.name || 'Profile'}</h1>
           {#if hdr.headline}<div class="muted">{hdr.headline}</div>{/if}
           {#if hdr.company || hdr.title}
             <div class="muted small">
@@ -115,7 +117,7 @@
         </form>
 
         <!-- IT: owner can generate QR when not ready - includes profileId so the server targets the correct profile -->
-        {#if data.isOwner && data.profile && !data.profile.qrReady}
+        {#if data?.isOwner && data?.profile && !data.profile.qrReady}
           <form method="post" action="/share/qr/generate" style="display:inline;">
             <input type="hidden" name="profileId" value={profileId} />
             <button class="btn primary" type="submit">Generate QR</button>
@@ -123,10 +125,10 @@
         {/if}
       </div>
 
-      {#if !data.profile}
+      {#if !data?.profile}
         <div class="note" style="margin-top:10px;">
           This profile is not set up yet.
-          {#if data.isOwner}Click the pencil icon to edit.{/if}
+          {#if data?.isOwner}Click the pencil icon to edit.{/if}
         </div>
       {/if}
     {:else}

@@ -1,98 +1,63 @@
-// PURPOSE: create or update your default profile.
-// MULTI TENANT: always scoped to locals.user.id.
-// All IT code is commented and uses hyphens only.
+// PURPOSE: Profile editor server - saves owner profile and optionally redirects to preview.
+// MULTI TENANT: Uses locals.user.id
+// SECURITY: Handle only plaintext from the form. Encrypt server side where required.
 
+import { fail, redirect } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
-import { redirect, fail } from '@sveltejs/kit';
 import { prisma } from '$lib/db';
-
-function slugifyBase(input: string): string {
-  return (input || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'profile';
-}
-
-async function ensureUniqueProfileSlug(userId: string, base: string) {
-  // try base, then base-2, base-3, then base-rand
-  const candidates = [base, `${base}-2`, `${base}-3`, `${base}-${Math.random().toString(36).slice(2, 6)}`];
-  for (const slug of candidates) {
-    try {
-      const created = await prisma.profile.create({
-        data: { userId, slug, isDefault: true, label: 'My profile' }
-      });
-      return created.slug;
-    } catch (e: any) {
-      if (e?.code === 'P2002') continue;
-      throw e;
-    }
-  }
-  throw new Error('Could not allocate a profile slug');
-}
+import { absoluteUrlFromOrigin } from '$lib/url';
 
 export const load: PageServerLoad = async ({ locals }) => {
-  // Require login
-  if (!locals.user) throw redirect(303, '/auth/login');
-
-  // Read the default profile
-  const profile = await prisma.profile.findFirst({
-    where: { userId: locals.user.id, isDefault: true }
+  if (!locals.user) {
+    throw redirect(303, absoluteUrlFromOrigin(locals.appOrigin, '/auth/login'));
+  }
+  const profile = await prisma.profile.findUnique({
+    where: { userId: locals.user.id },
+    select: { slug: true, publicMeta: true, qrReady: true }
   });
-
-  // Build absolute origin from .env with a safe dev fallback
-  const origin = (process.env.APP_ORIGIN?.trim() || 'http://localhost:5173');
-
-  // Return to page
-  return { profile, origin };
+  return { profile };
 };
 
-
 export const actions: Actions = {
-  save: async ({ request, locals }) => {
-    if (!locals.user) throw redirect(303, '/auth/login');
-
-    const form = await request.formData();
-    const displayName = String(form.get('displayName') || '');
-    const headline = String(form.get('headline') || '');
-    const bio = String(form.get('bio') || '');
-    const avatarUrl = String(form.get('avatarUrl') || '');
-    const company = String(form.get('company') || '');
-    const title = String(form.get('title') || '');
-    const websiteUrl = String(form.get('websiteUrl') || '');
-    const emailPublic = String(form.get('emailPublic') || '');
-    const phonePublic = String(form.get('phonePublic') || '');
-    const kind = String(form.get('kind') || 'business') as any;
-
-    // Find default profile or create a new one with a unique slug
-    let profile = await prisma.profile.findFirst({
-      where: { userId: locals.user.id, isDefault: true }
-    });
-
-    if (!profile) {
-      const base = slugifyBase(displayName || 'profile');
-      const slug = await ensureUniqueProfileSlug(locals.user.id, base);
-      profile = await prisma.profile.findFirst({ where: { userId: locals.user.id, slug } });
+  default: async ({ request, locals, url }) => {
+    if (!locals.user) {
+      throw redirect(303, absoluteUrlFromOrigin(locals.appOrigin, '/auth/login'));
     }
 
-    if (!profile) {
-      return fail(500, { error: 'Could not create a profile' });
+    const fd = await request.formData();
+    const slug = String(fd.get('slug') || '').trim();
+    const displayName = String(fd.get('displayName') || '').trim();
+    const headline = String(fd.get('headline') || '').trim();
+    const next = url.searchParams.get('next'); // IT: read next from query string
+
+    if (!slug) return fail(400, { error: 'Slug is required' });
+    if (!displayName) return fail(400, { error: 'Display name is required' });
+
+    try {
+      await prisma.profile.upsert({
+        where: { userId: locals.user.id },
+        update: {
+          slug,
+          publicMeta: { displayName, headline }
+        },
+        create: {
+          userId: locals.user.id,
+          slug,
+          publicMeta: { displayName, headline },
+          qrReady: false
+        }
+      });
+    } catch (err) {
+      console.error('profile save failed', err);
+      return fail(500, { error: 'Could not save profile' });
     }
 
-    await prisma.profile.update({
-      where: { id: profile.id },
-      data: {
-        kind,
-        label: 'My profile',
-        displayName: displayName || null,
-        headline: headline || null,
-        bio: bio || null,
-        avatarUrl: avatarUrl || null,
-        company: company || null,
-        title: title || null,
-        websiteUrl: websiteUrl || null,
-        emailPublic: emailPublic || null,
-        phonePublic: phonePublic || null,
-        isDefault: true
-      }
-    });
+    // IT: when coming from the Share router, show the public page preview after first save
+    if (next === 'preview') {
+      throw redirect(303, absoluteUrlFromOrigin(locals.appOrigin, `/u/${slug}`));
+    }
 
-    throw redirect(303, '/share');
+    // IT: otherwise remain in the editor
+    return { success: true };
   }
 };

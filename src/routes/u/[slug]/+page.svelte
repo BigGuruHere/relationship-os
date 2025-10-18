@@ -1,14 +1,18 @@
 <script lang="ts">
+  // src/routes/u/[slug]/+page.svelte
   // PURPOSE: public profile page with owner-only edit.
   // RENDERS: all core fields plus extras defined in publicMeta.
+  // NOTE: uses data.origin so SSR can build absolute links without window.
   export let data;
   export let form;
 
+  // IT: helper utilities for rendering and vCard link building
   import { headerFrom, publicRows, buildVcardUrl, EXTRA_KEYS } from '$lib/publicProfile';
 
+  // IT: start in edit mode if the server requested it
   let editing = Boolean(data.editingRequested);
 
-  // Seed fields from server
+  // IT: seed fields from server profile or defaults
   const prof = data.profile || {};
   let profileId   = prof.id || '';
   let displayName = prof.displayName || '';
@@ -22,29 +26,30 @@
   let phonePublic = prof.phonePublic || '';
   let publicMeta  = prof.publicMeta || {};
 
-  // Two example extras bound to inputs - add more by extending EXTRA_KEYS in the helper
+  // IT: extras keyed by EXTRA_KEYS from helper
   let extra_inputs: Record<string, string> = {};
   for (const spec of EXTRA_KEYS) {
     extra_inputs[spec.key] = typeof publicMeta[spec.key] === 'string' ? publicMeta[spec.key] : '';
   }
 
+  // IT: public link is used for copy and vCard related links
   const publicLink = data.origin + '/u/' + data.owner.slug;
 
+  // IT: derived header and rows for view mode
   $: hdr = headerFrom({ displayName, headline, avatarUrl, company, title });
   $: rows = publicRows({ websiteUrl, emailPublic, phonePublic, publicMeta });
 
+  // IT: vCard url includes public link as a note or source tag depending on your helper
   $: vcardUrl = buildVcardUrl(
     { displayName, company, title, emailPublic, phonePublic },
     publicLink
   );
 </script>
 
-
-
 <div class="container">
   <div class="card page" style="padding:16px; max-width:720px; margin:0 auto; position:relative;">
 
-    <!-- Owner only edit icon -->
+    <!-- IT: owner only edit icon - toggles edit mode on this page -->
     {#if data.isOwner}
       <form method="get" on:submit|preventDefault={() => (editing = !editing)}>
         <button type="submit" class="icon-btn" aria-label="Edit profile" title="Edit profile">
@@ -55,7 +60,7 @@
       </form>
     {/if}
 
-    <!-- Create profile banner on first visit -->
+    <!-- IT: first time banner - auto switch into edit mode -->
     {#if data.firstVisit}
       <div class="note" style="margin-bottom:10px;">
         Create profile - fill the fields below then save. This is what others will see.
@@ -63,7 +68,7 @@
       {#if !editing}{@html (() => { editing = true; return '' })()}{/if}
     {/if}
 
-    <!-- View mode -->
+    <!-- IT: view mode -->
     {#if !editing}
       <header style="display:flex; gap:12px; align-items:center;">
         {#if hdr.avatarUrl}
@@ -84,7 +89,7 @@
         <div style="margin-top:12px; white-space:pre-wrap;">{bio}</div>
       {/if}
 
-      <!-- Contact and links - driven by helper -->
+      <!-- IT: contact and links table -->
       {#if rows.length}
         <div class="info-grid" style="margin-top:12px;">
           {#each rows as r}
@@ -100,6 +105,7 @@
         </div>
       {/if}
 
+      <!-- IT: actions visible in public view -->
       <div class="btnrow" style="margin-top:12px;">
         <a class="btn" href={vcardUrl}>Save contact</a>
 
@@ -108,8 +114,9 @@
           <button class="btn" type="submit">Continue as guest</button>
         </form>
 
+        <!-- IT: owner can generate QR when not ready - includes profileId so the server targets the correct profile -->
         {#if data.isOwner && data.profile && !data.profile.qrReady}
-          <form method="post" action="/api/profile/generate-qr" style="display:inline;">
+          <form method="post" action="/share/qr/generate" style="display:inline;">
             <input type="hidden" name="profileId" value={profileId} />
             <button class="btn primary" type="submit">Generate QR</button>
           </form>
@@ -123,46 +130,45 @@
         </div>
       {/if}
     {:else}
-      <!-- Edit mode -->
-<!-- Edit mode -->
-<form method="post" action="?/save" class="grid">
-  <input type="hidden" name="profileId" value={profileId} />
+      <!-- IT: edit mode - posts to the named save action -->
+      <form method="post" action="?/save" class="grid">
+        <input type="hidden" name="profileId" value={profileId} />
 
-  <div class="field"><label for="displayName">Name</label><input id="displayName" name="displayName" bind:value={displayName} /></div>
-  <div class="field"><label for="headline">Headline</label><input id="headline" name="headline" bind:value={headline} /></div>
-  <div class="field span2"><label for="bio">Bio</label><textarea id="bio" name="bio" rows="4" bind:value={bio}></textarea></div>
-  <div class="field"><label for="avatarUrl">Avatar URL</label><input id="avatarUrl" name="avatarUrl" bind:value={avatarUrl} /></div>
-  <div class="field"><label for="company">Company</label><input id="company" name="company" bind:value={company} /></div>
-  <div class="field"><label for="title">Title</label><input id="title" name="title" bind:value={title} /></div>
-  <div class="field"><label for="websiteUrl">Website</label><input id="websiteUrl" name="websiteUrl" bind:value={websiteUrl} /></div>
-  <div class="field"><label for="emailPublic">Public email</label><input id="emailPublic" name="emailPublic" bind:value={emailPublic} /></div>
-  <div class="field"><label for="phonePublic">Public phone</label><input id="phonePublic" name="phonePublic" bind:value={phonePublic} /></div>
+        <div class="field"><label for="displayName">Name</label><input id="displayName" name="displayName" bind:value={displayName} /></div>
+        <div class="field"><label for="headline">Headline</label><input id="headline" name="headline" bind:value={headline} /></div>
+        <div class="field span2"><label for="bio">Bio</label><textarea id="bio" name="bio" rows="4" bind:value={bio}></textarea></div>
+        <div class="field"><label for="avatarUrl">Avatar URL</label><input id="avatarUrl" name="avatarUrl" bind:value={avatarUrl} /></div>
+        <div class="field"><label for="company">Company</label><input id="company" name="company" bind:value={company} /></div>
+        <div class="field"><label for="title">Title</label><input id="title" name="title" bind:value={title} /></div>
+        <div class="field"><label for="websiteUrl">Website</label><input id="websiteUrl" name="websiteUrl" bind:value={websiteUrl} /></div>
+        <div class="field"><label for="emailPublic">Public email</label><input id="emailPublic" name="emailPublic" bind:value={emailPublic} /></div>
+        <div class="field"><label for="phonePublic">Public phone</label><input id="phonePublic" name="phonePublic" bind:value={phonePublic} /></div>
 
-  <!-- Extra public links - each label paired with a unique id -->
-  {#each EXTRA_KEYS as spec}
-    {#key spec.key}
-      <div class="field">
-        <label for={"extra_"+spec.key}>{spec.label}</label>
-        <input id={"extra_"+spec.key} name={"extra_" + spec.key} bind:value={extra_inputs[spec.key]} />
-      </div>
-    {/key}
-  {/each}
+        <!-- IT: extra public links driven by helper keys -->
+        {#each EXTRA_KEYS as spec}
+          {#key spec.key}
+            <div class="field">
+              <label for={"extra_"+spec.key}>{spec.label}</label>
+              <input id={"extra_"+spec.key} name={"extra_" + spec.key} bind:value={extra_inputs[spec.key]} />
+            </div>
+          {/key}
+        {/each}
 
-  <div class="btnrow" style="grid-column: 1 / span 2;">
-    <button class="btn primary" type="submit">Save</button>
-    <button class="btn" type="button" on:click={() => (editing = false)}>Cancel</button>
-  </div>
+        <div class="btnrow" style="grid-column: 1 / span 2;">
+          <button class="btn primary" type="submit">Save</button>
+          <button class="btn" type="button" on:click={() => (editing = false)}>Cancel</button>
+        </div>
 
-  {#if form?.error}
-    <p style="color:var(--danger); margin-top:6px;">{form.error}</p>
-  {/if}
-</form>
-
+        {#if form?.error}
+          <p style="color:var(--danger); margin-top:6px;">{form.error}</p>
+        {/if}
+      </form>
     {/if}
   </div>
 </div>
 
 <style>
+  /* IT: simple page styles - align with your app.css tokens if you have them */
   .avatar { width:64px; height:64px; border-radius:50%; object-fit:cover; }
   .muted { color:#666; }
   .small { font-size:0.95rem; }

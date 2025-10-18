@@ -1,81 +1,48 @@
-// src/routes/share/+page.server.ts
-// PURPOSE:
-// - Owner tools to manage public profile and sharing
-// - Build env-aware absolute links for QR and copy-link using locals.appOrigin
-// NOTES:
-// - Uses absoluteUrlFromOrigin so the same code works on local, dev, and prod
-// - All IT code is commented and uses normal hyphens
+// PURPOSE: Smart entrypoint for Share with multi profile support.
+// ROUTES TO:
+// - /settings/profile in edit mode when there is no profile
+// - /u/[slug] when the profile exists but QR is not ready
+// - Share page when the profile has QR ready
+// MULTI TENANT: Uses locals.user.id
+// SECURITY: No PII
 
-import type { PageServerLoad, Actions } from './$types';
-import { redirect, fail } from '@sveltejs/kit';
+import { redirect } from '@sveltejs/kit';
+import type { PageServerLoad } from './$types';
 import { prisma } from '$lib/db';
 import { absoluteUrlFromOrigin } from '$lib/url';
 
-export const load: PageServerLoad = async ({ locals }) => {
-  // Must be signed in
-  if (!locals.user) throw redirect(303, '/auth/login');
+export const load: PageServerLoad = async ({ locals, url }) => {
+  // IT: require login
+  if (!locals.user) {
+    throw redirect(303, absoluteUrlFromOrigin(locals.appOrigin, '/auth/login'));
+  }
 
-  // Fetch or create a default profile for this user
-  let profile = await prisma.profile.findFirst({
-    where: { userId: locals.user.id }
+  // IT: optional specific profile slug, eg /share?profile=my-business
+  const targetSlug = url.searchParams.get('profile') || undefined;
+
+  // IT: choose a profile - prefer explicit slug, else default, else most recent
+  const profile = await prisma.profile.findFirst({
+    where: {
+      userId: locals.user.id,
+      ...(targetSlug ? { slug: targetSlug } : {})
+    },
+    select: { slug: true, qrReady: true },
+    orderBy: targetSlug ? undefined : [{ isDefault: 'desc' }, { updatedAt: 'desc' }]
   });
 
-  if (!profile) {
-    profile = await prisma.profile.create({
-      data: {
-        userId: locals.user.id,
-        slug: crypto.randomUUID().slice(0, 8).toLowerCase(), // short slug - adjust as needed
-        publicMeta: {}
-      }
-    });
+  // IT: if none exists, go create one
+  if (!profile || !profile.slug) {
+    throw redirect(
+      303,
+      absoluteUrlFromOrigin(locals.appOrigin, '/settings/profile?mode=edit&first=1&next=preview')
+    );
   }
 
-  // Build env-aware absolute links for sharing and QR
-  const profilePath = `/u/${profile.slug}`;
-  const profileUrl = absoluteUrlFromOrigin(locals.appOrigin, profilePath);
-
-  // If you render a server generated QR, you can pass profileUrl down to the page
-  return {
-    profile,
-    profileUrl
-  };
-};
-
-export const actions: Actions = {
-  // Example action to regenerate slug
-  rotate: async ({ locals }) => {
-    if (!locals.user) throw redirect(303, '/auth/login');
-
-    // Create a new slug
-    const newSlug = crypto.randomUUID().slice(0, 8).toLowerCase();
-
-    await prisma.profile.update({
-      where: { userId: locals.user.id },
-      data: { slug: newSlug }
-    });
-
-    // Back to share screen
-    throw redirect(303, '/share');
-  },
-
-  // Example action to update some public fields
-  update: async ({ locals, request }) => {
-    if (!locals.user) throw redirect(303, '/auth/login');
-
-    const form = await request.formData().catch(() => null);
-    if (!form) return fail(400, { error: 'Invalid form' });
-
-    const displayName = String(form.get('displayName') || '').trim();
-    const headline = String(form.get('headline') || '').trim();
-
-    await prisma.profile.update({
-      where: { userId: locals.user.id },
-      data: {
-        displayName: displayName || null,
-        headline: headline || null
-      }
-    });
-
-    throw redirect(303, '/share');
+  // IT: if profile exists but QR not ready, preview the public page
+  if (!profile.qrReady) {
+    throw redirect(303, absoluteUrlFromOrigin(locals.appOrigin, `/u/${profile.slug}`));
   }
+
+  // IT: if profile and QR are ready, render the share page
+  return { profile };
 };

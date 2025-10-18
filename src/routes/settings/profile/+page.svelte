@@ -26,11 +26,19 @@
     { "label": "YouTube", "value": "youtube.com/@you", "href": "https://youtube.com/@you" }
   ]
 }`;
+
+const isFirstTime = typeof window !== 'undefined' && new URLSearchParams(location.search).get('first') === '1';
+
 </script>
 
 <div class="container">
   <div class="card" style="padding:16px; max-width:720px; margin:0 auto;">
     <h1 style="margin:0 0 12px 0;">Profile</h1>
+    {#if isFirstTime}
+  <div style="margin:0 0 12px 0; padding:8px 10px; border:1px solid #e6e6e6; border-radius:10px; background:#fafafa;">
+    Create your public profile, then we will show you how others will see it.
+  </div>
+{/if}
 
     <!-- Each label uses for= and the control has a matching id -->
     <form method="post" action="?/save" style="display:grid; grid-template-columns: 1fr 1fr; gap:12px;">

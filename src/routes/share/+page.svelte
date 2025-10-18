@@ -1,5 +1,5 @@
 <script lang="ts">
-  // PURPOSE: Share page shown only when profile.qrReady is true.
+  // PURPOSE: Share page - renders stored SVG when available, else falls back to on-demand QR image.
   // SECURITY: Renders only server-provided svg and links.
   export let data;
 
@@ -8,8 +8,11 @@
   const profileUrl =
     typeof window !== 'undefined' ? `${window.location.origin}${relativeProfileUrl}` : relativeProfileUrl;
 
-  // IT: server stored SVG markup
+  // IT: server stored SVG markup - may be empty if not generated or not persisted
   const svg = data.profile.qrSvg || '';
+
+  // IT: simple guard - consider it usable only if it looks like SVG markup
+  const hasSvg = typeof svg === 'string' && svg.trim().startsWith('<svg');
 </script>
 
 <div class="container">
@@ -18,15 +21,25 @@
 
     <div style="display:flex; gap:20px; align-items:flex-start; flex-wrap:wrap;">
       <div style="min-width:220px;">
-        {#if svg}
+        {#if hasSvg}
           <!-- IT: render stored SVG - safe since it is generated server side -->
           <div class="qr" aria-label="QR code">{@html svg}</div>
         {:else}
-          <!-- IT: fallback square if svg is missing for any reason -->
-          <div style="width:220px;height:220px;border:1px solid #eee;border-radius:10px;display:flex;align-items:center;justify-content:center;">
-            QR ready
-          </div>
+          <!-- IT: fallback to on-demand SVG image endpoint -->
+          <img
+            class="qrimg"
+            alt="QR code"
+            src={'/api/qr?slug=' + encodeURIComponent(data.profile.slug)}
+            width="220"
+            height="220"
+            style="display:block;border-radius:10px;border:1px solid #eee;"
+          />
         {/if}
+
+        <!-- IT: allow forcing a refresh - regenerates and returns here -->
+        <form method="post" action={'/share/qr/generate?slug=' + encodeURIComponent(data.profile.slug)} style="margin-top:10px;">
+          <button class="btn" type="submit">Regenerate QR</button>
+        </form>
       </div>
 
       <div style="flex:1; min-width:260px;">

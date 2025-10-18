@@ -1,6 +1,6 @@
-// PURPOSE: Serve a QR SVG for a given profile slug without storing it.
+// PURPOSE: Serve a QR SVG for a given profile slug without needing stored svg.
 // INPUT: /api/qr?slug=<profile-slug>
-// SECURITY: Only encodes your public /u/<slug> URL. No user-supplied HTML.
+// SECURITY: Only encodes the app's public /u/<slug> URL.
 
 import type { RequestHandler } from './$types';
 import { generateQrSvg } from '$lib/qr';
@@ -13,7 +13,7 @@ export const GET: RequestHandler = async ({ url, locals }) => {
     return new Response('Missing slug', { status: 400 });
   }
 
-  // IT: make sure slug exists to avoid generating junk
+  // IT: ensure the profile exists - avoid generating for unknown slugs
   const exists = await prisma.profile.findFirst({
     where: { slug },
     select: { slug: true }
@@ -22,13 +22,16 @@ export const GET: RequestHandler = async ({ url, locals }) => {
     return new Response('Not found', { status: 404 });
   }
 
+  // IT: absolute URL that the QR should encode
   const target = absoluteUrlFromOrigin(locals.appOrigin, `/u/${slug}`);
+
+  // IT: generate SVG
   const svg = await generateQrSvg(target, 256);
 
   return new Response(svg, {
     headers: {
       'Content-Type': 'image/svg+xml; charset=utf-8',
-      'Cache-Control': 'public, max-age=600' // IT: 10 min cache
+      'Cache-Control': 'public, max-age=600'
     }
   });
 };

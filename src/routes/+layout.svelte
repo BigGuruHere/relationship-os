@@ -113,7 +113,6 @@
       <div class="logo">
         <img src="/relish-logo.png" alt="Relish logo" width="28" height="28" />
       </div>
-      <div>Relish</div>
     </a>
 
     <nav class="nav-group">
@@ -147,8 +146,8 @@
           <div style="font-weight:600; word-break:break-all;">{data.user.email}</div>
         </div>
       {:else}
-        <a class="nav-link" href="/auth/login">🔑 Login</a>
-        <a class="nav-link" href="/auth/register">🆕 Register</a>
+        <a class="nav-link" href="/auth/login">Login</a>
+        <a class="nav-link" href="/auth/register">Register</a>
       {/if}
     </nav>
 

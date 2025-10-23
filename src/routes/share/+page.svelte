@@ -22,24 +22,13 @@
     <div style="display:flex; gap:20px; align-items:flex-start; flex-wrap:wrap;">
       <div style="min-width:220px;">
         {#if hasSvg}
-          <!-- IT: render stored SVG - safe since it is generated server side -->
-          <div class="qr" aria-label="QR code">{@html svg}</div>
-        {:else}
-          <!-- IT: fallback to on-demand SVG image endpoint -->
-          <img
-            class="qrimg"
-            alt="QR code"
-            src={'/api/qr?slug=' + encodeURIComponent(data.profile.slug)}
-            width="220"
-            height="220"
-            style="display:block;border-radius:10px;border:1px solid #eee;"
-          />
-        {/if}
+        <div class="qr" aria-label="QR code">{@html svg}</div>
+      {:else}
+        <div style="width:220px;height:220px;border:1px solid #eee;border-radius:10px;display:flex;align-items:center;justify-content:center;">
+          QR not generated
+        </div>
+      {/if}
 
-        <!-- IT: allow forcing a refresh - regenerates and returns here -->
-        <form method="post" action={'/share/qr/generate?slug=' + encodeURIComponent(data.profile.slug)} style="margin-top:10px;">
-          <button class="btn" type="submit">Regenerate QR</button>
-        </form>
       </div>
 
       <div style="flex:1; min-width:260px;">

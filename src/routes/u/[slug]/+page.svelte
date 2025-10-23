@@ -136,13 +136,6 @@
           <button class="btn" type="submit">Continue as guest</button>
         </form>
 
-        <!-- IT: owner can generate QR when not ready - includes profileId so the server targets the correct profile -->
-        {#if data?.isOwner && data?.profile && !data.profile.qrReady}
-          <form method="post" action="/share/qr/generate" style="display:inline;">
-            <input type="hidden" name="profileId" value={profileId} />
-            <button class="btn primary" type="submit">Generate QR</button>
-          </form>
-        {/if}
       </div>
 
       {#if !data?.profile}

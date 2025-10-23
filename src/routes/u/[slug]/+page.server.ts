@@ -9,6 +9,8 @@ import type { Actions, PageServerLoad } from './$types';
 import { prisma } from '$lib/db';
 import { createInviteToken } from '$lib/server/tokens';
 import { fail, redirect, error } from '@sveltejs/kit';
+import { absoluteUrlFromOrigin } from '$lib/url';
+
 
 export const load: PageServerLoad = async ({ params, url, locals }) => {
   const slugParam = params.slug;
@@ -114,19 +116,20 @@ export const load: PageServerLoad = async ({ params, url, locals }) => {
 export const actions: Actions = {
   // IT: save edits to a profile - owner only
   save: async ({ request, locals }) => {
+    // IT: require login
     if (!locals.user) throw redirect(303, '/auth/login');
 
     const form = await request.formData();
 
     // IT: collect posted fields
-    const profileId = String(form.get('profileId') || '');
+    const profileId  = String(form.get('profileId') || '');
     const displayName = String(form.get('displayName') || '');
-    const headline = String(form.get('headline') || '');
-    const bio = String(form.get('bio') || '');
-    const avatarUrl = String(form.get('avatarUrl') || '');
-    const company = String(form.get('company') || '');
-    const title = String(form.get('title') || '');
-    const websiteUrl = String(form.get('websiteUrl') || '');
+    const headline    = String(form.get('headline') || '');
+    const bio         = String(form.get('bio') || '');
+    const avatarUrl   = String(form.get('avatarUrl') || '');
+    const company     = String(form.get('company') || '');
+    const title       = String(form.get('title') || '');
+    const websiteUrl  = String(form.get('websiteUrl') || '');
     const emailPublic = String(form.get('emailPublic') || '');
     const phonePublic = String(form.get('phonePublic') || '');
 
@@ -134,21 +137,19 @@ export const actions: Actions = {
     const extras: Record<string, string> = {};
     for (const [k, v] of form.entries()) {
       const name = String(k);
-      if (name.startsWith('extra_')) {
-        const key = name.slice('extra_'.length);
-        extras[key] = String(v || '');
-      }
+      if (name.startsWith('extra_')) extras[name.slice('extra_'.length)] = String(v || '');
     }
 
-    // IT: verify ownership
+    // IT: verify ownership and grab slug for redirect
     const existing = await prisma.profile.findFirst({
       where: { id: profileId, userId: locals.user.id },
-      select: { id: true, publicMeta: true }
+      select: { id: true, publicMeta: true, slug: true }
     });
     if (!existing) {
       return fail(403, { error: 'You cannot edit this profile' });
     }
 
+    // IT: merge extras and persist
     const { mergeExtras } = await import('$lib/publicProfile');
     const nextPublicMeta = mergeExtras(existing.publicMeta, extras);
 
@@ -168,6 +169,8 @@ export const actions: Actions = {
       }
     });
 
-    return { ok: true };
+    // IT: redirect to view mode of the same profile so the UI exits edit state
+    const to = absoluteUrlFromOrigin(locals.appOrigin, `/u/${encodeURIComponent(existing.slug || '')}`);
+    throw redirect(303, to);
   }
 };

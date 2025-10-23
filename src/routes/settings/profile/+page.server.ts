@@ -20,11 +20,12 @@ function slugify(input: string): string {
   return base;
 }
 
-// IT: ensure unique slug per user
-async function ensureUniqueSlug(userId: string, wanted: string): Promise<string> {
+// IT: ensure slug is unique globally - not per user
+async function ensureUniqueSlugGlobal(wanted: string): Promise<string> {
   let slug = wanted;
+  // IT: try wanted, then wanted-2, wanted-3, ... up to -51, then random suffix
   for (let n = 1; n <= 50; n++) {
-    const hit = await prisma.profile.findFirst({ where: { userId, slug }, select: { id: true } });
+    const hit = await prisma.profile.findFirst({ where: { slug }, select: { id: true } });
     if (!hit) return slug;
     slug = `${wanted}-${n + 1}`;
   }
@@ -115,7 +116,7 @@ export const actions: Actions = {
     try {
       if (existing) {
         // IT: keep slug or generate one
-        const nextSlug = existing.slug || (await ensureUniqueSlug(locals.user.id, slugify(displayName)));
+        const nextSlug = existing.slug || (await ensureUniqueSlugGlobal(slugify(displayName)));
         // IT: merge extras into existing publicMeta
         const nextMeta = mergeExtras(existing.publicMeta, extras);
 
@@ -139,7 +140,7 @@ export const actions: Actions = {
       } else {
         // IT: create new profile - default if none exists yet
         const wanted = slugify(displayName);
-        const uniqueSlug = await ensureUniqueSlug(locals.user.id, wanted);
+        const uniqueSlug = await ensureUniqueSlugGlobal(wanted);
 
         const hasDefault = await prisma.profile.findFirst({
           where: { userId: locals.user.id, isDefault: true },

@@ -13,6 +13,10 @@
 
   // IT: seed fields from server profile or defaults
   const prof = data?.profile || {};
+
+  // IT: derive a friendly owner name for the thanks banner
+  const ownerName = (prof.displayName && prof.displayName.trim()) || 'the owner';
+
   let profileId   = prof.id || '';
   let profileSlug = prof.slug || (data?.owner && data.owner.slug) || data?.slugParam || '';
   let displayName = prof.displayName || '';
@@ -44,6 +48,13 @@
     { displayName, company, title, emailPublic, phonePublic },
     publicLink
   );
+
+// IT: compute the thanks flag safely in the browser
+let showThanks = false;
+if (typeof window !== 'undefined') {
+  showThanks = new URLSearchParams(window.location.search).get('thanks') === '1';
+}
+
 </script>
 
 <div class="container">
@@ -91,6 +102,14 @@
       {#if !editing}{@html (() => { editing = true; return '' })()}{/if}
     {/if}
 
+    <!-- IT: thanks banner - shown after lead submit -->
+{#if showThanks}
+<div class="note" style="margin-bottom:10px;">
+  Thanks - your details were shared with {ownerName}.
+</div>
+{/if}
+
+
     <!-- IT: view mode -->
     {#if !editing}
       <header style="display:flex; gap:12px; align-items:center;">
@@ -132,10 +151,12 @@
       <div class="btnrow" style="margin-top:12px;">
         <a class="btn" href={vcardUrl}>Save contact</a>
 
-        <form method="post" action="/api/guest/start" style="display:inline;">
-          <input type="hidden" name="inviteToken" value={data.inviteToken} />
-          <button class="btn" type="submit">Continue as guest</button>
-        </form>
+<!-- IT: rename the capture CTA -->
+<form method="post" action="/api/guest/start" style="display:inline;">
+  <input type="hidden" name="inviteToken" value={data.inviteToken} />
+  <button class="btn" type="submit">Share your details</button>
+</form>
+
 
       </div>
 

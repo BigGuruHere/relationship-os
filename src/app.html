@@ -8,7 +8,23 @@
     <!-- Optional modern SVG - only include if you created it -->
     <!-- <link rel="icon" href="%sveltekit.assets%/favicon.svg" type="image/svg+xml" /> -->
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <!-- PURPOSE: Link the PWA manifest so Android Chrome can read icons and app metadata -->
+    <link rel="manifest" href="/site.webmanifest">
+
+    <!-- PURPOSE: Favicons for general browsers - optional but recommended -->
+    <link rel="icon" href="/android-chrome-192x192.png" sizes="192x192" type="image/png">
+    <link rel="icon" href="/android-chrome-512x512.png" sizes="512x512" type="image/png">
+
+    <!-- PURPOSE: Theme color used for splash and UI bars on Android -->
+    <meta name="theme-color" content="#111827">
+
+    <!-- PURPOSE: iOS add-to-home support - iOS does not read the manifest for icons -->
+    <link rel="apple-touch-icon" href="/android-chrome-192x192.png">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+
     %sveltekit.head%
+    
   </head>
   <body data-sveltekit-preload-data="hover">
     <div style="display: contents">%sveltekit.body%</div>

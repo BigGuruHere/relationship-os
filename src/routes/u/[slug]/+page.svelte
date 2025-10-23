@@ -50,11 +50,12 @@
   <!-- IT: owner-facing context bar with return to Share on the right -->
   <div class="topbar" style="padding:10px 12px; max-width:720px; margin:0 auto 10px auto; position:relative; display:flex; align-items:center; gap:8px;">
 <!-- IT: helper text on the left -->
+
+
+{#if data?.isOwner && profileSlug}
 <div class="helper-text">
   Note: Below is the screen that will be shown to those you share with.
 </div>
-
-{#if data?.isOwner && profileSlug}
   <!-- IT: real button on the right -->
   <a
     class="btn primary"

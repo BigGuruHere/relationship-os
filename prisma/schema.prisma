@@ -64,6 +64,34 @@ model User {
   profiles Profile[]
 }
 
+// IT: New table to track claimable leads
+model Lead {
+  id               String   @id @default(uuid())
+  ownerId          String
+  contactId        String
+  // IT: store deterministic indexes to match later without decrypting
+  emailIdx         String?  @db.VarChar(128)
+  phoneIdx         String?  @db.VarChar(128)
+  // IT: claim status
+  status           LeadStatus @default(PENDING)
+  claimedByUserId  String?
+  inviteToken      String?   // optional - last generated token
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
+
+  @@index([ownerId])
+  @@index([emailIdx])
+  @@index([phoneIdx])
+}
+
+enum LeadStatus {
+  PENDING
+  CLAIMED
+}
+
+
+
+
 // IT: single use sign in tokens for magic link login
 model MagicToken {
   id        String    @id @default(uuid())
@@ -218,6 +246,8 @@ model Contact {
   // Relations
   interactions Interaction[]
   tags         ContactTag[]
+  linkedUserId String? // when the lead is claimed, we set this
+
 
   // IT: back-relation for one-shot reminders
   reminders Reminder[]
@@ -353,3 +383,5 @@ model Profile {
 
   @@index([userId, isDefault])
 }
+
+

@@ -6,14 +6,17 @@
 // - Verify ID token signature and audience using Google's JWKS
 // - Link to an existing user by OAuthAccount or by email, or create a new user
 // - Clear temporary OAuth cookies after use
-// - All IT code is commented and avoids emdash characters
+// - After session creation, link any pending Leads to this user by deterministic email index
+// - All IT code is commented and avoids em dash characters
 
 import type { RequestHandler } from './$types';
 import { redirect, error } from '@sveltejs/kit';
 import { prisma } from '$lib/db';
-// Use env-aware cookie helpers - do not import legacy name or attributes
+// IT: env aware session helpers
 import { createSession, setSessionCookie } from '$lib/auth';
 import * as jose from 'jose';
+// IT: post auth hook to link pending leads captured via public forms
+import { linkLeadsForUser } from '$lib/leads/link';
 
 // Google endpoints
 const TOKEN_ENDPOINT = 'https://oauth2.googleapis.com/token';
@@ -59,7 +62,7 @@ export const GET: RequestHandler = async ({ url, cookies, locals, getClientAddre
   // Cookies that the start route set
   const storedState = cookies.get('oauth_state') || '';
   const nonceCookie = cookies.get('oauth_nonce') || '';
-  const codeVerifier = cookies.get('oauth_pkce') || ''; // FIX - match start route cookie name
+  const codeVerifier = cookies.get('oauth_pkce') || ''; // IT: match start route cookie name
 
   // Basic validation
   if (!code || !state || !storedState || !codeVerifier) {
@@ -198,9 +201,23 @@ export const GET: RequestHandler = async ({ url, cookies, locals, getClientAddre
   // Clear temp cookies after successful verification
   clearTempCookies(cookies, locals.sessionCookie.options.secure);
 
-  // Create a first party session cookie using env-aware helpers
+  // Create a first party session cookie using env aware helpers
   const { cookie, expiresAt } = await createSession(user.id);
   setSessionCookie(cookies, locals, cookie, expiresAt);
+
+  // IT: post auth linking - claim and link any pending leads for this verified email
+  try {
+    // Guard in case user.email is not selected by prisma find - most schemas include it
+    if (user.email) {
+      await linkLeadsForUser(user.id, user.email);
+    } else {
+      // Best effort - use the verified email from the ID token
+      await linkLeadsForUser(user.id, email);
+    }
+  } catch (e) {
+    // Never block login on lead linking - log and continue
+    console.warn('linkLeadsForUser failed after Google OAuth:', e);
+  }
 
   // Home sweet home
   throw redirect(303, '/');

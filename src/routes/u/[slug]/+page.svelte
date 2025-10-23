@@ -1,7 +1,7 @@
 <script lang="ts">
-  // PURPOSE: public profile page with owner-only edit.
-  // RENDERS: all core fields plus extras defined in publicMeta.
-  // NOTE: uses data.origin so SSR can build absolute links without window.
+  // src/routes/u/[slug]/+page.svelte
+  // PURPOSE: public profile page with owner-only edit and an easy return to the Share page.
+  // SECURITY: only renders public strings provided by the server - no decryption here.
   export let data;
   export let form;
 
@@ -14,6 +14,7 @@
   // IT: seed fields from server profile or defaults
   const prof = data?.profile || {};
   let profileId   = prof.id || '';
+  let profileSlug = prof.slug || (data?.owner && data.owner.slug) || data?.slugParam || '';
   let displayName = prof.displayName || '';
   let headline    = prof.headline || '';
   let bio         = prof.bio || '';
@@ -31,11 +32,8 @@
     extra_inputs[spec.key] = typeof publicMeta[spec.key] === 'string' ? publicMeta[spec.key] : '';
   }
 
-  // IT: pick a safe slug for link building
-  const ownerSlug = (data?.owner && data.owner.slug) || (data?.profile && data.profile.slug) || data?.slugParam || '';
-
-  // IT: public link is used for copy and vCard related links - guard against empty slug
-  const publicLink = ownerSlug ? data.origin + '/u/' + ownerSlug : data.origin + '/u';
+  // IT: public link used for vCard note or source
+  const publicLink = profileSlug ? data.origin + '/u/' + profileSlug : data.origin + '/u';
 
   // IT: derived header and rows for view mode
   $: hdr = headerFrom({ displayName, headline, avatarUrl, company, title });
@@ -49,6 +47,28 @@
 </script>
 
 <div class="container">
+  <!-- IT: owner-facing context bar with return to Share on the right -->
+  <div class="topbar" style="padding:10px 12px; max-width:720px; margin:0 auto 10px auto; position:relative; display:flex; align-items:center; gap:8px;">
+<!-- IT: helper text on the left -->
+<div class="helper-text">
+  Note: Below is the screen that will be shown to those you share with.
+</div>
+
+{#if data?.isOwner && profileSlug}
+  <!-- IT: real button on the right -->
+  <a
+    class="btn primary"
+    href={'/share?profile=' + encodeURIComponent(profileSlug)}
+    style="text-wrap:nowrap;"
+    aria-label="Back to Share"
+    title="Back to Share"
+  >
+    Back to Share
+  </a>
+{/if}
+
+  </div>
+
   <div class="card page" style="padding:16px; max-width:720px; margin:0 auto; position:relative;">
 
     <!-- IT: owner only edit icon - toggles edit mode on this page -->
@@ -194,4 +214,31 @@
   .field input, .field textarea { padding:8px 10px; border:1px solid #ddd; border-radius:10px; }
   .span2 { grid-column: 1 / span 2; }
   .note { background:#f6f7f8; border:1px solid #e3e4e6; border-radius:10px; padding:8px 10px; color:#444; }
+  .topbar .note { background:#f9fafb; border-color:#eceef1; }
+
+  /* IT: make the helper text look like plain text */
+.helper-text {
+  color: #555;
+  background: transparent;
+  border: 0;
+  padding: 0;
+
+}
+
+/* IT: ensure the button reads as a primary action in the topbar */
+.topbar .btn.primary {
+  background: #111;
+  color: #fff;
+  border-color: #111;
+}
+
+.topbar {
+  background: #f9fafb;
+  border: 1px solid #eceef1;
+  border-radius: 10px;
+  padding: 10px 12px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
+}
+
+
 </style>

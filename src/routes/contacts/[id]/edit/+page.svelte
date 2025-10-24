@@ -46,7 +46,6 @@
       <div class="field">
         <label for="linkedin">LinkedIn</label>
         <input id="linkedin" name="linkedin" type="url" inputmode="url" placeholder="https://www.linkedin.com/in/username" value={form?.values?.linkedin || ''} />
-        <div class="hint">Paste the full profile url. We normalize it for dedupe.</div>
       </div>
 
       <div style="display:flex; gap:8px; margin-top:12px;">

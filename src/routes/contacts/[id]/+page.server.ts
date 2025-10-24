@@ -4,60 +4,65 @@
 // SECURITY: Decrypt only on the server. Never log decrypted PII. All IT code is commented and uses hyphens only.
 
 import { prisma } from '$lib/db';
-import { decrypt } from '$lib/crypto';
+import { decrypt, encrypt, buildIndexToken } from '$lib/crypto';
 import { fail, redirect } from '@sveltejs/kit';
 import { attachContactTags, detachContactTag } from '$lib/tags';
 import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ params, locals }) => {
-  // Comment: require login before reading tenant data.
+  // require login before reading tenant data
   if (!locals.user) throw redirect(303, '/auth/login');
+
   const id = params.id;
 
-  // Comment: fetch the contact for this tenant and include cadence fields and tag links.
+  // fetch the contact for this tenant and include cadence fields and tag links
   const row = await prisma.contact.findFirst({
-    where: { id: params.id, userId: locals.user.id },
-// inside prisma.contact.findFirst select:
-select: {
-  id: true,
-  fullNameEnc: true,
-  emailEnc: true,
-  phoneEnc: true,
-  companyEnc: true, // IT: added
-  createdAt: true,
-  reconnectEveryDays: true,
-  lastContactedAt: true,
-  tags: {
+    where: { id, userId: locals.user.id },
     select: {
-      tag: { select: { name: true } }
-    }
-  }
-}
+      id: true,
+      fullNameEnc: true,
+      emailEnc: true,
+      phoneEnc: true,
+      companyEnc: true,
+      // new fields - position and linkedin
+      positionEnc: true,
+      linkedinEnc: true,
 
+      createdAt: true,
+      reconnectEveryDays: true,
+      lastContactedAt: true,
+      tags: {
+        select: {
+          tag: { select: { name: true, slug: true } }
+        }
+      }
+    }
   });
 
-  // Comment: if contact not found for this tenant, go home.
+  // if contact not found for this tenant, go home - this matches your previous behavior
   if (!row) throw redirect(303, '/');
 
-  // Comment: decrypt PII on the server with placeholders on failure.
-// existing section that decrypts name, email, phone - extend with company
-let name = '(name unavailable)';
-let email: string | null = null;
-let phone: string | null = null;
-let company: string | null = null; // IT: new
+  // decrypt PII on the server with placeholders on failure
+  let name = '(name unavailable)';
+  let email: string | null = null;
+  let phone: string | null = null;
+  let company: string | null = null;
+  let position: string | null = null;   // new
+  let linkedin: string | null = null;   // new
 
-try { name = decrypt(row.fullNameEnc, 'contact.full_name'); } catch {}
-try { email = row.emailEnc ? decrypt(row.emailEnc, 'contact.email') : null; } catch {}
-try { phone = row.phoneEnc ? decrypt(row.phoneEnc, 'contact.phone') : null; } catch {}
-try { company = row.companyEnc ? decrypt(row.companyEnc, 'contact.company') : null; } catch {}
+  try { name = decrypt(row.fullNameEnc, 'contact.full_name'); } catch {}
+  try { email = row.emailEnc ? decrypt(row.emailEnc, 'contact.email') : null; } catch {}
+  try { phone = row.phoneEnc ? decrypt(row.phoneEnc, 'contact.phone') : null; } catch {}
+  try { company = row.companyEnc ? decrypt(row.companyEnc, 'contact.company') : null; } catch {}
+  try { position = row.positionEnc ? decrypt(row.positionEnc, 'contact.position') : null; } catch {}
+  try { linkedin = row.linkedinEnc ? decrypt(row.linkedinEnc, 'contact.linkedin') : null; } catch {}
 
-
-  // Comment: map ContactTag rows to a simple tag array.
+  // map ContactTag rows to a simple tag array
   const tags = row.tags.map((ct) => ({ name: ct.tag.name, slug: ct.tag.slug }));
 
-  // Comment: fetch recent interactions for this contact within this tenant and decrypt previews.
+  // fetch recent interactions for this contact within this tenant and decrypt previews
   const interactionsRaw = await prisma.interaction.findMany({
-    where: { userId: locals.user.id, contactId: params.id },
+    where: { userId: locals.user.id, contactId: id },
     select: {
       id: true,
       channel: true,
@@ -68,7 +73,7 @@ try { company = row.companyEnc ? decrypt(row.companyEnc, 'contact.company') : nu
     take: 50
   });
 
-  // Comment: decrypt note previews - keep it short for the list.
+  // decrypt note previews - keep it short for the list
   const interactions = interactionsRaw.map((it) => {
     let text = '';
     try { text = it.rawTextEnc ? decrypt(it.rawTextEnc, 'interaction.raw_text') : ''; } catch {}
@@ -78,78 +83,63 @@ try { company = row.companyEnc ? decrypt(row.companyEnc, 'contact.company') : nu
       channel: it.channel,
       occurredAt: it.occurredAt,
       preview,
-      tags: [] // IT: interactions do not carry tags in this design - set empty array for safe rendering
+      tags: [] // interactions do not carry tags in this design - set empty array for safe rendering
     };
-    
   });
 
-// IT: fetch open reminders for this contact - due soon to later
-const reminders = await prisma.reminder.findMany({
-  where: { userId: locals.user.id, contactId: params.id, completedAt: null },
-  select: { id: true, dueAt: true, note: true },
-  orderBy: { dueAt: 'asc' }
-});
+  // fetch open reminders for this contact - due soon to later
+  const reminders = await prisma.reminder.findMany({
+    where: { userId: locals.user.id, contactId: id, completedAt: null },
+    select: { id: true, dueAt: true, note: true },
+    orderBy: { dueAt: 'asc' }
+  });
 
-// ...later in the return
-return {
-  contact: {
-    id: row.id,
-    name,                               // always a string
-    email: email || '',                  // normalize null -> ''
-    phone: phone || '',                  // normalize null -> ''
-    company: company || '',              // normalize null -> ''
-    createdAt: row.createdAt,
-    reconnectEveryDays: row.reconnectEveryDays ?? null,
-    lastContactedAt: row.lastContactedAt ?? null,
-    tags                                   // already an array, safe to render
-  },
-
-  interactions,
-  reminders // IT: added
+  // return the shape your page expects - unchanged, plus the two new fields
+  return {
+    contact: {
+      id: row.id,
+      name,                               // always a string
+      email: email || '',                  // normalize null -> ''
+      phone: phone || '',                  // normalize null -> ''
+      company: company || '',              // normalize null -> ''
+      position: position || '',            // new
+      linkedin: linkedin || '',            // new
+      createdAt: row.createdAt,
+      reconnectEveryDays: row.reconnectEveryDays ?? null,
+      lastContactedAt: row.lastContactedAt ?? null,
+      tags
+    },
+    interactions,
+    reminders
+  };
 };
-
-};
-
 
 export const actions: Actions = {
   addTag: async ({ request, params, locals }) => {
     // require login
     if (!locals.user) throw redirect(303, '/auth/login');
-  
+
     const form = await request.formData();
     const raw = String(form.get('name') ?? form.get('tag') ?? '').trim();
-  
-    // debug - log the incoming payload
-    console.log('[contacts:addTag] start', {
-      userId: locals.user.id,
-      contactId: params.id,
-      raw
-    });
-  
+
     if (!raw) {
-      console.warn('[contacts:addTag] empty input');
       return fail(400, { error: 'Missing tag name.' });
     }
-  
+
     // allow comma-separated input
     const names = raw
       .split(',')
       .map((s) => s.trim())
       .filter(Boolean)
       .slice(0, 10);
-  
-    console.log('[contacts:addTag] normalized names', names);
-  
+
     try {
-      // IMPORTANT - call with the expected object args
       await attachContactTags({
         userId: locals.user.id,
         contactId: params.id,
         names,
         provenance: 'user'
       });
-  
-      console.log('[contacts:addTag] attachContactTags OK', { contactId: params.id, count: names.length });
     } catch (e: any) {
       console.error('[contacts:addTag] attachContactTags failed', {
         contactId: params.id,
@@ -159,14 +149,13 @@ export const actions: Actions = {
       });
       return fail(500, { error: 'Failed to add tag.' });
     }
-  
+
     // redirect back to the contact page
     throw redirect(303, `/contacts/${params.id}`);
   },
-  
 
   removeTag: async ({ request, params, locals }) => {
-    // Comment: require login for writes.
+    // require login for writes
     if (!locals.user) throw redirect(303, '/auth/login');
 
     const form = await request.formData();
@@ -176,42 +165,32 @@ export const actions: Actions = {
     try {
       await detachContactTag(locals.user.id, params.id, slug);
     } catch (e) {
-      console.error('detachContactTag failed for contact', params.id);
+      console.error('[contacts:removeTag] detachContactTag failed', { contactId: params.id, err: e });
       return fail(500, { error: 'Failed to remove tag.' });
     }
 
-    // Comment: redirect outside try so it is not swallowed.
+    // redirect outside try so it is not swallowed
     throw redirect(303, `/contacts/${params.id}`);
   },
 
-  // IT: set or clear reconnect cadence in days for this contact
+  // set or clear reconnect cadence in days for this contact
   setCadence: async ({ request, params, locals }) => {
     if (!locals.user) throw redirect(303, '/auth/login');
-  
+
     const form = await request.formData();
     const raw = String(form.get('days') ?? '').trim();
     const days = raw === '' ? null : Number.parseInt(raw, 10);
-  
-    console.log('[contacts:setCadence] input', {
-      contactId: params.id,
-      userId: locals.user.id,
-      raw,
-      parsedDays: days
-    });
-  
+
     if (days !== null && (!Number.isFinite(days) || days < 1 || days > 3650)) {
       return fail(400, { error: 'Cadence must be between 1 and 3650 days' });
     }
-  
+
     try {
       const res = await prisma.contact.updateMany({
         where: { id: params.id, userId: locals.user.id },
         data: { reconnectEveryDays: days }
       });
-  
-      console.log('[contacts:setCadence] updateMany result', res);
-  
-      // IT: if nothing updated, surface a clear error - likely wrong id or tenant scope
+
       if (!res.count) {
         return fail(404, { error: 'Contact not found for this user' });
       }
@@ -219,115 +198,110 @@ export const actions: Actions = {
       console.error('[contacts:setCadence] failed', e);
       return fail(500, { error: 'Failed to update cadence' });
     }
-  
+
     throw redirect(303, `/contacts/${params.id}`);
   },
-  
 
-// IT: set lastContactedAt to now - useful after you reach out
-markContactedToday: async ({ locals, params }) => {
-  if (!locals.user) throw redirect(303, '/auth/login');
+  // set lastContactedAt to now
+  markContactedToday: async ({ locals, params }) => {
+    if (!locals.user) throw redirect(303, '/auth/login');
 
-  try {
-    await prisma.contact.updateMany({
-      where: { id: params.id, userId: locals.user.id }, // tenant scoped
-      data: { lastContactedAt: new Date() }
+    try {
+      await prisma.contact.updateMany({
+        where: { id: params.id, userId: locals.user.id }, // tenant scoped
+        data: { lastContactedAt: new Date() }
+      });
+    } catch (e) {
+      console.error('[contacts:markContactedToday] failed', { contactId: params.id, err: e });
+      return fail(500, { error: 'Failed to mark contacted' });
+    }
+
+    throw redirect(303, `/contacts/${params.id}`);
+  },
+
+  // create a one-shot reminder for this contact
+  createReminder: async ({ request, params, locals }) => {
+    // require login
+    if (!locals.user) throw redirect(303, '/auth/login');
+
+    // parse and validate fields from the form
+    const form = await request.formData();
+    const dueAtRaw = String(form.get('dueAt') ?? '').trim();   // expected datetime-local
+    const note = String(form.get('note') ?? '').trim();
+
+    // datetime-local comes without timezone, treat as local and construct Date
+    if (!dueAtRaw) return fail(400, { error: 'Due date is required' });
+    const dueAt = new Date(dueAtRaw);
+    if (isNaN(dueAt.getTime())) {
+      return fail(400, { error: 'Invalid due date' });
+    }
+
+    // ensure this contact belongs to the tenant
+    const exists = await prisma.contact.findFirst({
+      where: { id: params.id, userId: locals.user.id },
+      select: { id: true }
     });
-  } catch (e) {
-    console.error('[contacts:markContactedToday] failed', { contactId: params.id, err: e });
-    return fail(500, { error: 'Failed to mark contacted' });
+    if (!exists) return fail(404, { error: 'Contact not found' });
+
+    try {
+      // insert the reminder - tenant scoped by userId and contactId
+      await prisma.reminder.create({
+        data: {
+          userId: locals.user.id,
+          contactId: params.id,
+          dueAt,
+          note: note || null
+        }
+      });
+    } catch (e) {
+      console.error('[contacts:createReminder] failed', { contactId: params.id, err: e });
+      return fail(500, { error: 'Failed to create reminder' });
+    }
+
+    // back to the contact page
+    throw redirect(303, `/contacts/${params.id}`);
+  },
+
+  // mark a reminder complete
+  completeReminder: async ({ locals, params, request }) => {
+    if (!locals.user) throw redirect(303, '/auth/login');
+
+    const form = await request.formData();
+    const reminderId = String(form.get('reminderId') ?? '').trim();
+    if (!reminderId) return fail(400, { error: 'Missing reminder id' });
+
+    try {
+      const res = await prisma.reminder.updateMany({
+        where: { id: reminderId, userId: locals.user.id, contactId: params.id, completedAt: null },
+        data: { completedAt: new Date() }
+      });
+      if (!res.count) return fail(404, { error: 'Reminder not found' });
+    } catch (e) {
+      console.error('[contacts:completeReminder] failed', { contactId: params.id, reminderId, err: e });
+      return fail(500, { error: 'Failed to complete reminder' });
+    }
+
+    throw redirect(303, `/contacts/${params.id}`);
+  },
+
+  // delete a reminder entirely
+  deleteReminder: async ({ locals, params, request }) => {
+    if (!locals.user) throw redirect(303, '/auth/login');
+
+    const form = await request.formData();
+    const reminderId = String(form.get('reminderId') ?? '').trim();
+    if (!reminderId) return fail(400, { error: 'Missing reminder id' });
+
+    try {
+      const res = await prisma.reminder.deleteMany({
+        where: { id: reminderId, userId: locals.user.id, contactId: params.id }
+      });
+      if (!res.count) return fail(404, { error: 'Reminder not found' });
+    } catch (e) {
+      console.error('[contacts:deleteReminder] failed', { contactId: params.id, reminderId, err: e });
+      return fail(500, { error: 'Failed to delete reminder' });
+    }
+
+    throw redirect(303, `/contacts/${params.id}`);
   }
-
-  throw redirect(303, `/contacts/${params.id}`);
-},
-
-// IT: create a one-shot reminder for this contact
-createReminder: async ({ request, params, locals }) => {
-  // Comment: require login
-  if (!locals.user) throw redirect(303, '/auth/login');
-
-  // Comment: parse and validate fields from the form
-  const form = await request.formData();
-  const dueAtRaw = String(form.get('dueAt') ?? '').trim();   // expected datetime-local
-  const note = String(form.get('note') ?? '').trim();
-
-  // Comment: datetime-local comes without timezone, treat as local and construct Date
-  if (!dueAtRaw) return fail(400, { error: 'Due date is required' });
-  const dueAt = new Date(dueAtRaw);
-  if (isNaN(dueAt.getTime())) {
-    return fail(400, { error: 'Invalid due date' });
-  }
-
-  // Comment: ensure this contact belongs to the tenant
-  const exists = await prisma.contact.findFirst({
-    where: { id: params.id, userId: locals.user.id },
-    select: { id: true }
-  });
-  if (!exists) return fail(404, { error: 'Contact not found' });
-
-  try {
-    // Comment: insert the reminder - tenant scoped by userId and contactId
-    await prisma.reminder.create({
-      data: {
-        userId: locals.user.id,
-        contactId: params.id,
-        dueAt,
-        note: note || null
-      }
-    });
-  } catch (e) {
-    console.error('[contacts:createReminder] failed', { contactId: params.id, err: e });
-    return fail(500, { error: 'Failed to create reminder' });
-  }
-
-  // Comment: back to the contact page
-  throw redirect(303, `/contacts/${params.id}`);
-},
-
-
-// IT: mark a reminder complete - sets completedAt and bumps lastContactedAt optionally later
-completeReminder: async ({ locals, params, request }) => {
-  if (!locals.user) throw redirect(303, '/auth/login');
-
-  const form = await request.formData();
-  const reminderId = String(form.get('reminderId') ?? '').trim();
-  if (!reminderId) return fail(400, { error: 'Missing reminder id' });
-
-  try {
-    const res = await prisma.reminder.updateMany({
-      where: { id: reminderId, userId: locals.user.id, contactId: params.id, completedAt: null },
-      data: { completedAt: new Date() }
-    });
-    if (!res.count) return fail(404, { error: 'Reminder not found' });
-  } catch (e) {
-    console.error('[contacts:completeReminder] failed', { contactId: params.id, reminderId, err: e });
-    return fail(500, { error: 'Failed to complete reminder' });
-  }
-
-  throw redirect(303, `/contacts/${params.id}`);
-},
-
-// IT: delete a reminder entirely
-deleteReminder: async ({ locals, params, request }) => {
-  if (!locals.user) throw redirect(303, '/auth/login');
-
-  const form = await request.formData();
-  const reminderId = String(form.get('reminderId') ?? '').trim();
-  if (!reminderId) return fail(400, { error: 'Missing reminder id' });
-
-  try {
-    const res = await prisma.reminder.deleteMany({
-      where: { id: reminderId, userId: locals.user.id, contactId: params.id }
-    });
-    if (!res.count) return fail(404, { error: 'Reminder not found' });
-  } catch (e) {
-    console.error('[contacts:deleteReminder] failed', { contactId: params.id, reminderId, err: e });
-    return fail(500, { error: 'Failed to delete reminder' });
-  }
-
-  throw redirect(303, `/contacts/${params.id}`);
-},
-
-
-
 };

@@ -228,8 +228,17 @@
         <div><strong>Phone</strong></div>
         <div>{contact.phone ?? ' - '}</div>
 
+        <div><strong>Position</strong></div>
+        <div>{contact.position ?? ' - '}</div>
+
+        <div><strong>LinkedIn</strong></div>
+        <div>{contact.linkedin ?? ' - '}</div>
+
         <div><strong>Created</strong></div>
         <div>{fmt(contact.createdAt)}</div>
+
+
+
       </div>
 
       <!-- Tags section - styling comes from app.css -->

@@ -1,15 +1,14 @@
 <script lang="ts">
   // src/routes/thank-you/+page.svelte
-  // PURPOSE: post-share confirmation screen that onboards the visitor to create a free profile or try the app
+  // PURPOSE: post-share confirmation screen that now only offers an Explore the app CTA
   // SECURITY: purely presentational - uses only data provided by the server load
   export let data;
 
   // IT: friendly name for the sharer to show in the headline
   const sharerName: string = data?.sharerName || 'your new contact';
 
-  // IT: routes for calls to action
-  const createProfileHref = '/register';       // IT: your existing register route
-  const appHomeHref = '/';                     // IT: fallback exploration link
+  // IT: single CTA - explore the app
+  const appHomeHref = '/';
 </script>
 
 <div class="wrap">
@@ -19,13 +18,13 @@
       We have shared your details successfully.
     </p>
 
+    <!-- IT: single CTA left - explore the app -->
     <div class="cta">
-      <a class="btn primary" href={createProfileHref}>Create your free profile</a>
-      <a class="btn" href={appHomeHref}>Explore the app</a>
+      <a class="btn primary" href={appHomeHref}>Explore the app</a>
     </div>
 
     <p class="small">
-      Create a simple share link so others can save your details in one tap. You can add your photo, headline, and links, then upgrade later to use the personal CRM features.
+      You can create your own profile from inside the app any time.
     </p>
   </div>
 </div>

@@ -3,18 +3,44 @@
 	"private": true,
 	"version": "0.0.1",
 	"type": "module",
-	"scripts": {
-		"dev": "vite dev",
-		"build": "prisma generate && vite build",
-		"preview": "vite preview",
-		"start": "node build/index.js",
-		"migrate": "prisma migrate deploy",
-		"prepare": "svelte-kit sync || echo ''",
-		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
-		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
-		"format": "prettier --write .",
-		"lint": "prettier --check . && eslint ."
-	},
+		"scripts": {
+		  // PURPOSE: local dev server
+		  "dev": "vite dev",
+	  
+		  // PURPOSE: build app and generate Prisma client
+		  "build": "prisma generate && vite build",
+	  
+		  // PURPOSE: local preview of built app
+		  "preview": "vite preview",
+	  
+		  // PURPOSE: plain start without migrations - usable in dev only
+		  "start": "node build/index.js",
+	  
+		  // PURPOSE: prod start that applies committed migrations before boot
+		  // SECURITY: uses whatever DATABASE_URL the environment provides
+		  "start:with-migrations": "prisma migrate deploy && node build/index.js",
+	  
+		  // PURPOSE: deploy alias - safe to keep if you use it elsewhere
+		  "migrate": "prisma migrate deploy",
+	  
+		  "prepare": "svelte-kit sync || echo ''",
+		  "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
+		  "check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
+		  "format": "prettier --write .",
+		  "lint": "prettier --check . && eslint .",
+	  
+		  // PURPOSE: guarded dev migrations so you do not hit prod by mistake
+		  "migrate:dev": "node scripts/safe-migrate-dev.js",
+	  
+		  // PURPOSE: apply committed migrations in prod
+		  "migrate:deploy": "prisma migrate deploy",
+	  
+		  // PURPOSE: regenerate Prisma client after install
+		  "generate": "prisma generate",
+		  "postinstall": "prisma generate"
+		},
+	
+	  
 	"engines": {
 		"node": ">=22.13.1 <23"
 	},

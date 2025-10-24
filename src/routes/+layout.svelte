@@ -8,6 +8,13 @@
 <script lang="ts">
   import "../app.css"; // ensure global styles load
   export let data: { user: { id: string; email: string } | null; reconnectDue: number; remindersOpenCount: number };
+
+  // PURPOSE: register service worker so Android can install as full PWA
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('/service-worker.js')
+      .then(() => console.log('Service Worker registered'))
+      .catch(err => console.error('SW registration failed:', err));
+  }
 </script>
 
 <div class="layout">

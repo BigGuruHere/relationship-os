@@ -35,18 +35,21 @@
         aria-label="Search query"
       />
 
-      <select
-        name="scope"
-        bind:value={scope}
-        aria-label="Search scope"
-        title="Search scope"
-        class="scope-select"
-      >
-        <option value="all">All</option>
-        <option value="contacts">Contacts</option>
-        <option value="notes">Notes</option>
-        <option value="tags">Tags</option>
-      </select>
+<!-- PURPOSE: Add a Company-only scope option -->
+<select
+  name="scope"
+  bind:value={scope}
+  aria-label="Search scope"
+  title="Search scope"
+  class="scope-select"
+>
+  <option value="all">All</option>
+  <option value="contacts">Contacts</option>
+  <option value="notes">Notes</option>
+  <option value="tags">Tags</option>
+  <option value="company">Company</option> <!-- IT: new option -->
+</select>
+
 
       <button class="btn primary" type="submit">Search</button>
     </form>
@@ -98,6 +101,32 @@
       {#if !data.results.contacts.length && !data.results.notes.length && !data.results.tags.length}
         <div style="color:#666;">No results - try another term or switch scope.</div>
       {/if}
+      {:else if data.scope === 'company'}
+      {#if data.results.contacts.length}
+        <h3 style="margin:12px 0 6px 0;">Company matches ({data.results.contacts.length})</h3>
+        {#each data.results.contacts as c}
+          <div class="card" style="padding:10px; margin:6px 0;">
+            <a href={"/contacts/" + c.id} class="link" style="font-weight:600;">{c.name}</a>
+            {#if c.company}
+              <div style="color:#666;">Company: {c.company}</div>
+            {/if}
+            <div style="color:#666; font-size:0.9rem;">
+              {#if c.email}{c.email}{/if}{#if c.email && c.phone} · {/if}{#if c.phone}{c.phone}{/if}
+            </div>
+            {#if c.tags.length > 0}
+              <div class="tag-row small" style="margin-top:6px;">
+                {#each c.tags as t}
+                  <span class="chip chip-static"><span class="chip-text">{t.name}</span></span>
+                {/each}
+              </div>
+            {/if}
+          </div>
+        {/each}
+      {:else}
+        <div style="color:#666;">No companies found.</div>
+      {/if}
+  
+  
     {:else if data.scope === 'contacts'}
       {#if data.results.contacts.length}
         <h3 style="margin:12px 0 6px 0;">Contacts ({data.results.contacts.length})</h3>
@@ -145,7 +174,8 @@
       {:else}
         <div style="color:#666;">No tags found.</div>
       {/if}
-    {/if}
+    
+      {/if}
   {/if}
 </div>
 

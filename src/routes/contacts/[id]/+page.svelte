@@ -228,6 +228,9 @@
         <div><strong>Phone</strong></div>
         <div>{contact.phone ?? ' - '}</div>
 
+        <div><strong>Company</strong></div>
+        <div>{contact.company ?? ' - '}</div>
+
         <div><strong>Position</strong></div>
         <div>{contact.position ?? ' - '}</div>
 

@@ -2,7 +2,7 @@
 // PURPOSE: tiny lead-capture flow - creates an owner-scoped Contact and a claimable Lead
 // MULTI TENANT: all writes are scoped to the owner's userId resolved from the slug
 // SECURITY: encrypts PII server side and uses deterministic HMAC indexes for equality search
-// UX: after submit redirects back to the public profile with ?thanks=1 so a banner can show
+// UX: preserves entered values on validation errors and redirects to /thank-you on success
 
 import type { Actions, PageServerLoad } from './$types';
 import { prisma } from '$lib/db';
@@ -11,11 +11,8 @@ import { fail, redirect } from '@sveltejs/kit';
 import { createInviteToken } from '$lib/server/tokens';
 
 // IT: resolve the profile owner by slug and return only fields we actually have
-// - Use Profile.slug to get userId and displayName for UI
-// - Then fetch User to get id and publicSlug
-// - Do not select User.name since that field does not exist
 async function resolveOwnerFromSlug(slug: string) {
-  // Try profile.slug first so /u/<profile-slug> works
+  // Try profile.slug first
   const prof = await prisma.profile.findFirst({
     where: { slug },
     select: { userId: true, displayName: true, slug: true }
@@ -45,7 +42,7 @@ async function resolveOwnerFromSlug(slug: string) {
     return {
       id: user.id,
       publicSlug: user.publicSlug || null,
-      displayName: null // no profile context in this fallback
+      displayName: null
     };
   }
 
@@ -60,16 +57,13 @@ export const load: PageServerLoad = async ({ params }) => {
     owner: {
       id: owner.id,
       slug: owner.publicSlug || params.slug,
-      // IT: use profile displayName if available, else null
       name: owner.displayName || null
     }
   };
 };
 
 export const actions: Actions = {
-  create: async ({ request, params, locals }) => {
-    // Public route - no login required
-    // Resolve the owner again on the server to avoid trusting hidden fields
+  create: async ({ request, params }) => {
     const owner = await resolveOwnerFromSlug(params.slug);
     if (!owner) {
       return fail(404, { error: 'Owner not found' });
@@ -78,24 +72,40 @@ export const actions: Actions = {
     const fd = await request.formData();
     const name = String(fd.get('name') || '').trim();
     const email = String(fd.get('email') || '').trim();
-    const phone = String(fd.get('phone') || '').trim();
+    const phoneRaw = String(fd.get('phone') || '').trim();
+    const phone = phoneRaw.replace(/\s+/g, '');
 
-    if (!name) return fail(400, { error: 'Name is required' });
+    // IT: build a reusable values object to preserve input on error
+    const values = { name, email, phone: phoneRaw };
+
+    // Validation - all compulsory and basic format checks
+    const errors: Record<string, string> = {};
+    if (!name) errors.name = 'Name is required';
+    if (!email) errors.email = 'Email is required';
+    if (!phone) errors.phone = 'Phone is required';
+
+    if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+      errors.email = 'Please enter a valid email address';
+    }
+    if (phone && !/^[0-9()+\-]{7,}$/.test(phone)) {
+      errors.phone = 'Please enter a valid phone number';
+    }
+
+    if (Object.keys(errors).length > 0) {
+      // IT: preserve values and per-field errors - page will re-render with inputs kept
+      return fail(400, { errors, values });
+    }
 
     // Build encrypted contact payload scoped to the owner
     const data: any = {
       userId: owner.id,
       fullNameEnc: encrypt(name, 'contact.full_name'),
-      fullNameIdx: buildIndexToken(name)
+      fullNameIdx: buildIndexToken(name),
+      emailEnc: encrypt(email, 'contact.email'),
+      emailIdx: buildIndexToken(email),
+      phoneEnc: encrypt(phone, 'contact.phone'),
+      phoneIdx: buildIndexToken(phone)
     };
-    if (email) {
-      data.emailEnc = encrypt(email, 'contact.email');
-      data.emailIdx = buildIndexToken(email);
-    }
-    if (phone) {
-      data.phoneEnc = encrypt(phone, 'contact.phone');
-      data.phoneIdx = buildIndexToken(phone);
-    }
 
     // Create or find an existing contact in case of unique collisions
     let contactId: string | null = null;
@@ -106,45 +116,40 @@ export const actions: Actions = {
       });
       contactId = created.id;
     } catch (err: any) {
-      // If there is a unique index on emailIdx or phoneIdx, try to find the existing contact
       if (err?.code === 'P2002') {
         // Prefer lookup by emailIdx then phoneIdx within the same owner tenant
-        if (email) {
-          const existingByEmail = await prisma.contact.findFirst({
-            where: { userId: owner.id, emailIdx: buildIndexToken(email) },
-            select: { id: true }
-          });
-          if (existingByEmail) contactId = existingByEmail.id;
-        }
-        if (!contactId && phone) {
+        const existingByEmail = await prisma.contact.findFirst({
+          where: { userId: owner.id, emailIdx: buildIndexToken(email) },
+          select: { id: true }
+        });
+        if (existingByEmail) {
+          contactId = existingByEmail.id;
+        } else {
           const existingByPhone = await prisma.contact.findFirst({
             where: { userId: owner.id, phoneIdx: buildIndexToken(phone) },
             select: { id: true }
           });
           if (existingByPhone) contactId = existingByPhone.id;
         }
-        // If still not found, fall through and let us continue without a contact id
       } else {
         console.error('lead contact create failed:', err);
-        return fail(500, { error: 'Could not save details' });
+        return fail(500, { error: 'Could not save details', values });
       }
     }
 
     // Create a Lead that we can claim later when this person signs up
-    // Uses deterministic indexes so we can match without decrypting
     try {
-      // Some environments may not have the Lead model yet - guard access
       const hasLeadAPI =
         (prisma as any).lead && typeof (prisma as any).lead.create === 'function';
 
       if (hasLeadAPI) {
-        const emailIdx = email ? buildIndexToken(email) : null;
-        const phoneIdx = phone ? buildIndexToken(phone) : null;
+        const emailIdx = buildIndexToken(email);
+        const phoneIdx = buildIndexToken(phone);
 
         const lead = await (prisma as any).lead.create({
           data: {
             ownerId: owner.id,
-            contactId: contactId || '', // schema may require a value - if optional, pass null instead
+            contactId: contactId || '',
             emailIdx,
             phoneIdx,
             status: 'PENDING'
@@ -152,17 +157,14 @@ export const actions: Actions = {
           select: { id: true }
         });
 
-        // Optionally issue a claim token - you can email or SMS the link to the visitor
+        // Optional - create a short lived invite token for follow ups
         try {
-          const invite = await createInviteToken({
+          await createInviteToken({
             ownerId: owner.id,
             ttlMinutes: 60,
             meta: { leadId: lead.id, emailIdx }
           });
-          // TODO - send invite.token via email or SMS to the visitor
-          // Example link - `${absoluteUrlFromOrigin(locals.appOrigin, '/auth/magic')}?token=${invite.token}`
         } catch (e) {
-          // Do not block the flow if token creation fails
           console.warn('lead invite token creation failed:', e);
         }
       }
@@ -171,12 +173,10 @@ export const actions: Actions = {
       // Non-fatal - we still captured a contact for the owner
     }
 
-// Redirect to a dedicated thank you page that invites the visitor to create their own profile
-// IT: include the sharer slug as a ref so the page can say "You are now connected with <name>"
-throw redirect(
-    303,
-    `/thank-you?ref=${encodeURIComponent(owner.publicSlug || params.slug)}`
-  );
-  
+    // Success - redirect to thank-you
+    throw redirect(
+      303,
+      `/thank-you?ref=${encodeURIComponent(owner.publicSlug || params.slug)}`
+    );
   }
 };

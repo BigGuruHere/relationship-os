@@ -38,6 +38,17 @@
         <input id="company" name="company" value={data.contact.company} />
       </div>
 
+      <div class="field">
+        <label for="position">Position</label>
+        <input id="position" name="position" placeholder="Head of Partnerships" value={form?.values?.position || ''} />
+      </div>
+      
+      <div class="field">
+        <label for="linkedin">LinkedIn</label>
+        <input id="linkedin" name="linkedin" type="url" inputmode="url" placeholder="https://www.linkedin.com/in/username" value={form?.values?.linkedin || ''} />
+        <div class="hint">Paste the full profile url. We normalize it for dedupe.</div>
+      </div>
+
       <div style="display:flex; gap:8px; margin-top:12px;">
         <button class="btn primary">Save changes</button>
         <a class="btn" href={'/contacts/' + data.contact.id}>Cancel</a>

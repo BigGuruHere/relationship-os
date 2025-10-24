@@ -10,26 +10,36 @@
     <h1 style="margin-top:0;">Add contact</h1>
 
     <!-- IT: simple create form. Server validates and encrypts. -->
-    <form method="post" use:enhance>
+    <form method="post" action="?/create">
       <div class="field">
         <label for="fullName">Full name</label>
         <input id="fullName" name="fullName" required />
       </div>
 
       <div class="field">
-        <label for="email">Email (optional)</label>
+        <label for="email">Email</label>
         <input id="email" name="email" type="email" />
       </div>
 
       <div class="field">
-        <label for="phone">Phone (optional)</label>
+        <label for="phone">Phone</label>
         <input id="phone" name="phone" />
       </div>
 
       <!-- IT: new company field - optional -->
       <div class="field">
-        <label for="company">Company (optional)</label>
+        <label for="company">Company</label>
         <input id="company" name="company" placeholder="e.g. ACME Pty Ltd" />
+      </div>
+
+      <div class="field">
+        <label for="position">Position</label>
+        <input id="position" name="position" placeholder="Head of Partnerships" value={form?.values?.position || ''} />
+      </div>
+      
+      <div class="field">
+        <label for="linkedin">LinkedIn</label>
+        <input id="linkedin" name="linkedin" type="url" inputmode="url" placeholder="https://www.linkedin.com/in/username" value={form?.values?.linkedin || ''} />
       </div>
 
       <div style="display:flex; gap:8px; margin-top:12px;">

@@ -8,22 +8,31 @@ import type { PageServerLoad } from './$types';
 import { prisma } from '$lib/db';
 import { decrypt, buildIndexToken } from '$lib/crypto';
 import * as Emb from '$lib/embeddings';
+import { semanticSearchInteractions } from '$lib/embeddings'; // add this import at top next to others
+
 
 type Scope = 'all' | 'contacts' | 'notes' | 'tags' | 'company';
 const LIMIT = 20; // keep UI snappy
 
 // IT: resolve an embedding helper without tying you to one function name
 function resolveEmbedHelper() {
-  const fn =
-    (Emb as any).embedQuery ||
-    (Emb as any).embedText ||
-    (Emb as any).getEmbeddingForSearch ||
-    (Emb as any).getEmbedding;
-  if (typeof fn === 'function') return fn as (text: string) => Promise<number[]>;
+  const candidates = [
+    ['embedQuery', (Emb as any).embedQuery],
+    ['embedText', (Emb as any).embedText],
+    ['getEmbeddingForSearch', (Emb as any).getEmbeddingForSearch],
+    ['getEmbedding', (Emb as any).getEmbedding]
+  ];
+  for (const [name, fn] of candidates) {
+    if (typeof fn === 'function') {
+      console.debug('[search] using embedding helper:', name);
+      return fn as (text: string) => Promise<number[]>;
+    }
+  }
   return async (_text: string) => {
     throw new Error('No embedding helper found in $lib/embeddings');
   };
 }
+
 
 // IT: convert numeric array to a Postgres vector literal, e.g. [0.1,-0.2] -> "[0.1,-0.2]"
 function toVectorLiteral(vec: number[]) {
@@ -46,7 +55,7 @@ export const load: PageServerLoad = async ({ url, locals }) => {
   const doContacts = scope === 'all' || scope === 'contacts';
   const doNotes = scope === 'all' || scope === 'notes';
   const doTags = scope === 'all' || scope === 'tags';
-  const doCompany = scope === 'company' || scope === 'all'; // IT: treat All as including company
+  const doCompany = scope === 'company' || scope === 'all' || scope === 'contacts';
 
   // ...
   const contacts: Array<{ id: string; name: string; email: string; phone: string; company: string; tags: { name: string }[]; }> = [];
@@ -172,67 +181,56 @@ if (doTags) {
 
   // NOTES - semantic search using pgvector cosine distance
   if (doNotes) {
-    // IT: never run vector SQL without a valid non-empty embedding
-    let vecLiteral: string | null = null;
     try {
-      const embed = resolveEmbedHelper();
-      // Optional prefilter - very short queries often produce weak embeddings
-      // You can disable this if you want single character queries to run
-      if (q.length >= 2) {
-        const vec = await embed(q);            // expects number[]
-        if (Array.isArray(vec) && vec.length > 0) {
-          vecLiteral = toVectorLiteral(vec);   // string like "[0.1,0.2,...]"
+      // IT: run semantic search with one function that computes the query embedding and ranks matches
+      const top = await semanticSearchInteractions({
+        userId: locals.user.id,
+        query: q,
+        topK: LIMIT,
+        minScore: 0.15 // tweak to taste
+      });
+
+      const ids = top.map((t) => t.interactionId);
+      if (ids.length) {
+        // IT: fetch minimal display fields for the matched interactions
+        const rows = await prisma.interaction.findMany({
+          where: { id: { in: ids }, userId: locals.user.id },
+          select: {
+            id: true,
+            contactId: true,
+            occurredAt: true,
+            rawTextEnc: true,
+            contact: { select: { fullNameEnc: true } }
+          }
+        });
+
+        // IT: maintain order by score
+        const position = new Map(ids.map((id, i) => [id, i]));
+
+        rows.sort((a, b) => (position.get(a.id)! - position.get(b.id)!));
+
+        for (const r of rows) {
+          let contactName = '(name unavailable)';
+          let preview = '';
+          try { if (r.contact.fullNameEnc) contactName = decrypt(r.contact.fullNameEnc, 'contact.full_name'); } catch {}
+          try {
+            const text = r.rawTextEnc ? decrypt(r.rawTextEnc, 'interaction.raw_text') : '';
+            preview = text.length > 280 ? text.slice(0, 277) + '...' : text;
+          } catch {}
+
+          notes.push({
+            id: r.id,
+            contactId: r.contactId,
+            contactName,
+            occurredAt: r.occurredAt,
+            preview
+          });
         }
       }
     } catch (e) {
-      console.warn('[search] embedding failed - skipping notes');
+      const msg = e instanceof Error ? e.message : String(e);
+      console.warn('[search] notes retrieval failed -', msg);
     }
-
-    if (vecLiteral) {
-      const rows = await prisma.$queryRawUnsafe<Array<{
-        id: string;
-        contactId: string;
-        occurredAt: Date;
-        fullNameEnc: string;
-        rawTextEnc: string | null;
-        score: number;
-      }>>(
-        `
-        SELECT i."id",
-               i."contactId",
-               i."occurredAt",
-               c."fullNameEnc",
-               i."rawTextEnc",
-               1 - (ie."vec" <=> $2::vector) AS score
-        FROM "InteractionEmbedding" ie
-        JOIN "Interaction" i ON i."id" = ie."interactionId"
-        JOIN "Contact" c ON c."id" = i."contactId"
-        WHERE i."userId" = $1
-        ORDER BY ie."vec" <=> $2::vector
-        LIMIT ${LIMIT}
-        `,
-        locals.user.id,
-        vecLiteral
-      );
-
-      for (const r of rows) {
-        let contactName = '(name unavailable)';
-        let preview = '';
-        try { contactName = decrypt(r.fullNameEnc, 'contact.full_name'); } catch {}
-        try {
-          const text = r.rawTextEnc ? decrypt(r.rawTextEnc, 'interaction.raw_text') : '';
-          preview = text.length > 280 ? text.slice(0, 277) + '...' : text;
-        } catch {}
-        notes.push({
-          id: r.id,
-          contactId: r.contactId,
-          contactName,
-          occurredAt: r.occurredAt,
-          preview
-        });
-      }
-    }
-    // If vecLiteral is null or empty, we intentionally skip the SQL so we never send $2::vector with "[]"
   }
   return {
     q,

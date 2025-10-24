@@ -8,28 +8,48 @@ import type { Actions, PageServerLoad } from './$types';
 import { prisma } from '$lib/db';
 import { encrypt, buildIndexToken } from '$lib/crypto';
 import { fail, redirect } from '@sveltejs/kit';
-import { absoluteUrlFromOrigin } from '$lib/url';
 import { createInviteToken } from '$lib/server/tokens';
 
+// IT: resolve the profile owner by slug and return only fields we actually have
+// - Use Profile.slug to get userId and displayName for UI
+// - Then fetch User to get id and publicSlug
+// - Do not select User.name since that field does not exist
 async function resolveOwnerFromSlug(slug: string) {
   // Try profile.slug first so /u/<profile-slug> works
   const prof = await prisma.profile.findFirst({
     where: { slug },
-    select: { userId: true }
+    select: { userId: true, displayName: true, slug: true }
   });
+
   if (prof) {
-    const owner = await prisma.user.findUnique({
+    const user = await prisma.user.findUnique({
       where: { id: prof.userId },
-      select: { id: true, publicSlug: true, name: true }
+      select: { id: true, publicSlug: true }
     });
-    if (owner) return owner;
+    if (user) {
+      return {
+        id: user.id,
+        publicSlug: user.publicSlug || null,
+        displayName: prof.displayName || null
+      };
+    }
   }
+
   // Fallback to user.publicSlug or direct id
-  const owner = await prisma.user.findFirst({
+  const user = await prisma.user.findFirst({
     where: { OR: [{ publicSlug: slug }, { id: slug }] },
-    select: { id: true, publicSlug: true, name: true }
+    select: { id: true, publicSlug: true }
   });
-  return owner;
+
+  if (user) {
+    return {
+      id: user.id,
+      publicSlug: user.publicSlug || null,
+      displayName: null // no profile context in this fallback
+    };
+  }
+
+  return null;
 }
 
 export const load: PageServerLoad = async ({ params }) => {
@@ -40,7 +60,8 @@ export const load: PageServerLoad = async ({ params }) => {
     owner: {
       id: owner.id,
       slug: owner.publicSlug || params.slug,
-      name: owner.name || null
+      // IT: use profile displayName if available, else null
+      name: owner.displayName || null
     }
   };
 };
@@ -150,11 +171,12 @@ export const actions: Actions = {
       // Non-fatal - we still captured a contact for the owner
     }
 
-    // Redirect back to the public profile with thanks flag
-    const to = absoluteUrlFromOrigin(
-      locals.appOrigin,
-      `/u/${encodeURIComponent(owner.publicSlug || params.slug)}?thanks=1`
-    );
-    throw redirect(303, to);
+// Redirect to a dedicated thank you page that invites the visitor to create their own profile
+// IT: include the sharer slug as a ref so the page can say "You are now connected with <name>"
+throw redirect(
+    303,
+    `/thank-you?ref=${encodeURIComponent(owner.publicSlug || params.slug)}`
+  );
+  
   }
 };

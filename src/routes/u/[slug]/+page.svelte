@@ -49,41 +49,57 @@
     publicLink
   );
 
-// IT: compute the thanks flag safely in the browser
-let showThanks = false;
-if (typeof window !== 'undefined') {
-  showThanks = new URLSearchParams(window.location.search).get('thanks') === '1';
-}
+  // IT: compute the thanks flag safely in the browser
+  let showThanks = false;
+  if (typeof window !== 'undefined') {
+    showThanks = new URLSearchParams(window.location.search).get('thanks') === '1';
+  }
 
+  // IT: save vCard then submit hidden form to /api/guest/start which redirects to /u/<slug>/lead
+  async function saveThenShare() {
+    try {
+      // IT: trigger a client-side vCard download for the owner
+      const a = document.createElement('a');
+      a.href = vcardUrl; // IT: reuse the computed vCard url
+      a.download = '';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+
+      // IT: small delay so the download starts, then submit hidden form with inviteToken
+      setTimeout(() => {
+        const f = document.getElementById('start-share-form') as HTMLFormElement | null;
+        if (f) f.submit();
+      }, 400);
+    } catch {
+      // IT: if anything fails, fall back to direct navigation to lead page
+      window.location.href = `/u/${encodeURIComponent(data?.profile?.slug || data?.slugParam || '')}/lead`;
+    }
+  }
 </script>
 
 <div class="container">
   <!-- IT: owner-facing context bar with return to Share on the right -->
   <div class="topbar" style="padding:10px 12px; max-width:720px; margin:0 auto 10px auto; position:relative; display:flex; align-items:center; gap:8px;">
-<!-- IT: helper text on the left -->
+    <!-- IT: helper text on the left -->
+    {#if data?.isOwner && profileSlug}
+      <div class="helper-text">
+        Note: Below is the screen that will be shown to those you share with.
+      </div>
 
-
-{#if data?.isOwner && profileSlug}
-  <div class="helper-text">
-    Note: Below is the screen that will be shown to those you share with.
-  </div>
-
-  <!-- IT: flex child with margin-left:auto pushes itself to the right of the topbar -->
-  <div style="margin-left:auto;">
-    <a
-      class="btn primary"
-      href={'/share?profile=' + encodeURIComponent(profileSlug)}
-      style="text-wrap:nowrap;"
-      aria-label="Back to Share"
-      title="Back to Share"
-    >
-      Back to Share
-    </a>
-  </div>
-{/if}
-
-
-
+      <!-- IT: flex child with margin-left:auto pushes itself to the right of the topbar -->
+      <div style="margin-left:auto;">
+        <a
+          class="btn primary"
+          href={'/share?profile=' + encodeURIComponent(profileSlug)}
+          style="text-wrap:nowrap;"
+          aria-label="Back to Share"
+          title="Back to Share"
+        >
+          Back to Share
+        </a>
+      </div>
+    {/if}
   </div>
 
   <div class="card page" style="padding:16px; max-width:720px; margin:0 auto; position:relative;">
@@ -93,7 +109,7 @@ if (typeof window !== 'undefined') {
       <form method="get" on:submit|preventDefault={() => (editing = !editing)}>
         <button type="submit" class="icon-btn" aria-label="Edit profile" title="Edit profile">
           <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1.003 1.003 0 0 0 0-1.42l-2.34-2.34a1.003 1.003 0 0 0-1.42 0l-1.83 1.83 3.75 3.75 1.84-1.82z" fill="currentColor"/>
+            <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1.003 1.003 0 0 0 0-1.42l-2.34-2.34a1.003 1.003 0 0 0 1.42 0l-1.83 1.83 3.75 3.75 1.84-1.82z" fill="currentColor"/>
           </svg>
         </button>
       </form>
@@ -108,12 +124,11 @@ if (typeof window !== 'undefined') {
     {/if}
 
     <!-- IT: thanks banner - shown after lead submit -->
-{#if showThanks}
-<div class="note" style="margin-bottom:10px;">
-  Thanks - your details were shared with {ownerName}.
-</div>
-{/if}
-
+    {#if showThanks}
+      <div class="note" style="margin-bottom:10px;">
+        Thanks - your details were shared with {ownerName}.
+      </div>
+    {/if}
 
     <!-- IT: view mode -->
     {#if !editing}
@@ -152,18 +167,15 @@ if (typeof window !== 'undefined') {
         </div>
       {/if}
 
-      <!-- IT: actions visible in public view -->
+      <!-- IT: public actions - only show Save contact, then auto navigate to share form -->
       <div class="btnrow" style="margin-top:12px;">
-        <a class="btn" href={vcardUrl}>Save contact</a>
-
-<!-- IT: rename the capture CTA -->
-<form method="post" action="/api/guest/start" style="display:inline;">
-  <input type="hidden" name="inviteToken" value={data.inviteToken} />
-  <button class="btn" type="submit">Share your details</button>
-</form>
-
-
+        <button class="btn primary" on:click|preventDefault={saveThenShare}>Save contact</button>
       </div>
+
+      <!-- IT: hidden form that will post to start guest flow and redirect to /u/<slug>/lead -->
+      <form id="start-share-form" method="post" action="/api/guest/start" style="display:none;">
+        <input type="hidden" name="inviteToken" value={data?.inviteToken} />
+      </form>
 
       {#if !data?.profile}
         <div class="note" style="margin-top:10px;">
@@ -237,29 +249,25 @@ if (typeof window !== 'undefined') {
   .topbar .note { background:#f9fafb; border-color:#eceef1; }
 
   /* IT: make the helper text look like plain text */
-.helper-text {
-  color: #555;
-  background: transparent;
-  border: 0;
-  padding: 0;
+  .helper-text {
+    color: #555;
+    background: transparent;
+    border: 0;
+    padding: 0;
+  }
 
-}
+  /* IT: ensure the button reads as a primary action in the topbar */
+  .topbar .btn.primary {
+    background: #111;
+    color: #fff;
+    border-color: #111;
+  }
 
-/* IT: ensure the button reads as a primary action in the topbar */
-.topbar .btn.primary {
-  background: #111;
-  color: #fff;
-  border-color: #111;
-}
-
-.topbar {
-  background: #f9fafb;
-  border: 1px solid #eceef1;
-  border-radius: 10px;
-  padding: 10px 12px;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
-}
-
-
-
+  .topbar {
+    background: #f9fafb;
+    border: 1px solid #eceef1;
+    border-radius: 10px;
+    padding: 10px 12px;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
+  }
 </style>

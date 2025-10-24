@@ -109,7 +109,6 @@ onMount(() => {
     <!-- Compact mobile actions - icon only for a tidy topbar -->
     <nav class="topbar-actions" aria-label="Primary">
       <!-- Contacts -->
-     <!-- address book icon 
 
       <a class="btn icon" href="/" aria-label="Contacts">
         <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
@@ -118,7 +117,7 @@ onMount(() => {
           <path d="M7.5 16a4.5 4.5 0 0 1 9 0H7.5z"/>
         </svg>
       </a>
-      -->
+    
 
       <!-- Search -->
       <a class="btn icon" href="/search" aria-label="Search">

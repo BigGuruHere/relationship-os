@@ -35,9 +35,7 @@
 <div class="container">
   <div class="card" style="padding:16px; max-width:720px; margin:0 auto;">
     <h1 style="margin:0 0 12px 0;">{p?.id ? 'Edit profile' : 'Create profile'}</h1>
-    <div class="note" style="margin-top:12px; margin-bottom:18px;">
-      Your public link will be generated from your name on first save. You will be redirected to a public preview if this is your first time.
-    </div>
+
     {#if isFirstTime}
       <div style="margin:0 0 12px 0; padding:8px 10px; border:1px solid #e6e6e6; border-radius:10px; background:#fafafa;">
         Create your public profile, then we will show you how others will see it.
@@ -116,7 +114,6 @@
 
       <div style="grid-column: 1 / span 2; display:flex; gap:8px; margin-top:8px;">
         <button class="btn primary" type="submit">Save</button>
-        <a class="btn" href="/share">Back to Share</a>
       </div>
 
       {#if form?.error}

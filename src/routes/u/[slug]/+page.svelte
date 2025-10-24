@@ -64,20 +64,25 @@ if (typeof window !== 'undefined') {
 
 
 {#if data?.isOwner && profileSlug}
-<div class="helper-text">
-  Note: Below is the screen that will be shown to those you share with.
-</div>
-  <!-- IT: real button on the right -->
-  <a
-    class="btn primary"
-    href={'/share?profile=' + encodeURIComponent(profileSlug)}
-    style="text-wrap:nowrap;"
-    aria-label="Back to Share"
-    title="Back to Share"
-  >
-    Back to Share
-  </a>
+  <div class="helper-text">
+    Note: Below is the screen that will be shown to those you share with.
+  </div>
+
+  <!-- IT: flex child with margin-left:auto pushes itself to the right of the topbar -->
+  <div style="margin-left:auto;">
+    <a
+      class="btn primary"
+      href={'/share?profile=' + encodeURIComponent(profileSlug)}
+      style="text-wrap:nowrap;"
+      aria-label="Back to Share"
+      title="Back to Share"
+    >
+      Back to Share
+    </a>
+  </div>
 {/if}
+
+
 
   </div>
 
@@ -254,6 +259,7 @@ if (typeof window !== 'undefined') {
   padding: 10px 12px;
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
 }
+
 
 
 </style>

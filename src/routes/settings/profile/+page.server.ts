@@ -1,6 +1,12 @@
-// PURPOSE: server for profile editor - reads extras from extra_* inputs
+// src/routes/settings/profile/+page.server.ts
+// PURPOSE: server for profile editor - reads extras from extra_* inputs and saves profile
 // MULTI TENANT: all reads and writes scoped by locals.user.id
-// SECURITY: only public fields are handled here
+// SECURITY: only public fields are handled here - no decryption here
+// FLOW:
+// - load: fetch most relevant profile to edit
+// - save: update or create profile, then
+//   - if next=preview, redirect to /u/<slug>
+//   - else redirect to /share?profile=<slug>
 
 import { fail, redirect } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
@@ -10,13 +16,14 @@ import { mergeExtras } from '$lib/publicProfile'; // IT: merges extra_* into exi
 
 // IT: simple slugify helper
 function slugify(input: string): string {
-  const base = input
-    .toLowerCase()
-    .normalize('NFKD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 48) || 'profile';
+  const base =
+    input
+      .toLowerCase()
+      .normalize('NFKD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 48) || 'profile';
   return base;
 }
 
@@ -33,10 +40,12 @@ async function ensureUniqueSlugGlobal(wanted: string): Promise<string> {
 }
 
 export const load: PageServerLoad = async ({ locals, url }) => {
+  // IT: require auth
   if (!locals.user) {
     throw redirect(303, absoluteUrlFromOrigin(locals.appOrigin, '/auth/login'));
   }
 
+  // IT: pick most relevant profile - default first, then most recently updated
   const profile = await prisma.profile.findFirst({
     where: { userId: locals.user.id },
     select: {
@@ -70,6 +79,7 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 
 export const actions: Actions = {
   save: async ({ request, locals, url }) => {
+    // IT: require auth
     if (!locals.user) {
       throw redirect(303, absoluteUrlFromOrigin(locals.appOrigin, '/auth/login'));
     }
@@ -77,7 +87,7 @@ export const actions: Actions = {
     const fd = await request.formData();
 
     // IT: core fields
-    const profileId  = String(fd.get('profileId') || '').trim();
+    const profileId   = String(fd.get('profileId') || '').trim();
     const displayName = String(fd.get('displayName') || '').trim();
     const headline    = String(fd.get('headline') || '').trim();
     const bio         = String(fd.get('bio') || '').trim();
@@ -113,11 +123,12 @@ export const actions: Actions = {
           orderBy: [{ isDefault: 'desc' }, { updatedAt: 'desc' }]
         });
 
+    // IT: do DB work inside try - compute targetSlug, but DO NOT redirect here
+    let targetSlug: string | null = null;
+
     try {
       if (existing) {
-        // IT: keep slug or generate one
         const nextSlug = existing.slug || (await ensureUniqueSlugGlobal(slugify(displayName)));
-        // IT: merge extras into existing publicMeta
         const nextMeta = mergeExtras(existing.publicMeta, extras);
 
         await prisma.profile.update({
@@ -137,8 +148,9 @@ export const actions: Actions = {
             publicMeta: nextMeta
           }
         });
+
+        targetSlug = nextSlug;
       } else {
-        // IT: create new profile - default if none exists yet
         const wanted = slugify(displayName);
         const uniqueSlug = await ensureUniqueSlugGlobal(wanted);
 
@@ -147,10 +159,9 @@ export const actions: Actions = {
           select: { id: true }
         });
 
-        // IT: build initial publicMeta from extras
         const initialMeta = mergeExtras({}, extras);
 
-        await prisma.profile.create({
+        const created = await prisma.profile.create({
           data: {
             userId: locals.user.id,
             slug: uniqueSlug,
@@ -167,10 +178,17 @@ export const actions: Actions = {
             phonePublic: phonePublic || null,
             publicMeta: initialMeta,
             qrReady: false
-          }
+          },
+          select: { slug: true }
         });
+
+        targetSlug = created.slug;
       }
     } catch (err: any) {
+      // IT: if SvelteKit redirect was thrown earlier, rethrow it - do not treat as an error
+      if (err && typeof err === 'object' && 'status' in err && 'location' in err) {
+        throw err as any;
+      }
       if (err?.code === 'P2002' && Array.isArray(err?.meta?.target) && err.meta.target.includes('slug')) {
         return fail(409, { error: 'This profile URL is already taken. Try a different name.' });
       }
@@ -178,19 +196,27 @@ export const actions: Actions = {
       return fail(500, { error: 'Could not save profile' });
     }
 
-    // IT: first run from Share should preview public page
+    // IT: after DB work - perform redirects OUTSIDE the try/catch
+
+    // First-time flow - preview public page
     const nextParam = url.searchParams.get('next');
     if (nextParam === 'preview') {
-      // IT: look up the slug to redirect accurately
-      const latest = await prisma.profile.findFirst({
-        where: { userId: locals.user.id },
-        select: { slug: true },
-        orderBy: [{ updatedAt: 'desc' }]
-      });
-      const slug = latest?.slug || 'profile';
+      const slug =
+        targetSlug ||
+        (
+          await prisma.profile.findFirst({
+            where: { userId: locals.user.id },
+            select: { slug: true },
+            orderBy: [{ updatedAt: 'desc' }]
+          })
+        )?.slug ||
+        'profile';
+
       throw redirect(303, absoluteUrlFromOrigin(locals.appOrigin, `/u/${encodeURIComponent(slug)}`));
     }
 
-    return { ok: true };
+    // Normal flow - go back to Share focused on this profile
+    const slug = targetSlug || 'profile';
+    throw redirect(303, `/share?profile=${encodeURIComponent(slug)}`);
   }
 };

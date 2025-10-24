@@ -28,7 +28,6 @@ if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = prisma;
  */
 const KEEPALIVE_MINUTES = Number(process.env.DB_KEEPALIVE_MINUTES ?? '4');
 
-if (process.env.NODE_ENV === 'development') {
   if (!globalForPrisma.__keepaliveIntervalId__) {
     globalForPrisma.__keepaliveIntervalId__ = setInterval(async () => {
       try {
@@ -42,7 +41,7 @@ if (process.env.NODE_ENV === 'development') {
     }, KEEPALIVE_MINUTES * 60 * 1000);
     console.log(`[keepalive] Enabled - every ${KEEPALIVE_MINUTES} minute(s)`);
   }
-}
+
 
 /**
  * Optional: lightweight retry wrapper for transient wakeup errors

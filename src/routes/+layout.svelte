@@ -108,7 +108,7 @@ onMount(() => {
 
     <!-- Compact mobile actions - icon only for a tidy topbar -->
     <nav class="topbar-actions" aria-label="Primary">
-      <!-- Contacts -->
+      <!-- Contacts
 
       <a class="btn icon" href="/" aria-label="Contacts">
         <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
@@ -117,7 +117,17 @@ onMount(() => {
           <path d="M7.5 16a4.5 4.5 0 0 1 9 0H7.5z"/>
         </svg>
       </a>
-    
+     -->
+
+        <!-- Add Contact -->
+        <a class="btn icon" href="/contacts/new" aria-label="Add Contact" title="Add Contact">
+        <!-- user plus icon -->
+        <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+          <path d="M12 12a4 4 0 1 0-4-4 4 4 0 0 0 4 4z"/>
+          <path d="M12 14c-4 0-7 2-7 4v2h8.5v-2c0-.7.2-1.4.6-2 .5-.8 1.3-1.4 2.3-1.8A9.7 9.7 0 0 0 12 14z"/>
+          <path d="M19 10v-3h-2v3h-3v2h3v3h2v-3h3v-2z"/>
+        </svg>
+      </a>
 
       <!-- Search -->
       <a class="btn icon" href="/search" aria-label="Search">
@@ -127,15 +137,7 @@ onMount(() => {
         </svg>
       </a>
 
-      <!-- Add Contact -->
-      <a class="btn icon" href="/contacts/new" aria-label="Add Contact" title="Add Contact">
-        <!-- user plus icon -->
-        <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-          <path d="M12 12a4 4 0 1 0-4-4 4 4 0 0 0 4 4z"/>
-          <path d="M12 14c-4 0-7 2-7 4v2h8.5v-2c0-.7.2-1.4.6-2 .5-.8 1.3-1.4 2.3-1.8A9.7 9.7 0 0 0 12 14z"/>
-          <path d="M19 10v-3h-2v3h-3v2h3v3h2v-3h3v-2z"/>
-        </svg>
-      </a>
+
 
       {#if data.user}
         <!-- Reconnect -->

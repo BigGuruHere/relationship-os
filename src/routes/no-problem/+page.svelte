@@ -13,7 +13,7 @@
       <h1 class="title">No problem</h1>
       <p class="lead">You did not share your details this time. You can still explore the app and create your own profile later.</p>
       <div class="cta">
-        <a class="btn primary" href="/">Explore the app</a>
+        <a class="btn primary" href="/">Explore Relish Personal CRM</a>
       </div>
       <p class="small">You can come back to connect with {sharer} any time.</p>
     </div>

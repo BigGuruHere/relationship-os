@@ -140,28 +140,18 @@ onMount(() => {
 
 
       {#if data.user}
-        <!-- Reconnect -->
-        <a class="btn icon" href="/reconnect" aria-label="Reconnect" title="Reconnect">
-          <!-- refresh loop icon -->
-          <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-            <path d="M17.65 6.35A7.95 7.95 0 0 0 12 4V1L7 6l5 5V8a5 5 0 1 1-4.9 6h-2.1A7 7 0 1 0 17.65 6.35z"/>
-          </svg>
-          {#if data.reconnectDue > 0}
-            <span class="pill">{data.reconnectDue}</span>
-          {/if}
-        </a>
+<!-- Inbox -->
+<a class="btn icon" href="/actions" aria-label="Actions" title="Actions">
+  <!-- bell icon -->
+  <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+    <path d="M12 22a2 2 0 0 0 2-2h-4a2 2 0 0 0 2 2z"/>
+    <path d="M18 16v-5a6 6 0 1 0-12 0v5l-2 2v1h16v-1l-2-2z"/>
+  </svg>
 
-        <!-- Reminders -->
-        <a class="btn icon" href="/reminders" aria-label="Reminders" title="Reminders">
-          <!-- bell icon -->
-          <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-            <path d="M12 22a2 2 0 0 0 2-2h-4a2 2 0 0 0 2 2z"/>
-            <path d="M18 16v-5a6 6 0 1 0-12 0v5l-2 2v1h16v-1l-2-2z"/>
-          </svg>
-          {#if data.remindersOpenCount > 0}
-            <span class="pill">{data.remindersOpenCount}</span>
-          {/if}
-        </a>
+  {#if (data.actionsCount || 0) > 0}
+    <span class="pill">{data.actionsCount}</span>
+  {/if}
+</a>
 
 <!-- After - same sizing as Reconnect and Reminders -->
 <a class="btn icon" href="/share" aria-label="Share your link" title="Share your link">

@@ -32,5 +32,14 @@ export const load: LayoutServerLoad = async ({ locals }) => {
     });
   }
 
+  const actionsCount = (reconnectDue || 0) + (remindersOpenCount || 0);
+
+return {
+  user,
+  reconnectDue,
+  remindersOpenCount,
+  actionsCount
+};
+
   return { user, reconnectDue, remindersOpenCount };
 };

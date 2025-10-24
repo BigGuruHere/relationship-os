@@ -10,8 +10,10 @@ import type { RequestHandler } from './$types';
 import { prisma } from '$lib/db';
 import { verifyInviteToken } from '$lib/server/tokens';
 import { redirect } from '@sveltejs/kit';
+import { getAppOriginLoose } from '$lib/appOrigin';
 
-const APP_ORIGIN = process.env.APP_ORIGIN || 'http://localhost:5173';
+
+const APP_ORIGIN = getAppOriginLoose();
 
 export const POST: RequestHandler = async ({ request, cookies }) => {
   // Read the form body

@@ -8,6 +8,7 @@
 <script lang="ts">
   import "../app.css"; // ensure global styles load
   export let data: { user: { id: string; email: string } | null; reconnectDue: number; remindersOpenCount: number };
+  import { onMount, onDestroy } from 'svelte';
 
   // PURPOSE: register service worker so Android can install as full PWA
   if ('serviceWorker' in navigator) {
@@ -15,6 +16,84 @@
       .then(() => console.log('Service Worker registered'))
       .catch(err => console.error('SW registration failed:', err));
   }
+
+  let canInstall = false;        // controls Install button visibility on Android
+let isInstalled = false;       // reflects whether the app is currently installed
+let showIosHint = false;       // small helper banner for iOS Safari
+let deferredPrompt: any = null;
+
+// IT: detect iOS Safari - rough check that is good enough for this UI hint
+function isIosSafari(): boolean {
+  if (typeof navigator === 'undefined') return false;
+  const ua = navigator.userAgent || navigator.vendor || '';
+  const isIOS = /iPad|iPhone|iPod/.test(ua);
+  const isSafari = /^((?!chrome|android).)*safari/i.test(ua);
+  return isIOS && isSafari;
+}
+
+// IT: detect installed state across platforms
+function computeInstalled(): boolean {
+  // Android and most browsers
+  const standaloneMedia = typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(display-mode: standalone)').matches;
+  // iOS Safari fallback
+  const iosStandalone = typeof navigator !== 'undefined' && (navigator as any).standalone === true;
+  return Boolean(standaloneMedia || iosStandalone);
+}
+
+function updateUiFlags() {
+  isInstalled = computeInstalled();
+
+  // Android logic: show Install only if not installed and Chrome fired beforeinstallprompt
+  canInstall = !isInstalled && !!deferredPrompt;
+
+  // iOS Safari: show hint if not installed - user must use Share -> Add to Home Screen
+  showIosHint = !isInstalled && isIosSafari();
+}
+
+// IT: call the saved prompt
+async function install() {
+  if (!deferredPrompt) return;
+  deferredPrompt.prompt();
+  const { outcome } = await deferredPrompt.userChoice; // 'accepted' or 'dismissed'
+  // Once a choice is made, the event cannot be reused
+  deferredPrompt = null;
+  updateUiFlags(); // will hide button if accepted
+}
+
+function handleBeforeInstallPrompt(e: Event) {
+  // Prevent the default mini-infobar and remember the event for our button
+  e.preventDefault();
+  deferredPrompt = e;
+  updateUiFlags();
+}
+
+function handleAppInstalled() {
+  // App has been installed - hide controls
+  deferredPrompt = null;
+  updateUiFlags();
+}
+
+function handleVisibilityChange() {
+  // If the user installed from another tab or OS dialog, state can change
+  updateUiFlags();
+}
+
+onMount(() => {
+  updateUiFlags();
+
+  // Android install availability
+  window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt as any);
+  // Fired after successful install
+  window.addEventListener('appinstalled', handleAppInstalled);
+  // Re-check when tab visibility changes
+  document.addEventListener('visibilitychange', handleVisibilityChange);
+
+  return () => {
+    window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt as any);
+    window.removeEventListener('appinstalled', handleAppInstalled);
+    document.removeEventListener('visibilitychange', handleVisibilityChange);
+  };
+});
 </script>
 
 <div class="layout">
@@ -112,6 +191,19 @@
         </a>
       {/if}
     </nav>
+    <!-- ANDROID: show Install button only when not installed and install prompt is available -->
+{#if canInstall}
+<button on:click={install} class="install-btn">
+  Install Relish
+</button>
+{/if}
+
+<!-- iOS: show a tiny helper only when not installed -->
+{#if showIosHint}
+<div class="ios-hint">
+  Add to Home Screen: tap Share, then Add to Home Screen
+</div>
+{/if}
   </header>
 
   <!-- Desktop sidebar - unchanged text links plus existing blocks -->

@@ -1,31 +1,37 @@
 // PURPOSE: generate a QR code SVG for the owner's public link and store it on the profile.
 // FLOW: POST with profileId, verifies ownership, writes qrSvg and qrGeneratedAt, sets qrReady, 303 to /share/qr.
 
+// SECURITY: Do not leak host details. Use central origin helpers to avoid cross-env mixups.
+
 import type { RequestHandler } from './$types';
 import { redirect } from '@sveltejs/kit';
 import { prisma } from '$lib/db';
 import QRCode from 'qrcode';
 
-const APP_ORIGIN = process.env.APP_ORIGIN || 'http://localhost:5173';
+// IT: use shared helpers for origin and URL building
+import { getAppOriginLoose } from '$lib/appOrigin';
+import { absoluteUrlFromOrigin } from '$lib/url';
 
 export const POST: RequestHandler = async ({ request, locals }) => {
+  // IT: require auth
   if (!locals.user) throw redirect(303, '/auth/login');
 
   const form = await request.formData();
-  const profileId = String(form.get('profileId') || '');
+  const profileId = form.get('profileId')?.toString();
+  if (!profileId) throw redirect(303, '/share');
 
   const profile = await prisma.profile.findFirst({
-    where: { id: profileId, userId: locals.user.id },
-    select: { id: true, user: { select: { publicSlug: true, id: true } } }
+    where: { id: profileId, ownerId: locals.user.id },
+    select: { id: true, slug: true }
   });
+  if (!profile) throw redirect(303, '/share');
 
-  if (!profile) throw redirect(303, '/share'); // not found or not owner
+  // IT: build canonical absolute URL from helpers
+  const origin = getAppOriginLoose();
+  const publicUrl = absoluteUrlFromOrigin(origin, `/u/${profile.slug}`);
 
-  const slug = profile.user.publicSlug || profile.user.id;
-  const link = `${APP_ORIGIN}/u/${slug}`;
-
-  // Generate an SVG so it scales nicely on screens and print
-  const svg = await QRCode.toString(link, { type: 'svg', margin: 2, scale: 6 });
+  // IT: optional dev skip is handled separately below
+  const svg = await QRCode.toString(publicUrl, { type: 'svg', margin: 1 });
 
   await prisma.profile.update({
     where: { id: profile.id },
@@ -38,4 +44,3 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 
   throw redirect(303, '/share/qr');
 };
-

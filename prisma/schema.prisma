@@ -72,6 +72,11 @@ model Lead {
   // IT: store deterministic indexes to match later without decrypting
   emailIdx        String?    @db.VarChar(128)
   phoneIdx        String?    @db.VarChar(128)
+  linkedinIdx     String?    @db.VarChar(128) // new
+
+  linkedinEnc     String?    // new - AES-256-GCM ciphertext
+
+
   // IT: claim status
   status          LeadStatus @default(PENDING)
   claimedByUserId String?
@@ -82,6 +87,8 @@ model Lead {
   @@index([ownerId])
   @@index([emailIdx])
   @@index([phoneIdx])
+    @@index([linkedinIdx])                // new - fast lookup by hash
+  @@unique([ownerId, linkedinIdx])   
 }
 
 enum LeadStatus {

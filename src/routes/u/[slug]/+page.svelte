@@ -1,12 +1,15 @@
 <script lang="ts">
   // src/routes/u/[slug]/+page.svelte
-  // PURPOSE: public profile page with owner-only edit and an easy return to the Share page.
-  // SECURITY: only renders public strings provided by the server - no decryption here.
+  // PURPOSE: public profile page with owner-only edit and LinkedIn-first flow
+  // SECURITY: only renders public strings provided by the server - no decryption here. All DOM access guarded by browser flag.
+
   export let data;
   export let form;
 
   // IT: helper utilities for rendering and vCard link building
-  import { headerFrom, publicRows, buildVcardUrl, EXTRA_KEYS } from '$lib/publicProfile';
+  import { headerFrom, publicRows, buildVcardUrl, EXTRA_KEYS, pickLinkedInUrlFromProfile } from '$lib/publicProfile';
+  import { onMount, onDestroy } from 'svelte';
+  import { browser } from '$app/environment';
 
   // IT: start in edit mode if the server requested it
   let editing = Boolean(data?.editingRequested);
@@ -36,6 +39,9 @@
     extra_inputs[spec.key] = typeof publicMeta[spec.key] === 'string' ? publicMeta[spec.key] : '';
   }
 
+  // IT: LinkedIn url for the alternate flow
+  let linkedinUrl = pickLinkedInUrlFromProfile({ websiteUrl, publicMeta });
+
   // IT: public link used for vCard note or source
   const publicLink = profileSlug ? data.origin + '/u/' + profileSlug : data.origin + '/u';
 
@@ -49,14 +55,15 @@
     publicLink
   );
 
-  // IT: compute the thanks flag safely in the browser
+  // IT: compute the thanks flag only on the client
   let showThanks = false;
-  if (typeof window !== 'undefined') {
+  if (browser) {
     showThanks = new URLSearchParams(window.location.search).get('thanks') === '1';
   }
 
   // IT: save vCard then submit hidden form to /api/guest/start which redirects to /u/<slug>/lead
   async function saveThenShare() {
+    if (!browser) return; // SSR guard
     try {
       // IT: trigger a client-side vCard download for the owner
       const a = document.createElement('a');
@@ -76,6 +83,79 @@
       window.location.href = `/u/${encodeURIComponent(data?.profile?.slug || data?.slugParam || '')}/lead`;
     }
   }
+
+  // -----------------------------
+  // LinkedIn-first alternate flow
+  // -----------------------------
+
+  // IT: state to avoid double resume
+  let liOpened = false;
+  let liResumed = false;
+
+  // IT: call backend to record the LinkedIn click, then open LinkedIn in a new tab
+  async function saveToLinkedIn() {
+    if (!browser) return; // SSR guard
+    if (!linkedinUrl) return;
+    if (liOpened) return;
+    liOpened = true;
+
+    const payload = JSON.stringify({ linkedinUrl, ownerSlug: profileSlug });
+
+    // IT: use sendBeacon to reduce the chance of losing the POST if navigation happens quickly
+    let sent = false;
+    try {
+      if ('sendBeacon' in navigator) {
+        const ok = navigator.sendBeacon('/api/share/linkedin', new Blob([payload], { type: 'application/json' }));
+        sent = ok;
+      }
+    } catch {
+      // ignore
+    }
+
+    if (!sent) {
+      try {
+        await fetch('/api/share/linkedin', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: payload,
+          keepalive: true
+        });
+      } catch {
+        // swallow - do not block user
+      }
+    }
+
+    // IT: open LinkedIn in a new tab so our page stays alive to catch focus when user returns
+    const win = window.open(linkedinUrl, '_blank', 'noopener,noreferrer');
+    if (!win) {
+      // IT: if popup blocked, navigate current tab as a fallback
+      window.location.href = linkedinUrl;
+    }
+  }
+
+  // IT: when the page regains focus or becomes visible, resume once to thank-you with a ref marker
+  function maybeResumeFromLinkedIn() {
+    if (!browser) return; // SSR guard
+    if (liResumed) return;
+    if (document.visibilityState === 'visible') {
+      liResumed = true;
+      window.location.assign('/thank-you?ref=linkedin');
+    }
+  }
+  const onVis = () => maybeResumeFromLinkedIn();
+  const onFocus = () => maybeResumeFromLinkedIn();
+
+  onMount(() => {
+    // IT: only attach listeners in the browser
+    if (!browser) return;
+    document.addEventListener('visibilitychange', onVis);
+    window.addEventListener('focus', onFocus);
+  });
+  onDestroy(() => {
+    if (!browser) return;
+    document.removeEventListener('visibilitychange', onVis);
+    window.removeEventListener('focus', onFocus);
+  });
 </script>
 
 <div class="container">
@@ -167,8 +247,14 @@
         </div>
       {/if}
 
-      <!-- IT: public actions - only show Save contact, then auto navigate to share form -->
+      <!-- IT: public actions -->
       <div class="btnrow" style="margin-top:12px;">
+        <!-- IT: LinkedIn-first share - only show if a linkedin url is available -->
+        {#if linkedinUrl}
+          <button class="btn" on:click|preventDefault={saveToLinkedIn}>Connect on LinkedIn</button>
+        {/if}
+
+        <!-- IT: traditional save contact flow stays available -->
         <button class="btn primary" on:click|preventDefault={saveThenShare}>Save contact</button>
       </div>
 

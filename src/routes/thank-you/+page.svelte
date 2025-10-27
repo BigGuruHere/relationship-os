@@ -18,6 +18,19 @@
       We have shared your details successfully.
     </p>
 
+    <!-- For possible future use -->
+    <!--  On /thank-you page - optional, off by default -->
+<!-- PURPOSE: let a viewer paste their LinkedIn to help you stay in touch -->
+<!-- SECURITY: server normalizes and indexes the URL - no plaintext matching -->
+
+{#if false /* flip to true when testing */ }
+<form method="post" action="/api/guest/claim-linkedin" class="card" style="margin-top:12px; padding:12px;">
+  <label for="li">Your LinkedIn</label>
+  <input id="li" name="linkedinUrl" placeholder="https://www.linkedin.com/in/your-handle" />
+  <button class="btn primary" type="submit">Share LinkedIn</button>
+</form>
+{/if}
+
     <!-- IT: single CTA left - explore the app -->
     <div class="cta">
       <a class="btn primary" href={appHomeHref}>Explore the app</a>

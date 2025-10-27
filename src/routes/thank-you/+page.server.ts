@@ -17,6 +17,8 @@ export const load: PageServerLoad = async ({ url }) => {
     };
   }
 
+  
+
   // IT: try to resolve a Profile by slug to get a friendly display name
   const prof = await prisma.profile.findFirst({
     where: { slug: ref },

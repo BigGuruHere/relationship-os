@@ -7,6 +7,9 @@
       name: string;
       email: string | null;
       phone: string | null;
+      company: string | null;
+      position: string | null;
+      linkedin: string | null;
       createdAt: string | Date;
       tags?: { name: string; slug: string }[];
     };
@@ -26,7 +29,6 @@
   let showCadenceEditor = false;
   let showReminderForm = false;
 
-
   // Simple date formatting helper
   function fmt(d: string | Date | null | undefined) {
     if (!d) return '';
@@ -38,6 +40,19 @@
   let showReminderPanel = false;
   // IT: derive open count from loader data
   const openCount: number = Array.isArray(data.reminders) ? data.reminders.length : 0;
+
+  // IT: build vCard download URL for this contact
+  function getVcardUrl() {
+    if (!contact) return '';
+    const params = new URLSearchParams();
+    params.set('name', contact.name || 'Contact');
+    if (contact.company) params.set('org', contact.company);
+    if (contact.position) params.set('title', contact.position);
+    if (contact.email) params.set('email', contact.email);
+    if (contact.phone) params.set('phone', contact.phone);
+    if (contact.linkedin) params.set('link', contact.linkedin);
+    return `/api/vcard?${params.toString()}`;
+  }
 </script>
 
 {#if !contact}
@@ -51,176 +66,172 @@
   <div class="container">
     <div class="card" style="padding:20px; max-width:820px; margin:auto;">
 
-<!-- wrap the title row to place the Edit button on the right -->
-<div style="display:flex; align-items:center; justify-content:space-between; gap:10px;">
-  <h1 style="margin-top:0;">{contact.name}</h1>
-<!-- IT: icon-only Edit button - monochrome, accessible via aria-label and title -->
-<a
-  class="btn"
-  href={"/contacts/" + data.contact.id + "/edit"}
-  aria-label="Edit contact"
-  title="Edit contact"
-  style="display:inline-flex;align-items:center;justify-content:center;padding:8px 10px;"
->
-  <!-- IT: simple pencil icon - uses currentColor so it is black on default text color and white if the button inverts -->
-  <svg width="18" height="18" viewBox="0 0 24 24" role="img" aria-hidden="true">
-    <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25z" fill="currentColor"></path>
-    <path d="M20.71 7.04c.39-.39.39-1.03 0-1.42l-2.34-2.34c-.39-.39-1.03-.39-1.42 0l-1.83 1.83 3.75 3.75 1.84-1.82z" fill="currentColor"></path>
-  </svg>
-</a>
-</div>
+      <!-- IT: title row with Edit and Download vCard buttons on the right -->
+      <div style="display:flex; align-items:center; justify-content:space-between; gap:10px;">
+        <h1 style="margin-top:0;">{contact.name}</h1>
+        
+        <div style="display:flex; gap:8px; align-items:center;">
+          <!-- IT: Download vCard button -->
+          <a
+            class="btn"
+            href={getVcardUrl()}
+            download
+            aria-label="Download vCard"
+            title="Download vCard"
+            style="display:inline-flex;align-items:center;justify-content:center;padding:8px 10px;"
+          >
+            <!-- IT: download icon - simple arrow down to tray -->
+            <svg width="18" height="18" viewBox="0 0 24 24" role="img" aria-hidden="true">
+              <path d="M19 9h-4V3H9v6H5l7 7 7-7z" fill="currentColor"/>
+              <path d="M5 18v2h14v-2H5z" fill="currentColor"/>
+            </svg>
+          </a>
 
-
+          <!-- IT: Edit button -->
+          <a
+            class="btn"
+            href={"/contacts/" + data.contact.id + "/edit"}
+            aria-label="Edit contact"
+            title="Edit contact"
+            style="display:inline-flex;align-items:center;justify-content:center;padding:8px 10px;"
+          >
+            <!-- IT: pencil icon -->
+            <svg width="18" height="18" viewBox="0 0 24 24" role="img" aria-hidden="true">
+              <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25z" fill="currentColor"/>
+              <path d="M20.71 7.04c.39-.39.39-1.03 0-1.42l-2.34-2.34c-.39-.39-1.03-.39-1.42 0l-1.83 1.83 3.75 3.75 1.84-1.82z" fill="currentColor"/>
+            </svg>
+          </a>
+        </div>
+      </div>
 
       <div style="">
+        <!-- Cadence Pill - Header row with a small pill that shows current cadence - click to expand -->
+        <div style="padding-bottom:5px;">
+          <button
+            type="button"
+            class="btn"
+            on:click={() => (showCadenceEditor = !showCadenceEditor)}
+            aria-expanded={showCadenceEditor}
+            aria-controls="cadence-editor"
+            title="Edit cadence"
+          >
+            {#if data.contact.reconnectEveryDays}
+              Cadence Every {data.contact.reconnectEveryDays} day{data.contact.reconnectEveryDays === 1 ? '' : 's'}
+            {:else}
+              No cadence
+            {/if}
+          </button>
 
-    <!-- Cadence Pill - Header row with a small pill that shows current cadence - click to expand -->
-    <div style="padding-bottom:5px;">
+          <button
+            type="button"
+            class="btn"
+            on:click={() => (showReminderPanel = !showReminderPanel)}
+            aria-expanded={showReminderPanel}
+            aria-controls="reminder-panel"
+            title="View or add reminders"
+          >
+            {#if openCount > 0}
+              {openCount} open reminder{openCount === 1 ? '' : 's'}
+            {:else}
+              No open reminders
+            {/if}
+          </button>
 
-      <button
-        type="button"
-        class="btn"
-        on:click={() => (showCadenceEditor = !showCadenceEditor)}
-        aria-expanded={showCadenceEditor}
-        aria-controls="cadence-editor"
-        title="Edit cadence"
-      >
-        {#if data.contact.reconnectEveryDays}
-          Cadence Every {data.contact.reconnectEveryDays} day{data.contact.reconnectEveryDays === 1 ? '' : 's'}
-        {:else}
-          No cadence
+          <!-- IT: quick action to mark as contacted today - posts to ?/markContactedToday -->
+          <form method="post" action="?/markContactedToday" style="display:inline;">
+            <button class="btn" title="Set last contacted to now">Mark contacted today</button>
+          </form>
+        </div>
+
+        {#if showCadenceEditor}
+          <div id="cadence-editor" style="margin-top:10px;">
+            <p class="muted" style="margin:0 0 8px 0;">
+              Set how often you want to reconnect with this contact. Leave empty to clear.
+            </p>
+
+            <!-- IT: set or clear cadence - posts to ?/setCadence -->
+            <form method="post" action="?/setCadence" style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+              <label for="cadenceDays" style="min-width:120px;">Every N days</label>
+              <input
+                id="cadenceDays"
+                name="days"
+                type="number"
+                min="1"
+                max="3650"
+                placeholder="e.g. 60"
+                value={data.contact.reconnectEveryDays ?? ''}
+                style="width:120px;"
+              />
+              <button class="btn primary">Save</button>
+              <button class="btn" name="days" value="" title="Clear cadence">Clear</button>
+              <button type="button" class="btn" on:click={() => (showCadenceEditor = false)}>Close</button>
+            </form>
+          </div>
         {/if}
-      </button>
-
-      <button
-      type="button"
-      class="btn"
-      on:click={() => (showReminderPanel = !showReminderPanel)}
-      aria-expanded={showReminderPanel}
-      aria-controls="reminder-panel"
-      title="View or add reminders"
-    >
-      {#if openCount > 0}
-        {openCount} open reminder{openCount === 1 ? '' : 's'}
-      {:else}
-        No open reminders
-      {/if}
-    </button>
-
-            <!-- IT: quick action to mark as contacted today - posts to ?/markContactedToday -->
-<form method="post" action="?/markContactedToday" style="display:inline;">
-  <button class="btn" title="Set last contacted to now">Mark contacted today</button>
-</form>
       </div>
 
+      <!-- IT: compact pill button - click to open the panel -->
+      <div style="padding-bottom:20px;">
+        {#if showReminderPanel}
+          <div id="reminder-panel" style="margin-top:10px;">
+            <p class="muted" style="margin:0 0 8px 0;">
+              Create a one shot reminder or complete any open ones.
+            </p>
 
+            <!-- IT: create reminder form -->
+            <form method="post" action="?/createReminder" style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:10px;">
+              <label for="dueAt" style="min-width:100px;">Due at</label>
+              <input id="dueAt" name="dueAt" type="datetime-local" required style="width:220px;" />
 
-  
-    {#if showCadenceEditor}
-      <div id="cadence-editor" style="margin-top:10px;">
-        <p class="muted" style="margin:0 0 8px 0;">
-          Set how often you want to reconnect with this contact. Leave empty to clear.
-        </p>
-  
-        <!-- IT: set or clear cadence - posts to ?/setCadence -->
-        <form method="post" action="?/setCadence" style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
-          <label for="cadenceDays" style="min-width:120px;">Every N days</label>
-          <input
-            id="cadenceDays"
-            name="days"
-            type="number"
-            min="1"
-            max="3650"
-            placeholder="e.g. 60"
-            value={data.contact.reconnectEveryDays ?? ''}
-            style="width:120px;"
-          />
-          <button class="btn primary">Save</button>
-          <button class="btn" name="days" value="" title="Clear cadence">Clear</button>
-          <button type="button" class="btn" on:click={() => (showCadenceEditor = false)}>Close</button>
-        </form>
+              <label for="note" style="min-width:60px;">Note</label>
+              <input id="note" name="note" type="text" placeholder="e.g. send deck" style="flex:1; min-width:220px;" />
+
+              <button class="btn primary">Save</button>
+              <button type="button" class="btn" on:click={() => (showReminderPanel = false)}>Close</button>
+            </form>
+
+            <!-- IT: open reminders list -->
+            {#if openCount > 0}
+              <table style="width:100%; border-collapse:collapse;">
+                <thead>
+                  <tr>
+                    <th style="text-align:left; padding:6px 4px;">Due</th>
+                    <th style="text-align:left; padding:6px 4px;">Note</th>
+                    <th style="padding:6px 4px;"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {#each data.reminders as r}
+                    <tr>
+                      <td style="padding:6px 4px; white-space:nowrap;">
+                        {new Date(r.dueAt).toLocaleString()}
+                      </td>
+                      <td style="padding:6px 4px;">{r.note || ''}</td>
+                      <td style="padding:6px 4px; display:flex; gap:6px; justify-content:flex-end;">
+                        <form method="post" action="?/completeReminder">
+                          <input type="hidden" name="reminderId" value={r.id} />
+                          <button class="btn" title="Mark done">Done</button>
+                        </form>
+                        <form method="post" action="?/deleteReminder" on:submit={(e) => {
+                          if (!confirm('Delete this reminder')) e.preventDefault();
+                        }}>
+                          <input type="hidden" name="reminderId" value={r.id} />
+                          <button class="btn" title="Delete">Delete</button>
+                        </form>
+                      </td>
+                    </tr>
+                  {/each}
+                </tbody>
+              </table>
+            {:else}
+              <p class="muted" style="margin:6px 0;">No open reminders.</p>
+            {/if}
+          </div>
+        {/if}
       </div>
-    {/if}
-  </div>
-
-
-<!-- IT: compact pill button - click to open the panel -->
-<div style="padding-bottom:20px;">
-
-
-  {#if showReminderPanel}
-    <div id="reminder-panel" style="margin-top:10px;">
-      <p class="muted" style="margin:0 0 8px 0;">
-        Create a one shot reminder or complete any open ones.
-      </p>
-
-      <!-- IT: create reminder form -->
-      <form method="post" action="?/createReminder" style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:10px;">
-        <label for="dueAt" style="min-width:100px;">Due at</label>
-        <input id="dueAt" name="dueAt" type="datetime-local" required style="width:220px;" />
-
-        <label for="note" style="min-width:60px;">Note</label>
-        <input id="note" name="note" type="text" placeholder="e.g. send deck" style="flex:1; min-width:220px;" />
-
-        <button class="btn primary">Save</button>
-        <button type="button" class="btn" on:click={() => (showReminderPanel = false)}>Close</button>
-      </form>
-
-      <!-- IT: open reminders list -->
-      {#if openCount > 0}
-        <table style="width:100%; border-collapse:collapse;">
-          <thead>
-            <tr>
-              <th style="text-align:left; padding:6px 4px;">Due</th>
-              <th style="text-align:left; padding:6px 4px;">Note</th>
-              <th style="padding:6px 4px;"></th>
-            </tr>
-          </thead>
-          <tbody>
-            {#each data.reminders as r}
-              <tr>
-                <td style="padding:6px 4px; white-space:nowrap;">
-                  {new Date(r.dueAt).toLocaleString()}
-                </td>
-                <td style="padding:6px 4px;">{r.note || ''}</td>
-                <td style="padding:6px 4px; display:flex; gap:6px; justify-content:flex-end;">
-                  <form method="post" action="?/completeReminder">
-                    <input type="hidden" name="reminderId" value={r.id} />
-                    <button class="btn" title="Mark done">Done</button>
-                  </form>
-                  <form method="post" action="?/deleteReminder" on:submit={(e) => {
-                    if (!confirm('Delete this reminder')) e.preventDefault();
-                  }}>
-                    <input type="hidden" name="reminderId" value={r.id} />
-                    <button class="btn" title="Delete">Delete</button>
-                  </form>
-                </td>
-              </tr>
-            {/each}
-          </tbody>
-        </table>
-      {:else}
-        <p class="muted" style="margin:6px 0;">No open reminders.</p>
-      {/if}
     </div>
-  {/if}
 
-
-</div>
-
-
-
-</div>
-
-
-
-
-
-
-
-
-
-<div style="margin-top:12px;margin-left:12px">
+    <div style="margin-top:12px;margin-left:12px">
       <div class="grid">
         <div><strong>Email</strong></div>
         <div>{contact.email ?? ' - '}</div>
@@ -239,9 +250,6 @@
 
         <div><strong>Created</strong></div>
         <div>{fmt(contact.createdAt)}</div>
-
-
-
       </div>
 
       <!-- Tags section - styling comes from app.css -->
@@ -297,15 +305,14 @@
                   {n.preview || '(empty)'}
                 </a>
                 {#if n.tags && n.tags.length > 0}
-                <div class="tag-row small" style="margin-top:6px;">
-                  {#each n.tags as t}
-                    <span class="chip chip-static">
-                      <span class="chip-text">{t.name}</span>
-                    </span>
-                  {/each}
-                </div>
-              {/if}
-              
+                  <div class="tag-row small" style="margin-top:6px;">
+                    {#each n.tags as t}
+                      <span class="chip chip-static">
+                        <span class="chip-text">{t.name}</span>
+                      </span>
+                    {/each}
+                  </div>
+                {/if}
               </li>
             {/each}
           </ul>
@@ -360,23 +367,4 @@
   }
   .btn.primary:hover { filter: brightness(0.95); }
   .muted { color: var(--muted); }
-
-    /* reuse existing styles */
-    .btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 6px 10px;
-    border-radius: 8px;
-    background: var(--surface-2);
-    border: 1px solid var(--border);
-    color: var(--text);
-    text-decoration: none;
-    cursor: pointer;
-  }
-  .btn:hover { background: var(--surface-3); }
-  .btn.primary { background: var(--accent); color: white; border-color: var(--accent); }
-  .btn.primary:hover { filter: brightness(0.95); }
-  .muted { color: var(--muted); }
-
 </style>

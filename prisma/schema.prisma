@@ -52,6 +52,9 @@ model User {
   // IT: back-relation for one-shot reminders
   reminders Reminder[]
 
+  email_Enc    String?  // ciphertext at rest
+  email_Idx    Bytes?   @unique // deterministic HMAC for equality search
+
   role       UserRole @default(member)
   publicSlug String?  @unique
 

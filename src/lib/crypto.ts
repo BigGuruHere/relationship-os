@@ -1,13 +1,14 @@
 // src/lib/crypto.ts
 // PURPOSE: Provide deterministic, indexable HMAC for equality search
-//          and AES-256-GCM for encrypting plaintext at rest.
+//          and AES-256-GCM for encrypting plaintext at rest. Adds scoped
+//          helpers for encrypted email lookups on User.
+// SECURITY:
+// - Derive independent encKey and macKey from a single high-entropy master via HKDF.
+// - Deterministic HMAC indexes are for equality search only - never reversible.
+// - All normalization happens server-side so lookups are stable and privacy-safe.
 //
 // ENV:
 // - SECRET_MASTER_KEY: 32 bytes in hex (64 chars). Example: `openssl rand -hex 32`
-//
-// SECURITY NOTES:
-// - We derive two subkeys (encKey/macKey) via HKDF so encryption and HMAC keys are isolated.
-// - We normalize inputs before hashing so your searches match your chosen semantics.
 
 import crypto from 'crypto';
 
@@ -28,18 +29,56 @@ const macKey = crypto.hkdfSync('sha256', masterKey, HKDF_SALT, INFO_MAC, 32); //
 
 const GCM_IV_LEN = 12; // 96-bit IV recommended for GCM
 
-// ---- Normalization rules for indexable fields -------------------------------
-// Adjust to your needs (e.g., keep case for names if you want case-sensitive searches)
+// ---- Normalization rules ----------------------------------------------------
+// IT: General-purpose normalization for fields you want equality search on.
+// - NFC to fold equivalent unicode sequences
+// - trim to remove accidental whitespace
+// - toLowerCase to make search case-insensitive
 export function normalizeForIndex(input: string) {
   return input.normalize('NFC').trim().toLowerCase();
 }
 
-// ---- Deterministic HMAC index (equality search) -----------------------------
+// IT: Email-specific normalization - uses the same rules for now.
+// - Keep separate in case you later add provider-specific tweaks.
+export function normalizeEmail(input: string) {
+  return normalizeForIndex(input);
+}
+
+// ---- Deterministic HMAC index builders --------------------------------------
+// IT: Core HMAC - returns a Buffer so callers can choose hex or bytes storage.
+// - scope prefixes the message so different fields cannot be correlated even
+//   if their normalized values are equal. Example scopes: "contact:email", "user:email".
+function hmacIndexBytes(normValue: string, scope = 'default') {
+  const h = crypto.createHmac('sha256', macKey);
+  // Include a clear scope prefix and a separator byte to avoid accidental overlaps
+  h.update(`scope:${scope}\n`, 'utf8');
+  h.update(normValue, 'utf8');
+  return h.digest(); // 32-byte Buffer
+}
+
+// IT: Legacy hex helper kept for backward compatibility with existing *_Idx hex columns.
 export function buildIndexToken(input: string) {
   const norm = normalizeForIndex(input);
-  const h = crypto.createHmac('sha256', macKey);
-  h.update(norm, 'utf8');
-  return h.digest('hex'); // 64 hex chars
+  return hmacIndexBytes(norm, 'generic').toString('hex'); // 64 hex chars
+}
+
+// IT: New generic bytes helper for Prisma Bytes columns.
+export function buildIndexTokenBytes(input: string, scope = 'generic') {
+  const norm = normalizeForIndex(input);
+  return hmacIndexBytes(norm, scope);
+}
+
+// IT: Email index helpers - pick hex or bytes based on your Prisma schema.
+// - If User.email_Idx is Bytes, use buildEmailIndexBytes.
+// - If it is String, use buildEmailIndexHex.
+export function buildEmailIndexHex(email: string) {
+  const norm = normalizeEmail(email);
+  return hmacIndexBytes(norm, 'user:email').toString('hex');
+}
+
+export function buildEmailIndexBytes(email: string) {
+  const norm = normalizeEmail(email);
+  return hmacIndexBytes(norm, 'user:email');
 }
 
 // ---- AES-256-GCM encrypt/decrypt -------------------------------------------

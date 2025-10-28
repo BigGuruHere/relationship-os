@@ -4,10 +4,17 @@
 // SECURITY: Decrypt only on the server. Never log decrypted PII. All IT code is commented and uses hyphens only.
 
 import { prisma } from '$lib/db';
-import { decrypt, encrypt, buildIndexToken } from '$lib/crypto';
+import { decrypt } from '$lib/crypto';
 import { fail, redirect } from '@sveltejs/kit';
 import { attachContactTags, detachContactTag } from '$lib/tags';
 import type { Actions, PageServerLoad } from './$types';
+import { getBestDisplayName } from '$lib/server/names';
+
+// IT: helper to detect placeholder names saved earlier
+function isPlaceholderName(name: string | null | undefined): boolean {
+  const s = (name || '').trim().toLowerCase();
+  return !s || s === 'new connection' || s === 'relish user';
+}
 
 export const load: PageServerLoad = async ({ params, locals }) => {
   // require login before reading tenant data
@@ -20,6 +27,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
     where: { id, userId: locals.user.id },
     select: {
       id: true,
+      linkedUserId: true,           // IT: needed for live fallback of the name
       fullNameEnc: true,
       emailEnc: true,
       phoneEnc: true,
@@ -43,19 +51,29 @@ export const load: PageServerLoad = async ({ params, locals }) => {
   if (!row) throw redirect(303, '/');
 
   // decrypt PII on the server with placeholders on failure
-  let name = '(name unavailable)';
+  let name = '';
   let email: string | null = null;
   let phone: string | null = null;
   let company: string | null = null;
   let position: string | null = null;   // new
   let linkedin: string | null = null;   // new
 
-  try { name = decrypt(row.fullNameEnc, 'contact.full_name'); } catch {}
+  try { name = row.fullNameEnc ? decrypt(row.fullNameEnc, 'contact.full_name') : ''; } catch {}
   try { email = row.emailEnc ? decrypt(row.emailEnc, 'contact.email') : null; } catch {}
   try { phone = row.phoneEnc ? decrypt(row.phoneEnc, 'contact.phone') : null; } catch {}
   try { company = row.companyEnc ? decrypt(row.companyEnc, 'contact.company') : null; } catch {}
   try { position = row.positionEnc ? decrypt(row.positionEnc, 'contact.position') : null; } catch {}
   try { linkedin = row.linkedinEnc ? decrypt(row.linkedinEnc, 'contact.linkedin') : null; } catch {}
+
+  // IT: live name fallback - if this contact links to another Relish user and stored name is generic
+  if (row.linkedUserId && isPlaceholderName(name)) {
+    try {
+      name = await getBestDisplayName(row.linkedUserId);
+    } catch {
+      // ignore - keep existing name fallback below
+    }
+  }
+  if (!name) name = 'Relish user';
 
   // map ContactTag rows to a simple tag array
   const tags = row.tags.map((ct) => ({ name: ct.tag.name, slug: ct.tag.slug }));
@@ -94,16 +112,16 @@ export const load: PageServerLoad = async ({ params, locals }) => {
     orderBy: { dueAt: 'asc' }
   });
 
-  // return the shape your page expects - unchanged, plus the two new fields
+  // return the shape your page expects - unchanged, with name now using live fallback
   return {
     contact: {
       id: row.id,
-      name,                               // always a string
-      email: email || '',                  // normalize null -> ''
-      phone: phone || '',                  // normalize null -> ''
-      company: company || '',              // normalize null -> ''
-      position: position || '',            // new
-      linkedin: linkedin || '',            // new
+      name,                               // always a string with live fallback
+      email: email || '',                 // normalize null -> ''
+      phone: phone || '',                 // normalize null -> ''
+      company: company || '',             // normalize null -> ''
+      position: position || '',           // new
+      linkedin: linkedin || '',           // new
       createdAt: row.createdAt,
       reconnectEveryDays: row.reconnectEveryDays ?? null,
       lastContactedAt: row.lastContactedAt ?? null,

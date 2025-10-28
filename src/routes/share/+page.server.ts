@@ -30,6 +30,7 @@ export const load: PageServerLoad = async ({ locals, url }) => {
     select: {
       id: true,
       slug: true,
+      displayName: true,    // IT: add display name so the UI does not fall back to slug
       qrReady: true,
       qrSvg: true,
       updatedAt: true,
@@ -68,15 +69,14 @@ export const load: PageServerLoad = async ({ locals, url }) => {
       // IT: re-read the row so the page gets the svg immediately
       profile = await prisma.profile.findUnique({
         where: { id: profile.id },
-        select: { slug: true, qrReady: true, qrSvg: true }
+        select: { slug: true, displayName: true, qrReady: true, qrSvg: true }
       });
     } catch (err) {
       console.error('QR auto-generate failed', err);
       // IT: do not block Share - continue without svg
-      // The page can show a Generate QR button if needed
     }
   }
 
-  // IT: return the profile - page will inline the stored svg
-  return { profile };
+  // IT: return the profile - the client will prefer displayName over slug
+  return { profile, origin: locals.appOrigin };
 };

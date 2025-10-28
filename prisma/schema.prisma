@@ -255,6 +255,9 @@ model Contact {
   tags         ContactTag[]
   linkedUserId String?
 
+  sourceProfileId String?          // profile used when this contact was first created
+
+
   reminders Reminder[]
 
   // Indexes for search and tenancy

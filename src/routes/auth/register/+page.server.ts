@@ -13,6 +13,8 @@ import { hashPassword, createSession, setSessionCookie } from '$lib/auth';
 import { linkLeadsForUser } from '$lib/leads/link';
 // IT: encrypted email helpers - equality lookup and write
 import { findUserByEmail, setUserEmail } from '$lib/server/userEmail';
+import { ensureDefaultProfile } from '$lib/server/profiles';
+
 
 export const load: PageServerLoad = async ({ locals }) => {
   // If already signed in, redirect home
@@ -47,6 +49,8 @@ export const actions: Actions = {
       });
       userId = created.id;
       await setUserEmail(userId, email); // writes email_Enc and email_Idx atomically in server code
+      await ensureDefaultProfile(userId, { displayName: email.split('@')[0] });
+
     } catch (e: unknown) {
       // IT: handle unique constraint on email_Idx in case of race
       const msg = typeof e === 'object' && e && 'code' in e ? (e as any).code : null;

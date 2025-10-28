@@ -16,6 +16,7 @@ import { prisma } from '$lib/db';
 import { createSession, setSessionCookie } from '$lib/auth';
 import * as jose from 'jose';
 import { linkLeadsForUser } from '$lib/leads/link';
+import { ensureDefaultProfile } from '$lib/server/profiles';
 
 // IT: encrypted email helpers - equality lookup and write
 import { findUserByEmail, setUserEmail, decryptUserEmail } from '$lib/server/userEmail';
@@ -191,6 +192,24 @@ export const GET: RequestHandler = async ({ url, cookies, locals, getClientAddre
     if (!u?.email_Enc || !u?.email_Idx) {
       await setUserEmail(user.id, email);
     }
+  }
+
+  // 11d - ensure a default profile exists for this user using friendly seeds from Google
+  // - prefer Google's name, fall back to the email local part
+  // - avatar is optional and safe to set here
+  try {
+    const seedName =
+      typeof payload.name === 'string' && payload.name.trim()
+        ? payload.name.trim()
+        : email.split('@')[0];
+    const seedAvatar =
+      typeof payload.picture === 'string' && payload.picture.trim()
+        ? payload.picture.trim()
+        : null;
+    await ensureDefaultProfile(user.id, { displayName: seedName, avatarUrl: seedAvatar });
+  } catch (e) {
+    // IT: do not block login if profile creation fails
+    console.warn('ensureDefaultProfile failed after Google OAuth:', e);
   }
 
   // 12 - upsert the OAuth account record for this user

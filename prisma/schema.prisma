@@ -33,14 +33,17 @@ enum UserRole {
 // ---------------------------------------------------------------------------
 // MODEL: User
 // - Primary account for a single tenant
-// - Email is unique per deployment
+// - Email is stored encrypted at rest with a deterministic HMAC index for equality
 model User {
-  id           String  @id @default(uuid()) // pk stored as text uuid
-  email        String  @unique // login identifier
-  passwordHash String? // was String
+  id           String   @id @default(uuid()) // pk stored as text uuid
+  passwordHash String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  // IT: encrypted and indexed email - replaces legacy plaintext email
+  email_Enc String? // ciphertext at rest
+  email_Idx Bytes?  @unique // deterministic HMAC index for equality search
 
   // Owned data - tenant boundaries
   sessions      Session[]
@@ -52,19 +55,16 @@ model User {
   // IT: back-relation for one-shot reminders
   reminders Reminder[]
 
-  email_Enc    String?  // ciphertext at rest
-  email_Idx    Bytes?   @unique // deterministic HMAC for equality search
-
   role       UserRole @default(member)
   publicSlug String?  @unique
 
   // relations
-  // magic tokens issued for this user
   magicTokens  MagicToken[]
-  // invites if this user is the owner being connected to
   inviteTokens InviteToken[] @relation("OwnerInvites")
 
   profiles Profile[]
+
+  @@index([createdAt])
 }
 
 // IT: New table to track claimable leads
@@ -75,23 +75,22 @@ model Lead {
   // IT: store deterministic indexes to match later without decrypting
   emailIdx        String?    @db.VarChar(128)
   phoneIdx        String?    @db.VarChar(128)
-  linkedinIdx     String?    @db.VarChar(128) // new
+  linkedinIdx     String?    @db.VarChar(128)
 
-  linkedinEnc     String?    // new - AES-256-GCM ciphertext
-
+  linkedinEnc     String?
 
   // IT: claim status
   status          LeadStatus @default(PENDING)
   claimedByUserId String?
-  inviteToken     String? // optional - last generated token
+  inviteToken     String?
   createdAt       DateTime   @default(now())
   updatedAt       DateTime   @updatedAt
 
   @@index([ownerId])
   @@index([emailIdx])
   @@index([phoneIdx])
-    @@index([linkedinIdx])                // new - fast lookup by hash
-  @@unique([ownerId, linkedinIdx])   
+  @@index([linkedinIdx])
+  @@unique([ownerId, linkedinIdx])
 }
 
 enum LeadStatus {
@@ -135,9 +134,9 @@ model OAuthAccount {
 
   provider          String // e.g. "google"
   providerAccountId String // stable provider user id - for Google this is the "sub" claim
-  email             String? // convenience copy of provider email
-  accessToken       String? // optional if you request additional API scopes
-  refreshToken      String? // optional if you request offline access
+  // IT: removed plaintext email - provider email is handled via User.email_Enc and User.email_Idx
+  accessToken       String?
+  refreshToken      String?
   expiresAt         DateTime?
 
   createdAt DateTime @default(now())
@@ -164,7 +163,6 @@ model Session {
 // ---------------------------------------------------------------------------
 // ENUMS
 // ---------------------------------------------------------------------------
-// Prevents strings like "ai " etc
 enum CreatedBy {
   ai
   user
@@ -204,7 +202,6 @@ model Tag {
 
 // ---------------------------------------------------------------------------
 // MODEL: TagAlias
-// Alternative names mapped to a Tag - tenant scoped implicitly via Tag.userId
 // ---------------------------------------------------------------------------
 model TagAlias {
   id String @id @default(uuid())
@@ -212,10 +209,10 @@ model TagAlias {
   tagId String
   tag   Tag    @relation(fields: [tagId], references: [id], onDelete: Cascade)
 
-  alias String // human facing alias
-  slug  String // normalized alias for lookups
+  alias String
+  slug  String
 
-  @@unique([tagId, slug]) // alias slug unique per tag
+  @@unique([tagId, slug])
 }
 
 // ---------------------------------------------------------------------------
@@ -225,7 +222,7 @@ model TagAlias {
 model Contact {
   id String @id @default(uuid()) // pk
 
-  // Tenant ownership - required
+  // Tenant ownership
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -233,15 +230,15 @@ model Contact {
   fullNameEnc String
   emailEnc    String?
   phoneEnc    String?
-  companyEnc  String? // IT: new
+  companyEnc  String?
 
-  // Deterministic indexable tokens - used in WHERE clauses
+  // Deterministic indexable tokens
   fullNameIdx String
-  emailIdx    String? @unique // unique when present - Postgres allows multiple NULLs
+  emailIdx    String? @unique
   phoneIdx    String?
-  companyIdx  String? // IT: new
+  companyIdx  String?
 
-  positionEnc String? // AES-256-GCM ciphertext
+  positionEnc String?
   positionIdx String?
 
   linkedinEnc String?
@@ -250,34 +247,29 @@ model Contact {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  // IT: new - how often to reconnect in days, null means no cadence
-  reconnectEveryDays Int? // e.g. 60
-
-  // IT: new - when we last interacted - maintained by server on interaction create
-  lastContactedAt DateTime? // used to compute next reconnect
+  reconnectEveryDays Int?
+  lastContactedAt    DateTime?
 
   // Relations
   interactions Interaction[]
   tags         ContactTag[]
-  linkedUserId String? // when the lead is claimed, we set this
+  linkedUserId String?
 
-  // IT: back-relation for one-shot reminders
   reminders Reminder[]
 
   // Indexes for search and tenancy
   @@index([userId])
   @@index([fullNameIdx])
   @@index([phoneIdx])
-  @@index([companyIdx]) // IT: new
+  @@index([companyIdx])
 }
 
 // ---------------------------------------------------------------------------
 // MODEL: Interaction
-// Minimal history entry linked to a Contact - encrypted raw text - tenant scoped
 // ---------------------------------------------------------------------------
 model Interaction {
   id     String @id @default(uuid())
-  userId String // tenant owner - required
+  userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   contactId String
@@ -291,7 +283,6 @@ model Interaction {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  // Relations
   InteractionEmbedding InteractionEmbedding?
 
   @@index([userId])
@@ -311,8 +302,6 @@ model InteractionEmbedding {
 
 // ---------------------------------------------------------------------------
 // MODEL: ContactTag
-// Join table linking Contact to Tag with assignment metadata - tenant handled by FKs
-// Composite primary key prevents duplicate links
 // ---------------------------------------------------------------------------
 model ContactTag {
   contactId String
@@ -322,9 +311,9 @@ model ContactTag {
   tag     Tag     @relation(fields: [tagId], references: [id], onDelete: Cascade)
 
   assignedBy AssignedBy
-  assignedAt DateTime   @default(now()) // When the link was created
+  assignedAt DateTime   @default(now())
 
-  @@id([contactId, tagId]) // Composite PK - unique per pair
+  @@id([contactId, tagId])
   @@index([tagId])
 }
 
@@ -337,13 +326,8 @@ model Reminder {
   contactId String
   contact   Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
 
-  // IT: due date for notification
   dueAt DateTime
-
-  // IT: optional note like "send deck"
-  note String?
-
-  // IT: status - completed when user marks done
+  note  String?
   completedAt DateTime?
 
   createdAt DateTime @default(now())
@@ -364,12 +348,12 @@ enum ProfileKind {
 model Profile {
   id        String      @id @default(uuid())
   userId    String
-  kind      ProfileKind @default(business) // default type - change per profile
-  label     String      @default("My profile") // shown in Settings list
-  slug      String      @unique // direct link like /p/{slug} (optional)
-  isDefault Boolean     @default(false) // only one per user should be true
+  kind      ProfileKind @default(business)
+  label     String      @default("My profile")
+  slug      String      @unique
+  isDefault Boolean     @default(false)
 
-  // IT: public fields intended for sharing - plaintext is fine because these are public
+  // Public fields only
   displayName String?
   headline    String?
   bio         String?
@@ -379,7 +363,7 @@ model Profile {
   websiteUrl  String?
   emailPublic String?
   phonePublic String?
-  socials     Json? // { twitter, linkedin, instagram, website2, etc }
+  socials     Json?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -390,7 +374,6 @@ model Profile {
   qrSvg         String?
   qrGeneratedAt DateTime?
 
-  // in model Profile
   publicMeta Json?
 
   @@index([userId, isDefault])

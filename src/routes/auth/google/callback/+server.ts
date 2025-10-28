@@ -51,7 +51,7 @@ function clearTempCookies(
   cookies.set('oauth_pkce', '', base);
 }
 
-export const GET: RequestHandler = async ({ url, cookies, locals, getClientAddress }) => {
+export const GET: RequestHandler = async ({ url, cookies, locals, getClientAddress, fetch }) => {
   // 1 - rate limit by IP
   const ip = getClientAddress?.() || 'unknown';
   checkRateLimit(`oauth:${ip}`);
@@ -121,9 +121,9 @@ export const GET: RequestHandler = async ({ url, cookies, locals, getClientAddre
 
   // 8 - extract identity from the ID token
   const sub = String(payload.sub);
-  const email = String(payload.email || '');
+  const emailRaw = String(payload.email || '');
   const emailVerified = Boolean(payload.email_verified);
-  if (!email || !emailVerified) {
+  if (!emailRaw || !emailVerified) {
     clearTempCookies(cookies, locals.sessionCookie.options.secure);
     throw error(400, 'Email not verified with Google');
   }
@@ -147,15 +147,18 @@ export const GET: RequestHandler = async ({ url, cookies, locals, getClientAddre
     return false;
   }
 
-  if (!isEmailAllowed(email)) {
+  if (!isEmailAllowed(emailRaw)) {
     clearTempCookies(cookies, locals.sessionCookie.options.secure);
     throw error(403, 'This email is not allowed for login');
   }
 
-  // 10 - upsert user and OAuth account using encrypted email fields
+  // 10 - normalize email for deterministic indexing
+  const email = emailRaw.trim().toLowerCase();
+
+  // 11 - resolve or create user
   const provider = 'google' as const;
 
-  // 10a - try to find a user by OAuth account first
+  // 11a - first try find by existing OAuth link
   let user = await prisma.user.findFirst({
     where: {
       oauthAccounts: { some: { provider, providerAccountId: sub } }
@@ -163,15 +166,15 @@ export const GET: RequestHandler = async ({ url, cookies, locals, getClientAddre
     select: { id: true }
   });
 
-  // 10b - else try to find by encrypted email index
+  // 11b - else try by encrypted email index via helper
   if (!user) {
-    const existing = await findUserByEmail(email);
-    if (existing) {
-      user = { id: existing.id };
+    const existingByEmail = await findUserByEmail(email);
+    if (existingByEmail) {
+      user = { id: existingByEmail.id };
     }
   }
 
-  // 10c - if still no user, create one and store encrypted email
+  // 11c - create user if none found, then set encrypted email fields
   if (!user) {
     const created = await prisma.user.create({
       data: {},
@@ -180,7 +183,7 @@ export const GET: RequestHandler = async ({ url, cookies, locals, getClientAddre
     await setUserEmail(created.id, email);
     user = created;
   } else {
-    // IT - ensure the encrypted email fields are set if this is a legacy account
+    // IT: ensure legacy users get encrypted email fields backfilled
     const u = await prisma.user.findUnique({
       where: { id: user.id },
       select: { email_Enc: true, email_Idx: true }
@@ -190,7 +193,7 @@ export const GET: RequestHandler = async ({ url, cookies, locals, getClientAddre
     }
   }
 
-  // 10d - upsert the OAuth account record for this user
+  // 12 - upsert the OAuth account record for this user
   const existingAcct = await prisma.oAuthAccount.findFirst({
     where: { userId: user.id, provider, providerAccountId: sub }
   });
@@ -220,14 +223,14 @@ export const GET: RequestHandler = async ({ url, cookies, locals, getClientAddre
     });
   }
 
-  // 11 - clear temp cookies after successful verification
+  // 13 - clear temp cookies after successful verification
   clearTempCookies(cookies, locals.sessionCookie.options.secure);
 
-  // 12 - create a first party session cookie using env aware helpers
+  // 14 - create a first party session cookie using env aware helpers
   const sess = await createSession(user.id);
   setSessionCookie(cookies, locals, sess.cookie, sess.expiresAt);
 
-  // 13 - post auth linking - decrypt server-side to pass a string email to the linker
+  // 15 - post auth linking - decrypt server-side to pass a string email to the linker
   try {
     const u = await prisma.user.findUnique({
       where: { id: user.id },
@@ -242,6 +245,6 @@ export const GET: RequestHandler = async ({ url, cookies, locals, getClientAddre
     console.warn('linkLeadsForUser failed after Google OAuth:', e);
   }
 
-  // 14 - home sweet home
+  // 16 - home sweet home
   throw redirect(303, '/');
 };

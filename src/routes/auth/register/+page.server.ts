@@ -11,6 +11,8 @@ import { prisma } from '$lib/db';
 import { hashPassword, createSession, setSessionCookie } from '$lib/auth';
 // IT: post auth hook to claim and link pending leads created via public forms
 import { linkLeadsForUser } from '$lib/leads/link';
+// IT: encrypted email helpers - equality lookup and write
+import { findUserByEmail, setUserEmail } from '$lib/server/userEmail';
 
 export const load: PageServerLoad = async ({ locals }) => {
   // If already signed in, redirect home
@@ -22,27 +24,45 @@ export const actions: Actions = {
   default: async ({ request, cookies, locals }) => {
     // Parse form
     const form = await request.formData();
-    const email = String(form.get('email') || '').trim().toLowerCase();
+    const emailInput = String(form.get('email') || '');
     const password = String(form.get('password') || '');
 
     // Basic validation
+    const email = emailInput.trim().toLowerCase();
     if (!email || !password) return fail(400, { error: 'Email and password are required' });
 
-    // Ensure email is not already registered
-    const existing = await prisma.user.findUnique({ where: { email } });
+    // Ensure email is not already registered using encrypted index lookup
+    const existing = await findUserByEmail(email);
     if (existing) return fail(400, { error: 'Email is already registered' });
 
-    // Create user
+    // Create user without plaintext email - store password hash only
     const passwordHash = await hashPassword(password);
-    const user = await prisma.user.create({ data: { email, passwordHash } });
+
+    // IT: create user and then set encrypted email fields
+    let userId: string;
+    try {
+      const created = await prisma.user.create({
+        data: { passwordHash },
+        select: { id: true }
+      });
+      userId = created.id;
+      await setUserEmail(userId, email); // writes email_Enc and email_Idx atomically in server code
+    } catch (e: unknown) {
+      // IT: handle unique constraint on email_Idx in case of race
+      const msg = typeof e === 'object' && e && 'code' in e ? (e as any).code : null;
+      if (msg === 'P2002') {
+        return fail(400, { error: 'Email is already registered' });
+      }
+      throw e;
+    }
 
     // Create session and set env-aware cookie
-    const { cookie, expiresAt } = await createSession(user.id);
+    const { cookie, expiresAt } = await createSession(userId);
     setSessionCookie(cookies, locals, cookie, expiresAt);
 
     // IT: post auth linking - claim and link any pending leads for this verified email
     try {
-      await linkLeadsForUser(user.id, email);
+      await linkLeadsForUser(userId, email);
     } catch (e) {
       // Do not block registration if linking fails
       console.warn('linkLeadsForUser failed after registration:', e);

@@ -262,6 +262,9 @@ model Contact {
   @@index([fullNameIdx])
   @@index([phoneIdx])
   @@index([companyIdx])
+
+    // IT: new - one contact per owner-user pair; multiple NULLs are allowed by Postgres
+  @@unique([userId, linkedUserId])
 }
 
 // ---------------------------------------------------------------------------

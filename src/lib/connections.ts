@@ -1,110 +1,132 @@
 // src/lib/connections.ts
-// PURPOSE: create bidirectional contacts when two Relish users connect
-// SECURITY: all queries are tenant scoped - encrypts PII server side only
-// NOTES: all IT code is commented and uses normal hyphens
+// PURPOSE: create a mutual connection between two users by inserting contacts on both sides
+// SECURITY:
+// - All PII written to Contact uses AES-256-GCM encrypt() helpers
+// - Equality lookups use deterministic HMAC buildIndexToken()
+// BEHAVIOR:
+// - Does not require profiles to exist. Falls back to minimal linked contact.
+// - Idempotent: if a contact already exists with linkedUserId it will not create a duplicate.
+// - Best effort enrichment from the other user's default profile if present.
 
 import { prisma } from '$lib/db';
 import { encrypt, buildIndexToken } from '$lib/crypto';
 
-/**
- * Create bidirectional contacts between two users using their profile data.
- * @param userAId - first user's id (typically the profile owner)
- * @param userBId - second user's id (typically the visitor)
- */
-export async function createMutualConnection(userAId: string, userBId: string) {
-  // IT: get default profiles for both users
-  const [profileA, profileB] = await Promise.all([
-    getDefaultProfile(userAId),
-    getDefaultProfile(userBId)
-  ]);
-
-  if (!profileA || !profileB) {
-    throw new Error('Both users must have profiles to connect');
-  }
-
-  // IT: create contact in A's tenant for B
-  await createContactFromProfile(userAId, profileB, userBId);
-
-  // IT: create contact in B's tenant for A
-  await createContactFromProfile(userBId, profileA, userAId);
-}
-
-/**
- * Get a user's default or most recent profile.
- */
-async function getDefaultProfile(userId: string) {
+// IT: small helper to fetch a user's best profile for enrichment
+async function getBestProfile(userId: string) {
   return prisma.profile.findFirst({
     where: { userId },
     select: {
-      id: true,
       displayName: true,
-      company: true,
-      title: true,
       emailPublic: true,
       phonePublic: true,
-      websiteUrl: true
+      company: true,
+      title: true
     },
     orderBy: [{ isDefault: 'desc' }, { updatedAt: 'desc' }]
   });
 }
 
-/**
- * Create a Contact in one user's tenant from another user's profile.
- * @param ownerId - tenant owner who will own this contact
- * @param profile - profile data to populate the contact
- * @param linkedUserId - the user id this contact represents (for linking)
- */
-async function createContactFromProfile(
-  ownerId: string,
-  profile: {
-    displayName: string | null;
-    company: string | null;
-    title: string | null;
-    emailPublic: string | null;
-    phonePublic: string | null;
-    websiteUrl: string | null;
-  },
-  linkedUserId: string
-) {
-  // IT: prepare encrypted fields with safe fallbacks
-  const name = profile.displayName?.trim() || 'Relish User';
+// IT: build a safe contact payload using any available public profile fields
+function buildContactData(ownerId: string, otherUserId: string, prof: Awaited<ReturnType<typeof getBestProfile>> | null) {
+  const displayName = prof?.displayName?.trim() || '';
+  const email = prof?.emailPublic?.trim().toLowerCase() || '';
+  const phone = prof?.phonePublic?.trim() || '';
+  const company = prof?.company?.trim() || '';
+  const title = prof?.title?.trim() || '';
 
   const data: any = {
     userId: ownerId,
-    linkedUserId, // IT: marks this as a Relish user connection
-    fullNameEnc: encrypt(name, 'contact.full_name'),
-    fullNameIdx: buildIndexToken(name)
+    // IT: we always link the other user for reciprocity and de-duplication
+    linkedUserId: otherUserId
   };
 
-  // IT: optional fields - only set if present
-  if (profile.emailPublic) {
-    data.emailEnc = encrypt(profile.emailPublic, 'contact.email');
-    data.emailIdx = buildIndexToken(profile.emailPublic);
+  // IT: only set encrypted fields when we have something to store
+  if (displayName) {
+    data.fullNameEnc = encrypt(displayName, 'contact.full_name');
+    data.fullNameIdx = buildIndexToken(displayName);
+  } else {
+    // IT: minimal placeholder name to avoid empty UI cards
+    data.fullNameEnc = encrypt('New connection', 'contact.full_name');
+    data.fullNameIdx = buildIndexToken('New connection');
   }
 
-  if (profile.phonePublic) {
-    data.phoneEnc = encrypt(profile.phonePublic, 'contact.phone');
-    data.phoneIdx = buildIndexToken(profile.phonePublic);
+  if (email) {
+    data.emailEnc = encrypt(email, 'contact.email');
+    data.emailIdx = buildIndexToken(email);
   }
 
-  if (profile.company) {
-    data.companyEnc = encrypt(profile.company, 'contact.company');
-    data.companyIdx = buildIndexToken(profile.company);
+  if (phone) {
+    data.phoneEnc = encrypt(phone, 'contact.phone');
+    data.phoneIdx = buildIndexToken(phone);
   }
 
-  if (profile.title) {
-    data.positionEnc = encrypt(profile.title, 'contact.position');
+  if (company) {
+    data.companyEnc = encrypt(company, 'contact.company');
+    data.companyIdx = buildIndexToken(company);
   }
 
-  // IT: best effort create - ignore if duplicate by email/phone
-  try {
-    await prisma.contact.create({ data });
-  } catch (err: any) {
-    // IT: P2002 is unique constraint violation - likely duplicate email
-    if (err?.code === 'P2002') {
-      console.warn('Contact already exists, skipping:', { ownerId, linkedUserId });
-      return;
+  if (title) {
+    data.positionEnc = encrypt(title, 'contact.position');
+    data.positionIdx = buildIndexToken(title);
+  }
+
+  return data;
+}
+
+/**
+ * IT: Create mutual contacts for A and B. Idempotent and profile-agnostic.
+ * - For A: create a Contact where userId = A and linkedUserId = B if missing.
+ * - For B: create a Contact where userId = B and linkedUserId = A if missing.
+ */
+export async function createMutualConnection(userAId: string, userBId: string) {
+  if (!userAId || !userBId || userAId === userBId) {
+    throw new Error('Invalid user ids for mutual connection');
+  }
+
+  // IT: fetch profiles in parallel - can be null
+  const [profA, profB] = await Promise.all([getBestProfile(userAId), getBestProfile(userBId)]);
+
+  // IT: run inside a transaction to reduce race windows
+  await prisma.$transaction(async (tx) => {
+    // A side - does A already have B as a contact
+    const aHasB = await tx.contact.findFirst({
+      where: { userId: userAId, linkedUserId: userBId },
+      select: { id: true }
+    });
+
+    if (!aHasB) {
+      const payloadA = buildContactData(userAId, userBId, profB);
+      try {
+        await tx.contact.create({ data: payloadA });
+      } catch (err: any) {
+        // IT: tolerate unique collisions on emailIdx or phoneIdx by re-checking the linkedUserId pair
+        if (err?.code !== 'P2002') throw err;
+        const again = await tx.contact.findFirst({
+          where: { userId: userAId, linkedUserId: userBId },
+          select: { id: true }
+        });
+        if (!again) throw err;
+      }
     }
-    throw err;
-  }
+
+    // B side - does B already have A as a contact
+    const bHasA = await tx.contact.findFirst({
+      where: { userId: userBId, linkedUserId: userAId },
+      select: { id: true }
+    });
+
+    if (!bHasA) {
+      const payloadB = buildContactData(userBId, userAId, profA);
+      try {
+        await tx.contact.create({ data: payloadB });
+      } catch (err: any) {
+        if (err?.code !== 'P2002') throw err;
+        const again = await tx.contact.findFirst({
+          where: { userId: userBId, linkedUserId: userAId },
+          select: { id: true }
+        });
+        if (!again) throw err;
+      }
+    }
+  });
 }

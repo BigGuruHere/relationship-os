@@ -2,20 +2,19 @@
 // PURPOSE: verify a magic-link token, create a session, and set the cookie
 // SECURITY:
 // - Verifies a signed token issued by your server
-// - Does not accept PII other than what is inside the token
-// - Links pending Leads after successful login
+// - Uses encrypted email fields only - equality lookup via deterministic HMAC index
+// - Decrypts email server-side only when needed for lead linking
 // CONTRACT:
 // - Input: POST JSON { token: string }
 // - Success: 204 No Content with session cookie set
 // - Failure: 4xx with no session cookie
 //
 // TOKEN EXPECTATIONS:
-// - Your $lib/server/tokens.verifyInviteToken(token) should return an object with:
+// - $lib/server/tokens.verifyInviteToken(token) should return:
 //   { userId?: string, email?: string, meta?: Record<string, any> }
 // - If userId is present, we log in that user.
-// - Else if email is present, we upsert a user by email and log in.
+// - Else if email is present, we upsert a user by encrypted email and log in.
 // - If neither exists, we return 400.
-// - Adjust the import or field names to match your tokens helper if they differ.
 
 import type { RequestHandler } from './$types';
 import { json, error } from '@sveltejs/kit';
@@ -24,8 +23,19 @@ import { createSession, setSessionCookie } from '$lib/auth';
 import { linkLeadsForUser } from '$lib/leads/link';
 import { verifyInviteToken } from '$lib/server/tokens';
 
+// IT: encrypted email helpers
+import {
+  normalizeEmail,
+  encrypt
+} from '$lib/crypto';
+import {
+  findUserByEmail,
+  setUserEmail,
+  decryptUserEmail
+} from '$lib/server/userEmail';
+
 export const POST: RequestHandler = async ({ request, cookies, locals }) => {
-  // Parse body
+  // 1 - parse body
   let body: any = null;
   try {
     body = await request.json();
@@ -35,52 +45,69 @@ export const POST: RequestHandler = async ({ request, cookies, locals }) => {
   const token = String(body?.token || '');
   if (!token) throw error(400, 'Missing token');
 
-  // Verify token - must be a server issued signed token
+  // 2 - verify token issued by our server
   let payload: { userId?: string; email?: string; meta?: Record<string, any> } | null = null;
   try {
     payload = await verifyInviteToken(token);
-  } catch (e) {
-    // Do not leak internals to clients
+  } catch {
     throw error(400, 'Invalid or expired token');
   }
   if (!payload) throw error(400, 'Invalid or expired token');
 
-  // Resolve or create the user
-  let user = null as null | { id: string; email: string | null };
+  // 3 - resolve or create the user without using plaintext email
+  let userId: string;
+
   if (payload.userId) {
-    user = await prisma.user.findUnique({
+    // IT: direct user lookup by id
+    const u = await prisma.user.findUnique({
       where: { id: payload.userId },
-      select: { id: true, email: true }
+      select: { id: true }
     });
-    if (!user) throw error(400, 'Invalid token user');
+    if (!u) throw error(400, 'Invalid token user');
+    userId = u.id;
   } else if (payload.email) {
-    // Upsert by email if present - creates a lightweight account that can be completed later
-    const email = payload.email.toLowerCase();
-    user = await prisma.user.upsert({
-      where: { email },
-      update: {},
-      create: { email },
-      select: { id: true, email: true }
-    });
+    // IT: upsert by encrypted email
+    const emailNorm = normalizeEmail(payload.email);
+
+    // 3a - try to find existing user by deterministic index
+    const existing = await findUserByEmail(emailNorm);
+    if (existing) {
+      userId = existing.id;
+    } else {
+      // 3b - create a lightweight user record, then set encrypted email fields
+      const created = await prisma.user.create({
+        data: {},
+        select: { id: true }
+      });
+      await setUserEmail(created.id, emailNorm);
+      userId = created.id;
+    }
   } else {
-    // If your token payload does not carry email or userId, you cannot mint a session here
-    // In that case, redirect the flow to a normal signup instead of using this endpoint
     throw error(400, 'Token does not contain a login identity');
   }
 
-  // Create a first party session and set the env aware cookie
-  const { cookie, expiresAt } = await createSession(user.id);
+  // 4 - create a first party session and set the env aware cookie
+  const { cookie, expiresAt } = await createSession(userId);
   setSessionCookie(cookies, locals, cookie, expiresAt);
 
-  // Post auth hook - link any pending leads captured via public forms
+  // 5 - post auth hook - link any pending leads captured via public forms
+  // - linkLeadsForUser currently expects an email string
+  // - decrypt on the server, never expose to client
   try {
-    if (user.email) await linkLeadsForUser(user.id, user.email);
+    const u = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { email_Enc: true }
+    });
+    const emailPlain = decryptUserEmail(u?.email_Enc ?? null);
+    if (emailPlain) {
+      await linkLeadsForUser(userId, emailPlain);
+    }
   } catch (e) {
     // Never block auth on linking - log and continue
     console.warn('linkLeadsForUser failed after magic link:', e);
   }
 
-  // Done - no body needed. The page that called this will redirect the user.
+  // 6 - done
   return new Response(null, { status: 204 });
 };
 

@@ -4,19 +4,21 @@
 // - Validate state to prevent CSRF
 // - Validate nonce in ID token to stop replay
 // - Verify ID token signature and audience using Google's JWKS
-// - Link to an existing user by OAuthAccount or by email, or create a new user
+// - Link to an existing user by OAuthAccount or by encrypted email index, or create a new user
+// - Never write plaintext email to the database
+// - Decrypt email server-side only when a string email is required for lead linking
 // - Clear temporary OAuth cookies after use
-// - After session creation, link any pending Leads to this user by deterministic email index
 // - All IT code is commented and avoids em dash characters
 
 import type { RequestHandler } from './$types';
 import { redirect, error } from '@sveltejs/kit';
 import { prisma } from '$lib/db';
-// IT: env aware session helpers
 import { createSession, setSessionCookie } from '$lib/auth';
 import * as jose from 'jose';
-// IT: post auth hook to link pending leads captured via public forms
 import { linkLeadsForUser } from '$lib/leads/link';
+
+// IT: encrypted email helpers - equality lookup and write
+import { findUserByEmail, setUserEmail, decryptUserEmail } from '$lib/server/userEmail';
 
 // Google endpoints
 const TOKEN_ENDPOINT = 'https://oauth2.googleapis.com/token';
@@ -43,7 +45,6 @@ function clearTempCookies(
   // secure flag should match current env - pass from locals
   secure: boolean
 ) {
-  // Base attributes for short lived oauth cookies
   const base = { path: '/', httpOnly: true, sameSite: 'lax' as const, secure, maxAge: 0 };
   cookies.set('oauth_state', '', base);
   cookies.set('oauth_nonce', '', base);
@@ -51,20 +52,20 @@ function clearTempCookies(
 }
 
 export const GET: RequestHandler = async ({ url, cookies, locals, getClientAddress }) => {
-  // Rate limit by IP
+  // 1 - rate limit by IP
   const ip = getClientAddress?.() || 'unknown';
   checkRateLimit(`oauth:${ip}`);
 
-  // Required query params
+  // 2 - required query params
   const code = url.searchParams.get('code') || '';
   const state = url.searchParams.get('state') || '';
 
-  // Cookies that the start route set
+  // 3 - cookies that the start route set
   const storedState = cookies.get('oauth_state') || '';
   const nonceCookie = cookies.get('oauth_nonce') || '';
-  const codeVerifier = cookies.get('oauth_pkce') || ''; // IT: match start route cookie name
+  const codeVerifier = cookies.get('oauth_pkce') || '';
 
-  // Basic validation
+  // 4 - basic validation
   if (!code || !state || !storedState || !codeVerifier) {
     clearTempCookies(cookies, locals.sessionCookie.options.secure);
     throw error(400, 'Invalid OAuth callback');
@@ -74,7 +75,7 @@ export const GET: RequestHandler = async ({ url, cookies, locals, getClientAddre
     throw error(400, 'State mismatch');
   }
 
-  // Exchange code for tokens at Google
+  // 5 - exchange code for tokens at Google
   const clientId = process.env.GOOGLE_CLIENT_ID || '';
   const clientSecret = process.env.GOOGLE_CLIENT_SECRET || '';
   const redirectUri = process.env.OAUTH_REDIRECT_URI || 'http://localhost:5173/auth/google/callback';
@@ -102,7 +103,7 @@ export const GET: RequestHandler = async ({ url, cookies, locals, getClientAddre
 
   const token = await tokenRes.json();
 
-  // Verify ID token with Google's JWKS
+  // 6 - verify ID token with Google's JWKS
   const idToken = token.id_token as string;
   if (!idToken) {
     clearTempCookies(cookies, locals.sessionCookie.options.secure);
@@ -112,13 +113,13 @@ export const GET: RequestHandler = async ({ url, cookies, locals, getClientAddre
   const jwks = jose.createRemoteJWKSet(new URL(JWKS_URI));
   const { payload } = await jose.jwtVerify(idToken, jwks, { audience: clientId });
 
-  // Optional nonce binding if you set one during start
+  // 7 - optional nonce binding if you set one during start
   if (nonceCookie && payload.nonce && payload.nonce !== nonceCookie) {
     clearTempCookies(cookies, locals.sessionCookie.options.secure);
     throw error(400, 'Nonce mismatch');
   }
 
-  // Extract identity
+  // 8 - extract identity from the ID token
   const sub = String(payload.sub);
   const email = String(payload.email || '');
   const emailVerified = Boolean(payload.email_verified);
@@ -127,7 +128,7 @@ export const GET: RequestHandler = async ({ url, cookies, locals, getClientAddre
     throw error(400, 'Email not verified with Google');
   }
 
-  // Optional email domain guard for early testing
+  // 9 - optional email domain guard for early testing
   function isEmailAllowed(emailAddr: string): boolean {
     const one = process.env.ALLOWED_GOOGLE_DOMAIN || '';
     const many = process.env.ALLOWED_EMAIL_DOMAINS || '';
@@ -146,79 +147,101 @@ export const GET: RequestHandler = async ({ url, cookies, locals, getClientAddre
     return false;
   }
 
-  // Allowlist check
   if (!isEmailAllowed(email)) {
     clearTempCookies(cookies, locals.sessionCookie.options.secure);
     throw error(403, 'This email is not allowed for login');
   }
 
-  // Upsert user and OAuth account
+  // 10 - upsert user and OAuth account using encrypted email fields
   const provider = 'google' as const;
-  let user = await prisma.user.findFirst({ where: { email } });
 
+  // 10a - try to find a user by OAuth account first
+  let user = await prisma.user.findFirst({
+    where: {
+      oauthAccounts: { some: { provider, providerAccountId: sub } }
+    },
+    select: { id: true }
+  });
+
+  // 10b - else try to find by encrypted email index
   if (!user) {
-    user = await prisma.user.create({
-      data: {
-        email,
-        oauthAccounts: {
-          create: {
-            provider,
-            providerAccountId: sub,
-            accessToken: token.access_token || null,
-            refreshToken: token.refresh_token || null,
-            expiresAt: token.expires_in ? new Date(Date.now() + token.expires_in * 1000) : null
-          }
-        }
-      }
-    });
-  } else {
-    const existing = await prisma.oAuthAccount.findFirst({
-      where: { userId: user.id, provider, providerAccountId: sub }
-    });
-    if (!existing) {
-      await prisma.oAuthAccount.create({
-        data: {
-          userId: user.id,
-          provider,
-          providerAccountId: sub,
-          accessToken: token.access_token || null,
-          refreshToken: token.refresh_token || null,
-          expiresAt: token.expires_in ? new Date(Date.now() + token.expires_in * 1000) : null
-        }
-      });
-    } else {
-      await prisma.oAuthAccount.update({
-        where: { id: existing.id },
-        data: {
-          accessToken: token.access_token || null,
-          refreshToken: token.refresh_token || null,
-          expiresAt: token.expires_in ? new Date(Date.now() + token.expires_in * 1000) : null
-        }
-      });
+    const existing = await findUserByEmail(email);
+    if (existing) {
+      user = { id: existing.id };
     }
   }
 
-  // Clear temp cookies after successful verification
+  // 10c - if still no user, create one and store encrypted email
+  if (!user) {
+    const created = await prisma.user.create({
+      data: {},
+      select: { id: true }
+    });
+    await setUserEmail(created.id, email);
+    user = created;
+  } else {
+    // IT - ensure the encrypted email fields are set if this is a legacy account
+    const u = await prisma.user.findUnique({
+      where: { id: user.id },
+      select: { email_Enc: true, email_Idx: true }
+    });
+    if (!u?.email_Enc || !u?.email_Idx) {
+      await setUserEmail(user.id, email);
+    }
+  }
+
+  // 10d - upsert the OAuth account record for this user
+  const existingAcct = await prisma.oAuthAccount.findFirst({
+    where: { userId: user.id, provider, providerAccountId: sub }
+  });
+
+  const expiresAt =
+    token.expires_in ? new Date(Date.now() + Number(token.expires_in) * 1000) : null;
+
+  if (!existingAcct) {
+    await prisma.oAuthAccount.create({
+      data: {
+        userId: user.id,
+        provider,
+        providerAccountId: sub,
+        accessToken: token.access_token || null,
+        refreshToken: token.refresh_token || null,
+        expiresAt
+      }
+    });
+  } else {
+    await prisma.oAuthAccount.update({
+      where: { id: existingAcct.id },
+      data: {
+        accessToken: token.access_token || null,
+        refreshToken: token.refresh_token || null,
+        expiresAt
+      }
+    });
+  }
+
+  // 11 - clear temp cookies after successful verification
   clearTempCookies(cookies, locals.sessionCookie.options.secure);
 
-  // Create a first party session cookie using env aware helpers
-  const { cookie, expiresAt } = await createSession(user.id);
-  setSessionCookie(cookies, locals, cookie, expiresAt);
+  // 12 - create a first party session cookie using env aware helpers
+  const sess = await createSession(user.id);
+  setSessionCookie(cookies, locals, sess.cookie, sess.expiresAt);
 
-  // IT: post auth linking - claim and link any pending leads for this verified email
+  // 13 - post auth linking - decrypt server-side to pass a string email to the linker
   try {
-    // Guard in case user.email is not selected by prisma find - most schemas include it
-    if (user.email) {
-      await linkLeadsForUser(user.id, user.email);
-    } else {
-      // Best effort - use the verified email from the ID token
-      await linkLeadsForUser(user.id, email);
+    const u = await prisma.user.findUnique({
+      where: { id: user.id },
+      select: { email_Enc: true }
+    });
+    const emailPlain = decryptUserEmail(u?.email_Enc ?? null);
+    if (emailPlain) {
+      await linkLeadsForUser(user.id, emailPlain);
     }
   } catch (e) {
     // Never block login on lead linking - log and continue
     console.warn('linkLeadsForUser failed after Google OAuth:', e);
   }
 
-  // Home sweet home
+  // 14 - home sweet home
   throw redirect(303, '/');
 };

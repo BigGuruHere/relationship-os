@@ -3,12 +3,22 @@
      - Provide a responsive shell
      - Show Login or Logout based on data.user
      - Use black and white icon buttons in the topbar for primary actions
+     SECURITY:
+     - Client should never receive plaintext email. We only render a redacted string from server data.
 -->
 
 <script lang="ts">
   import "../app.css"; // ensure global styles load
-  export let data: { user: { id: string; email: string } | null; reconnectDue: number; remindersOpenCount: number };
-  import { onMount, onDestroy } from 'svelte';
+
+  // IT: align with +layout.server.ts which now returns { id, emailRedacted } on user
+  export let data: {
+    user: { id: string; emailRedacted: string | null } | null;
+    reconnectDue: number;
+    remindersOpenCount: number;
+    actionsCount?: number;
+  };
+
+  import { onMount } from 'svelte';
 
   // PURPOSE: register service worker so Android can install as full PWA
   if ('serviceWorker' in navigator) {
@@ -17,83 +27,83 @@
       .catch(err => console.error('SW registration failed:', err));
   }
 
-  let canInstall = false;        // controls Install button visibility on Android
-let isInstalled = false;       // reflects whether the app is currently installed
-let showIosHint = false;       // small helper banner for iOS Safari
-let deferredPrompt: any = null;
+  // IT: install prompt state
+  let canInstall = false;      // controls Install button visibility on Android
+  let isInstalled = false;     // reflects whether the app is currently installed
+  let showIosHint = false;     // small helper banner for iOS Safari
+  let deferredPrompt: any = null;
 
-// IT: detect iOS Safari - rough check that is good enough for this UI hint
-function isIosSafari(): boolean {
-  if (typeof navigator === 'undefined') return false;
-  const ua = navigator.userAgent || navigator.vendor || '';
-  const isIOS = /iPad|iPhone|iPod/.test(ua);
-  const isSafari = /^((?!chrome|android).)*safari/i.test(ua);
-  return isIOS && isSafari;
-}
+  // IT: detect iOS Safari - rough check that is good enough for this UI hint
+  function isIosSafari(): boolean {
+    if (typeof navigator === 'undefined') return false;
+    const ua = navigator.userAgent || navigator.vendor || '';
+    const isIOS = /iPad|iPhone|iPod/.test(ua);
+    const isSafari = /^((?!chrome|android).)*safari/i.test(ua);
+    return isIOS && isSafari;
+  }
 
-// IT: detect installed state across platforms
-function computeInstalled(): boolean {
-  // Android and most browsers
-  const standaloneMedia = typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(display-mode: standalone)').matches;
-  // iOS Safari fallback
-  const iosStandalone = typeof navigator !== 'undefined' && (navigator as any).standalone === true;
-  return Boolean(standaloneMedia || iosStandalone);
-}
+  // IT: detect installed state across platforms
+  function computeInstalled(): boolean {
+    // Android and most browsers
+    const standaloneMedia = typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(display-mode: standalone)').matches;
+    // iOS Safari fallback
+    const iosStandalone = typeof navigator !== 'undefined' && (navigator as any).standalone === true;
+    return Boolean(standaloneMedia || iosStandalone);
+  }
 
-function updateUiFlags() {
-  isInstalled = computeInstalled();
+  function updateUiFlags() {
+    isInstalled = computeInstalled();
 
-  // Android logic: show Install only if not installed and Chrome fired beforeinstallprompt
-  canInstall = !isInstalled && !!deferredPrompt;
+    // Android logic: show Install only if not installed and Chrome fired beforeinstallprompt
+    canInstall = !isInstalled && !!deferredPrompt;
 
-  // iOS Safari: show hint if not installed - user must use Share -> Add to Home Screen
-  showIosHint = !isInstalled && isIosSafari();
-}
+    // iOS Safari: show hint if not installed - user must use Share -> Add to Home Screen
+    showIosHint = !isInstalled && isIosSafari();
+  }
 
-// IT: call the saved prompt
-async function install() {
-  if (!deferredPrompt) return;
-  deferredPrompt.prompt();
-  const { outcome } = await deferredPrompt.userChoice; // 'accepted' or 'dismissed'
-  // Once a choice is made, the event cannot be reused
-  deferredPrompt = null;
-  updateUiFlags(); // will hide button if accepted
-}
+  // IT: call the saved prompt
+  async function install() {
+    if (!deferredPrompt) return;
+    deferredPrompt.prompt();
+    const { outcome } = await deferredPrompt.userChoice; // accepted or dismissed
+    deferredPrompt = null; // event cannot be reused
+    updateUiFlags(); // will hide button if accepted
+  }
 
-function handleBeforeInstallPrompt(e: Event) {
-  // Prevent the default mini-infobar and remember the event for our button
-  e.preventDefault();
-  deferredPrompt = e;
-  updateUiFlags();
-}
+  function handleBeforeInstallPrompt(e: Event) {
+    // Prevent the default mini-infobar and remember the event for our button
+    e.preventDefault();
+    deferredPrompt = e;
+    updateUiFlags();
+  }
 
-function handleAppInstalled() {
-  // App has been installed - hide controls
-  deferredPrompt = null;
-  updateUiFlags();
-}
+  function handleAppInstalled() {
+    // App has been installed - hide controls
+    deferredPrompt = null;
+    updateUiFlags();
+  }
 
-function handleVisibilityChange() {
-  // If the user installed from another tab or OS dialog, state can change
-  updateUiFlags();
-}
+  function handleVisibilityChange() {
+    // If the user installed from another tab or OS dialog, state can change
+    updateUiFlags();
+  }
 
-onMount(() => {
-  updateUiFlags();
+  onMount(() => {
+    updateUiFlags();
 
-  // Android install availability
-  window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt as any);
-  // Fired after successful install
-  window.addEventListener('appinstalled', handleAppInstalled);
-  // Re-check when tab visibility changes
-  document.addEventListener('visibilitychange', handleVisibilityChange);
+    // Android install availability
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt as any);
+    // Fired after successful install
+    window.addEventListener('appinstalled', handleAppInstalled);
+    // Re-check when tab visibility changes
+    document.addEventListener('visibilitychange', handleVisibilityChange);
 
-  return () => {
-    window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt as any);
-    window.removeEventListener('appinstalled', handleAppInstalled);
-    document.removeEventListener('visibilitychange', handleVisibilityChange);
-  };
-});
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt as any);
+      window.removeEventListener('appinstalled', handleAppInstalled);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  });
 </script>
 
 <div class="layout">
@@ -104,23 +114,11 @@ onMount(() => {
         <img src="/relish-logo.png" alt="Relish logo" />
       </div>
     </a>
-    
 
     <!-- Compact mobile actions - icon only for a tidy topbar -->
     <nav class="topbar-actions" aria-label="Primary">
-      <!-- Contacts
-
-      <a class="btn icon" href="/" aria-label="Contacts">
-        <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-          <path d="M4 3h12a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H4V3zM2 6h1v2H2V6zm0 4h1v2H2v-2zm0 4h1v2H2v-2z"/>
-          <circle cx="12" cy="9" r="2"/>
-          <path d="M7.5 16a4.5 4.5 0 0 1 9 0H7.5z"/>
-        </svg>
-      </a>
-     -->
-
-        <!-- Add Contact -->
-        <a class="btn icon" href="/contacts/new" aria-label="Add Contact" title="Add Contact">
+      <!-- Add Contact -->
+      <a class="btn icon" href="/contacts/new" aria-label="Add Contact" title="Add Contact">
         <!-- user plus icon -->
         <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
           <path d="M12 12a4 4 0 1 0-4-4 4 4 0 0 0 4 4z"/>
@@ -137,30 +135,25 @@ onMount(() => {
         </svg>
       </a>
 
-
-
       {#if data.user}
-<!-- Inbox -->
-<a class="btn icon" href="/actions" aria-label="Actions" title="Actions">
-  <!-- bell icon -->
-  <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-    <path d="M12 22a2 2 0 0 0 2-2h-4a2 2 0 0 0 2 2z"/>
-    <path d="M18 16v-5a6 6 0 1 0-12 0v5l-2 2v1h16v-1l-2-2z"/>
-  </svg>
+        <!-- Actions -->
+        <a class="btn icon" href="/actions" aria-label="Actions" title="Actions">
+          <!-- bell icon -->
+          <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <path d="M12 22a2 2 0 0 0 2-2h-4a2 2 0 0 0 2 2z"/>
+            <path d="M18 16v-5a6 6 0 1 0-12 0v5l-2 2v1h16v-1l-2-2z"/>
+          </svg>
+          {#if (data.actionsCount || 0) > 0}
+            <span class="pill">{data.actionsCount}</span>
+          {/if}
+        </a>
 
-  {#if (data.actionsCount || 0) > 0}
-    <span class="pill">{data.actionsCount}</span>
-  {/if}
-</a>
-
-<!-- After - same sizing as Reconnect and Reminders -->
-<a class="btn icon" href="/share" aria-label="Share your link" title="Share your link">
-  <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-    <path d="M18 8a3 3 0 1 0-2.83-4H15a3 3 0 0 0 3 3zM6 14a3 3 0 1 0 0 6 3 3 0 0 0 0-6zm12 0a3 3 0 1 0 0 6 3 3 0 0 0 0-6zM8.59 13.05l6.83-3.42.9 1.8-6.83 3.43-.9-1.81z"/>
-  </svg>
-</a>
-
-
+        <!-- Share -->
+        <a class="btn icon" href="/share" aria-label="Share your link" title="Share your link">
+          <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <path d="M18 8a3 3 0 1 0-2.83-4H15a3 3 0 0 0 3 3zM6 14a3 3 0 1 0 0 6 3 3 0 0 0 0-6zm12 0a3 3 0 1 0 0 6 3 3 0 0 0 0-6zM8.59 13.05l6.83-3.42.9 1.8-6.83 3.43-.9-1.81z"/>
+          </svg>
+        </a>
 
         <!-- Logout -->
         <form method="POST" action="/auth/logout?redirect=/auth/login" class="inline-form" aria-label="Logout">
@@ -182,22 +175,19 @@ onMount(() => {
         </a>
       {/if}
     </nav>
-    <!-- ANDROID: show Install button only when not installed and install prompt is available -->
-{#if canInstall}
-<button on:click={install} class="install-btn">
-  Install Relish
-</button>
-{/if}
 
-<!-- iOS: show a tiny helper only when not installed -->
-{#if showIosHint}
-<div class="ios-hint">
-  Add to Home Screen: tap Share, then Add to Home Screen
-</div>
-{/if}
+    <!-- ANDROID: show Install button only when not installed and install prompt is available -->
+    {#if canInstall}
+      <button on:click={install} class="install-btn">Install Relish</button>
+    {/if}
+
+    <!-- iOS: show a tiny helper only when not installed -->
+    {#if showIosHint}
+      <div class="ios-hint">Add to Home Screen: tap Share, then Add to Home Screen</div>
+    {/if}
   </header>
 
-  <!-- Desktop sidebar - unchanged text links plus existing blocks -->
+  <!-- Desktop sidebar -->
   <aside class="sidebar desktop-only">
     <a class="brand" href="/" aria-label="Relish home">
       <div class="logo">
@@ -208,6 +198,7 @@ onMount(() => {
     <nav class="nav-group">
       <a class="nav-link" href="/">Contacts</a>
       <a class="nav-link" href="/search">Search</a>
+
       {#if data.user}
         <a class="nav-link" href="/contacts/new">➕ Add Contact</a>
 
@@ -218,8 +209,9 @@ onMount(() => {
               <span class="pill">{data.reconnectDue}</span>
             {/if}
           </a>
-          </div>
-          <div>
+        </div>
+
+        <div>
           <a href="/reminders" class="btn">
             Reminders
             {#if data.remindersOpenCount > 0}
@@ -231,9 +223,13 @@ onMount(() => {
         <form method="POST" action="/auth/logout">
           <button class="btn" type="submit" style="width:100%;">Logout</button>
         </form>
+
+        <!-- IT: show redacted email only - never plaintext -->
         <div class="card" style="padding:10px;">
           <div style="font-size:0.9rem; color:var(--muted);">Signed in as</div>
-          <div style="font-weight:600; word-break:break-all;">{data.user.email}</div>
+          <div style="font-weight:600; word-break:break-all;">
+            {#if data.user.emailRedacted}{data.user.emailRedacted}{/if}
+          </div>
         </div>
       {:else}
         <a class="nav-link" href="/auth/login">Login</a>
@@ -272,16 +268,15 @@ onMount(() => {
 <style>
   /* One place to tune sizes */
 
-/* Mobile tweaks - pick your breakpoint */
-:root {
-  /* clamp(min, preferred, max) - scales smoothly between widths */
-  --icon-size: clamp(20px, 2.2vw, 24px);
-  --icon-button-w: clamp(40px, 4.8vw, 48px);
-  --icon-button-h: clamp(36px, 4.2vw, 44px);
-  --logo-size: clamp(44px, 6vw, 60px);
-  --brand-gap: clamp(4px, 1vw, 8px);
-}
-
+  /* Mobile tweaks - pick your breakpoint */
+  :root {
+    /* clamp(min, preferred, max) - scales smoothly between widths */
+    --icon-size: clamp(20px, 2.2vw, 24px);
+    --icon-button-w: clamp(40px, 4.8vw, 48px);
+    --icon-button-h: clamp(36px, 4.2vw, 44px);
+    --logo-size: clamp(44px, 6vw, 60px);
+    --brand-gap: clamp(4px, 1vw, 8px);
+  }
 
   /* Topbar layout */
   .topbar {
@@ -295,7 +290,6 @@ onMount(() => {
     box-sizing: border-box; /* ensure padding does not clip content */
   }
   .topbar .brand {
-    /* brand expands but can shrink without overlapping actions */
     display: flex;
     align-items: center;
     gap: var(--brand-gap);
@@ -317,7 +311,7 @@ onMount(() => {
     height: var(--logo-size);
     padding: 0;
     margin: 0;
-    line-height: 0;          /* kill inline image baseline gap */
+    line-height: 0;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -326,8 +320,8 @@ onMount(() => {
   .logo img {
     width: 100%;
     height: 100%;
-    display: block;          /* no extra bottom whitespace */
-    object-fit: contain;     /* keep aspect ratio */
+    display: block;
+    object-fit: contain;
   }
 
   /* Generic button styles */
@@ -394,4 +388,3 @@ onMount(() => {
     text-decoration: none;
   }
 </style>
-

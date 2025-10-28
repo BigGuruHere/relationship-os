@@ -2,9 +2,12 @@
 // PURPOSE:
 // - Infer runtime env from Host header and expose on locals
 // - Provide env-aware appOrigin and sessionCookie config on locals
-// - Parse session cookie using env-aware name and attach user to locals
+// - Parse session cookie using env-aware name and attach user id to locals
+// SECURITY:
+// - Do not expose email on locals - encrypted email must only be decrypted on
+//   specific server routes that need it, and then passed as a redacted string.
 // NOTES:
-// - Keep all tenant scoping rules elsewhere - this only prepares locals
+// - Keep tenant scoping rules elsewhere - this only prepares locals
 // - All IT code is commented and uses normal hyphens
 
 import type { Handle } from '@sveltejs/kit';
@@ -29,15 +32,18 @@ export const handle: Handle = async ({ event, resolve }) => {
   // 4 - parse session using env-aware cookie name from locals
   // - readSessionToken uses locals.sessionCookie.name
   const signedCookie = readSessionToken(event.cookies, event.locals);
+
+  // IT - initialize locals.user to undefined and only attach id on success
   event.locals.user = undefined;
-  // optional: keep a session id for logout
-  // will be set after DB lookup in getSessionFromCookie
+
+  // optional: keep a session id for logout - set after DB lookup in getSessionFromCookie
   let sessionId: string | undefined;
 
   if (signedCookie) {
     const result = await getSessionFromCookie(signedCookie);
     if (result) {
-      event.locals.user = { id: result.user.id, email: result.user.email ?? undefined };
+      // IT - attach only the user id - do not attach email here
+      event.locals.user = { id: result.user.id };
       sessionId = result.session.id;
     }
   }

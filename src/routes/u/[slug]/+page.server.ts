@@ -217,7 +217,7 @@ export const actions: Actions = {
     // IT: redirect to view mode of the same profile so the UI exits edit state
     const to = absoluteUrlFromOrigin(locals.appOrigin, `/u/${encodeURIComponent(existing.slug || '')}`);
     throw redirect(303, to);
-  }
+  },
 
     // IT: NEW - instant connect for logged-in users
     connectUsers: async ({ locals, params }) => {

@@ -10,6 +10,7 @@ import { prisma } from '$lib/db';
 import { createInviteToken } from '$lib/server/tokens';
 import { fail, redirect, error } from '@sveltejs/kit';
 import { absoluteUrlFromOrigin } from '$lib/url';
+import { createMutualConnection } from '$lib/connections';
 
 
 export const load: PageServerLoad = async ({ params, url, locals }) => {
@@ -101,15 +102,59 @@ export const load: PageServerLoad = async ({ params, url, locals }) => {
     select: { id: true, publicSlug: true }
   });
 
+  // IT: NEW - check if the visitor is logged in
+  const visitorUserId = locals.user?.id ?? null;
+  const isVisitorLoggedIn = Boolean(visitorUserId);
+  
+  // IT: NEW - check if visitor is already connected to this owner
+  let isAlreadyConnected = false;
+  let visitorProfile = null;
+  
+  if (isVisitorLoggedIn && ownerId) {
+    // Don't connect to yourself
+    if (visitorUserId !== ownerId) {
+      // Check if owner already has visitor as a contact
+      const existingContact = await prisma.contact.findFirst({
+        where: {
+          userId: ownerId,
+          linkedUserId: visitorUserId
+        },
+        select: { id: true }
+      });
+      
+      isAlreadyConnected = Boolean(existingContact);
+      
+      // Get visitor's profile for the connect button
+      if (!isAlreadyConnected) {
+        visitorProfile = await prisma.profile.findFirst({
+          where: { userId: visitorUserId },
+          select: {
+            id: true,
+            displayName: true,
+            company: true,
+            emailPublic: true,
+            phonePublic: true
+          },
+          orderBy: [{ isDefault: 'desc' }, { updatedAt: 'desc' }]
+        });
+      }
+    }
+  }
+
   return {
     owner: { id: ownerId, slug: owner?.publicSlug ?? slugParam },
     inviteToken: invite.token,
-    profile: profile || null, // can be null if the owner has not created one yet
+    profile: profile || null,
     isOwner,
     editingRequested,
     firstVisit,
     origin,
-    slugParam
+    slugParam,
+    // IT: NEW - pass visitor login state to page
+    isVisitorLoggedIn,
+    isAlreadyConnected,
+    isSelfView: visitorUserId === ownerId,
+    visitorProfile
   };
 };
 
@@ -173,4 +218,43 @@ export const actions: Actions = {
     const to = absoluteUrlFromOrigin(locals.appOrigin, `/u/${encodeURIComponent(existing.slug || '')}`);
     throw redirect(303, to);
   }
+
+    // IT: NEW - instant connect for logged-in users
+    connectUsers: async ({ locals, params }) => {
+      // IT: require login
+      if (!locals.user) throw redirect(303, '/auth/login');
+  
+      // IT: resolve owner from slug
+      const owner = await resolveOwnerFromSlug(params.slug);
+      if (!owner) return fail(404, { error: 'Profile not found' });
+  
+      // IT: prevent self-connection
+      if (owner.id === locals.user.id) {
+        return fail(400, { error: 'Cannot connect to yourself' });
+      }
+  
+      // IT: check if already connected
+      const existing = await prisma.contact.findFirst({
+        where: {
+          userId: owner.id,
+          linkedUserId: locals.user.id
+        },
+        select: { id: true }
+      });
+  
+      if (existing) {
+        return fail(400, { error: 'Already connected' });
+      }
+  
+      // IT: create bidirectional contacts
+      try {
+        await createMutualConnection(owner.id, locals.user.id);
+      } catch (err) {
+        console.error('Failed to create mutual connection:', err);
+        return fail(500, { error: 'Failed to connect' });
+      }
+  
+      // IT: redirect to contacts list with success message
+      throw redirect(303, `/?connected=${encodeURIComponent(owner.displayName || 'user')}`);
+    }
 };

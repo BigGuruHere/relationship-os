@@ -9,45 +9,11 @@ import { prisma } from '$lib/db';
 import { encrypt, buildIndexToken } from '$lib/crypto';
 import { fail, redirect } from '@sveltejs/kit';
 import { createInviteToken } from '$lib/server/tokens';
+import { resolveOwnerFromSlug } from '$lib/server/owner';
+
 
 // IT: resolve the profile owner by slug and return only fields we actually have
-async function resolveOwnerFromSlug(slug: string) {
-  // Try profile.slug first
-  const prof = await prisma.profile.findFirst({
-    where: { slug },
-    select: { userId: true, displayName: true, slug: true }
-  });
 
-  if (prof) {
-    const user = await prisma.user.findUnique({
-      where: { id: prof.userId },
-      select: { id: true, publicSlug: true }
-    });
-    if (user) {
-      return {
-        id: user.id,
-        publicSlug: user.publicSlug || null,
-        displayName: prof.displayName || null
-      };
-    }
-  }
-
-  // Fallback to user.publicSlug or direct id
-  const user = await prisma.user.findFirst({
-    where: { OR: [{ publicSlug: slug }, { id: slug }] },
-    select: { id: true, publicSlug: true }
-  });
-
-  if (user) {
-    return {
-      id: user.id,
-      publicSlug: user.publicSlug || null,
-      displayName: null
-    };
-  }
-
-  return null;
-}
 
 export const load: PageServerLoad = async ({ params }) => {
   const owner = await resolveOwnerFromSlug(params.slug);

@@ -11,6 +11,8 @@ import { createInviteToken } from '$lib/server/tokens';
 import { fail, redirect, error } from '@sveltejs/kit';
 import { absoluteUrlFromOrigin } from '$lib/url';
 import { createMutualConnection } from '$lib/connections';
+import { resolveOwnerFromSlug } from '$lib/server/owner';
+
 
 
 export const load: PageServerLoad = async ({ params, url, locals }) => {
@@ -219,42 +221,43 @@ export const actions: Actions = {
     throw redirect(303, to);
   },
 
-    // IT: NEW - instant connect for logged-in users
-    connectUsers: async ({ locals, params }) => {
-      // IT: require login
-      if (!locals.user) throw redirect(303, '/auth/login');
-  
-      // IT: resolve owner from slug
-      const owner = await resolveOwnerFromSlug(params.slug);
-      if (!owner) return fail(404, { error: 'Profile not found' });
-  
-      // IT: prevent self-connection
-      if (owner.id === locals.user.id) {
-        return fail(400, { error: 'Cannot connect to yourself' });
-      }
-  
-      // IT: check if already connected
-      const existing = await prisma.contact.findFirst({
-        where: {
-          userId: owner.id,
-          linkedUserId: locals.user.id
-        },
-        select: { id: true }
-      });
-  
-      if (existing) {
-        return fail(400, { error: 'Already connected' });
-      }
-  
-      // IT: create bidirectional contacts
-      try {
-        await createMutualConnection(owner.id, locals.user.id);
-      } catch (err) {
-        console.error('Failed to create mutual connection:', err);
-        return fail(500, { error: 'Failed to connect' });
-      }
-  
-      // IT: redirect to contacts list with success message
-      throw redirect(303, `/?connected=${encodeURIComponent(owner.displayName || 'user')}`);
-    }
+// IT: instant connect for logged-in users
+connectUsers: async ({ locals, params }) => {
+  // IT: require login
+  if (!locals.user) throw redirect(303, '/auth/login');
+
+  // IT: resolve owner from slug using shared helper
+  const resolved = await resolveOwnerFromSlug(params.slug);
+  if (!resolved) return fail(404, { error: 'Profile not found' });
+
+  // IT: prevent self-connection
+  if (resolved.id === locals.user.id) {
+    return fail(400, { error: 'Cannot connect to yourself' });
+  }
+
+  // IT: check if already connected
+  const existing = await prisma.contact.findFirst({
+    where: {
+      userId: resolved.id,
+      linkedUserId: locals.user.id
+    },
+    select: { id: true }
+  });
+  if (existing) {
+    return fail(400, { error: 'Already connected' });
+  }
+
+  // IT: create bidirectional contacts
+  try {
+    await createMutualConnection(resolved.id, locals.user.id);
+  } catch (err) {
+    console.error('Failed to create mutual connection:', err);
+    return fail(500, { error: 'Failed to connect' });
+  }
+
+  // IT: redirect with a friendly name if known
+  const who = resolved.displayName || 'user';
+  throw redirect(303, `/?connected=${encodeURIComponent(who)}`);
+}
+
 };

@@ -44,7 +44,7 @@
 
       <div style="display:flex; gap:8px; margin-top:12px;">
         <button class="btn primary">Save</button>
-        <a class="btn" href="/contacts">Cancel</a>
+        <a class="btn" href="/">Cancel</a>
       </div>
     </form>
 

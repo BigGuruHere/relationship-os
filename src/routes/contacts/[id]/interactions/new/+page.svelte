@@ -1,10 +1,10 @@
+<!-- src/routes/contacts/[id]/interactions/new/+page.svelte -->
 <script lang="ts">
-  // src/routes/contacts/[id]/interactions/new/+page.svelte
   // PURPOSE:
   // - New note UI with voice record, summarize, and save.
   // - Stream-upload chunks while recording so transcription starts faster.
-  // - Uses a full screen RecordingGuard overlay to block stray ear touches.
-  // - Final tiny request sends last=1 to enqueue the job and return { jobId }.
+  // - Mobile uses RecordingGuard overlay. Desktop keeps the original inline Start and Stop buttons.
+  // - Final tiny request sends last=1 to enqueue transcription and returns { jobId }.
   //
   // SECURITY NOTES:
   // - No decryption on client.
@@ -14,7 +14,9 @@
   export let form;
   export let data;
 
-  // IT: overlay that blocks stray touches and exposes a single press-and-hold Stop control
+  import { onMount, onDestroy } from 'svelte';
+  import { browser } from '$app/environment';
+  import { goto, beforeNavigate } from '$app/navigation';
   import RecordingGuard from '$lib/recording/RecordingGuard.svelte';
 
   // Form fields - bound to inputs
@@ -31,13 +33,53 @@
   let transcript = '';
 
   // Upload streaming state
-  let uploadKey = '';   // assembly key used by the server to collect chunks
-  let nextIndex = 0;    // sequential index for each chunk we send
+  let uploadKey = '';   // server assembly key used to collect chunks
+  let nextIndex = 0;    // sequential index for each chunk
 
   // UI flags
   let transcribing = false;
   let summarizing = false;
   let saving = false;
+
+  // Device heuristic so desktop keeps inline controls
+  let isMobile = false;
+  function detectMobile(): boolean {
+    if (!browser) return false;
+    const coarse = window.matchMedia?.('(pointer: coarse)')?.matches ?? false;
+    const narrow = window.matchMedia?.('(max-width: 900px)')?.matches ?? false;
+    return coarse || narrow;
+  }
+
+  onMount(() => {
+    isMobile = detectMobile();
+
+    // Safety - stop recording if navigating away
+    const unreg = beforeNavigate(() => {
+      hardStopRecording();
+    });
+
+    // Stop if tab loses visibility
+    const onVis = () => {
+      if (document.hidden) hardStopRecording();
+    };
+    document.addEventListener('visibilitychange', onVis);
+
+    // Stop on unload as a last resort
+    const onUnload = () => hardStopRecording();
+    window.addEventListener('pagehide', onUnload);
+    window.addEventListener('beforeunload', onUnload);
+
+    return () => {
+      unreg?.();
+      document.removeEventListener('visibilitychange', onVis);
+      window.removeEventListener('pagehide', onUnload);
+      window.removeEventListener('beforeunload', onUnload);
+    };
+  });
+
+  onDestroy(() => {
+    hardStopRecording();
+  });
 
   // Choose recorder mime by capability
   function pickRecorderMime(): string {
@@ -80,10 +122,8 @@
         return;
       }
 
-      // Server normalizes summary to a plain string
       summary = typeof data.summary === 'string' ? data.summary : '';
 
-      // Server also returns suggestedTags plus a tags string list for backward compatibility
       if (Array.isArray(data.tags) && data.tags.length > 0) {
         tags = data.tags.map((t: any) => String(t || '')).filter(Boolean).join(', ');
       } else if (Array.isArray(data.suggestedTags)) {
@@ -101,7 +141,6 @@
   // Transcription helpers
   // -----------------------
 
-  // Send one chunk - index increments per chunk, last tells server to enqueue job
   async function uploadChunk(key: string, index: number, last: boolean, bytes: Uint8Array) {
     const qs = new URLSearchParams({ key, index: String(index), last: last ? '1' : '0' });
     const res = await fetch(`/api/upload-chunk?${qs.toString()}`, {
@@ -112,13 +151,10 @@
     let data: any = {};
     try {
       data = await res.json();
-    } catch {
-      // swallow - caller will treat as error if needed
-    }
+    } catch {}
     return { status: res.status, data };
   }
 
-  // Poll /api/transcribe-result until status is done or error
   async function pollResult(jobId: string): Promise<string> {
     if (!jobId) throw new Error('No jobId to poll');
 
@@ -127,10 +163,7 @@
       let data: any = {};
       try {
         data = await res.json();
-      } catch {
-        // non json - keep polling
-      }
-
+      } catch {}
       if (res.ok && data?.status === 'done') {
         return String(data.transcript || '');
       }
@@ -148,7 +181,6 @@
 
   async function startRecording() {
     try {
-      // Lower quality hints to shrink files - browsers may treat these as hints only
       const constraints: MediaStreamConstraints = {
         audio: {
           channelCount: 1,
@@ -166,15 +198,14 @@
       const mimeType = pickRecorderMime();
       mediaRecorder = new MediaRecorder(currentStream, { mimeType });
 
-      // Initialize streaming state for this session
+      // Initialize streaming state
       uploadKey = crypto.randomUUID();
       nextIndex = 0;
 
-      // Stream each emitted blob in smaller sub-chunks so each request is modest size
       mediaRecorder.ondataavailable = async (e) => {
         if (!e.data || e.data.size === 0) return;
         const full = new Uint8Array(await e.data.arrayBuffer());
-        const CHUNK = 256 * 1024; // 256 KB per request is a good balance
+        const CHUNK = 256 * 1024;
 
         for (let o = 0; o < full.length; o += CHUNK) {
           const part = full.subarray(o, Math.min(o + CHUNK, full.length));
@@ -186,7 +217,7 @@
       };
 
       mediaRecorder.onstart = () => {
-        recording = true; // RecordingGuard becomes visible and swallows stray touches
+        recording = true;
       };
 
       mediaRecorder.onerror = () => {
@@ -196,8 +227,8 @@
         currentStream = null;
       };
 
-      // When stopped, send the final last=1 request and start polling
       mediaRecorder.onstop = async () => {
+        // Guard might still be visible on mobile - switch to transcribing state there
         transcribing = true;
         try {
           const { status, data } = await uploadChunk(uploadKey, nextIndex, true, new Uint8Array());
@@ -206,20 +237,18 @@
           const jobId: string = String(data.jobId);
           const t = await pollResult(jobId);
 
-          // Keep a copy and write into the main textarea - append if the user typed already
           transcript = t;
           text = text ? text + '\n' + t : t;
         } catch (err) {
           console.error('Transcribe pipeline failed', err);
         } finally {
-          transcribing = false;
+          transcribing = false;    // closes the guard on mobile
           recording = false;
           currentStream?.getTracks().forEach((trk) => trk.stop());
           currentStream = null;
         }
       };
 
-      // 1s timeslice - reliable on long recordings and enables progressive ondataavailable
       mediaRecorder.start(1000);
     } catch (err) {
       currentStream?.getTracks().forEach((t) => t.stop());
@@ -240,8 +269,28 @@
     }
   }
 
+  // Hard stop used for navigation or cancel - ensures tracks are closed
+  function hardStopRecording() {
+    try {
+      if (mediaRecorder && mediaRecorder.state === 'recording') {
+        mediaRecorder.stop();
+      }
+    } catch {}
+    if (currentStream) {
+      currentStream.getTracks().forEach((t) => t.stop());
+      currentStream = null;
+    }
+    recording = false;
+  }
+
   function handleSubmit() {
     saving = true;
+  }
+
+  async function handleCancel() {
+    // Ensure recording is stopped before navigating away
+    hardStopRecording();
+    await goto('..');
   }
 </script>
 
@@ -252,7 +301,6 @@
       for <a href={"/contacts/" + data.contact.id} class="link">{data.contact.name}</a>
     </div>
     <form method="post" on:submit={handleSubmit}>
-      <!-- hidden fields for AI generated content -->
       <input type="hidden" name="summary" value={summary} />
       <input type="hidden" name="tags" value={tags} />
       <input type="hidden" name="tagsSource" value="ai" />
@@ -281,12 +329,18 @@
               <span>🎤 Start recording</span>
             </button>
           {:else}
-            <!-- While recording we avoid inline stop to prevent accidental ear taps.
-                 The RecordingGuard overlay is visible and provides a large hold-to-stop control. -->
-            <span class="inline-wait">
-              <span class="spinner" aria-hidden="true"></span>
-              <span>Recording... hold the big Stop to finish</span>
-            </span>
+            {#if isMobile}
+              <!-- Mobile: guard handles the Stop interaction -->
+              <span class="inline-wait">
+                <span class="spinner" aria-hidden="true"></span>
+                <span>Recording... use the Stop overlay</span>
+              </span>
+            {:else}
+              <!-- Desktop: keep inline Stop button just like the original -->
+              <button type="button" class="btn" on:click={stopRecording} disabled={saving}>
+                ⏹ Stop
+              </button>
+            {/if}
           {/if}
 
           {#if transcribing}
@@ -336,7 +390,8 @@
           {/if}
         </button>
 
-        <a class="btn" href="..">Cancel</a>
+        <!-- Cancel must stop any active recording before leaving -->
+        <button type="button" class="btn" on:click={handleCancel}>Cancel</button>
       </div>
     </form>
 
@@ -346,13 +401,13 @@
   </div>
 </div>
 
-<!-- Full screen guard that blocks background touches and requires a short hold to stop -->
+<!-- Mobile guard - no inner text on button, subtle motion while recording, white with Transcribing... after stop -->
 <RecordingGuard
-  visible={recording}
-  label="Hold to stop"
+  visible={recording || transcribing}
   holdMs={600}
   mobileOnly={true}
   diameterPx={120}
+  transcribing={transcribing}
   on:stop={stopRecording}
 />
 

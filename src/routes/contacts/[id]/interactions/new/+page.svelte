@@ -1,17 +1,21 @@
-<!-- src/routes/contacts/[id]/interactions/new/+page.svelte -->
 <script lang="ts">
+  // src/routes/contacts/[id]/interactions/new/+page.svelte
   // PURPOSE:
   // - New note UI with voice record, summarize, and save.
   // - Stream-upload chunks while recording so transcription starts faster.
+  // - Uses a full screen RecordingGuard overlay to block stray ear touches.
   // - Final tiny request sends last=1 to enqueue the job and return { jobId }.
   //
-  // SECURITY:
+  // SECURITY NOTES:
   // - No decryption on client.
-  // - Server endpoints require login.
+  // - Server endpoints require login and enforce tenant scoping by userId.
+  // - Client only holds raw audio until upload. No PII is rendered.
 
   export let form;
   export let data;
 
+  // IT: overlay that blocks stray touches and exposes a single press-and-hold Stop control
+  import RecordingGuard from '$lib/recording/RecordingGuard.svelte';
 
   // Form fields - bound to inputs
   let text = form?.draft?.text ?? '';
@@ -182,7 +186,7 @@
       };
 
       mediaRecorder.onstart = () => {
-        recording = true;
+        recording = true; // RecordingGuard becomes visible and swallows stray touches
       };
 
       mediaRecorder.onerror = () => {
@@ -192,11 +196,10 @@
         currentStream = null;
       };
 
-      // When stopped, send the final "last=1" request and start polling
+      // When stopped, send the final last=1 request and start polling
       mediaRecorder.onstop = async () => {
         transcribing = true;
         try {
-          // Final tiny request that flips the server into transcription and returns a jobId
           const { status, data } = await uploadChunk(uploadKey, nextIndex, true, new Uint8Array());
           if (status !== 202 || !data?.jobId) throw new Error('No jobId from server on last');
 
@@ -256,7 +259,7 @@
 
       <div class="field">
         <label for="channel">Channel</label>
-        <select id="channel" name="channel" bind:value={channel}>
+        <select id="channel" name="channel" bind:value={channel} disabled={recording}>
           <option value="note">Note</option>
           <option value="call">Call</option>
           <option value="meeting">Meeting</option>
@@ -266,7 +269,7 @@
 
       <div class="field">
         <label for="occurredAt">When - optional</label>
-        <input id="occurredAt" name="occurredAt" type="datetime-local" bind:value={occurredAt} />
+        <input id="occurredAt" name="occurredAt" type="datetime-local" bind:value={occurredAt} disabled={recording} />
       </div>
 
       <div class="field">
@@ -275,12 +278,15 @@
         <div style="display:flex; gap:10px; align-items:center; margin-bottom:8px;">
           {#if !recording}
             <button type="button" class="btn" on:click={startRecording} disabled={transcribing || saving}>
-              <span>🎤 Start Recording</span>
+              <span>🎤 Start recording</span>
             </button>
           {:else}
-            <button type="button" class="btn" on:click={stopRecording} disabled={saving}>
-              ⏹ Stop
-            </button>
+            <!-- While recording we avoid inline stop to prevent accidental ear taps.
+                 The RecordingGuard overlay is visible and provides a large hold-to-stop control. -->
+            <span class="inline-wait">
+              <span class="spinner" aria-hidden="true"></span>
+              <span>Recording... hold the big Stop to finish</span>
+            </span>
           {/if}
 
           {#if transcribing}
@@ -291,7 +297,7 @@
           {/if}
         </div>
 
-        <textarea id="text" name="text" rows="8" bind:value={text}></textarea>
+        <textarea id="text" name="text" rows="8" bind:value={text} disabled={recording}></textarea>
       </div>
 
       {#if transcript}
@@ -339,6 +345,14 @@
     {/if}
   </div>
 </div>
+
+<!-- Full screen guard that blocks background touches and requires a short hold to stop -->
+<RecordingGuard
+  visible={recording}
+  label="Hold to stop"
+  holdMs={700}
+  on:stop={stopRecording}
+/>
 
 <style>
   .spinner {

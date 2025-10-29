@@ -1,18 +1,20 @@
 
 <script lang="ts">
     // src/lib/recording/RecordingGuard.svelte
-// PURPOSE: Full screen touch guard shown while recording - blocks stray touches and offers a single, high-confidence Stop control.
+// PURPOSE: Full screen touch guard shown while recording on mobile - smaller Stop button and mobile-only rendering if desired.
 // SECURITY NOTES:
 // - Pure client UI guard - no PII rendered or decrypted.
-// - Emits a stop event that your recorder handler can use to finalize and upload audio with userId scoping on the server.
+// - Emits a stop event for the parent to finalize and upload audio with userId scoping on the server.
 
   import { onMount, onDestroy, createEventDispatcher } from 'svelte';
   import { browser } from '$app/environment';
 
   // Props
-  export let visible = false;           // show or hide the guard
-  export let label = 'Hold to stop';    // accessible label
-  export let holdMs = 700;              // press-and-hold duration
+  export let visible = false;            // show or hide the guard
+  export let label = 'Hold to stop';     // accessible label
+  export let holdMs = 700;               // press-and-hold duration
+  export let mobileOnly = true;          // render only on mobile devices
+  export let diameterPx = 140;           // Stop button diameter in px
 
   const dispatch = createEventDispatcher();
 
@@ -21,8 +23,17 @@
   let progress = 0;
   let rafId: number | null = null;
   let startTs = 0;
+  let isMobile = false;
 
-  // Prevent body scroll when visible - guard for SSR
+  // Lightweight mobile heuristic - pointer coarse or narrow viewport
+  function detectMobile(): boolean {
+    if (!browser) return false;
+    const coarse = window.matchMedia?.('(pointer: coarse)')?.matches ?? false;
+    const narrow = window.matchMedia?.('(max-width: 900px)')?.matches ?? false;
+    return coarse || narrow;
+  }
+
+  // Prevent body scroll when visible
   function lockScroll(lock: boolean) {
     if (!browser) return;
     const cls = 'no-scroll-recording-guard';
@@ -31,11 +42,33 @@
   }
 
   onMount(() => {
-    if (visible) lockScroll(true);
+    isMobile = detectMobile();
+    if (visible && shouldRender()) lockScroll(true);
+
+    // Re-evaluate on resize or orientation changes
+    const onResize = () => {
+      const prev = isMobile;
+      isMobile = detectMobile();
+      // If mobile state changed, re-apply scroll lock rules
+      if (prev !== isMobile) {
+        if (visible && shouldRender()) lockScroll(true);
+        else lockScroll(false);
+      }
+    };
+    window.addEventListener('resize', onResize);
+    window.addEventListener('orientationchange', onResize);
+
+    return () => {
+      window.removeEventListener('resize', onResize);
+      window.removeEventListener('orientationchange', onResize);
+    };
   });
 
-  // Reactive watch - only run in browser
-  $: if (browser) lockScroll(visible);
+  // Guarded reactive scroll lock
+  $: if (browser) {
+    if (visible && shouldRender()) lockScroll(true);
+    else lockScroll(false);
+  }
 
   onDestroy(() => {
     if (browser) lockScroll(false);
@@ -43,13 +76,16 @@
     clearHold();
   });
 
+  function shouldRender(): boolean {
+    return !mobileOnly || isMobile;
+  }
+
   function startHold() {
     if (holding) return;
     holding = true;
     progress = 0;
     startTs = performance.now();
 
-    // Update visual progress
     function tick(ts: number) {
       const elapsed = ts - startTs;
       progress = Math.min(1, elapsed / holdMs);
@@ -61,7 +97,6 @@
     }
     rafId = requestAnimationFrame(tick);
 
-    // Fallback timer to guarantee completion
     holdTimer = window.setTimeout(completeHold, holdMs);
   }
 
@@ -83,13 +118,11 @@
   }
 
   function endHold() {
-    // If user released early, treat as cancel
     if (progress < 1) clearHold();
   }
 
   function completeHold() {
     clearHold();
-    // Emit stop intent up to parent
     dispatch('stop');
   }
 
@@ -99,22 +132,20 @@
     e.stopPropagation();
   }
 
-  // Keyboard support - Escape cancels guard without stopping recording
+  // Keyboard support for accessibility
   function onKeydown(e: KeyboardEvent) {
-    if (!visible) return;
+    if (!visible || !shouldRender()) return;
     if (e.key === 'Escape') {
       swallow(e);
-      // parent can hide the guard when recording is canceled manually
     }
     if (e.key === 'Enter' || e.key === ' ') {
-      // Enter or Space behaves like press-and-hold
       swallow(e);
       startHold();
     }
   }
 </script>
 
-{#if visible}
+{#if visible && shouldRender()}
   <div
     class="rg-backdrop"
     role="dialog"
@@ -127,6 +158,7 @@
     on:scroll={swallow}
     on:keydown={onKeydown}
     tabindex="0"
+    style={`--diameter:${Math.max(80, Math.min(diameterPx, 260))}px;`}
   >
     <div class="rg-content" on:pointerdown|preventDefault|stopPropagation on:click|preventDefault>
       <div class="rg-status" aria-live="polite">
@@ -150,7 +182,6 @@
 {/if}
 
 <style>
-  /* Prevent background scroll when guard is active */
   :global(body.no-scroll-recording-guard) {
     overflow: hidden;
     touch-action: none;
@@ -167,9 +198,9 @@
   }
 
   .rg-content {
-    width: min(520px, 92vw);
-    padding: 24px;
-    border-radius: 16px;
+    width: min(420px, 92vw);
+    padding: 18px;
+    border-radius: 14px;
     background: #0f0f10;
     color: #f5f5f5;
     text-align: center;
@@ -177,38 +208,35 @@
   }
 
   .rg-status {
-    font-size: 16px;
-    margin-bottom: 16px;
+    font-size: 15px;
+    margin-bottom: 12px;
     opacity: 0.85;
   }
 
   .rg-stop {
     position: relative;
-    width: min(280px, 70vw);
-    height: min(280px, 70vw);
+    width: var(--diameter);
+    height: var(--diameter);
     border-radius: 50%;
     border: none;
     background: #c62828;
     color: #fff;
-    font-size: 20px;
+    font-size: 16px;
     cursor: pointer;
     touch-action: none;
     outline: none;
   }
 
-  .rg-stop:active {
-    filter: brightness(0.95);
-  }
+  .rg-stop:active { filter: brightness(0.95); }
 
   .rg-stop-label {
     position: relative;
     z-index: 2;
   }
 
-  /* Circular progress ring driven by --p variable from 0 to 1 */
   .rg-ring {
     position: absolute;
-    inset: -10px;
+    inset: -8px;
     border-radius: 50%;
     background:
       radial-gradient(circle at 50% 50%, transparent 58%, rgba(255,255,255,0.15) 59%, transparent 63%),
@@ -217,14 +245,8 @@
   }
 
   .rg-hint {
-    margin-top: 14px;
-    font-size: 13px;
+    margin-top: 10px;
+    font-size: 12px;
     opacity: 0.7;
-  }
-
-  @media (max-width: 420px) {
-    .rg-content { padding: 18px; }
-    .rg-status { font-size: 15px; }
-    .rg-hint { font-size: 12px; }
   }
 </style>

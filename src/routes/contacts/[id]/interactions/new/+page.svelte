@@ -350,7 +350,9 @@
 <RecordingGuard
   visible={recording}
   label="Hold to stop"
-  holdMs={700}
+  holdMs={600}
+  mobileOnly={true}
+  diameterPx={120}
   on:stop={stopRecording}
 />
 

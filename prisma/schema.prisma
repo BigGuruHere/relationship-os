@@ -55,6 +55,9 @@ model User {
   // IT: back-relation for one-shot reminders
   reminders Reminder[]
 
+    // IT: ADD THIS LINE - back-relation for ContactRelationship
+  contactRelationships ContactRelationship[]  // ← Add this
+
   role       UserRole @default(member)
   publicSlug String?  @unique
 
@@ -257,6 +260,8 @@ model Contact {
 
   sourceProfileId String?          // profile used when this contact was first created
 
+  relationshipsAsA ContactRelationship[] @relation("ContactAsA")
+  relationshipsAsB ContactRelationship[] @relation("ContactAsB")
 
   reminders Reminder[]
 
@@ -383,4 +388,63 @@ model Profile {
   publicMeta Json?
 
   @@index([userId, isDefault])
+}
+
+// IT: flexible many-to-many relationships between contacts
+model ContactRelationship {
+  id        String   @id @default(uuid())
+  userId    String   // tenant scope
+  
+  contactAId String
+  contactBId String
+  
+  // IT: make relationship type OPTIONAL - can be null initially
+  relationshipType RelationshipType?  // ← Note the ? makes it nullable
+  
+  // IT: free-text label - use this for simple "knows" or custom descriptions
+  label     String?  @default("knows") // simple fallback
+  
+  // IT: optional metadata for future richness
+  metadata  Json?
+  
+  // IT: directional flag
+  isDirectional Boolean @default(false)
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  contactA  Contact @relation("ContactAsA", fields: [contactAId], references: [id], onDelete: Cascade)
+  contactB  Contact @relation("ContactAsB", fields: [contactBId], references: [id], onDelete: Cascade)
+  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // IT: allow multiple relationships between same contacts with different types
+  @@unique([userId, contactAId, contactBId, relationshipType, label])
+  @@index([userId, contactAId])
+  @@index([userId, contactBId])
+  @@index([userId, relationshipType])
+}
+
+// IT: keep enum in DB for future use, but make it optional in model
+enum RelationshipType {
+  // Professional
+  WORKS_WITH
+  REPORTS_TO
+  MANAGES
+  COLLEAGUE
+  CLIENT
+  VENDOR
+  PARTNER
+  
+  // Personal
+  SPOUSE
+  FAMILY
+  FRIEND
+  ACQUAINTANCE
+  
+  // Social
+  INTRODUCED_BY
+  MET_THROUGH
+  
+  // Meta
+  CUSTOM
 }

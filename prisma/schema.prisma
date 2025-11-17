@@ -58,6 +58,8 @@ model User {
     // IT: ADD THIS LINE - back-relation for ContactRelationship
   contactRelationships ContactRelationship[]  // ← Add this
 
+  subscription Subscription?
+
   role       UserRole @default(member)
   publicSlug String?  @unique
 
@@ -163,6 +165,34 @@ model Session {
   @@index([userId])
 }
 
+// IT: Stripe subscription record scoped to a single user
+// - One Subscription per User (userId is unique)
+// - Stores only Stripe ids and status, no card details
+model Subscription {
+  id String @id @default(uuid()) // pk
+
+  // Tenant ownership - this links to User as the single owner
+  userId String  @unique
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Stripe identifiers - used by webhook handlers
+  stripeCustomerId     String  @unique  // Stripe customer id, e.g. "cus_..."
+  stripeSubscriptionId String  @unique  // Stripe subscription id, e.g. "sub_..."
+  priceId              String           // Stripe price id used, e.g. "price_..."
+
+  // Subscription lifecycle
+  status             SubscriptionStatus @default(trialing)
+  currentPeriodEnd   DateTime           // end of current billing period
+  cancelAtPeriodEnd  Boolean            @default(false) // soft cancel flag
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+  @@index([currentPeriodEnd])
+}
+
+
 // ---------------------------------------------------------------------------
 // ENUMS
 // ---------------------------------------------------------------------------
@@ -175,6 +205,16 @@ enum AssignedBy {
   ai
   user
 }
+
+// IT: subscription lifecycle states mirrored from Stripe
+enum SubscriptionStatus {
+  trialing   // in trial period
+  active     // paid and current
+  past_due   // payment issue, grace period
+  canceled   // ended by user or system
+  incomplete // created but not completed
+}
+
 
 // IT: Tag - pgvector tracked by Prisma without a native type
 model Tag {

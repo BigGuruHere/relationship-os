@@ -41,12 +41,22 @@
     dealOptions?: Array<{ id: string; title: string; statusLabel: string }>;
     dealRelationshipOptions?: Array<{ value: string; label: string }>;
     interactions?: any[];
+    dealNotes?: Array<{
+      id: string;
+      channel: string;
+      occurredAt: string | Date;
+      preview: string;
+      dealId: string;
+      dealTitle: string;
+      dealStatusLabel: string;
+    }>;
     reminders?: any[];
   };
 
   const contact = data?.contact ?? null;
   const tags = contact?.tags ?? [];
   const interactions = data?.interactions ?? [];
+  const dealNotes = data?.dealNotes ?? [];
   const reminders = data?.reminders ?? [];
   const relationships = data?.relationships ?? [];
   const contactOptions = data?.contactOptions ?? [];
@@ -102,6 +112,7 @@
           <h1>{contact.name}</h1>
         </div>
         <div class="action-row">
+          <a class="btn primary" href={`/contacts/${contact.id}/interactions/new`}>Add voice/note</a>
           <a class="btn" href={getVcardUrl()} download aria-label="Download vCard" title="Download vCard">vCard</a>
           <a class="btn" href={`/contacts/${contact.id}/edit`} aria-label="Edit contact" title="Edit contact">Edit</a>
         </div>
@@ -110,9 +121,9 @@
       <div class="quick-row">
         <button type="button" class="btn" on:click={() => (showCadenceEditor = !showCadenceEditor)}>
           {#if contact.reconnectEveryDays}
-            Cadence every {contact.reconnectEveryDays} day{contact.reconnectEveryDays === 1 ? '' : 's'}
+            Edit cadence - every {contact.reconnectEveryDays} day{contact.reconnectEveryDays === 1 ? '' : 's'}
           {:else}
-            No cadence
+            Add cadence
           {/if}
         </button>
 
@@ -129,14 +140,41 @@
         </form>
       </div>
 
-      {#if showCadenceEditor}
-        <form method="post" action="?/setCadence" class="inline-panel">
-          <div class="field compact">
-            <label for="days">Reconnect every days</label>
-            <input id="days" name="days" type="number" min="1" max="3650" value={contact.reconnectEveryDays ?? ''} placeholder="30" />
+      <div class="cadence-strip">
+        <div>
+          <strong>Relationship cadence</strong>
+          <div class="muted small">
+            {#if contact.reconnectEveryDays}
+              Reconnect every {contact.reconnectEveryDays} day{contact.reconnectEveryDays === 1 ? '' : 's'}
+              {contact.lastContactedAt ? ` - last contacted ${fmtDate(contact.lastContactedAt)}` : ' - no last contact date'}
+            {:else}
+              No cadence set yet. Add one to keep this relationship warm.
+            {/if}
           </div>
-          <button class="btn primary" type="submit">Save cadence</button>
-        </form>
+        </div>
+        <button type="button" class="btn" on:click={() => (showCadenceEditor = !showCadenceEditor)}>
+          {showCadenceEditor ? 'Close cadence' : contact.reconnectEveryDays ? 'Edit cadence' : 'Add cadence'}
+        </button>
+      </div>
+
+      {#if showCadenceEditor}
+        <div class="inline-panel">
+          <form method="post" action="?/setCadence" class="cadence-form">
+            <div class="field compact grow">
+              <label for="days">Reconnect every days</label>
+              <input id="days" name="days" type="number" min="1" max="3650" value={contact.reconnectEveryDays ?? ''} placeholder="30" />
+            </div>
+            <button class="btn primary" type="submit">Save cadence</button>
+          </form>
+
+          <div class="preset-row" aria-label="Cadence presets">
+            <form method="post" action="?/setCadence"><input type="hidden" name="days" value="7" /><button class="btn" type="submit">Weekly</button></form>
+            <form method="post" action="?/setCadence"><input type="hidden" name="days" value="14" /><button class="btn" type="submit">Fortnightly</button></form>
+            <form method="post" action="?/setCadence"><input type="hidden" name="days" value="30" /><button class="btn" type="submit">Monthly</button></form>
+            <form method="post" action="?/setCadence"><input type="hidden" name="days" value="90" /><button class="btn" type="submit">Quarterly</button></form>
+            <form method="post" action="?/setCadence"><input type="hidden" name="days" value="" /><button class="btn" type="submit">Clear cadence</button></form>
+          </div>
+        </div>
       {/if}
 
       {#if showReminderPanel}
@@ -180,6 +218,8 @@
           <div><strong>Position</strong></div><div>{contact.position || ' - '}</div>
           <div><strong>LinkedIn</strong></div><div>{contact.linkedin || ' - '}</div>
           <div><strong>Created</strong></div><div>{fmt(contact.createdAt)}</div>
+          <div><strong>Cadence</strong></div><div>{contact.reconnectEveryDays ? `Every ${contact.reconnectEveryDays} days` : 'Not set'}</div>
+          <div><strong>Last contacted</strong></div><div>{fmt(contact.lastContactedAt) || 'Not set'}</div>
         </div>
 
         <div class="section-block">
@@ -340,7 +380,7 @@
     <section class="card panel">
       <div class="section-head">
         <h2>Recent notes</h2>
-        <a class="btn" href={`/contacts/${contact.id}/interactions/new`}>New note</a>
+        <a class="btn" href={`/contacts/${contact.id}/interactions/new`}>New voice/note</a>
       </div>
 
       {#if interactions.length === 0}
@@ -358,6 +398,24 @@
           {/each}
         </ul>
       {/if}
+
+      {#if dealNotes.length > 0}
+        <div class="section-block">
+          <h2>Deal notes involving this person</h2>
+          <ul class="notes">
+            {#each dealNotes as note}
+              <li class="note">
+                <div class="note-meta">
+                  <span class="pill">{note.channel}</span>
+                  <span class="muted">{fmt(note.occurredAt)}</span>
+                  <span class="muted">on <a href={`/deals/${note.dealId}`}>{note.dealTitle}</a> ({note.dealStatusLabel})</span>
+                </div>
+                <a class="preline note-link" href={`/deals/${note.dealId}/notes/${note.id}`}>{note.preview || '(empty)'}</a>
+              </li>
+            {/each}
+          </ul>
+        </div>
+      {/if}
     </section>
 
     <div style="display:flex; gap:10px; margin-top:16px;">
@@ -370,7 +428,7 @@
   .container { padding: 12px; }
   .hero-card, .panel { padding: 18px; margin-bottom: 12px; }
   .title-row, .section-head, .deal-card-inline, .list-row, .mini-row { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }
-  .action-row, .quick-row, .inline-form-row, .reminder-form { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .action-row, .quick-row, .inline-form-row, .reminder-form, .cadence-form, .preset-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
   h1 { margin: 0; }
   h2 { margin: 0 0 10px; font-size: 1.1rem; }
   .eyebrow { color: var(--accent); font-weight: 700; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.04em; }
@@ -383,7 +441,10 @@
   .section-block { margin-top: 18px; }
   .inline-form-row { margin-top: 10px; }
   .inline-form-row input { flex: 1 1 180px; }
-  .inline-panel, .nested-form { border: 1px solid var(--border); border-radius: 12px; padding: 12px; margin-top: 10px; background: var(--panel); }
+  .inline-panel, .nested-form, .cadence-strip { border: 1px solid var(--border); border-radius: 12px; padding: 12px; margin-top: 10px; background: var(--panel); }
+  .cadence-strip { display: flex; justify-content: space-between; gap: 12px; align-items: center; }
+  .preset-row { margin-top: 10px; }
+  .preset-row form { display: inline-flex; }
   .field.compact { margin-bottom: 0; }
   .grow { flex: 1 1 220px; }
   .mini-list { margin-top: 10px; display: grid; gap: 6px; }
@@ -401,7 +462,7 @@
   .preline { white-space: pre-wrap; }
   textarea { resize: vertical; }
   @media (max-width: 860px) {
-    .title-row, .section-head, .deal-card-inline, .list-row { flex-direction: column; align-items: stretch; }
+    .title-row, .section-head, .deal-card-inline, .list-row, .cadence-strip { flex-direction: column; align-items: stretch; }
     .content-grid, .grid.two { grid-template-columns: 1fr; }
     .quick-row, .reminder-form { flex-direction: column; align-items: stretch; }
   }

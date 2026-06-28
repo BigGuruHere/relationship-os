@@ -102,6 +102,40 @@ export const load: PageServerLoad = async ({ params, locals }) => {
     take: 300
   });
 
+  const notesRaw = await prisma.dealNote.findMany({
+    where: { userId: locals.user.id, dealId: row.id },
+    select: {
+      id: true,
+      channel: true,
+      occurredAt: true,
+      rawTextEnc: true,
+      summaryEnc: true,
+      contact: {
+        select: { id: true, fullNameEnc: true, linkedUserId: true }
+      }
+    },
+    orderBy: [{ occurredAt: 'desc' }, { id: 'desc' }],
+    take: 30
+  });
+
+  const notes = await Promise.all(
+    notesRaw.map(async (note: any) => {
+      const rawText = safeDecrypt(note.rawTextEnc, 'deal_note.raw_text', '');
+      const summary = safeDecrypt(note.summaryEnc, 'deal_note.summary', '');
+      const previewSource = summary || rawText;
+      const preview = previewSource.length > 320 ? previewSource.slice(0, 317) + '...' : previewSource;
+      return {
+        id: note.id,
+        channel: note.channel,
+        occurredAt: note.occurredAt,
+        preview,
+        summary,
+        contactId: note.contact?.id || null,
+        contactName: note.contact ? await contactDisplayName(note.contact) : ''
+      };
+    })
+  );
+
   const weighted = weightedValueCents(row.valueCents, row.probability);
 
   return {
@@ -125,6 +159,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
       updatedAt: row.updatedAt
     },
     people,
+    notes,
     contactOptions: await contactOptionsForRows(availableContactsRaw),
     statusOptions: DEAL_STATUSES,
     relationshipOptions: DEAL_RELATIONSHIP_TYPES

@@ -182,6 +182,36 @@ export const load: PageServerLoad = async ({ params, locals }) => {
     return { id: it.id, channel: it.channel, occurredAt: it.occurredAt, preview, tags: [] };
   });
 
+  const dealNotesRaw = await prisma.dealNote.findMany({
+    where: { userId: locals.user.id, contactId: id },
+    select: {
+      id: true,
+      channel: true,
+      occurredAt: true,
+      rawTextEnc: true,
+      summaryEnc: true,
+      deal: { select: { id: true, titleEnc: true, status: true } }
+    },
+    orderBy: [{ occurredAt: 'desc' }, { id: 'desc' }],
+    take: 20
+  });
+
+  const dealNotes = dealNotesRaw.map((note: any) => {
+    const rawText = safeDecrypt(note.rawTextEnc, 'deal_note.raw_text', '');
+    const summary = safeDecrypt(note.summaryEnc, 'deal_note.summary', '');
+    const previewSource = summary || rawText;
+    const preview = previewSource.length > 280 ? previewSource.slice(0, 277) + '...' : previewSource;
+    return {
+      id: note.id,
+      channel: note.channel,
+      occurredAt: note.occurredAt,
+      preview,
+      dealId: note.deal.id,
+      dealTitle: safeDecrypt(note.deal.titleEnc, 'deal.title', 'Untitled deal'),
+      dealStatusLabel: dealStatusLabel(note.deal.status)
+    };
+  });
+
   const reminders = await prisma.reminder.findMany({
     where: { userId: locals.user.id, contactId: id, completedAt: null },
     select: { id: true, dueAt: true, note: true },
@@ -233,6 +263,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
     dealOptions,
     dealRelationshipOptions: DEAL_RELATIONSHIP_TYPES,
     interactions,
+    dealNotes,
     reminders
   };
 };

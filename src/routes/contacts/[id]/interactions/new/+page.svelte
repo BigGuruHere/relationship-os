@@ -309,6 +309,7 @@
         <label for="channel">Channel</label>
         <select id="channel" name="channel" bind:value={channel} disabled={recording}>
           <option value="note">Note</option>
+          <option value="voice note">Voice note</option>
           <option value="call">Call</option>
           <option value="meeting">Meeting</option>
           <option value="message">Message</option>

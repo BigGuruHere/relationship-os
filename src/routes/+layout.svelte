@@ -208,7 +208,7 @@
     <nav class="nav-group">
       <a class="nav-link" href="/">Contacts</a>
       {#if data.user}
-        <a class="nav-link" href="/deals">◆ Deals</a>
+        <a class="nav-link" href="/deals">Deals</a>
       {/if}
       <a class="nav-link" href="/search">Search</a>
 

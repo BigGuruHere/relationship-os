@@ -34,6 +34,15 @@
       notes: string;
       isPrimary: boolean;
     }>;
+    notes: Array<{
+      id: string;
+      channel: string;
+      occurredAt: string | Date;
+      preview: string;
+      summary: string;
+      contactId: string | null;
+      contactName: string;
+    }>;
     contactOptions: Array<{ id: string; name: string }>;
     statusOptions: Array<{ value: string; label: string }>;
     relationshipOptions: Array<{ value: string; label: string }>;
@@ -70,6 +79,7 @@
       <button class="btn" type="button" on:click={() => (showStateEditor = !showStateEditor)}>
         {showStateEditor ? 'Close state' : 'Update state'}
       </button>
+      <a class="btn" href={`/deals/${data.deal.id}/notes/new`}>Add voice/note</a>
       <a class="btn" href={`/deals/${data.deal.id}/edit`}>Edit</a>
     </div>
   </div>
@@ -222,6 +232,33 @@
     </section>
   </div>
 
+  <section class="card panel">
+    <div class="section-head">
+      <h2>Recent deal notes</h2>
+      <a class="btn" href={`/deals/${data.deal.id}/notes/new`}>New voice/note</a>
+    </div>
+
+    {#if data.notes.length === 0}
+      <p class="muted">No deal notes yet. Add a typed note or record a voice note.</p>
+    {:else}
+      <ul class="notes-list">
+        {#each data.notes as note}
+          <li class="note-row">
+            <div class="note-meta">
+              <span class="status-chip">{note.channel}</span>
+              <span class="muted">{fmtDate(note.occurredAt)}</span>
+              {#if note.contactId}
+                <span class="muted">with <a href={`/contacts/${note.contactId}`}>{note.contactName}</a></span>
+              {/if}
+            </div>
+            <a class="preline note-preview note-link" href={`/deals/${data.deal.id}/notes/${note.id}`}>{note.preview || '(empty)'}</a>
+          </li>
+        {/each}
+      </ul>
+    {/if}
+  </section>
+
+
   <div class="bottom-actions">
     <a class="btn" href="/deals">Back to deals</a>
   </div>
@@ -249,7 +286,12 @@
   .add-person { border: 1px solid var(--border); border-radius: 12px; padding: 12px; margin: 10px 0; background: var(--panel); }
   .check-row { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; color: var(--text); }
   .check-row input { width: auto; }
-  .people-list { display: grid; gap: 8px; }
+  .people-list, .notes-list { display: grid; gap: 8px; }
+  .notes-list { list-style: none; padding: 0; margin: 0; }
+  .note-row { border-top: 1px solid var(--border); padding: 12px 0; }
+  .note-meta { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 6px; }
+  .note-preview { margin: 0; display: block; color: inherit; text-decoration: none; }
+  .note-link:hover { text-decoration: underline; }
   .person-card { border-top: 1px solid var(--border); padding: 12px 0; display: flex; justify-content: space-between; gap: 12px; }
   .person-title { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-weight: 700; }
   .person-actions { display: flex; align-items: flex-start; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }

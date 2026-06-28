@@ -24,13 +24,13 @@ export const GET: RequestHandler = async ({ locals, url }) => {
   }
 
   // pending - let client keep polling
-  if (job.status === 'pending' || job.status === 'processing') {
+  if (job.status === 'queued' || job.status === 'processing') {
     return json({ status: job.status });
   }
 
   // failed - return message
   if (job.status === 'error') {
-    return json({ status: 'error', message: job.message ?? 'transcription failed' }, { status: 500 });
+    return json({ status: 'error', message: job.error ?? 'transcription failed' }, { status: 500 });
   }
 
   // done - return transcript payload

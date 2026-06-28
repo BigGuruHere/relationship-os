@@ -63,6 +63,7 @@ model User {
   // IT: deal records owned by this user
   deals Deal[]
   dealContacts DealContact[]
+  dealNotes DealNote[]
 
   role       UserRole @default(member)
   publicSlug String?  @unique
@@ -312,6 +313,9 @@ model Contact {
   // IT: links between this contact and relationship-driven deals
   dealLinks DealContact[]
 
+  // IT: optional deal notes that were recorded against this contact in a deal context
+  dealNotes DealNote[]
+
   // Indexes for search and tenancy
   @@index([userId])
   @@index([fullNameIdx])
@@ -551,11 +555,37 @@ model Deal {
   updatedAt DateTime @updatedAt
 
   contacts DealContact[]
+  notes    DealNote[]
 
   @@index([userId, status])
   @@index([userId, expectedCloseDate])
   @@index([userId, createdAt])
   @@index([titleIdx])
+}
+
+// IT: notes and voice notes attached directly to a deal.
+// IT: contactId is optional so a deal note can either be general, or tied to one person involved in the deal.
+model DealNote {
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  dealId String
+  deal   Deal   @relation(fields: [dealId], references: [id], onDelete: Cascade)
+
+  contactId String?
+  contact   Contact? @relation(fields: [contactId], references: [id], onDelete: SetNull)
+
+  occurredAt DateTime @default(now())
+  channel    String    @default("note")
+  rawTextEnc String
+  summaryEnc String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, dealId, occurredAt])
+  @@index([userId, contactId, occurredAt])
 }
 
 // IT: many-to-many contact involvement in a deal with a relationship role.

@@ -217,18 +217,9 @@
 
         <div class="nav-right" style="margin:6px 0;">
           <a href="/reconnect" class="btn">
-            Reconnect
+            Inbox
             {#if data.reconnectDue > 0}
-              <span class="pill">{data.reconnectDue}</span>
-            {/if}
-          </a>
-        </div>
-
-        <div>
-          <a href="/reminders" class="btn">
-            Reminders
-            {#if data.remindersOpenCount > 0}
-              <span class="pill">{data.remindersOpenCount}</span>
+              <span class="pill">{data.reconnectDue+data.remindersOpenCount}</span>
             {/if}
           </a>
         </div>

@@ -60,6 +60,10 @@ model User {
 
   subscription Subscription?
 
+  // IT: deal records owned by this user
+  deals Deal[]
+  dealContacts DealContact[]
+
   role       UserRole @default(member)
   publicSlug String?  @unique
 
@@ -305,6 +309,9 @@ model Contact {
 
   reminders Reminder[]
 
+  // IT: links between this contact and relationship-driven deals
+  dealLinks DealContact[]
+
   // Indexes for search and tenancy
   @@index([userId])
   @@index([fullNameIdx])
@@ -487,4 +494,92 @@ enum RelationshipType {
   
   // Meta
   CUSTOM
+}
+
+
+// ---------------------------------------------------------------------------
+// DEAL MODELS
+// ---------------------------------------------------------------------------
+// IT: state of a deal pipeline. Keep as enum so filtering stays reliable.
+enum DealStatus {
+  DISCOVERY
+  QUALIFYING
+  PROPOSAL
+  NEGOTIATION
+  WON
+  LOST
+  ON_HOLD
+}
+
+// IT: role a contact plays in a deal. Similar idea to ContactRelationship.
+enum DealRelationshipType {
+  DECISION_MAKER
+  CHAMPION
+  INFLUENCER
+  REFERRER
+  ADVISOR
+  BROKER
+  PARTNER
+  BUYER
+  SELLER
+  INVESTOR
+  SUPPLIER
+  CUSTOM
+}
+
+// IT: relationship-driven opportunity or deal owned by a user.
+model Deal {
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // IT: encrypted title and optional notes. titleIdx supports exact lookup.
+  titleEnc       String
+  titleIdx       String
+  descriptionEnc String?
+
+  // IT: commercial fields. Store value in minor units to avoid float rounding.
+  valueCents        Int?
+  currency          String     @default("AUD")
+  status            DealStatus @default(DISCOVERY)
+  probability       Int?
+  expectedCloseDate DateTime?
+  closedAt          DateTime?
+  lostReasonEnc     String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  contacts DealContact[]
+
+  @@index([userId, status])
+  @@index([userId, expectedCloseDate])
+  @@index([userId, createdAt])
+  @@index([titleIdx])
+}
+
+// IT: many-to-many contact involvement in a deal with a relationship role.
+model DealContact {
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  dealId String
+  deal   Deal   @relation(fields: [dealId], references: [id], onDelete: Cascade)
+
+  contactId String
+  contact   Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  relationshipType DealRelationshipType?
+  label            String? @default("connected")
+  notesEnc         String?
+  isPrimary        Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([dealId, contactId, label])
+  @@index([userId, dealId])
+  @@index([userId, contactId])
+  @@index([userId, relationshipType])
 }

@@ -40,12 +40,12 @@
 
       <div class="field">
         <label for="position">Position</label>
-        <input id="position" name="position" placeholder="Head of Partnerships" value={form?.values?.position || ''} />
+        <input id="position" name="position" placeholder="Head of Partnerships" value={data.contact.position} />
       </div>
       
       <div class="field">
         <label for="linkedin">LinkedIn</label>
-        <input id="linkedin" name="linkedin" type="url" inputmode="url" placeholder="https://www.linkedin.com/in/username" value={form?.values?.linkedin || ''} />
+        <input id="linkedin" name="linkedin" type="url" inputmode="url" placeholder="https://www.linkedin.com/in/username" value={data.contact.linkedin} />
       </div>
 
       <div style="display:flex; gap:8px; margin-top:12px;">

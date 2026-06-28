@@ -135,6 +135,16 @@
         </svg>
       </a>
 
+      <!-- Deals -->
+      {#if data.user}
+        <a class="btn icon" href="/deals" aria-label="Deals" title="Deals">
+          <!-- diamond deal icon -->
+          <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <path d="M12 2 22 9l-10 13L2 9l10-7zm0 3.1L6.2 9 12 16.6 17.8 9 12 5.1z"/>
+          </svg>
+        </a>
+      {/if}
+
       {#if data.user}
         <!-- Actions -->
         <a class="btn icon" href="/actions" aria-label="Actions" title="Actions">
@@ -197,6 +207,9 @@
 
     <nav class="nav-group">
       <a class="nav-link" href="/">Contacts</a>
+      {#if data.user}
+        <a class="nav-link" href="/deals">◆ Deals</a>
+      {/if}
       <a class="nav-link" href="/search">Search</a>
 
       {#if data.user}
@@ -240,7 +253,7 @@
     <div class="card" style="padding:12px; margin-top:auto;">
       <div style="font-weight:600; margin-bottom:6px;">Quick tip</div>
       <div style="color:var(--muted); font-size:0.95rem;">
-        Add a contact, then attach a note. Voice notes are supported.
+        Add a contact, then attach a note or link them to a deal.
       </div>
     </div>
   </aside>
@@ -256,6 +269,10 @@
       <div>© {new Date().getFullYear()} Relationship OS</div>
       <div class="mobile-only footer-links">
         <a href="/" aria-label="Home">Contacts</a>
+        {#if data.user}
+          <span aria-hidden="true">·</span>
+          <a href="/deals" aria-label="Deals">Deals</a>
+        {/if}
         <span aria-hidden="true">·</span>
         {#if !data.user}
           <a href="/auth/login" aria-label="Login">Login</a>

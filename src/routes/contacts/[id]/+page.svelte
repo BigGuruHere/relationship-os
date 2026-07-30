@@ -2,6 +2,8 @@
 <script lang="ts">
   // PURPOSE: Show a contact with tags, relationships, deals, reminders, and notes.
   // SECURITY: Data has already been decrypted server side where needed.
+  import VoiceTextField from '$lib/recording/VoiceTextField.svelte';
+
   export let data: {
     contact: {
       id: string;
@@ -102,6 +104,13 @@
   let showAddRelationship = false;
   let showAddDeal = false;
   let showAddTask = false;
+  let newTaskNotes = '';
+  let newTaskSummary = '';
+
+  function submitContainingForm(event: Event) {
+    // IT: Task status changes are intentionally saved immediately from the dropdown.
+    (event.currentTarget as HTMLSelectElement).form?.requestSubmit();
+  }
 
   function fmt(d: string | Date | null | undefined) {
     if (!d) return '';
@@ -265,7 +274,19 @@
             <div class="field"><label for="taskProjectId">Project</label><select id="taskProjectId" name="projectId"><option value="">No project</option>{#each projectOptions as project}<option value={project.id}>{project.title}</option>{/each}</select></div>
           </div>
           <label class="check-row"><input type="checkbox" name="waitingOnThisPerson" /><span>This task is waiting on {contact.name}</span></label>
-          <div class="field"><label for="taskNotes">Notes</label><textarea id="taskNotes" name="notes" rows="3"></textarea></div>
+          <div class="field">
+            <VoiceTextField
+              id="taskNotes"
+              textName="notes"
+              summaryName="summary"
+              label="Task notes"
+              placeholder="Record or type the context, outcome, or next step."
+              rows={3}
+              bind:value={newTaskNotes}
+              bind:summary={newTaskSummary}
+              contextLabel="task note"
+            />
+          </div>
           <button class="btn primary" type="submit">Save task</button>
         </form>
       </div>
@@ -459,12 +480,13 @@
                 <div class="strong-link">{task.title} <span class="status-chip">{task.statusLabel}</span> <span class="status-chip">{task.urgencyLabel}</span></div>
                 <div class="muted small">{task.taskTypeLabel} - due {fmt(task.dueAt) || 'not set'}{task.deal ? ` - ${task.deal.title}` : ''}</div>
                 {#if task.notes}<p class="preline muted small">{task.notes}</p>{/if}
+                {#if task.summary}<div class="summary-box"><div class="muted small">AI summary</div><p>{task.summary}</p></div>{/if}
               </div>
               <form method="post" action="?/updateTaskStatus">
                 <input type="hidden" name="taskId" value={task.id} />
-                <select name="status">{#each taskStatusOptions as opt}<option value={opt.value} selected={task.status === opt.value}>{opt.label}</option>{/each}</select>
-                <button class="btn" type="submit">Update</button>
+                <select name="status" on:change={submitContainingForm}>{#each taskStatusOptions as opt}<option value={opt.value} selected={task.status === opt.value}>{opt.label}</option>{/each}</select>
               </form>
+              <a class="btn" href={`/tasks/${task.id}/edit?returnTo=/contacts/${contact.id}`}>Edit</a>
             </div>
           {/each}
         </div>
@@ -565,6 +587,8 @@
   .deal-card-inline { border-top: 1px solid var(--border); padding: 12px 0; }
   .deal-title-line { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; font-weight: 700; }
   .deal-icon { color: var(--accent-2); line-height: 1; }
+  .summary-box { border: 1px solid var(--border); background: var(--panel); border-radius: 10px; padding: 8px; margin: 8px 0; }
+  .summary-box p { margin: 4px 0 0; white-space: pre-wrap; }
   .status-chip { border: 1px solid var(--border); background: var(--panel); border-radius: 999px; padding: 2px 8px; font-size: 0.8rem; color: var(--muted); }
   .check-row { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; color: var(--text); }
   .check-row input { width: auto; }

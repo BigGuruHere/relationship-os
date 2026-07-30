@@ -3,12 +3,16 @@
   // PURPOSE: Unified action inbox for tasks attached to contacts, deals, deal-contact threads, and projects.
   // SECURITY: All display values were prepared server side.
 
+  import VoiceTextField from '$lib/recording/VoiceTextField.svelte';
+
   export let data: any;
   export let form: any;
 
   let showNewTask = false;
   let showNewProject = false;
   let q = data.q || '';
+  let newTaskNotes = '';
+  let newTaskSummary = '';
   let status = data.selectedStatus || '';
 
   function fmt(value: string | Date | null | undefined) {
@@ -16,6 +20,11 @@
     const d = typeof value === 'string' ? new Date(value) : value;
     if (Number.isNaN(d.getTime())) return 'No date';
     return d.toLocaleString();
+  }
+
+  function submitContainingForm(event: Event) {
+    // IT: Status changes submit immediately so there is no confusing Update button.
+    (event.currentTarget as HTMLSelectElement).form?.requestSubmit();
   }
 
   function dueClass(value: string | Date | null | undefined, statusValue: string) {
@@ -169,8 +178,17 @@
         </div>
 
         <div class="field">
-          <label for="notes">Notes</label>
-          <textarea id="notes" name="notes" rows="4" placeholder="Context, outcome, or next step"></textarea>
+          <VoiceTextField
+            id="notes"
+            textName="notes"
+            summaryName="summary"
+            label="Task notes"
+            placeholder="Record or type the context, outcome, or next step."
+            rows={4}
+            bind:value={newTaskNotes}
+            bind:summary={newTaskSummary}
+            contextLabel="task note"
+          />
         </div>
 
         <button class="btn primary" type="submit">Save task</button>
@@ -210,12 +228,13 @@
             </div>
 
             {#if task.notes}<p class="preline">{task.notes}</p>{/if}
+            {#if task.summary}<div class="summary-box"><div class="muted small">AI summary</div><p>{task.summary}</p></div>{/if}
 
             <div class="context-row">
               {#if task.contact}<a class="chip" href={`/contacts/${task.contact.id}`}>Person: {task.contact.name}</a>{/if}
               {#if task.deal}<a class="chip" href={`/deals/${task.deal.id}`}>Deal: {task.deal.title}</a>{/if}
               {#if task.dealContact}<a class="chip" href={`/deals/${task.dealContact.dealId}/relationships/${task.dealContact.id}`}>Thread: {task.dealContact.contactName}</a>{/if}
-              {#if task.project}<a class="chip" href={`/projects`}>Project: {task.project.title}</a>{/if}
+              {#if task.project}<a class="chip" href={`/projects/${task.project.id}`}>Project: {task.project.title}</a>{/if}
               {#if task.waitingOnContact}<a class="chip" href={`/contacts/${task.waitingOnContact.id}`}>Waiting on: {task.waitingOnContact.name}</a>{/if}
               {#if task.assignedToContact}<a class="chip" href={`/contacts/${task.assignedToContact.id}`}>Assigned: {task.assignedToContact.name}</a>{/if}
               {#if task.assignedToText}<span class="chip">Assigned: {task.assignedToText}</span>{/if}
@@ -225,11 +244,11 @@
           <div class="task-actions">
             <form method="post" action="?/updateStatus">
               <input type="hidden" name="taskId" value={task.id} />
-              <select name="status" aria-label="Update status">
+              <select name="status" aria-label="Update status" on:change={submitContainingForm}>
                 {#each data.taskStatuses as opt}<option value={opt.value} selected={task.status === opt.value}>{opt.label}</option>{/each}
               </select>
-              <button class="btn" type="submit">Update</button>
             </form>
+            <a class="btn" href={`/tasks/${task.id}/edit`}>Edit</a>
             <form method="post" action="?/delete" on:submit={(event) => { if (!confirm('Delete this task?')) event.preventDefault(); }}>
               <input type="hidden" name="taskId" value={task.id} />
               <button class="btn" type="submit">Delete</button>
@@ -265,6 +284,8 @@
   .task-actions { min-width: 220px; display: grid; gap: 8px; align-content: start; }
   .task-actions form { display: flex; gap: 6px; align-items: center; }
   .task-actions select { min-width: 130px; }
+  .summary-box { border: 1px solid var(--border); background: var(--panel); border-radius: 10px; padding: 10px; margin: 8px 0; }
+  .summary-box p { margin: 4px 0 0; white-space: pre-wrap; }
   .status-chip { border: 1px solid var(--border); background: var(--panel); border-radius: 999px; padding: 3px 8px; font-size: 0.82rem; color: var(--muted); }
   .chip { border: 1px solid var(--border); background: var(--panel); border-radius: 999px; padding: 3px 9px; font-size: 0.85rem; color: var(--text); }
   .preline { white-space: pre-wrap; }

@@ -47,6 +47,7 @@ async function loadTaskRows(userId: string, status: string, q: string) {
       id: true,
       titleEnc: true,
       notesEnc: true,
+      summaryEnc: true,
       status: true,
       urgency: true,
       importance: true,
@@ -80,6 +81,7 @@ async function loadTaskRows(userId: string, status: string, q: string) {
 async function mapTask(row: TaskRow) {
   const title = safeDecryptTask(row.titleEnc, 'task.title', 'Untitled task');
   const notes = safeDecryptTask(row.notesEnc, 'task.notes', '');
+  const summary = safeDecryptTask(row.summaryEnc, 'task.summary', '');
   const assignedToText = safeDecryptTask(row.assignedToTextEnc, 'task.assigned_to_text', '');
   const contactName = row.contact ? await contactDisplayName(row.contact) : '';
   const assignedContactName = row.assignedToContact ? await contactDisplayName(row.assignedToContact) : '';
@@ -93,6 +95,7 @@ async function mapTask(row: TaskRow) {
     id: row.id,
     title,
     notes,
+    summary,
     status: row.status,
     statusLabel: taskStatusLabel(row.status),
     urgency: row.urgency,
@@ -128,6 +131,7 @@ function taskMatchesQuery(task: Awaited<ReturnType<typeof mapTask>>, q: string) 
   const haystack = [
     task.title,
     task.notes,
+    task.summary,
     task.contact?.name,
     task.deal?.title,
     task.project?.title,
@@ -248,6 +252,7 @@ export const actions: Actions = {
     if (!contactOk || !dealOk || !projectOk || !assignedOk || !waitingOk) return fail(404, { error: 'One of the selected links was not found.' });
 
     const notes = String(form.get('notes') || '').trim();
+    const summary = String(form.get('summary') || '').trim();
     const assignedToText = String(form.get('assignedToText') || '').trim();
 
     try {
@@ -256,6 +261,7 @@ export const actions: Actions = {
           userId,
           titleEnc: encrypt(title, 'task.title'),
           notesEnc: notes ? encrypt(notes, 'task.notes') : null,
+          summaryEnc: summary ? encrypt(summary, 'task.summary') : null,
           status: normaliseTaskStatus(form.get('status')) as any,
           urgency: normaliseTaskUrgency(form.get('urgency')) as any,
           importance: normaliseTaskImportance(form.get('importance')) as any,

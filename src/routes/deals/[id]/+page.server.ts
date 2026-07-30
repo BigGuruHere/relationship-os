@@ -66,6 +66,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
       id: true,
       titleEnc: true,
       descriptionEnc: true,
+      descriptionSummaryEnc: true,
       valueCents: true,
       currency: true,
       status: true,
@@ -228,7 +229,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
   const tasksRaw = await prisma.task.findMany({
     where: { userId: locals.user.id, dealId: row.id, status: { in: ['OPEN', 'IN_PROGRESS', 'WAITING', 'SNOOZED'] as any } },
     select: {
-      id: true, titleEnc: true, notesEnc: true, status: true, urgency: true, importance: true, taskType: true, dueAt: true,
+      id: true, titleEnc: true, notesEnc: true, summaryEnc: true, status: true, urgency: true, importance: true, taskType: true, dueAt: true,
       waitingOnContact: { select: { id: true, fullNameEnc: true, linkedUserId: true } },
       contact: { select: { id: true, fullNameEnc: true, linkedUserId: true } },
       dealContact: { select: { id: true, contact: { select: { id: true, fullNameEnc: true, linkedUserId: true } } } },
@@ -242,6 +243,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
     id: task.id,
     title: safeDecryptTask(task.titleEnc, 'task.title', 'Untitled task'),
     notes: safeDecryptTask(task.notesEnc, 'task.notes', ''),
+    summary: safeDecryptTask(task.summaryEnc, 'task.summary', ''),
     status: task.status,
     statusLabel: taskStatusLabel(task.status),
     urgency: task.urgency,
@@ -274,6 +276,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
       id: row.id,
       title: safeDecrypt(row.titleEnc, 'deal.title', 'Untitled deal'),
       description: safeDecrypt(row.descriptionEnc, 'deal.description', ''),
+      descriptionSummary: safeDecrypt(row.descriptionSummaryEnc, 'deal.description_summary', ''),
       valueCents: row.valueCents,
       valueInput: centsToInputValue(row.valueCents),
       valueLabel: formatDealValue(row.valueCents, row.currency),
@@ -472,6 +475,7 @@ export const actions: Actions = {
     }
 
     const notes = String(form.get('notes') || '').trim();
+    const summary = String(form.get('summary') || '').trim();
     try {
       await prisma.task.create({
         data: {
@@ -483,6 +487,7 @@ export const actions: Actions = {
           waitingOnContactId,
           titleEnc: encrypt(title, 'task.title'),
           notesEnc: notes ? encrypt(notes, 'task.notes') : null,
+          summaryEnc: summary ? encrypt(summary, 'task.summary') : null,
           status: normaliseTaskStatus(form.get('status')) as any,
           urgency: normaliseTaskUrgency(form.get('urgency')) as any,
           importance: normaliseTaskImportance(form.get('importance')) as any,

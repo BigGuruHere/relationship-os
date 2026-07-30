@@ -2,12 +2,15 @@
 <script lang="ts">
   // PURPOSE: Edit a deal using server-provided decrypted values.
   // SECURITY: No decryption happens in this client component.
+  import VoiceTextField from '$lib/recording/VoiceTextField.svelte';
+
   export let data: {
     statusOptions: Array<{ value: string; label: string }>;
     deal: {
       id: string;
       title: string;
       description: string;
+      descriptionSummary: string;
       value: string;
       currency: string;
       status: string;
@@ -17,6 +20,9 @@
     };
   };
   export let form;
+
+  let description = data.deal.description || '';
+  let descriptionSummary = data.deal.descriptionSummary || '';
 
   function confirmDelete(event: SubmitEvent) {
     if (!confirm('Delete this deal permanently?')) event.preventDefault();
@@ -40,8 +46,17 @@
       </div>
 
       <div class="field">
-        <label for="description">Notes</label>
-        <textarea id="description" name="description" rows="6">{data.deal.description}</textarea>
+        <VoiceTextField
+          id="description"
+          textName="description"
+          summaryName="descriptionSummary"
+          label="Deal notes"
+          placeholder="Record or type the current deal context."
+          rows={6}
+          bind:value={description}
+          bind:summary={descriptionSummary}
+          contextLabel="deal note"
+        />
       </div>
 
       <div class="grid two">

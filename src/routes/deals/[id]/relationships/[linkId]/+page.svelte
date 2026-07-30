@@ -1,11 +1,20 @@
 <!-- src/routes/deals/[id]/relationships/[linkId]/+page.svelte -->
 <script lang="ts">
   // PURPOSE: Manage the deal-person commercial conversation thread.
+  import VoiceTextField from '$lib/recording/VoiceTextField.svelte';
+
   export let data: any;
   export let form: any;
 
   let showEdit = false;
   let showAddTask = false;
+  let newTaskNotes = '';
+  let newTaskSummary = '';
+
+  function submitContainingForm(event: Event) {
+    // IT: Status changes submit immediately from the dropdown.
+    (event.currentTarget as HTMLSelectElement).form?.requestSubmit();
+  }
 
   function fmt(value: string | Date | null | undefined) {
     if (!value) return '';
@@ -96,7 +105,19 @@
           <div class="field"><label for="projectId">Project</label><select id="projectId" name="projectId"><option value="">No project</option>{#each data.projectOptions as project}<option value={project.id}>{project.title}</option>{/each}</select></div>
         </div>
         <label class="check-row"><input type="checkbox" name="waitingOnThisPerson" /><span>This task is waiting on {data.thread.contactName}</span></label>
-        <div class="field"><label for="taskNotes">Notes</label><textarea id="taskNotes" name="notes" rows="3"></textarea></div>
+        <div class="field">
+          <VoiceTextField
+            id="taskNotes"
+            textName="notes"
+            summaryName="summary"
+            label="Task notes"
+            placeholder="Record or type the context, outcome, or next step."
+            rows={3}
+            bind:value={newTaskNotes}
+            bind:summary={newTaskSummary}
+            contextLabel="task note"
+          />
+        </div>
         <button class="btn primary" type="submit">Save task</button>
       </form>
     </section>
@@ -142,12 +163,13 @@
               <div class="task-title"><strong>{task.title}</strong><span class="status-chip">{task.statusLabel}</span><span class="status-chip">{task.urgencyLabel}</span></div>
               <div class="muted small">{task.taskTypeLabel} - due {fmt(task.dueAt) || 'not set'}{task.waitingOnContact ? ` - waiting on ${task.waitingOnContact.name}` : ''}</div>
               {#if task.notes}<p class="preline small">{task.notes}</p>{/if}
+              {#if task.summary}<div class="summary-box"><div class="muted small">AI summary</div><p>{task.summary}</p></div>{/if}
             </div>
             <form method="post" action="?/updateTaskStatus" class="status-form">
               <input type="hidden" name="taskId" value={task.id} />
-              <select name="status">{#each data.taskStatusOptions as opt}<option value={opt.value} selected={task.status === opt.value}>{opt.label}</option>{/each}</select>
-              <button class="btn" type="submit">Update</button>
+              <select name="status" on:change={submitContainingForm}>{#each data.taskStatusOptions as opt}<option value={opt.value} selected={task.status === opt.value}>{opt.label}</option>{/each}</select>
             </form>
+            <a class="btn" href={`/tasks/${task.id}/edit?returnTo=/deals/${data.thread.dealId}/relationships/${data.thread.id}`}>Edit</a>
           </div>
         {/each}
       </div>
@@ -190,6 +212,8 @@
   .detail-list { display: grid; gap: 8px; }
   .detail-list div { display: grid; grid-template-columns: 140px 1fr; gap: 8px; }
   .preline { white-space: pre-wrap; }
+  .summary-box { border: 1px solid var(--border); background: var(--panel); border-radius: 10px; padding: 8px; margin: 8px 0; }
+  .summary-box p { margin: 4px 0 0; white-space: pre-wrap; }
   .status-chip { border: 1px solid var(--border); background: var(--panel); border-radius: 999px; padding: 2px 8px; font-size: 0.8rem; color: var(--muted); }
   .inline-action { margin: 12px 0; }
   .check-row { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }

@@ -2,6 +2,8 @@
 <script lang="ts">
   // PURPOSE: Render the create deal form.
   // SECURITY: Server validates and encrypts the stored deal fields.
+  import VoiceTextField from '$lib/recording/VoiceTextField.svelte';
+
   export let data: {
     statusOptions: Array<{ value: string; label: string }>;
     relationshipOptions: Array<{ value: string; label: string }>;
@@ -12,6 +14,8 @@
   type DealFormValues = {
     title?: string;
     description?: string;
+    descriptionSummary?: string;
+    initialNoteChannel?: string;
     value?: string;
     currency?: string;
     status?: string;
@@ -23,6 +27,9 @@
   };
 
   const values: DealFormValues = form?.values || {};
+  let description = values.description || '';
+  let descriptionSummary = values.descriptionSummary || '';
+  let initialNoteChannel = values.initialNoteChannel || 'note';
 </script>
 
 <div class="container">
@@ -43,8 +50,28 @@
       </div>
 
       <div class="field">
-        <label for="description">Notes</label>
-        <textarea id="description" name="description" rows="5" placeholder="What is the opportunity, where did it come from, and what has to happen next?">{values.description || ''}</textarea>
+        <label for="initialNoteChannel">Initial note type</label>
+        <select id="initialNoteChannel" name="initialNoteChannel" bind:value={initialNoteChannel}>
+          <option value="note">Note</option>
+          <option value="voice note">Voice note</option>
+          <option value="call">Call</option>
+          <option value="meeting">Meeting</option>
+          <option value="message">Message</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <VoiceTextField
+          id="description"
+          textName="description"
+          summaryName="descriptionSummary"
+          label="Initial deal note"
+          placeholder="Record or type what the opportunity is, where it came from, and what has to happen next."
+          rows={5}
+          bind:value={description}
+          bind:summary={descriptionSummary}
+          contextLabel="deal note"
+        />
       </div>
 
       <div class="grid two">

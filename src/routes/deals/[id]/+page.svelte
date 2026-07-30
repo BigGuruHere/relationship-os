@@ -2,12 +2,21 @@
 <script lang="ts">
   // PURPOSE: Show one deal, its people, commercial conversation threads, notes, and tasks.
   // SECURITY: This page renders server-prepared decrypted display values only.
+  import VoiceTextField from '$lib/recording/VoiceTextField.svelte';
+
   export let data: any;
   export let form: any;
 
   let showStateEditor = false;
   let showAddPerson = false;
   let showAddTask = false;
+  let newTaskNotes = '';
+  let newTaskSummary = '';
+
+  function submitContainingForm(event: Event) {
+    // IT: Status changes are small enough to submit immediately from the dropdown.
+    (event.currentTarget as HTMLSelectElement).form?.requestSubmit();
+  }
 
   function fmtDate(value: string | Date | null | undefined) {
     if (!value) return '';
@@ -118,7 +127,19 @@
             </select>
           </div>
         </div>
-        <div class="field"><label for="taskNotes">Notes</label><textarea id="taskNotes" name="notes" rows="3"></textarea></div>
+        <div class="field">
+          <VoiceTextField
+            id="taskNotes"
+            textName="notes"
+            summaryName="summary"
+            label="Task notes"
+            placeholder="Record or type the context, outcome, or next step."
+            rows={3}
+            bind:value={newTaskNotes}
+            bind:summary={newTaskSummary}
+            contextLabel="task note"
+          />
+        </div>
         <button class="btn primary" type="submit">Save task</button>
       </form>
     </div>
@@ -127,7 +148,17 @@
   <div class="grid main-grid">
     <section class="card panel">
       <h2>Deal notes</h2>
-      {#if data.deal.description}<p class="preline">{data.deal.description}</p>{:else}<p class="muted">No deal notes yet.</p>{/if}
+      {#if data.deal.description}
+        <p class="preline">{data.deal.description}</p>
+        {#if data.deal.descriptionSummary}
+          <div class="summary-box">
+            <div class="muted small">AI summary</div>
+            <p>{data.deal.descriptionSummary}</p>
+          </div>
+        {/if}
+      {:else}
+        <p class="muted">No deal notes yet.</p>
+      {/if}
       <div class="detail-list">
         <div><strong>Expected close</strong><span>{fmtDate(data.deal.expectedCloseDate) || 'Not set'}</span></div>
         <div><strong>Closed at</strong><span>{fmtDate(data.deal.closedAt) || 'Not closed'}</span></div>
@@ -211,14 +242,16 @@
               <div class="muted small">
                 {#if task.dealContact}Thread: {task.dealContact.contactName}{/if}
                 {#if task.waitingOnContact} Waiting on: <a href={`/contacts/${task.waitingOnContact.id}`}>{task.waitingOnContact.name}</a>{/if}
-                {#if task.project} Project: {task.project.title}{/if}
+                {#if task.project} Project: <a href={`/projects/${task.project.id}`}>{task.project.title}</a>{/if}
               </div>
               {#if task.notes}<p class="preline small">{task.notes}</p>{/if}
+              {#if task.summary}<div class="summary-box"><div class="muted small">AI summary</div><p>{task.summary}</p></div>{/if}
+              <a class="btn tiny" href={`/tasks/${task.id}/edit?returnTo=/deals/${data.deal.id}`}>Edit task</a>
             </div>
             <form method="post" action="?/updateTaskStatus" class="status-form">
               <input type="hidden" name="taskId" value={task.id} />
-              <select name="status">{#each data.taskStatusOptions as opt}<option value={opt.value} selected={task.status === opt.value}>{opt.label}</option>{/each}</select>
-              <button class="btn" type="submit">Update</button>
+              <select name="status" on:change={submitContainingForm}>{#each data.taskStatusOptions as opt}<option value={opt.value} selected={task.status === opt.value}>{opt.label}</option>{/each}</select>
+              
             </form>
           </div>
         {/each}
@@ -302,6 +335,9 @@
   .person-card, .task-row { border-top: 1px solid var(--border); padding: 12px 0; display: flex; justify-content: space-between; gap: 12px; }
   .person-title { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-weight: 700; }
   .person-actions { display: flex; align-items: flex-start; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+  .summary-box { border: 1px solid var(--border); background: var(--panel); border-radius: 10px; padding: 10px; margin-top: 10px; }
+  .summary-box p { margin: 4px 0 0; white-space: pre-wrap; }
+  .btn.tiny { padding: 4px 8px; font-size: 0.82rem; }
   .status-chip { border: 1px solid var(--border); background: var(--panel); border-radius: 999px; padding: 2px 8px; font-size: 0.8rem; color: var(--muted); }
   .error-card { padding: 12px; color: var(--danger); margin-bottom: 12px; }
   textarea { resize: vertical; }

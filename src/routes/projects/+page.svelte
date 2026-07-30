@@ -5,6 +5,11 @@
   export let form: any;
   let showNew = false;
 
+  function submitContainingForm(event: Event) {
+    // IT: Project status changes are saved immediately from the dropdown.
+    (event.currentTarget as HTMLSelectElement).form?.requestSubmit();
+  }
+
   function fmt(value: string | Date | null | undefined) {
     if (!value) return 'No date';
     const d = typeof value === 'string' ? new Date(value) : value;
@@ -56,15 +61,14 @@
         <article class="card project-card">
           <div class="project-head">
             <div>
-              <h2>{project.title}</h2>
+              <h2><a href={`/projects/${project.id}`}>{project.title}</a></h2>
               <div class="muted small">{project.statusLabel} - updated {fmt(project.updatedAt)}</div>
             </div>
             <form method="post" action="?/updateStatus" class="status-form">
               <input type="hidden" name="projectId" value={project.id} />
-              <select name="status">
+              <select name="status" on:change={submitContainingForm}>
                 {#each data.projectStatuses as opt}<option value={opt.value} selected={project.status === opt.value}>{opt.label}</option>{/each}
               </select>
-              <button class="btn" type="submit">Update</button>
             </form>
           </div>
 
@@ -77,7 +81,7 @@
             {:else}
               <ul class="plain-list">
                 {#each project.tasks as task}
-                  <li><span class="status-chip">{task.statusLabel}</span> {task.title} <span class="muted small">{fmt(task.dueAt)}</span></li>
+                  <li><span class="status-chip">{task.statusLabel}</span> <a href={`/tasks/${task.id}/edit?returnTo=/projects/${project.id}`}>{task.title}</a> <span class="muted small">{fmt(task.dueAt)}</span></li>
                 {/each}
               </ul>
             {/if}

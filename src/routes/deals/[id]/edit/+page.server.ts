@@ -26,6 +26,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
       id: true,
       titleEnc: true,
       descriptionEnc: true,
+      descriptionSummaryEnc: true,
       valueCents: true,
       currency: true,
       status: true,
@@ -43,6 +44,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
       id: row.id,
       title: safeDecrypt(row.titleEnc, 'deal.title', ''),
       description: safeDecrypt(row.descriptionEnc, 'deal.description', ''),
+      descriptionSummary: safeDecrypt(row.descriptionSummaryEnc, 'deal.description_summary', ''),
       value: centsToInputValue(row.valueCents),
       currency: row.currency,
       status: row.status,
@@ -60,6 +62,7 @@ export const actions: Actions = {
     const form = await request.formData();
     const title = String(form.get('title') || '').trim();
     const description = String(form.get('description') || '').trim();
+    const descriptionSummary = String(form.get('descriptionSummary') || '').trim();
     const currency = String(form.get('currency') || 'AUD').trim().toUpperCase().slice(0, 3) || 'AUD';
     const status = normaliseDealStatus(form.get('status'));
     const probability = parseProbability(form.get('probability'));
@@ -76,6 +79,7 @@ export const actions: Actions = {
           titleEnc: encrypt(title, 'deal.title'),
           titleIdx: buildIndexToken(title),
           descriptionEnc: description ? encrypt(description, 'deal.description') : null,
+          descriptionSummaryEnc: descriptionSummary ? encrypt(descriptionSummary, 'deal.description_summary') : null,
           valueCents,
           currency,
           status: status as any,

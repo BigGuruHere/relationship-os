@@ -45,6 +45,8 @@ export const actions: Actions = {
     const form = await request.formData();
     const title = String(form.get('title') || '').trim();
     const description = String(form.get('description') || '').trim();
+    const descriptionSummary = String(form.get('descriptionSummary') || '').trim();
+    const initialNoteChannel = String(form.get('initialNoteChannel') || 'note').trim() || 'note';
     const currency = String(form.get('currency') || 'AUD').trim().toUpperCase().slice(0, 3) || 'AUD';
     const status = normaliseDealStatus(form.get('status'));
     const probability = parseProbability(form.get('probability')) ?? defaultProbabilityForStatus(status);
@@ -57,6 +59,8 @@ export const actions: Actions = {
     const values = {
       title,
       description,
+      descriptionSummary,
+      initialNoteChannel,
       currency,
       status,
       probability,
@@ -87,6 +91,7 @@ export const actions: Actions = {
           titleEnc: encrypt(title, 'deal.title'),
           titleIdx: buildIndexToken(title),
           descriptionEnc: description ? encrypt(description, 'deal.description') : null,
+          descriptionSummaryEnc: descriptionSummary ? encrypt(descriptionSummary, 'deal.description_summary') : null,
           currency,
           status: status as any,
           probability,
@@ -101,6 +106,19 @@ export const actions: Actions = {
                   relationshipType: relationshipType as any,
                   label: label || (relationshipType ? null : 'connected'),
                   isPrimary: true
+                }
+              }
+            : undefined,
+          // IT: Turn the initial create-page notes into the first deal note as well,
+          // so voice-transcribed setup context appears in the normal deal notes timeline.
+          notes: description
+            ? {
+                create: {
+                  userId: locals.user.id,
+                  contactId: firstContactId || null,
+                  channel: initialNoteChannel,
+                  rawTextEnc: encrypt(description, 'deal_note.raw_text'),
+                  summaryEnc: descriptionSummary ? encrypt(descriptionSummary, 'deal_note.summary') : null
                 }
               }
             : undefined

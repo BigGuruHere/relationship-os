@@ -549,9 +549,10 @@ model Deal {
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   // IT: encrypted title and optional notes. titleIdx supports exact lookup.
-  titleEnc       String
-  titleIdx       String
-  descriptionEnc String?
+  titleEnc              String
+  titleIdx              String
+  descriptionEnc        String?
+  descriptionSummaryEnc String?
 
   // IT: commercial fields. Store value in minor units to avoid float rounding.
   valueCents        Int?
@@ -787,8 +788,9 @@ model Task {
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  titleEnc String
-  notesEnc String?
+  titleEnc   String
+  notesEnc   String?
+  summaryEnc String?
 
   status     TaskStatus     @default(OPEN)
   urgency    TaskUrgency    @default(NORMAL)

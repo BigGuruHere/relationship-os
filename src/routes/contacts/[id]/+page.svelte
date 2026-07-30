@@ -37,6 +37,16 @@
       relationshipLabel: string;
       notes: string;
       isPrimary: boolean;
+      stage?: string;
+      stageLabel?: string;
+      interestLevel?: string;
+      interestLabel?: string;
+      confidentialityStage?: string;
+      confidentialityLabel?: string;
+      nextAction?: string;
+      nextFollowUpAt?: string | Date | null;
+      noteCount?: number;
+      taskCount?: number;
     }>;
     dealOptions?: Array<{ id: string; title: string; statusLabel: string }>;
     dealRelationshipOptions?: Array<{ value: string; label: string }>;
@@ -50,6 +60,22 @@
       dealTitle: string;
       dealStatusLabel: string;
     }>;
+    dealContactNotes?: Array<{
+      id: string;
+      channel: string;
+      occurredAt: string | Date;
+      preview: string;
+      dealId: string;
+      dealTitle: string;
+      dealStatusLabel: string;
+      dealContactId: string;
+    }>;
+    tasks?: any[];
+    projectOptions?: Array<{ id: string; title: string; statusLabel: string }>;
+    taskStatusOptions?: Array<{ value: string; label: string }>;
+    taskUrgencyOptions?: Array<{ value: string; label: string }>;
+    taskImportanceOptions?: Array<{ value: string; label: string }>;
+    taskTypeOptions?: Array<{ value: string; label: string }>;
     reminders?: any[];
   };
 
@@ -57,7 +83,14 @@
   const tags = contact?.tags ?? [];
   const interactions = data?.interactions ?? [];
   const dealNotes = data?.dealNotes ?? [];
+  const dealContactNotes = data?.dealContactNotes ?? [];
   const reminders = data?.reminders ?? [];
+  const tasks = data?.tasks ?? [];
+  const projectOptions = data?.projectOptions ?? [];
+  const taskStatusOptions = data?.taskStatusOptions ?? [];
+  const taskUrgencyOptions = data?.taskUrgencyOptions ?? [];
+  const taskImportanceOptions = data?.taskImportanceOptions ?? [];
+  const taskTypeOptions = data?.taskTypeOptions ?? [];
   const relationships = data?.relationships ?? [];
   const contactOptions = data?.contactOptions ?? [];
   const deals = data?.deals ?? [];
@@ -68,6 +101,7 @@
   let showReminderPanel = false;
   let showAddRelationship = false;
   let showAddDeal = false;
+  let showAddTask = false;
 
   function fmt(d: string | Date | null | undefined) {
     if (!d) return '';
@@ -113,6 +147,7 @@
         </div>
         <div class="action-row">
           <a class="btn primary" href={`/contacts/${contact.id}/interactions/new`}>Add voice/note</a>
+          <button class="btn" type="button" on:click={() => (showAddTask = !showAddTask)}>{showAddTask ? 'Cancel task' : 'Add task'}</button>
           <a class="btn" href={getVcardUrl()} download aria-label="Download vCard" title="Download vCard">vCard</a>
           <a class="btn" href={`/contacts/${contact.id}/edit`} aria-label="Edit contact" title="Edit contact">Edit</a>
         </div>
@@ -207,6 +242,34 @@
         </div>
       {/if}
     </div>
+
+    {#if showAddTask}
+      <div class="inline-panel">
+        <h2>Add task for {contact.name}</h2>
+        <form method="post" action="?/createTask" class="nested-form">
+          <div class="field"><label for="taskTitle">Task</label><input id="taskTitle" name="title" placeholder="e.g. Follow up about Auspath" required /></div>
+          <div class="grid two">
+            <div class="field"><label for="taskType">Type</label><select id="taskType" name="taskType">{#each taskTypeOptions as opt}<option value={opt.value}>{opt.label}</option>{/each}</select></div>
+            <div class="field"><label for="taskDueAt">Due</label><input id="taskDueAt" name="dueAt" type="datetime-local" /></div>
+          </div>
+          <div class="grid two">
+            <div class="field"><label for="taskUrgency">Urgency</label><select id="taskUrgency" name="urgency">{#each taskUrgencyOptions as opt}<option value={opt.value} selected={opt.value === 'NORMAL'}>{opt.label}</option>{/each}</select></div>
+            <div class="field"><label for="taskImportance">Importance</label><select id="taskImportance" name="importance">{#each taskImportanceOptions as opt}<option value={opt.value} selected={opt.value === 'NORMAL'}>{opt.label}</option>{/each}</select></div>
+          </div>
+          <div class="grid two">
+            <div class="field"><label for="taskStatus">Status</label><select id="taskStatus" name="status">{#each taskStatusOptions as opt}<option value={opt.value}>{opt.label}</option>{/each}</select></div>
+            <div class="field"><label for="taskDealId">Deal context</label><select id="taskDealId" name="dealId"><option value="">No deal</option>{#each deals as deal}<option value={deal.id}>{deal.title}</option>{/each}</select></div>
+          </div>
+          <div class="grid two">
+            <div class="field"><label for="taskDealContactId">Specific deal thread</label><select id="taskDealContactId" name="dealContactId"><option value="">No specific thread</option>{#each deals as deal}<option value={deal.linkId}>{deal.title} - {deal.relationshipLabel}</option>{/each}</select></div>
+            <div class="field"><label for="taskProjectId">Project</label><select id="taskProjectId" name="projectId"><option value="">No project</option>{#each projectOptions as project}<option value={project.id}>{project.title}</option>{/each}</select></div>
+          </div>
+          <label class="check-row"><input type="checkbox" name="waitingOnThisPerson" /><span>This task is waiting on {contact.name}</span></label>
+          <div class="field"><label for="taskNotes">Notes</label><textarea id="taskNotes" name="notes" rows="3"></textarea></div>
+          <button class="btn primary" type="submit">Save task</button>
+        </form>
+      </div>
+    {/if}
 
     <div class="content-grid">
       <section class="card panel">
@@ -308,14 +371,18 @@
                 <div>
                   <div class="deal-title-line">
                     <span class="deal-icon" aria-hidden="true">◆</span>
-                    <a href={`/deals/${deal.id}`}>{deal.title}</a>
+                    <a href={`/deals/${deal.id}/relationships/${deal.linkId}`}>{deal.title}</a>
                     {#if deal.isPrimary}<span class="status-chip">Primary</span>{/if}
                   </div>
                   <div class="muted small">{deal.relationshipLabel} - {deal.statusLabel} - {deal.valueLabel}</div>
+                  <div class="muted small">Thread: {deal.stageLabel || deal.stage || 'Not contacted'} - {deal.interestLabel || deal.interestLevel || 'Unknown'}{deal.nextFollowUpAt ? ` - follow up ${fmtDate(deal.nextFollowUpAt)}` : ''}</div>
                   {#if deal.probability !== null}
                     <div class="muted small">{deal.probability}% chance{deal.expectedCloseDate ? ` - expected ${fmtDate(deal.expectedCloseDate)}` : ''}</div>
                   {/if}
+                  {#if deal.nextAction}<p class="muted preline"><strong>Next:</strong> {deal.nextAction}</p>{/if}
                   {#if deal.notes}<p class="muted preline">{deal.notes}</p>{/if}
+                  <div class="muted small">{deal.noteCount || 0} thread notes - {deal.taskCount || 0} tasks</div>
+                  <div class="action-row"><a class="btn" href={`/deals/${deal.id}`}>Open deal</a><a class="btn" href={`/deals/${deal.id}/relationships/${deal.linkId}`}>Open thread</a></div>
                 </div>
                 <form method="post" action="?/removeDeal" on:submit={(event) => { if (!confirm('Remove this deal relationship?')) event.preventDefault(); }}>
                   <input type="hidden" name="linkId" value={deal.linkId} />
@@ -379,6 +446,33 @@
 
     <section class="card panel">
       <div class="section-head">
+        <h2>Open tasks</h2>
+        <a class="btn" href="/tasks">Open task inbox</a>
+      </div>
+      {#if tasks.length === 0}
+        <p class="muted">No open tasks for this person.</p>
+      {:else}
+        <div class="mini-list">
+          {#each tasks as task}
+            <div class="mini-row task-mini-row">
+              <div>
+                <div class="strong-link">{task.title} <span class="status-chip">{task.statusLabel}</span> <span class="status-chip">{task.urgencyLabel}</span></div>
+                <div class="muted small">{task.taskTypeLabel} - due {fmt(task.dueAt) || 'not set'}{task.deal ? ` - ${task.deal.title}` : ''}</div>
+                {#if task.notes}<p class="preline muted small">{task.notes}</p>{/if}
+              </div>
+              <form method="post" action="?/updateTaskStatus">
+                <input type="hidden" name="taskId" value={task.id} />
+                <select name="status">{#each taskStatusOptions as opt}<option value={opt.value} selected={task.status === opt.value}>{opt.label}</option>{/each}</select>
+                <button class="btn" type="submit">Update</button>
+              </form>
+            </div>
+          {/each}
+        </div>
+      {/if}
+    </section>
+
+    <section class="card panel">
+      <div class="section-head">
         <h2>Recent notes</h2>
         <a class="btn" href={`/contacts/${contact.id}/interactions/new`}>New voice/note</a>
       </div>
@@ -416,6 +510,25 @@
           </ul>
         </div>
       {/if}
+
+      {#if dealContactNotes.length > 0}
+        <div class="section-block">
+          <h2>Deal relationship notes involving this person</h2>
+          <ul class="notes">
+            {#each dealContactNotes as note}
+              <li class="note">
+                <div class="note-meta">
+                  <span class="pill">{note.channel}</span>
+                  <span class="muted">{fmt(note.occurredAt)}</span>
+                  <span class="muted">on <a href={`/deals/${note.dealId}/relationships/${note.dealContactId}`}>{note.dealTitle}</a> ({note.dealStatusLabel})</span>
+                </div>
+                <p class="preline note-link">{note.preview || '(empty)'}</p>
+              </li>
+            {/each}
+          </ul>
+        </div>
+      {/if}
+
     </section>
 
     <div style="display:flex; gap:10px; margin-top:16px;">

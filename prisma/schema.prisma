@@ -64,6 +64,11 @@ model User {
   deals Deal[]
   dealContacts DealContact[]
   dealNotes DealNote[]
+  dealContactNotes DealContactNote[]
+
+  // IT: relationship-linked action system. Tasks can sit on contacts, deals, deal-contact threads, or projects.
+  projects Project[]
+  tasks    Task[]
 
   role       UserRole @default(member)
   publicSlug String?  @unique
@@ -316,6 +321,12 @@ model Contact {
   // IT: optional deal notes that were recorded against this contact in a deal context
   dealNotes DealNote[]
 
+  // IT: notes/tasks where this contact is the commercial party or external person being waited on.
+  dealContactNotes DealContactNote[] @relation("DealContactNoteContact")
+  tasks             Task[]            @relation("TaskContact")
+  assignedTasks     Task[]            @relation("TaskAssignedContact")
+  waitingTasks      Task[]            @relation("TaskWaitingContact")
+
   // Indexes for search and tenancy
   @@index([userId])
   @@index([fullNameIdx])
@@ -556,6 +567,8 @@ model Deal {
 
   contacts DealContact[]
   notes    DealNote[]
+  dealContactNotes DealContactNote[]
+  tasks    Task[]
 
   @@index([userId, status])
   @@index([userId, expectedCloseDate])
@@ -588,6 +601,44 @@ model DealNote {
   @@index([userId, contactId, occurredAt])
 }
 
+// IT: relationship stage for one person inside one deal.
+enum DealContactStage {
+  NOT_CONTACTED
+  CONTACTED
+  TEASER_SENT
+  NDA_SENT
+  NDA_SIGNED
+  IM_SENT
+  MEETING_BOOKED
+  REVIEWING
+  OFFER_EXPECTED
+  OFFER_MADE
+  DECLINED
+  NOT_SUITABLE
+  DORMANT
+}
+
+// IT: simple commercial temperature for a person in a specific deal.
+enum DealContactInterest {
+  UNKNOWN
+  COLD
+  WARM
+  HOT
+  STRONG_FIT
+  NOT_A_FIT
+}
+
+// IT: confidentiality stage for what this person has received or signed.
+enum DealConfidentialityStage {
+  NONE
+  BLIND_TEASER_SENT
+  NDA_SENT
+  NDA_SIGNED
+  IM_SENT
+  DATA_ROOM_ACCESS
+  VENDOR_APPROVED
+}
+
 // IT: many-to-many contact involvement in a deal with a relationship role.
 model DealContact {
   id     String @id @default(uuid())
@@ -605,6 +656,21 @@ model DealContact {
   notesEnc         String?
   isPrimary        Boolean @default(false)
 
+  // IT: business-broker specific state for this person inside this deal.
+  stage                DealContactStage          @default(NOT_CONTACTED)
+  interestLevel        DealContactInterest       @default(UNKNOWN)
+  confidentialityStage DealConfidentialityStage  @default(NONE)
+  nextActionEnc        String?
+  nextFollowUpAt       DateTime?
+  lastContactedAt      DateTime?
+  buyingCriteriaEnc    String?
+  objectionsEnc        String?
+  fundingCapacityEnc   String?
+  referralPathEnc      String?
+
+  notes DealContactNote[]
+  tasks Task[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -612,4 +678,159 @@ model DealContact {
   @@index([userId, dealId])
   @@index([userId, contactId])
   @@index([userId, relationshipType])
+  @@index([userId, stage])
+  @@index([userId, interestLevel])
+  @@index([userId, nextFollowUpAt])
+}
+
+
+// IT: notes and voice notes for the commercial conversation between one contact and one deal.
+model DealContactNote {
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  dealContactId String
+  dealContact   DealContact @relation(fields: [dealContactId], references: [id], onDelete: Cascade)
+
+  dealId String
+  deal   Deal   @relation(fields: [dealId], references: [id], onDelete: Cascade)
+
+  contactId String?
+  contact   Contact? @relation("DealContactNoteContact", fields: [contactId], references: [id], onDelete: SetNull)
+
+  occurredAt DateTime @default(now())
+  channel    String    @default("note")
+  rawTextEnc String
+  summaryEnc String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, dealContactId, occurredAt])
+  @@index([userId, dealId, occurredAt])
+  @@index([userId, contactId, occurredAt])
+}
+
+// ---------------------------------------------------------------------------
+// PROJECT AND TASK MODELS
+// ---------------------------------------------------------------------------
+enum ProjectStatus {
+  ACTIVE
+  ON_HOLD
+  COMPLETED
+  ARCHIVED
+}
+
+enum TaskStatus {
+  OPEN
+  IN_PROGRESS
+  WAITING
+  SNOOZED
+  DONE
+  CANCELLED
+}
+
+enum TaskUrgency {
+  LOW
+  NORMAL
+  HIGH
+  CRITICAL
+}
+
+enum TaskImportance {
+  LOW
+  NORMAL
+  HIGH
+}
+
+enum TaskType {
+  FOLLOW_UP
+  CALL
+  EMAIL
+  SEND_DOCUMENT
+  BOOK_MEETING
+  RESEARCH
+  PREPARE
+  REVIEW
+  INTRODUCE
+  DECISION
+  ADMIN
+  PERSONAL_TODO
+  DEAL_STEP
+  CUSTOM
+}
+
+// IT: a broader work container that can hold tasks and be linked manually by name/context.
+model Project {
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  titleEnc       String
+  titleIdx       String
+  descriptionEnc String?
+  status         ProjectStatus @default(ACTIVE)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tasks Task[]
+
+  @@index([userId, status])
+  @@index([titleIdx])
+}
+
+// IT: unified action system. A task can link to a person, deal, deal-contact thread, or project.
+model Task {
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  titleEnc String
+  notesEnc String?
+
+  status     TaskStatus     @default(OPEN)
+  urgency    TaskUrgency    @default(NORMAL)
+  importance TaskImportance @default(NORMAL)
+  taskType   TaskType       @default(FOLLOW_UP)
+
+  dueAt        DateTime?
+  snoozedUntil DateTime?
+  completedAt  DateTime?
+  cancelledAt  DateTime?
+
+  // IT: assignment is intentionally flexible while the app is still single-user.
+  assignedToTextEnc  String?
+  assignedToContactId String?
+  assignedToContact   Contact? @relation("TaskAssignedContact", fields: [assignedToContactId], references: [id], onDelete: SetNull)
+
+  waitingOnContactId String?
+  waitingOnContact   Contact? @relation("TaskWaitingContact", fields: [waitingOnContactId], references: [id], onDelete: SetNull)
+
+  contactId String?
+  contact   Contact? @relation("TaskContact", fields: [contactId], references: [id], onDelete: SetNull)
+
+  dealId String?
+  deal   Deal?   @relation(fields: [dealId], references: [id], onDelete: SetNull)
+
+  dealContactId String?
+  dealContact   DealContact? @relation(fields: [dealContactId], references: [id], onDelete: SetNull)
+
+  projectId String?
+  project   Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
+  sourceType String?
+  sourceId   String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, status, dueAt])
+  @@index([userId, urgency])
+  @@index([userId, contactId])
+  @@index([userId, dealId])
+  @@index([userId, dealContactId])
+  @@index([userId, projectId])
+  @@index([userId, waitingOnContactId])
 }

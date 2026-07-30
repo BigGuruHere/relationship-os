@@ -16,6 +16,26 @@ import {
   normaliseDealRelationshipType,
   safeDecrypt
 } from '$lib/deals';
+import {
+  TASK_IMPORTANCES,
+  TASK_STATUSES,
+  TASK_TYPES,
+  TASK_URGENCIES,
+  dealConfidentialityLabel,
+  dealContactInterestLabel,
+  dealContactStageLabel,
+  normaliseTaskImportance,
+  normaliseTaskStatus,
+  normaliseTaskType,
+  normaliseTaskUrgency,
+  parseDateTime,
+  projectStatusLabel,
+  safeDecryptTask,
+  taskImportanceLabel,
+  taskStatusLabel,
+  taskTypeLabel,
+  taskUrgencyLabel
+} from '$lib/tasks';
 
 function isPlaceholderName(name: string | null | undefined): boolean {
   const s = (name || '').trim().toLowerCase();
@@ -90,6 +110,12 @@ export const load: PageServerLoad = async ({ params, locals }) => {
           label: true,
           notesEnc: true,
           isPrimary: true,
+          stage: true,
+          interestLevel: true,
+          confidentialityStage: true,
+          nextActionEnc: true,
+          nextFollowUpAt: true,
+          _count: { select: { notes: true, tasks: true } },
           deal: {
             select: {
               id: true,
@@ -165,6 +191,16 @@ export const load: PageServerLoad = async ({ params, locals }) => {
     label: link.label || '',
     notes: safeDecrypt(link.notesEnc, 'deal_contact.notes', ''),
     isPrimary: link.isPrimary,
+    stage: link.stage,
+    stageLabel: dealContactStageLabel(link.stage),
+    interestLevel: link.interestLevel,
+    interestLabel: dealContactInterestLabel(link.interestLevel),
+    confidentialityStage: link.confidentialityStage,
+    confidentialityLabel: dealConfidentialityLabel(link.confidentialityStage),
+    nextAction: safeDecryptTask(link.nextActionEnc, 'deal_contact.next_action', ''),
+    nextFollowUpAt: link.nextFollowUpAt,
+    noteCount: link._count?.notes || 0,
+    taskCount: link._count?.tasks || 0,
     updatedAt: link.deal.updatedAt
   }));
 
@@ -212,6 +248,68 @@ export const load: PageServerLoad = async ({ params, locals }) => {
     };
   });
 
+
+  const dealContactNotesRaw = await prisma.dealContactNote.findMany({
+    where: { userId: locals.user.id, contactId: id },
+    select: {
+      id: true,
+      channel: true,
+      occurredAt: true,
+      rawTextEnc: true,
+      summaryEnc: true,
+      deal: { select: { id: true, titleEnc: true, status: true } },
+      dealContact: { select: { id: true } }
+    },
+    orderBy: [{ occurredAt: 'desc' }, { id: 'desc' }],
+    take: 20
+  });
+
+  const dealContactNotes = dealContactNotesRaw.map((note: any) => {
+    const rawText = safeDecryptTask(note.rawTextEnc, 'deal_contact_note.raw_text', '');
+    const summary = safeDecryptTask(note.summaryEnc, 'deal_contact_note.summary', '');
+    const previewSource = summary || rawText;
+    return {
+      id: note.id,
+      channel: note.channel,
+      occurredAt: note.occurredAt,
+      preview: previewSource.length > 240 ? `${previewSource.slice(0, 237)}...` : previewSource,
+      dealId: note.deal.id,
+      dealTitle: safeDecrypt(note.deal.titleEnc, 'deal.title', 'Untitled deal'),
+      dealStatusLabel: dealStatusLabel(note.deal.status),
+      dealContactId: note.dealContact.id
+    };
+  });
+
+  const tasksRaw = await prisma.task.findMany({
+    where: { userId: locals.user.id, contactId: id, status: { in: ['OPEN', 'IN_PROGRESS', 'WAITING', 'SNOOZED'] as any } },
+    select: {
+      id: true, titleEnc: true, notesEnc: true, status: true, urgency: true, importance: true, taskType: true, dueAt: true,
+      deal: { select: { id: true, titleEnc: true, status: true } },
+      dealContact: { select: { id: true, deal: { select: { id: true, titleEnc: true } } } },
+      waitingOnContact: { select: { id: true, fullNameEnc: true, linkedUserId: true } },
+      project: { select: { id: true, titleEnc: true, status: true } }
+    },
+    orderBy: [{ dueAt: 'asc' }, { updatedAt: 'desc' }],
+    take: 30
+  });
+
+  const tasks = await Promise.all(tasksRaw.map(async (task: any) => ({
+    id: task.id,
+    title: safeDecryptTask(task.titleEnc, 'task.title', 'Untitled task'),
+    notes: safeDecryptTask(task.notesEnc, 'task.notes', ''),
+    status: task.status,
+    statusLabel: taskStatusLabel(task.status),
+    urgency: task.urgency,
+    urgencyLabel: taskUrgencyLabel(task.urgency),
+    importanceLabel: taskImportanceLabel(task.importance),
+    taskTypeLabel: taskTypeLabel(task.taskType),
+    dueAt: task.dueAt,
+    deal: task.deal ? { id: task.deal.id, title: safeDecrypt(task.deal.titleEnc, 'deal.title', 'Untitled deal'), status: task.deal.status } : null,
+    dealContact: task.dealContact ? { id: task.dealContact.id, dealId: task.dealContact.deal.id, dealTitle: safeDecrypt(task.dealContact.deal.titleEnc, 'deal.title', 'Untitled deal') } : null,
+    waitingOnContact: task.waitingOnContact ? { id: task.waitingOnContact.id, name: await decryptContactName(task.waitingOnContact) } : null,
+    project: task.project ? { id: task.project.id, title: safeDecryptTask(task.project.titleEnc, 'project.title', 'Untitled project'), statusLabel: projectStatusLabel(task.project.status) } : null
+  })));
+
   const reminders = await prisma.reminder.findMany({
     where: { userId: locals.user.id, contactId: id, completedAt: null },
     select: { id: true, dueAt: true, note: true },
@@ -243,6 +341,18 @@ export const load: PageServerLoad = async ({ params, locals }) => {
     statusLabel: dealStatusLabel(deal.status)
   }));
 
+  const projectsRaw = await prisma.project.findMany({
+    where: { userId: locals.user.id, status: { not: 'ARCHIVED' as any } },
+    select: { id: true, titleEnc: true, status: true },
+    orderBy: { updatedAt: 'desc' },
+    take: 200
+  });
+  const projectOptions = projectsRaw.map((project: any) => ({
+    id: project.id,
+    title: safeDecryptTask(project.titleEnc, 'project.title', 'Untitled project'),
+    statusLabel: projectStatusLabel(project.status)
+  }));
+
   return {
     contact: {
       id: row.id,
@@ -264,6 +374,13 @@ export const load: PageServerLoad = async ({ params, locals }) => {
     dealRelationshipOptions: DEAL_RELATIONSHIP_TYPES,
     interactions,
     dealNotes,
+    dealContactNotes,
+    tasks,
+    projectOptions,
+    taskStatusOptions: TASK_STATUSES,
+    taskUrgencyOptions: TASK_URGENCIES,
+    taskImportanceOptions: TASK_IMPORTANCES,
+    taskTypeOptions: TASK_TYPES,
     reminders
   };
 };
@@ -519,6 +636,70 @@ export const actions: Actions = {
       return fail(500, { error: 'Failed to remove deal relationship.' });
     }
 
+    throw redirect(303, `/contacts/${params.id}`);
+  },
+
+  createTask: async ({ request, params, locals }) => {
+    if (!locals.user) throw redirect(303, '/auth/login');
+    const userId = locals.user.id;
+    const form = await request.formData();
+    const title = String(form.get('title') || '').trim();
+    if (!title) return fail(400, { error: 'Task title is required.' });
+
+    const contact = await prisma.contact.findFirst({ where: { id: params.id, userId }, select: { id: true } });
+    if (!contact) return fail(404, { error: 'Contact not found.' });
+
+    let dealId = String(form.get('dealId') || '').trim() || null;
+    let dealContactId = String(form.get('dealContactId') || '').trim() || null;
+    if (dealContactId) {
+      const link = await prisma.dealContact.findFirst({ where: { id: dealContactId, userId, contactId: params.id }, select: { id: true, dealId: true } });
+      if (!link) return fail(404, { error: 'Deal relationship not found.' });
+      dealId = link.dealId;
+    } else if (dealId) {
+      const link = await prisma.dealContact.findFirst({ where: { userId, dealId, contactId: params.id }, select: { id: true } });
+      dealContactId = link?.id || null;
+      const deal = await prisma.deal.findFirst({ where: { id: dealId, userId }, select: { id: true } });
+      if (!deal) return fail(404, { error: 'Deal not found.' });
+    }
+
+    const projectId = String(form.get('projectId') || '').trim() || null;
+    if (projectId) {
+      const ok = await prisma.project.findFirst({ where: { id: projectId, userId }, select: { id: true } });
+      if (!ok) return fail(404, { error: 'Project not found.' });
+    }
+
+    const notes = String(form.get('notes') || '').trim();
+    await prisma.task.create({
+      data: {
+        userId,
+        contactId: params.id,
+        dealId,
+        dealContactId,
+        projectId,
+        waitingOnContactId: String(form.get('waitingOnThisPerson') || '') === 'on' ? params.id : null,
+        titleEnc: encrypt(title, 'task.title'),
+        notesEnc: notes ? encrypt(notes, 'task.notes') : null,
+        status: normaliseTaskStatus(form.get('status')) as any,
+        urgency: normaliseTaskUrgency(form.get('urgency')) as any,
+        importance: normaliseTaskImportance(form.get('importance')) as any,
+        taskType: normaliseTaskType(form.get('taskType')) as any,
+        dueAt: parseDateTime(form.get('dueAt'))
+      }
+    });
+
+    throw redirect(303, `/contacts/${params.id}`);
+  },
+
+  updateTaskStatus: async ({ request, params, locals }) => {
+    if (!locals.user) throw redirect(303, '/auth/login');
+    const form = await request.formData();
+    const taskId = String(form.get('taskId') || '').trim();
+    const status = normaliseTaskStatus(form.get('status'));
+    if (!taskId) return fail(400, { error: 'Missing task id.' });
+    await prisma.task.updateMany({
+      where: { id: taskId, userId: locals.user.id, contactId: params.id },
+      data: { status, completedAt: status === 'DONE' ? new Date() : null, cancelledAt: status === 'CANCELLED' ? new Date() : null }
+    });
     throw redirect(303, `/contacts/${params.id}`);
   }
 };

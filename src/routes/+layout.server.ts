@@ -34,6 +34,7 @@ export const load: LayoutServerLoad = async ({ locals }) => {
   // IT - counts for actions in the top bar
   let reconnectDue = 0;
   let remindersOpenCount = 0;
+  let tasksOpenCount = 0;
 
   if (locals.user?.id) {
     // IT - compute reconnects due from cadence fields
@@ -55,14 +56,20 @@ export const load: LayoutServerLoad = async ({ locals }) => {
     remindersOpenCount = await prisma.reminder.count({
       where: { userId: locals.user.id, completedAt: null }
     });
+
+    // IT - open task count for the new unified task layer.
+    tasksOpenCount = await prisma.task.count({
+      where: { userId: locals.user.id, status: { in: ['OPEN', 'IN_PROGRESS', 'WAITING', 'SNOOZED'] as any } }
+    });
   }
 
-  const actionsCount = (reconnectDue || 0) + (remindersOpenCount || 0);
+  const actionsCount = (reconnectDue || 0) + (remindersOpenCount || 0) + (tasksOpenCount || 0);
 
   return {
     user, // { id, emailRedacted } or null
     reconnectDue,
     remindersOpenCount,
+    tasksOpenCount,
     actionsCount
   };
 };

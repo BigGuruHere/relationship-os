@@ -15,6 +15,7 @@
     user: { id: string; emailRedacted: string | null } | null;
     reconnectDue: number;
     remindersOpenCount: number;
+    tasksOpenCount?: number;
     actionsCount?: number;
   };
 
@@ -143,6 +144,17 @@
             <path d="M12 2 22 9l-10 13L2 9l10-7zm0 3.1L6.2 9 12 16.6 17.8 9 12 5.1z"/>
           </svg>
         </a>
+
+        <!-- Tasks -->
+        <a class="btn icon" href="/tasks" aria-label="Tasks" title="Tasks">
+          <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <path d="M9 11 6.8 8.8 5.4 10.2 9 13.8l7-7-1.4-1.4L9 11z"/>
+            <path d="M4 4h16v16H4V4zm2 2v12h12V6H6z"/>
+          </svg>
+          {#if (data.tasksOpenCount || 0) > 0}
+            <span class="pill">{data.tasksOpenCount}</span>
+          {/if}
+        </a>
       {/if}
 
       {#if data.user}
@@ -208,7 +220,9 @@
     <nav class="nav-group">
       <a class="nav-link" href="/">Contacts</a>
       {#if data.user}
-        <a class="nav-link" href="/deals">Deals</a>
+        <a class="nav-link" href="/deals">◆ Deals</a>
+        <a class="nav-link" href="/tasks">☑ Tasks{#if (data.tasksOpenCount || 0) > 0} <span class="pill">{data.tasksOpenCount}</span>{/if}</a>
+        <a class="nav-link" href="/projects">▣ Projects</a>
       {/if}
       <a class="nav-link" href="/search">Search</a>
 
@@ -217,9 +231,18 @@
 
         <div class="nav-right" style="margin:6px 0;">
           <a href="/reconnect" class="btn">
-            Inbox
+            Reconnect
             {#if data.reconnectDue > 0}
-              <span class="pill">{data.reconnectDue+data.remindersOpenCount}</span>
+              <span class="pill">{data.reconnectDue}</span>
+            {/if}
+          </a>
+        </div>
+
+        <div>
+          <a href="/reminders" class="btn">
+            Reminders
+            {#if data.remindersOpenCount > 0}
+              <span class="pill">{data.remindersOpenCount}</span>
             {/if}
           </a>
         </div>

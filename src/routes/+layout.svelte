@@ -239,19 +239,13 @@
         <a class="nav-link" href="/contacts/new">➕ Add Contact</a>
 
         <div class="nav-right" style="margin:6px 0;">
-          <a href="/reconnect" class="btn">
-            Reconnect
-            {#if data.reconnectDue > 0}
-              <span class="pill">{data.reconnectDue}</span>
-            {/if}
-          </a>
-        </div>
-
-        <div>
-          <a href="/reminders" class="btn">
-            Reminders
-            {#if data.remindersOpenCount > 0}
-              <span class="pill">{data.remindersOpenCount}</span>
+          <a href="/actions" class="btn">
+          Inbox        
+            <!-- IT: total actions = overdue cadences + open reminders + open tasks/actions -->
+            {#if ((data.reconnectDue ?? 0) + (data.remindersOpenCount ?? 0) + (data.tasksOpenCount ?? 0)) > 0}
+              <span class="pill">
+                {(data.reconnectDue ?? 0) + (data.remindersOpenCount ?? 0) + (data.tasksOpenCount ?? 0)}
+              </span>
             {/if}
           </a>
         </div>

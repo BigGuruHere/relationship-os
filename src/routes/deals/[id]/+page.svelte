@@ -9,6 +9,7 @@
 
   let showStateEditor = false;
   let showAddPerson = false;
+  let showAddCompany = false;
   let showAddTask = false;
   let newTaskNotes = '';
   let newTaskSummary = '';
@@ -106,12 +107,19 @@
           <div class="field">
             <label for="taskDealContactId">Specific person in deal</label>
             <select id="taskDealContactId" name="dealContactId">
-              <option value="">General deal task</option>
+              <option value="">No specific person thread</option>
               {#each data.people as person}<option value={person.id}>{person.name} - {person.relationshipLabel}</option>{/each}
             </select>
           </div>
         </div>
         <div class="grid two">
+          <div class="field">
+            <label for="taskDealCompanyId">Specific company in deal</label>
+            <select id="taskDealCompanyId" name="dealCompanyId">
+              <option value="">No specific company thread</option>
+              {#each data.companies as company}<option value={company.id}>{company.name} - {company.relationshipLabel}</option>{/each}
+            </select>
+          </div>
           <div class="field">
             <label for="taskWaitingOnContactId">Waiting on</label>
             <select id="taskWaitingOnContactId" name="waitingOnContactId">
@@ -119,6 +127,8 @@
               {#each data.people as person}<option value={person.contactId}>{person.name}</option>{/each}
             </select>
           </div>
+        </div>
+        <div class="grid two">
           <div class="field">
             <label for="taskProjectId">Project</label>
             <select id="taskProjectId" name="projectId">
@@ -185,6 +195,16 @@
             <div class="field"><label for="relationshipType">Role</label><select id="relationshipType" name="relationshipType">{#each data.relationshipOptions as opt}<option value={opt.value}>{opt.label}</option>{/each}</select></div>
             <div class="field"><label for="label">Custom label</label><input id="label" name="label" placeholder="e.g. sponsor, gatekeeper" /></div>
           </div>
+          <div class="grid three">
+            <div class="field"><label for="stage">Stage</label><select id="stage" name="stage">{#each data.dealContactStageOptions as opt}<option value={opt.value}>{opt.label}</option>{/each}</select></div>
+            <div class="field"><label for="interestLevel">Interest</label><select id="interestLevel" name="interestLevel">{#each data.dealContactInterestOptions as opt}<option value={opt.value}>{opt.label}</option>{/each}</select></div>
+            <div class="field"><label for="confidentialityStage">Confidentiality</label><select id="confidentialityStage" name="confidentialityStage">{#each data.dealConfidentialityOptions as opt}<option value={opt.value}>{opt.label}</option>{/each}</select></div>
+          </div>
+          <div class="grid two">
+            <div class="field"><label for="nextAction">Next action</label><input id="nextAction" name="nextAction" placeholder="e.g. send NDA, follow up Friday" /></div>
+            <div class="field"><label for="nextFollowUpAt">Next follow-up</label><input id="nextFollowUpAt" name="nextFollowUpAt" type="datetime-local" /></div>
+          </div>
+          <div class="field"><label for="buyingCriteria">Buying criteria / fit</label><textarea id="buyingCriteria" name="buyingCriteria" rows="2" placeholder="What would make this deal relevant to them?"></textarea></div>
           <div class="field"><label for="notes">Relationship notes</label><textarea id="notes" name="notes" rows="3" placeholder="Why this person matters to the deal"></textarea></div>
           <label class="check-row"><input type="checkbox" name="isPrimary" /><span>Primary relationship for this deal</span></label>
           <button class="btn primary" type="submit">Attach person</button>
@@ -226,6 +246,74 @@
         </div>
       {/if}
     </section>
+
+    <section class="card panel">
+      <div class="section-head">
+        <h2>Companies and acquirers</h2>
+        <button class="btn" type="button" on:click={() => (showAddCompany = !showAddCompany)}>{showAddCompany ? 'Cancel' : 'Add company'}</button>
+      </div>
+
+      {#if showAddCompany}
+        <form method="post" action="?/addCompany" class="add-person">
+          <div class="field">
+            <label for="companyId">Company</label>
+            <select id="companyId" name="companyId" required>
+              <option value="">Select company</option>
+              {#each data.companyOptions as company}<option value={company.id}>{company.name} - {company.kindLabel}</option>{/each}
+            </select>
+          </div>
+          <div class="grid two">
+            <div class="field"><label for="companyRelationshipType">Role</label><select id="companyRelationshipType" name="relationshipType">{#each data.relationshipOptions as opt}<option value={opt.value}>{opt.label}</option>{/each}</select></div>
+            <div class="field"><label for="companyLabel">Custom label</label><input id="companyLabel" name="label" placeholder="e.g. strategic acquirer, funder" /></div>
+          </div>
+          <div class="grid three">
+            <div class="field"><label for="companyStage">Stage</label><select id="companyStage" name="stage">{#each data.dealContactStageOptions as opt}<option value={opt.value}>{opt.label}</option>{/each}</select></div>
+            <div class="field"><label for="companyInterest">Interest</label><select id="companyInterest" name="interestLevel">{#each data.dealContactInterestOptions as opt}<option value={opt.value}>{opt.label}</option>{/each}</select></div>
+            <div class="field"><label for="companyConfidentiality">Confidentiality</label><select id="companyConfidentiality" name="confidentialityStage">{#each data.dealConfidentialityOptions as opt}<option value={opt.value}>{opt.label}</option>{/each}</select></div>
+          </div>
+          <div class="grid two">
+            <div class="field"><label for="companyNextAction">Next action</label><input id="companyNextAction" name="nextAction" placeholder="e.g. find M&A contact, send blind teaser" /></div>
+            <div class="field"><label for="companyNextFollowUpAt">Next follow-up</label><input id="companyNextFollowUpAt" name="nextFollowUpAt" type="datetime-local" /></div>
+          </div>
+          <div class="field"><label for="acquisitionRationale">Why this company fits</label><textarea id="acquisitionRationale" name="acquisitionRationale" rows="2"></textarea></div>
+          <div class="field"><label for="companyNotes">Company deal notes</label><textarea id="companyNotes" name="notes" rows="3"></textarea></div>
+          <label class="check-row"><input type="checkbox" name="isPrimary" /><span>Primary company for this deal</span></label>
+          <button class="btn primary" type="submit">Attach company</button>
+        </form>
+      {/if}
+
+      {#if data.companies.length === 0}
+        <p class="muted">No companies attached yet. Add likely acquirers, vendor businesses, funds, broker firms, or advisors.</p>
+      {:else}
+        <div class="people-list">
+          {#each data.companies as company}
+            <div class="person-card">
+              <div>
+                <div class="person-title">
+                  <a href={`/companies/${company.companyId}`}>{company.name}</a>
+                  {#if company.isPrimary}<span class="status-chip">Primary</span>{/if}
+                  <span class="status-chip">{company.stageLabel}</span>
+                  <span class="status-chip">{company.interestLabel}</span>
+                </div>
+                <div class="muted">{company.relationshipLabel} - {company.kindLabel} - confidentiality: {company.confidentialityLabel}</div>
+                {#if company.industry || company.location}<div class="muted small">{company.industry}{company.industry && company.location ? ' - ' : ''}{company.location}</div>{/if}
+                {#if company.nextAction}<p class="preline small"><strong>Next:</strong> {company.nextAction}{company.nextFollowUpAt ? ` - ${fmt(company.nextFollowUpAt)}` : ''}</p>{/if}
+                {#if company.acquisitionRationale}<p class="preline small"><strong>Fit:</strong> {company.acquisitionRationale}</p>{/if}
+                {#if company.notes}<p class="preline small">{company.notes}</p>{/if}
+                <div class="muted small">{company.taskCount} task{company.taskCount === 1 ? '' : 's'}</div>
+              </div>
+              <div class="person-actions">
+                <a class="btn" href={`/companies/${company.companyId}`}>Company</a>
+                <form method="post" action="?/removeCompany" on:submit={(event) => { if (!confirm('Remove this company from the deal?')) event.preventDefault(); }}>
+                  <input type="hidden" name="linkId" value={company.id} />
+                  <button class="btn" type="submit">Remove</button>
+                </form>
+              </div>
+            </div>
+          {/each}
+        </div>
+      {/if}
+    </section>
   </div>
 
   <section class="card panel">
@@ -239,10 +327,13 @@
             <div>
               <div class="person-title"><span>{task.title}</span><span class="status-chip">{task.statusLabel}</span><span class="status-chip">{task.urgencyLabel}</span></div>
               <div class="muted small">{task.taskTypeLabel} - due {fmt(task.dueAt) || 'not set'}</div>
-              <div class="muted small">
-                {#if task.dealContact}Thread: {task.dealContact.contactName}{/if}
-                {#if task.waitingOnContact} Waiting on: <a href={`/contacts/${task.waitingOnContact.id}`}>{task.waitingOnContact.name}</a>{/if}
-                {#if task.project} Project: <a href={`/projects/${task.project.id}`}>{task.project.title}</a>{/if}
+              <div class="context-row small">
+                {#if task.contact}<a class="chip" href={`/contacts/${task.contact.id}`}>Person: {task.contact.name}</a>{/if}
+                {#if task.company}<a class="chip" href={`/companies/${task.company.id}`}>Company: {task.company.name}</a>{/if}
+                {#if task.dealContact}<a class="chip" href={`/deals/${data.deal.id}/relationships/${task.dealContact.id}`}>Person thread: {task.dealContact.contactName}</a>{/if}
+                {#if task.dealCompany}<a class="chip" href={`/companies/${task.dealCompany.companyId}`}>Company thread: {task.dealCompany.companyName}</a>{/if}
+                {#if task.waitingOnContact}<a class="chip" href={`/contacts/${task.waitingOnContact.id}`}>Waiting on: {task.waitingOnContact.name}</a>{/if}
+                {#if task.project}<a class="chip" href={`/projects/${task.project.id}`}>Project: {task.project.title}</a>{/if}
               </div>
               {#if task.notes}<p class="preline small">{task.notes}</p>{/if}
               {#if task.summary}<div class="summary-box"><div class="muted small">AI summary</div><p>{task.summary}</p></div>{/if}
@@ -312,7 +403,7 @@
   h2 { margin: 0 0 10px; font-size: 1.1rem; }
   .muted { color: var(--muted); }
   .small { font-size: 0.9rem; }
-  .meta-row, .actions, .bottom-actions, .status-form { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .meta-row, .actions, .bottom-actions, .status-form, .context-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
   .meta-row { margin-top: 8px; color: var(--muted); }
   .panel { padding: 16px; margin-bottom: 12px; }
   .main-grid { display: grid; grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr); gap: 12px; }
@@ -338,7 +429,8 @@
   .summary-box { border: 1px solid var(--border); background: var(--panel); border-radius: 10px; padding: 10px; margin-top: 10px; }
   .summary-box p { margin: 4px 0 0; white-space: pre-wrap; }
   .btn.tiny { padding: 4px 8px; font-size: 0.82rem; }
-  .status-chip { border: 1px solid var(--border); background: var(--panel); border-radius: 999px; padding: 2px 8px; font-size: 0.8rem; color: var(--muted); }
+  .status-chip, .chip { border: 1px solid var(--border); background: var(--panel); border-radius: 999px; padding: 2px 8px; font-size: 0.8rem; color: var(--muted); }
+  .chip { color: var(--text); text-decoration: none; }
   .error-card { padding: 12px; color: var(--danger); margin-bottom: 12px; }
   textarea { resize: vertical; }
   @media (max-width: 860px) {

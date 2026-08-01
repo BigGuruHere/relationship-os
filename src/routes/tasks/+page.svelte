@@ -140,10 +140,10 @@
 
         <div class="grid two">
           <div class="field">
-            <label for="dealContactId">Attach deal-person thread</label>
-            <select id="dealContactId" name="dealContactId">
-              <option value="">No specific deal relationship</option>
-              {#each data.options.dealContacts as dc}<option value={dc.id}>{dc.title}</option>{/each}
+            <label for="companyId">Attach company</label>
+            <select id="companyId" name="companyId">
+              <option value="">No company</option>
+              {#each data.options.companies as c}<option value={c.id}>{c.name}</option>{/each}
             </select>
           </div>
           <div class="field">
@@ -152,6 +152,25 @@
               <option value="">No project</option>
               {#each data.options.projects as p}<option value={p.id}>{p.title}</option>{/each}
             </select>
+          </div>
+        </div>
+
+        <div class="grid two">
+          <div class="field">
+            <label for="dealContactId">Attach deal-person thread</label>
+            <select id="dealContactId" name="dealContactId">
+              <option value="">No specific deal relationship</option>
+              {#each data.options.dealContacts as dc}<option value={dc.id}>{dc.title}</option>{/each}
+            </select>
+            <p class="hint">Selecting this also sets the related person and deal.</p>
+          </div>
+          <div class="field">
+            <label for="dealCompanyId">Attach deal-company thread</label>
+            <select id="dealCompanyId" name="dealCompanyId">
+              <option value="">No specific deal-company relationship</option>
+              {#each data.options.dealCompanies as dc}<option value={dc.id}>{dc.title}</option>{/each}
+            </select>
+            <p class="hint">Selecting this also sets the related company and deal.</p>
           </div>
         </div>
 
@@ -233,7 +252,9 @@
             <div class="context-row">
               {#if task.contact}<a class="chip" href={`/contacts/${task.contact.id}`}>Person: {task.contact.name}</a>{/if}
               {#if task.deal}<a class="chip" href={`/deals/${task.deal.id}`}>Deal: {task.deal.title}</a>{/if}
-              {#if task.dealContact}<a class="chip" href={`/deals/${task.dealContact.dealId}/relationships/${task.dealContact.id}`}>Thread: {task.dealContact.contactName}</a>{/if}
+              {#if task.company}<a class="chip" href={`/companies/${task.company.id}`}>Company: {task.company.name}</a>{/if}
+              {#if task.dealContact}<a class="chip" href={`/deals/${task.dealContact.dealId}/relationships/${task.dealContact.id}`}>Person thread: {task.dealContact.contactName}</a>{/if}
+              {#if task.dealCompany}<a class="chip" href={`/companies/${task.dealCompany.companyId}`}>Company thread: {task.dealCompany.companyName}</a>{/if}
               {#if task.project}<a class="chip" href={`/projects/${task.project.id}`}>Project: {task.project.title}</a>{/if}
               {#if task.waitingOnContact}<a class="chip" href={`/contacts/${task.waitingOnContact.id}`}>Waiting on: {task.waitingOnContact.name}</a>{/if}
               {#if task.assignedToContact}<a class="chip" href={`/contacts/${task.assignedToContact.id}`}>Assigned: {task.assignedToContact.name}</a>{/if}
@@ -267,6 +288,7 @@
   h2 { margin: 0; font-size: 1.1rem; }
   .eyebrow { color: var(--accent); font-weight: 700; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.04em; }
   .muted { color: var(--muted); }
+  .hint { color: var(--muted); font-size: 0.82rem; margin: 4px 0 0; }
   .small { font-size: 0.9rem; }
   .summary-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-bottom: 12px; }
   .stat { padding: 12px; display: grid; gap: 4px; }

@@ -4,82 +4,8 @@
   // SECURITY: Data has already been decrypted server side where needed.
   import VoiceTextField from '$lib/recording/VoiceTextField.svelte';
 
-  export let data: {
-    contact: {
-      id: string;
-      name: string;
-      email: string | null;
-      phone: string | null;
-      company: string | null;
-      position: string | null;
-      linkedin: string | null;
-      createdAt: string | Date;
-      reconnectEveryDays?: number | null;
-      lastContactedAt?: string | Date | null;
-      tags?: { name: string; slug: string }[];
-    };
-    relationships?: Array<{
-      id: string;
-      otherContactId: string;
-      otherContactName: string;
-      type: string | null;
-      label: string;
-      isDirectional: boolean;
-      direction: 'incoming' | 'outgoing';
-    }>;
-    contactOptions?: Array<{ id: string; name: string }>;
-    deals?: Array<{
-      id: string;
-      linkId: string;
-      title: string;
-      statusLabel: string;
-      probability: number | null;
-      valueLabel: string;
-      expectedCloseDate: string | Date | null;
-      relationshipLabel: string;
-      notes: string;
-      isPrimary: boolean;
-      stage?: string;
-      stageLabel?: string;
-      interestLevel?: string;
-      interestLabel?: string;
-      confidentialityStage?: string;
-      confidentialityLabel?: string;
-      nextAction?: string;
-      nextFollowUpAt?: string | Date | null;
-      noteCount?: number;
-      taskCount?: number;
-    }>;
-    dealOptions?: Array<{ id: string; title: string; statusLabel: string }>;
-    dealRelationshipOptions?: Array<{ value: string; label: string }>;
-    interactions?: any[];
-    dealNotes?: Array<{
-      id: string;
-      channel: string;
-      occurredAt: string | Date;
-      preview: string;
-      dealId: string;
-      dealTitle: string;
-      dealStatusLabel: string;
-    }>;
-    dealContactNotes?: Array<{
-      id: string;
-      channel: string;
-      occurredAt: string | Date;
-      preview: string;
-      dealId: string;
-      dealTitle: string;
-      dealStatusLabel: string;
-      dealContactId: string;
-    }>;
-    tasks?: any[];
-    projectOptions?: Array<{ id: string; title: string; statusLabel: string }>;
-    taskStatusOptions?: Array<{ value: string; label: string }>;
-    taskUrgencyOptions?: Array<{ value: string; label: string }>;
-    taskImportanceOptions?: Array<{ value: string; label: string }>;
-    taskTypeOptions?: Array<{ value: string; label: string }>;
-    reminders?: any[];
-  };
+  export let data: any;
+
 
   const contact = data?.contact ?? null;
   const tags = contact?.tags ?? [];
@@ -94,6 +20,7 @@
   const taskImportanceOptions = data?.taskImportanceOptions ?? [];
   const taskTypeOptions = data?.taskTypeOptions ?? [];
   const relationships = data?.relationships ?? [];
+  const companies = data?.companies ?? [];
   const contactOptions = data?.contactOptions ?? [];
   const deals = data?.deals ?? [];
   const dealOptions = data?.dealOptions ?? [];
@@ -307,6 +234,26 @@
         </div>
 
         <div class="section-block">
+          <h2>Companies</h2>
+          {#if companies.length === 0}
+            <p class="muted">No company memberships yet.</p>
+          {:else}
+            <div class="mini-list">
+              {#each companies as company}
+                <div class="mini-row">
+                  <div>
+                    <div class="strong-link"><a href={`/companies/${company.companyId}`}>{company.name}</a> {#if company.isPrimary}<span class="status-chip">Primary</span>{/if}</div>
+                    <div class="muted small">{company.title}{company.title && company.department ? ' - ' : ''}{company.department} - {company.kindLabel} - {company.statusLabel}</div>
+                    {#if company.industry || company.location}<div class="muted small">{company.industry}{company.industry && company.location ? ' - ' : ''}{company.location}</div>{/if}
+                    {#if company.notes}<p class="preline muted small">{company.notes}</p>{/if}
+                  </div>
+                </div>
+              {/each}
+            </div>
+          {/if}
+        </div>
+
+        <div class="section-block">
           <h2>Tags</h2>
           {#if tags.length > 0}
             <div class="tag-row">
@@ -368,6 +315,19 @@
                 <input id="dealLabel" name="label" placeholder="e.g. introducer, sponsor" />
               </div>
             </div>
+
+            <div class="grid three">
+              <div class="field"><label for="dealStage">Stage</label><select id="dealStage" name="stage">{#each data.dealContactStageOptions as opt}<option value={opt.value}>{opt.label}</option>{/each}</select></div>
+              <div class="field"><label for="dealInterest">Interest</label><select id="dealInterest" name="interestLevel">{#each data.dealContactInterestOptions as opt}<option value={opt.value}>{opt.label}</option>{/each}</select></div>
+              <div class="field"><label for="dealConfidentiality">Confidentiality</label><select id="dealConfidentiality" name="confidentialityStage">{#each data.dealConfidentialityOptions as opt}<option value={opt.value}>{opt.label}</option>{/each}</select></div>
+            </div>
+
+            <div class="grid two">
+              <div class="field"><label for="dealNextAction">Next action</label><input id="dealNextAction" name="nextAction" placeholder="e.g. send NDA, follow up Friday" /></div>
+              <div class="field"><label for="dealNextFollowUpAt">Next follow-up</label><input id="dealNextFollowUpAt" name="nextFollowUpAt" type="datetime-local" /></div>
+            </div>
+
+            <div class="field"><label for="buyingCriteria">Buying criteria / fit</label><textarea id="buyingCriteria" name="buyingCriteria" rows="2"></textarea></div>
 
             <div class="field">
               <label for="dealNotes">Relationship notes</label>

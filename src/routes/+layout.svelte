@@ -145,6 +145,14 @@
           </svg>
         </a>
 
+        <!-- Companies -->
+        <a class="btn icon" href="/companies" aria-label="Companies" title="Companies">
+          <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <path d="M4 21V5a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v16h-2v-4h-3v4h-2v-4H7v4H4zm3-6h3v-3H7v3zm5 0h3v-3h-3v3zM7 10h3V7H7v3zm5 0h3V7h-3v3z"/>
+            <path d="M18 21v-9h2a2 2 0 0 1 2 2v7h-4z"/>
+          </svg>
+        </a>
+
         <!-- Tasks -->
         <a class="btn icon" href="/tasks" aria-label="Tasks" title="Tasks">
           <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
@@ -221,6 +229,7 @@
       <a class="nav-link" href="/">Contacts</a>
       {#if data.user}
         <a class="nav-link" href="/deals">◆ Deals</a>
+        <a class="nav-link" href="/companies">▥ Companies</a>
         <a class="nav-link" href="/tasks">☑ Tasks{#if (data.tasksOpenCount || 0) > 0} <span class="pill">{data.tasksOpenCount}</span>{/if}</a>
         <a class="nav-link" href="/projects">▣ Projects</a>
       {/if}
@@ -286,6 +295,8 @@
         {#if data.user}
           <span aria-hidden="true">·</span>
           <a href="/deals" aria-label="Deals">Deals</a>
+          <span aria-hidden="true">·</span>
+          <a href="/companies" aria-label="Companies">Companies</a>
         {/if}
         <span aria-hidden="true">·</span>
         {#if !data.user}

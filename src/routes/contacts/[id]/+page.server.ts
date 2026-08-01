@@ -16,7 +16,11 @@ import {
   normaliseDealRelationshipType,
   safeDecrypt
 } from '$lib/deals';
+import { companyContactStatusLabel, companyKindLabel, safeDecryptCompany } from '$lib/companies';
 import {
+  DEAL_CONFIDENTIALITY_STAGES,
+  DEAL_CONTACT_INTERESTS,
+  DEAL_CONTACT_STAGES,
   TASK_IMPORTANCES,
   TASK_STATUSES,
   TASK_TYPES,
@@ -24,6 +28,9 @@ import {
   dealConfidentialityLabel,
   dealContactInterestLabel,
   dealContactStageLabel,
+  normaliseDealConfidentiality,
+  normaliseDealContactInterest,
+  normaliseDealContactStage,
   normaliseTaskImportance,
   normaliseTaskStatus,
   normaliseTaskType,
@@ -103,6 +110,18 @@ export const load: PageServerLoad = async ({ params, locals }) => {
           contactA: { select: { id: true, fullNameEnc: true, linkedUserId: true } }
         }
       },
+      companyLinks: {
+        select: {
+          id: true,
+          titleEnc: true,
+          departmentEnc: true,
+          notesEnc: true,
+          status: true,
+          isPrimary: true,
+          company: { select: { id: true, nameEnc: true, websiteEnc: true, industryEnc: true, locationEnc: true, kind: true, status: true } }
+        },
+        orderBy: [{ isPrimary: 'desc' }, { updatedAt: 'desc' }]
+      },
       dealLinks: {
         select: {
           id: true,
@@ -176,6 +195,22 @@ export const load: PageServerLoad = async ({ params, locals }) => {
       direction: 'incoming' as const
     });
   }
+
+  const companies = row.companyLinks.map((link: any) => ({
+    id: link.id,
+    companyId: link.company.id,
+    name: safeDecryptCompany(link.company.nameEnc, 'company.name', 'Untitled company'),
+    website: safeDecryptCompany(link.company.websiteEnc, 'company.website', ''),
+    industry: safeDecryptCompany(link.company.industryEnc, 'company.industry', ''),
+    location: safeDecryptCompany(link.company.locationEnc, 'company.location', ''),
+    kindLabel: companyKindLabel(link.company.kind),
+    status: link.status,
+    statusLabel: companyContactStatusLabel(link.status),
+    isPrimary: link.isPrimary,
+    title: safeDecryptCompany(link.titleEnc, 'company_contact.title', ''),
+    department: safeDecryptCompany(link.departmentEnc, 'company_contact.department', ''),
+    notes: safeDecryptCompany(link.notesEnc, 'company_contact.notes', '')
+  }));
 
   const deals = row.dealLinks.map((link: any) => ({
     id: link.deal.id,
@@ -370,9 +405,13 @@ export const load: PageServerLoad = async ({ params, locals }) => {
     },
     relationships,
     contactOptions,
+    companies,
     deals,
     dealOptions,
     dealRelationshipOptions: DEAL_RELATIONSHIP_TYPES,
+    dealContactStageOptions: DEAL_CONTACT_STAGES,
+    dealContactInterestOptions: DEAL_CONTACT_INTERESTS,
+    dealConfidentialityOptions: DEAL_CONFIDENTIALITY_STAGES,
     interactions,
     dealNotes,
     dealContactNotes,
@@ -582,6 +621,8 @@ export const actions: Actions = {
     const relationshipType = normaliseDealRelationshipType(form.get('relationshipType'));
     const label = String(form.get('label') || '').trim() || null;
     const notes = String(form.get('notes') || '').trim();
+    const nextAction = String(form.get('nextAction') || '').trim();
+    const buyingCriteria = String(form.get('buyingCriteria') || '').trim();
     const isPrimary = String(form.get('isPrimary') || '') === 'on';
 
     if (!dealId) return fail(400, { error: 'Please select a deal.' });
@@ -610,7 +651,13 @@ export const actions: Actions = {
             relationshipType: relationshipType as any,
             label: label || (relationshipType ? null : 'connected'),
             notesEnc: notes ? encrypt(notes, 'deal_contact.notes') : null,
-            isPrimary
+            isPrimary,
+            stage: normaliseDealContactStage(form.get('stage')) as any,
+            interestLevel: normaliseDealContactInterest(form.get('interestLevel')) as any,
+            confidentialityStage: normaliseDealConfidentiality(form.get('confidentialityStage')) as any,
+            nextActionEnc: nextAction ? encrypt(nextAction, 'deal_contact.next_action') : null,
+            nextFollowUpAt: parseDateTime(form.get('nextFollowUpAt')),
+            buyingCriteriaEnc: buyingCriteria ? encrypt(buyingCriteria, 'deal_contact.buying_criteria') : null
           }
         });
       });

@@ -76,10 +76,10 @@
 
       <div class="grid two">
         <div class="field">
-          <label for="dealContactId">Attach deal-person thread</label>
-          <select id="dealContactId" name="dealContactId">
-            <option value="">No specific deal relationship</option>
-            {#each data.options.dealContacts as dc}<option value={dc.id} selected={data.task.dealContactId === dc.id}>{dc.title}</option>{/each}
+          <label for="companyId">Attach company</label>
+          <select id="companyId" name="companyId">
+            <option value="">No company</option>
+            {#each data.options.companies as c}<option value={c.id} selected={data.task.companyId === c.id}>{c.name}</option>{/each}
           </select>
         </div>
         <div class="field">
@@ -88,6 +88,25 @@
             <option value="">No project</option>
             {#each data.options.projects as p}<option value={p.id} selected={data.task.projectId === p.id}>{p.title}</option>{/each}
           </select>
+        </div>
+      </div>
+
+      <div class="grid two">
+        <div class="field">
+          <label for="dealContactId">Attach deal-person thread</label>
+          <select id="dealContactId" name="dealContactId">
+            <option value="">No specific deal relationship</option>
+            {#each data.options.dealContacts as dc}<option value={dc.id} selected={data.task.dealContactId === dc.id}>{dc.title}</option>{/each}
+          </select>
+          <p class="hint">Selecting this can set the person and deal context.</p>
+        </div>
+        <div class="field">
+          <label for="dealCompanyId">Attach deal-company thread</label>
+          <select id="dealCompanyId" name="dealCompanyId">
+            <option value="">No specific deal-company relationship</option>
+            {#each data.options.dealCompanies as dc}<option value={dc.id} selected={data.task.dealCompanyId === dc.id}>{dc.title}</option>{/each}
+          </select>
+          <p class="hint">Selecting this can set the company and deal context.</p>
         </div>
       </div>
 
@@ -142,6 +161,7 @@
   h1 { margin: 0; }
   .eyebrow { color: var(--accent); font-weight: 700; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.04em; }
   .muted { color: var(--muted); }
+  .hint { color: var(--muted); font-size: 0.82rem; margin: 4px 0 0; }
   .error-card { color: var(--danger); margin-bottom: 12px; }
   .grid.two { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
   .grid.four { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }

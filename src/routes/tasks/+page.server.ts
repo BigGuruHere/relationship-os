@@ -1,11 +1,12 @@
 // src/routes/tasks/+page.server.ts
-// PURPOSE: Unified task inbox for relationship, deal, deal-contact, and project work.
+// PURPOSE: Unified task inbox for relationship, deal, company, deal-thread, and project work.
 // SECURITY: All reads and writes are tenant scoped by locals.user.id. Task text is encrypted at rest.
 
 import type { Actions, PageServerLoad } from './$types';
 import { fail, redirect } from '@sveltejs/kit';
 import { prisma } from '$lib/db';
 import { buildIndexToken, encrypt } from '$lib/crypto';
+import { companyDisplay } from '$lib/companies';
 import { contactDisplayName, contactOptionsForRows } from '$lib/server/contactDisplay';
 import { safeDecrypt } from '$lib/deals';
 import {
@@ -32,7 +33,7 @@ const ACTIVE_STATUSES = ['OPEN', 'IN_PROGRESS', 'WAITING', 'SNOOZED'];
 
 type TaskRow = any;
 
-async function loadTaskRows(userId: string, status: string, q: string) {
+async function loadTaskRows(userId: string, status: string) {
   const where: any = { userId };
   if (status && TASK_STATUSES.some((s) => s.value === status)) {
     where.status = status;
@@ -63,6 +64,16 @@ async function loadTaskRows(userId: string, status: string, q: string) {
       waitingOnContact: { select: { id: true, fullNameEnc: true, linkedUserId: true } },
       deal: { select: { id: true, titleEnc: true, status: true } },
       project: { select: { id: true, titleEnc: true, status: true } },
+      company: { select: { id: true, nameEnc: true, kind: true, status: true } },
+      dealCompany: {
+        select: {
+          id: true,
+          label: true,
+          relationshipType: true,
+          deal: { select: { id: true, titleEnc: true } },
+          company: { select: { id: true, nameEnc: true, kind: true } }
+        }
+      },
       dealContact: {
         select: {
           id: true,
@@ -88,6 +99,9 @@ async function mapTask(row: TaskRow) {
   const waitingName = row.waitingOnContact ? await contactDisplayName(row.waitingOnContact) : '';
   const dealTitle = row.deal ? safeDecrypt(row.deal.titleEnc, 'deal.title', 'Untitled deal') : '';
   const projectTitle = row.project ? safeDecryptTask(row.project.titleEnc, 'project.title', 'Untitled project') : '';
+  const companyName = row.company ? companyDisplay(row.company) : '';
+  const dealCompanyDealTitle = row.dealCompany?.deal ? safeDecrypt(row.dealCompany.deal.titleEnc, 'deal.title', 'Untitled deal') : '';
+  const dealCompanyName = row.dealCompany?.company ? companyDisplay(row.dealCompany.company) : '';
   const threadContactName = row.dealContact?.contact ? await contactDisplayName(row.dealContact.contact) : '';
   const threadDealTitle = row.dealContact?.deal ? safeDecrypt(row.dealContact.deal.titleEnc, 'deal.title', 'Untitled deal') : '';
 
@@ -115,6 +129,15 @@ async function mapTask(row: TaskRow) {
     waitingOnContact: row.waitingOnContact ? { id: row.waitingOnContact.id, name: waitingName } : null,
     deal: row.deal ? { id: row.deal.id, title: dealTitle, status: row.deal.status } : null,
     project: row.project ? { id: row.project.id, title: projectTitle, statusLabel: projectStatusLabel(row.project.status) } : null,
+    company: row.company ? { id: row.company.id, name: companyName, status: row.company.status } : null,
+    dealCompany: row.dealCompany ? {
+      id: row.dealCompany.id,
+      dealId: row.dealCompany.deal.id,
+      companyId: row.dealCompany.company.id,
+      label: row.dealCompany.label || '',
+      dealTitle: dealCompanyDealTitle,
+      companyName: dealCompanyName
+    } : null,
     dealContact: row.dealContact ? {
       id: row.dealContact.id,
       dealId: row.dealContact.deal.id,
@@ -135,6 +158,9 @@ function taskMatchesQuery(task: Awaited<ReturnType<typeof mapTask>>, q: string) 
     task.contact?.name,
     task.deal?.title,
     task.project?.title,
+    task.company?.name,
+    task.dealCompany?.dealTitle,
+    task.dealCompany?.companyName,
     task.waitingOnContact?.name,
     task.assignedToContact?.name,
     task.assignedToText,
@@ -145,10 +171,11 @@ function taskMatchesQuery(task: Awaited<ReturnType<typeof mapTask>>, q: string) 
 }
 
 async function loadOptions(userId: string) {
-  const [contactsRaw, dealsRaw, projectsRaw, dealContactsRaw] = await Promise.all([
+  const [contactsRaw, dealsRaw, projectsRaw, companiesRaw, dealContactsRaw, dealCompaniesRaw] = await Promise.all([
     prisma.contact.findMany({ where: { userId }, select: { id: true, fullNameEnc: true, linkedUserId: true }, orderBy: { createdAt: 'desc' }, take: 300 }),
     prisma.deal.findMany({ where: { userId }, select: { id: true, titleEnc: true, status: true }, orderBy: { updatedAt: 'desc' }, take: 200 }),
     prisma.project.findMany({ where: { userId, status: { not: 'ARCHIVED' as any } }, select: { id: true, titleEnc: true, status: true }, orderBy: { updatedAt: 'desc' }, take: 200 }),
+    prisma.company.findMany({ where: { userId, status: { not: 'ARCHIVED' as any } }, select: { id: true, nameEnc: true, kind: true, status: true }, orderBy: { updatedAt: 'desc' }, take: 300 }),
     prisma.dealContact.findMany({
       where: { userId },
       select: {
@@ -159,12 +186,25 @@ async function loadOptions(userId: string) {
       },
       orderBy: { updatedAt: 'desc' },
       take: 300
+    }),
+    prisma.dealCompany.findMany({
+      where: { userId },
+      select: {
+        id: true,
+        label: true,
+        relationshipType: true,
+        deal: { select: { id: true, titleEnc: true } },
+        company: { select: { id: true, nameEnc: true, kind: true } }
+      },
+      orderBy: { updatedAt: 'desc' },
+      take: 300
     })
   ]);
 
   const contacts = await contactOptionsForRows(contactsRaw as any);
   const deals = dealsRaw.map((d) => ({ id: d.id, title: safeDecrypt(d.titleEnc, 'deal.title', 'Untitled deal'), status: d.status }));
   const projects = projectsRaw.map((p) => ({ id: p.id, title: safeDecryptTask(p.titleEnc, 'project.title', 'Untitled project'), statusLabel: projectStatusLabel(p.status) }));
+  const companies = companiesRaw.map((c) => ({ id: c.id, name: companyDisplay(c), kind: c.kind, status: c.status }));
   const dealContacts = await Promise.all(dealContactsRaw.map(async (link: any) => ({
     id: link.id,
     dealId: link.deal.id,
@@ -172,14 +212,22 @@ async function loadOptions(userId: string) {
     label: link.label || '',
     title: `${safeDecrypt(link.deal.titleEnc, 'deal.title', 'Untitled deal')} - ${await contactDisplayName(link.contact)}${link.label ? ` (${link.label})` : ''}`
   })));
+  const dealCompanies = dealCompaniesRaw.map((link: any) => ({
+    id: link.id,
+    dealId: link.deal.id,
+    companyId: link.company.id,
+    label: link.label || '',
+    title: `${safeDecrypt(link.deal.titleEnc, 'deal.title', 'Untitled deal')} - ${companyDisplay(link.company)}${link.label ? ` (${link.label})` : ''}`
+  }));
 
-  return { contacts, deals, projects, dealContacts };
+  return { contacts, deals, projects, companies, dealContacts, dealCompanies };
 }
 
-async function ownedIdExists(userId: string, kind: 'contact' | 'deal' | 'project', id: string | null) {
+async function ownedIdExists(userId: string, kind: 'contact' | 'deal' | 'project' | 'company', id: string | null) {
   if (!id) return true;
   if (kind === 'contact') return !!(await prisma.contact.findFirst({ where: { id, userId }, select: { id: true } }));
   if (kind === 'deal') return !!(await prisma.deal.findFirst({ where: { id, userId }, select: { id: true } }));
+  if (kind === 'company') return !!(await prisma.company.findFirst({ where: { id, userId }, select: { id: true } }));
   return !!(await prisma.project.findFirst({ where: { id, userId }, select: { id: true } }));
 }
 
@@ -190,7 +238,7 @@ export const load: PageServerLoad = async ({ locals, url }) => {
   const status = String(url.searchParams.get('status') || '').trim().toUpperCase();
   const q = String(url.searchParams.get('q') || '').trim();
 
-  const rows = await loadTaskRows(userId, status, q);
+  const rows = await loadTaskRows(userId, status);
   const mapped = await Promise.all(rows.map(mapTask));
   const tasks = mapped.filter((task) => taskMatchesQuery(task, q));
 
@@ -231,6 +279,8 @@ export const actions: Actions = {
     let contactId = String(form.get('contactId') || '').trim() || null;
     let dealId = String(form.get('dealId') || '').trim() || null;
     let dealContactId = String(form.get('dealContactId') || '').trim() || null;
+    let companyId = String(form.get('companyId') || '').trim() || null;
+    let dealCompanyId = String(form.get('dealCompanyId') || '').trim() || null;
     const projectId = String(form.get('projectId') || '').trim() || null;
     const assignedToContactId = String(form.get('assignedToContactId') || '').trim() || null;
     const waitingOnContactId = String(form.get('waitingOnContactId') || '').trim() || null;
@@ -242,14 +292,22 @@ export const actions: Actions = {
       contactId = link.contactId;
     }
 
-    const [contactOk, dealOk, projectOk, assignedOk, waitingOk] = await Promise.all([
+    if (dealCompanyId) {
+      const link = await prisma.dealCompany.findFirst({ where: { id: dealCompanyId, userId }, select: { id: true, dealId: true, companyId: true } });
+      if (!link) return fail(404, { error: 'Deal-company link not found.' });
+      dealId = link.dealId;
+      companyId = link.companyId;
+    }
+
+    const [contactOk, dealOk, projectOk, companyOk, assignedOk, waitingOk] = await Promise.all([
       ownedIdExists(userId, 'contact', contactId),
       ownedIdExists(userId, 'deal', dealId),
       ownedIdExists(userId, 'project', projectId),
+      ownedIdExists(userId, 'company', companyId),
       ownedIdExists(userId, 'contact', assignedToContactId),
       ownedIdExists(userId, 'contact', waitingOnContactId)
     ]);
-    if (!contactOk || !dealOk || !projectOk || !assignedOk || !waitingOk) return fail(404, { error: 'One of the selected links was not found.' });
+    if (!contactOk || !dealOk || !projectOk || !companyOk || !assignedOk || !waitingOk) return fail(404, { error: 'One of the selected links was not found.' });
 
     const notes = String(form.get('notes') || '').trim();
     const summary = String(form.get('summary') || '').trim();
@@ -274,6 +332,8 @@ export const actions: Actions = {
           contactId,
           dealId,
           dealContactId,
+          companyId,
+          dealCompanyId,
           projectId
         }
       });

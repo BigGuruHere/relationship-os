@@ -96,8 +96,13 @@
         </div>
 
         <div class="grid two">
-          <div class="field"><label for="dealContactId">Attach deal-person thread</label><select id="dealContactId" name="dealContactId"><option value="">No specific thread</option>{#each data.options.dealContacts as dc}<option value={dc.id}>{dc.title}</option>{/each}</select></div>
+          <div class="field"><label for="companyId">Attach company</label><select id="companyId" name="companyId"><option value="">No company</option>{#each data.options.companies as c}<option value={c.id}>{c.name}</option>{/each}</select></div>
           <div class="field"><label for="assignedToText">Assigned to text</label><input id="assignedToText" name="assignedToText" placeholder="e.g. me, Sam, accountant" /></div>
+        </div>
+
+        <div class="grid two">
+          <div class="field"><label for="dealContactId">Attach deal-person thread</label><select id="dealContactId" name="dealContactId"><option value="">No specific person thread</option>{#each data.options.dealContacts as dc}<option value={dc.id}>{dc.title}</option>{/each}</select></div>
+          <div class="field"><label for="dealCompanyId">Attach deal-company thread</label><select id="dealCompanyId" name="dealCompanyId"><option value="">No specific company thread</option>{#each data.options.dealCompanies as dc}<option value={dc.id}>{dc.title}</option>{/each}</select></div>
         </div>
 
         <div class="grid two">
@@ -142,6 +147,15 @@
         <div class="chip-list">{#each data.relatedPeople as person}<a class="chip" href={`/contacts/${person.id}`}>{person.name}</a>{/each}</div>
       {/if}
     </section>
+
+    <section class="card panel">
+      <h2>Related companies</h2>
+      {#if data.relatedCompanies.length === 0}
+        <p class="muted">No companies are linked through project tasks yet.</p>
+      {:else}
+        <div class="chip-list">{#each data.relatedCompanies as company}<a class="chip" href={`/companies/${company.id}`}>{company.name}</a>{/each}</div>
+      {/if}
+    </section>
   </div>
 
   <section class="card panel">
@@ -160,7 +174,9 @@
               <div class="context-row">
                 {#if task.contact}<a class="chip" href={`/contacts/${task.contact.id}`}>Person: {task.contact.name}</a>{/if}
                 {#if task.deal}<a class="chip" href={`/deals/${task.deal.id}`}>Deal: {task.deal.title}</a>{/if}
-                {#if task.dealContact}<a class="chip" href={`/deals/${task.dealContact.dealId}/relationships/${task.dealContact.id}`}>Thread: {task.dealContact.contactName}</a>{/if}
+                {#if task.company}<a class="chip" href={`/companies/${task.company.id}`}>Company: {task.company.name}</a>{/if}
+                {#if task.dealContact}<a class="chip" href={`/deals/${task.dealContact.dealId}/relationships/${task.dealContact.id}`}>Person thread: {task.dealContact.contactName}</a>{/if}
+                {#if task.dealCompany}<a class="chip" href={`/companies/${task.dealCompany.companyId}`}>Company thread: {task.dealCompany.companyName}</a>{/if}
                 {#if task.waitingOnContact}<a class="chip" href={`/contacts/${task.waitingOnContact.id}`}>Waiting on: {task.waitingOnContact.name}</a>{/if}
                 {#if task.assignedToContact}<a class="chip" href={`/contacts/${task.assignedToContact.id}`}>Assigned: {task.assignedToContact.name}</a>{/if}
               </div>

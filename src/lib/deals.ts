@@ -24,6 +24,7 @@ export const DEAL_RELATIONSHIP_TYPES = [
   { value: 'BROKER', label: 'Broker' },
   { value: 'PARTNER', label: 'Partner' },
   { value: 'BUYER', label: 'Buyer' },
+  { value: 'POTENTIAL_BUYER', label: 'Potential buyer' },
   { value: 'SELLER', label: 'Seller' },
   { value: 'INVESTOR', label: 'Investor' },
   { value: 'SUPPLIER', label: 'Supplier' },

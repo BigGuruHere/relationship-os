@@ -10,6 +10,7 @@
       contacts: Array<{ id: string; name: string; email: string; phone: string; company: string; tags: { name: string }[] }>;
       notes: Array<{ id: string; contactId: string; contactName: string; occurredAt: string | Date; preview: string }>;
       tags: Array<{ id: string; name: string; contactCount: number }>;
+      companies: Array<{ id: string; name: string; kindLabel: string; statusLabel: string; website: string; preview: string }>;
       deals: Array<{ id: string; title: string; statusLabel: string; valueLabel: string; probability: number | null; preview: string }>;
     };
   };
@@ -21,7 +22,7 @@
 <div class="container">
   <div class="card" style="padding:16px; margin-bottom:12px;">
     <form method="GET" class="search-bar">
-      <input type="text" name="q" bind:value={q} placeholder="Search notes, contacts, tags, or deals" class="search-input" aria-label="Search query" />
+      <input type="text" name="q" bind:value={q} placeholder="Search notes, contacts, companies, tags, or deals" class="search-input" aria-label="Search query" />
       <select name="scope" bind:value={scope} aria-label="Search scope" title="Search scope" class="scope-select">
         <option value="all">All</option>
         <option value="contacts">Contacts</option>
@@ -43,6 +44,19 @@
             <a href={`/deals/${d.id}`} class="link strong">◆ {d.title}</a>
             <div class="muted small">{d.statusLabel} - {d.valueLabel}{d.probability === null ? '' : ` - ${d.probability}% chance`}</div>
             {#if d.preview}<div style="margin-top:6px;">{d.preview}</div>{/if}
+          </div>
+        {/each}
+      {/if}
+
+
+
+      {#if data.results.companies.length}
+        <h3>Companies ({data.results.companies.length})</h3>
+        {#each data.results.companies as c}
+          <div class="card result-card">
+            <a href={`/companies/${c.id}`} class="link strong">▥ {c.name}</a>
+            <div class="muted small">{c.kindLabel} - {c.statusLabel}{c.website ? ` - ${c.website}` : ''}</div>
+            {#if c.preview}<div style="margin-top:6px;">{c.preview}</div>{/if}
           </div>
         {/each}
       {/if}
@@ -84,7 +98,7 @@
         {/each}
       {/if}
 
-      {#if !data.results.contacts.length && !data.results.notes.length && !data.results.tags.length && !data.results.deals.length}
+      {#if !data.results.contacts.length && !data.results.notes.length && !data.results.tags.length && !data.results.companies.length && !data.results.deals.length}
         <div class="muted">No results - try another term or switch scope.</div>
       {/if}
     {:else if data.scope === 'deals'}
@@ -101,8 +115,17 @@
         <div class="muted">No deals found.</div>
       {/if}
     {:else if data.scope === 'company'}
-      {#if data.results.contacts.length}
-        <h3>Company matches ({data.results.contacts.length})</h3>
+      {#if data.results.companies.length}
+        <h3>Companies ({data.results.companies.length})</h3>
+        {#each data.results.companies as c}
+          <div class="card result-card">
+            <a href={`/companies/${c.id}`} class="link strong">▥ {c.name}</a>
+            <div class="muted small">{c.kindLabel} - {c.statusLabel}{c.website ? ` - ${c.website}` : ''}</div>
+            {#if c.preview}<div style="margin-top:6px;">{c.preview}</div>{/if}
+          </div>
+        {/each}
+      {:else if data.results.contacts.length}
+        <h3>Legacy company fields ({data.results.contacts.length})</h3>
         {#each data.results.contacts as c}
           <div class="card result-card">
             <a href={`/contacts/${c.id}`} class="link strong">{c.name}</a>

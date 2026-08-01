@@ -70,6 +70,12 @@ model User {
   projects Project[]
   tasks    Task[]
 
+  // IT: company records and relationship graph for business broker use.
+  companies             Company[]
+  companyContacts       CompanyContact[]
+  dealCompanies         DealCompany[]
+  companyRelationships  CompanyRelationship[]
+
   role       UserRole @default(member)
   publicSlug String?  @unique
 
@@ -327,6 +333,9 @@ model Contact {
   assignedTasks     Task[]            @relation("TaskAssignedContact")
   waitingTasks      Task[]            @relation("TaskWaitingContact")
 
+  // IT: company memberships/employment history. A person can belong to more than one company over time.
+  companyLinks      CompanyContact[]
+
   // Indexes for search and tenancy
   @@index([userId])
   @@index([fullNameIdx])
@@ -536,6 +545,7 @@ enum DealRelationshipType {
   BROKER
   PARTNER
   BUYER
+  POTENTIAL_BUYER
   SELLER
   INVESTOR
   SUPPLIER
@@ -567,6 +577,7 @@ model Deal {
   updatedAt DateTime @updatedAt
 
   contacts DealContact[]
+  companies DealCompany[]
   notes    DealNote[]
   dealContactNotes DealContactNote[]
   tasks    Task[]
@@ -713,6 +724,190 @@ model DealContactNote {
   @@index([userId, contactId, occurredAt])
 }
 
+
+// ---------------------------------------------------------------------------
+// COMPANY MODELS
+// ---------------------------------------------------------------------------
+// IT: broad company categories used for brokers, acquirers, advisors, funders, and vendors.
+enum CompanyKind {
+  OPERATING_BUSINESS
+  STRATEGIC_ACQUIRER
+  FINANCIAL_BUYER
+  INVESTOR
+  BROKERAGE
+  ADVISORY_FIRM
+  LAW_FIRM
+  ACCOUNTING_FIRM
+  FUNDER
+  VENDOR_BUSINESS
+  OTHER
+}
+
+enum CompanyStatus {
+  ACTIVE
+  WATCHLIST
+  DO_NOT_CONTACT
+  ARCHIVED
+}
+
+enum CompanyContactStatus {
+  CURRENT
+  FORMER
+  ADVISOR
+  UNKNOWN
+}
+
+enum CompanyRelationshipType {
+  PARENT_COMPANY
+  SUBSIDIARY
+  DIVISION
+  SISTER_COMPANY
+  INVESTOR_IN
+  OWNED_BY
+  STRATEGIC_PARTNER
+  REFERRAL_PARTNER
+  SUPPLIER
+  CUSTOMER
+  COMPETITOR
+  ADVISOR_TO
+  BROKER_FOR
+  RELATED_ENTITY
+  CUSTOM
+}
+
+// IT: first-class organisation record. This lets you track likely acquirers before you know a person inside them.
+model Company {
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  nameEnc        String
+  nameIdx        String
+  websiteEnc     String?
+  websiteIdx     String?
+  industryEnc    String?
+  locationEnc    String?
+  descriptionEnc String?
+  criteriaEnc    String?
+  notesEnc       String?
+
+  kind   CompanyKind   @default(OPERATING_BUSINESS)
+  status CompanyStatus @default(ACTIVE)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  contacts         CompanyContact[]
+  dealLinks        DealCompany[]
+  tasks            Task[]
+  relationshipsAsA CompanyRelationship[] @relation("CompanyAsA")
+  relationshipsAsB CompanyRelationship[] @relation("CompanyAsB")
+
+  @@unique([userId, nameIdx])
+  @@index([userId, kind])
+  @@index([userId, status])
+  @@index([nameIdx])
+  @@index([websiteIdx])
+}
+
+// IT: links people to companies. This is employment/membership history rather than a single company field on Contact.
+model CompanyContact {
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  companyId String
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  contactId String
+  contact   Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  titleEnc      String?
+  departmentEnc String?
+  notesEnc      String?
+  status        CompanyContactStatus @default(CURRENT)
+  isPrimary     Boolean @default(false)
+
+  startDate DateTime?
+  endDate   DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([companyId, contactId])
+  @@index([userId, companyId])
+  @@index([userId, contactId])
+  @@index([userId, status])
+}
+
+// IT: a company inside a deal. Useful for potential acquirers where you do not yet have a human contact.
+model DealCompany {
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  dealId String
+  deal   Deal   @relation(fields: [dealId], references: [id], onDelete: Cascade)
+
+  companyId String
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  relationshipType DealRelationshipType?
+  label            String? @default("connected")
+  notesEnc         String?
+  isPrimary        Boolean @default(false)
+
+  stage                DealContactStage         @default(NOT_CONTACTED)
+  interestLevel        DealContactInterest      @default(UNKNOWN)
+  confidentialityStage DealConfidentialityStage @default(NONE)
+  nextActionEnc        String?
+  nextFollowUpAt       DateTime?
+  lastContactedAt      DateTime?
+  acquisitionRationaleEnc String?
+  objectionsEnc        String?
+  fundingCapacityEnc   String?
+  referralPathEnc      String?
+
+  tasks Task[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([dealId, companyId, label])
+  @@index([userId, dealId])
+  @@index([userId, companyId])
+  @@index([userId, relationshipType])
+  @@index([userId, stage])
+  @@index([userId, interestLevel])
+  @@index([userId, nextFollowUpAt])
+}
+
+// IT: company graph for parents/subsidiaries, investors, referral partners, and related entities.
+model CompanyRelationship {
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  companyAId String
+  companyBId String
+
+  relationshipType CompanyRelationshipType?
+  label            String? @default("related")
+  notesEnc         String?
+  isDirectional    Boolean @default(true)
+
+  companyA Company @relation("CompanyAsA", fields: [companyAId], references: [id], onDelete: Cascade)
+  companyB Company @relation("CompanyAsB", fields: [companyBId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, companyAId, companyBId, relationshipType, label])
+  @@index([userId, companyAId])
+  @@index([userId, companyBId])
+  @@index([userId, relationshipType])
+}
+
 // ---------------------------------------------------------------------------
 // PROJECT AND TASK MODELS
 // ---------------------------------------------------------------------------
@@ -822,6 +1017,13 @@ model Task {
   projectId String?
   project   Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
 
+  // IT: optional company context for broker work.
+  companyId String?
+  company   Company? @relation(fields: [companyId], references: [id], onDelete: SetNull)
+
+  dealCompanyId String?
+  dealCompany   DealCompany? @relation(fields: [dealCompanyId], references: [id], onDelete: SetNull)
+
   sourceType String?
   sourceId   String?
 
@@ -834,5 +1036,8 @@ model Task {
   @@index([userId, dealId])
   @@index([userId, dealContactId])
   @@index([userId, projectId])
+  @@index([userId, companyId])
+  @@index([userId, dealCompanyId])
   @@index([userId, waitingOnContactId])
 }
+

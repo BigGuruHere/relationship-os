@@ -1,11 +1,12 @@
 // src/routes/projects/[id]/+page.server.ts
-// PURPOSE: Project command-centre page showing the tasks, people, deals, and waiting items connected to one workstream.
+// PURPOSE: Project command-centre page showing the tasks, people, deals, companies, and waiting items connected to one workstream.
 // SECURITY: Every read/write is tenant scoped by locals.user.id. Project/task text is encrypted at rest.
 
 import type { Actions, PageServerLoad } from './$types';
 import { fail, redirect } from '@sveltejs/kit';
 import { prisma } from '$lib/db';
 import { buildIndexToken, encrypt } from '$lib/crypto';
+import { companyDisplay } from '$lib/companies';
 import { safeDecrypt } from '$lib/deals';
 import { contactDisplayName, contactOptionsForRows } from '$lib/server/contactDisplay';
 import {
@@ -31,9 +32,10 @@ import {
 const ACTIVE_TASK_STATUSES = ['OPEN', 'IN_PROGRESS', 'WAITING', 'SNOOZED'];
 
 async function loadOptions(userId: string) {
-  const [contactsRaw, dealsRaw, dealContactsRaw] = await Promise.all([
+  const [contactsRaw, dealsRaw, companiesRaw, dealContactsRaw, dealCompaniesRaw] = await Promise.all([
     prisma.contact.findMany({ where: { userId }, select: { id: true, fullNameEnc: true, linkedUserId: true }, orderBy: { createdAt: 'desc' }, take: 300 }),
     prisma.deal.findMany({ where: { userId }, select: { id: true, titleEnc: true, status: true }, orderBy: { updatedAt: 'desc' }, take: 200 }),
+    prisma.company.findMany({ where: { userId, status: { not: 'ARCHIVED' as any } }, select: { id: true, nameEnc: true, kind: true, status: true }, orderBy: { updatedAt: 'desc' }, take: 300 }),
     prisma.dealContact.findMany({
       where: { userId },
       select: {
@@ -44,24 +46,43 @@ async function loadOptions(userId: string) {
       },
       orderBy: { updatedAt: 'desc' },
       take: 300
+    }),
+    prisma.dealCompany.findMany({
+      where: { userId },
+      select: {
+        id: true,
+        label: true,
+        deal: { select: { id: true, titleEnc: true } },
+        company: { select: { id: true, nameEnc: true, kind: true } }
+      },
+      orderBy: { updatedAt: 'desc' },
+      take: 300
     })
   ]);
 
   const contacts = await contactOptionsForRows(contactsRaw as any);
   const deals = dealsRaw.map((deal) => ({ id: deal.id, title: safeDecrypt(deal.titleEnc, 'deal.title', 'Untitled deal'), status: deal.status }));
+  const companies = companiesRaw.map((company) => ({ id: company.id, name: companyDisplay(company), kind: company.kind, status: company.status }));
   const dealContacts = await Promise.all(dealContactsRaw.map(async (link: any) => ({
     id: link.id,
     dealId: link.deal.id,
     contactId: link.contact.id,
     title: `${safeDecrypt(link.deal.titleEnc, 'deal.title', 'Untitled deal')} - ${await contactDisplayName(link.contact)}${link.label ? ` (${link.label})` : ''}`
   })));
+  const dealCompanies = dealCompaniesRaw.map((link: any) => ({
+    id: link.id,
+    dealId: link.deal.id,
+    companyId: link.company.id,
+    title: `${safeDecrypt(link.deal.titleEnc, 'deal.title', 'Untitled deal')} - ${companyDisplay(link.company)}${link.label ? ` (${link.label})` : ''}`
+  }));
 
-  return { contacts, deals, dealContacts };
+  return { contacts, deals, companies, dealContacts, dealCompanies };
 }
 
-async function ownedIdExists(userId: string, kind: 'contact' | 'deal', id: string | null) {
+async function ownedIdExists(userId: string, kind: 'contact' | 'deal' | 'company', id: string | null) {
   if (!id) return true;
   if (kind === 'contact') return !!(await prisma.contact.findFirst({ where: { id, userId }, select: { id: true } }));
+  if (kind === 'company') return !!(await prisma.company.findFirst({ where: { id, userId }, select: { id: true } }));
   return !!(await prisma.deal.findFirst({ where: { id, userId }, select: { id: true } }));
 }
 
@@ -102,6 +123,17 @@ export const load: PageServerLoad = async ({ params, locals }) => {
       assignedToContact: { select: { id: true, fullNameEnc: true, linkedUserId: true } },
       waitingOnContact: { select: { id: true, fullNameEnc: true, linkedUserId: true } },
       deal: { select: { id: true, titleEnc: true, status: true } },
+      company: { select: { id: true, nameEnc: true, kind: true, status: true } },
+      dealCompany: {
+        select: {
+          id: true,
+          dealId: true,
+          companyId: true,
+          label: true,
+          deal: { select: { id: true, titleEnc: true, status: true } },
+          company: { select: { id: true, nameEnc: true, kind: true, status: true } }
+        }
+      },
       dealContact: {
         select: {
           id: true,
@@ -118,8 +150,9 @@ export const load: PageServerLoad = async ({ params, locals }) => {
   });
 
   const tasks = await Promise.all(tasksRaw.map(async (task: any) => {
-    const dealFromTask = task.deal || task.dealContact?.deal || null;
+    const dealFromTask = task.deal || task.dealContact?.deal || task.dealCompany?.deal || null;
     const contactFromThread = task.dealContact?.contact || null;
+    const companyFromTask = task.company || task.dealCompany?.company || null;
     return {
       id: task.id,
       title: safeDecryptTask(task.titleEnc, 'task.title', 'Untitled task'),
@@ -139,7 +172,9 @@ export const load: PageServerLoad = async ({ params, locals }) => {
       assignedToContact: task.assignedToContact ? { id: task.assignedToContact.id, name: await contactDisplayName(task.assignedToContact) } : null,
       waitingOnContact: task.waitingOnContact ? { id: task.waitingOnContact.id, name: await contactDisplayName(task.waitingOnContact) } : null,
       deal: dealFromTask ? { id: dealFromTask.id, title: safeDecrypt(dealFromTask.titleEnc, 'deal.title', 'Untitled deal'), status: dealFromTask.status } : null,
-      dealContact: task.dealContact ? { id: task.dealContact.id, dealId: task.dealContact.dealId, contactId: task.dealContact.contactId, contactName: await contactDisplayName(contactFromThread) } : null
+      company: companyFromTask ? { id: companyFromTask.id, name: companyDisplay(companyFromTask), status: companyFromTask.status } : null,
+      dealContact: task.dealContact ? { id: task.dealContact.id, dealId: task.dealContact.dealId, contactId: task.dealContact.contactId, contactName: await contactDisplayName(contactFromThread) } : null,
+      dealCompany: task.dealCompany ? { id: task.dealCompany.id, dealId: task.dealCompany.dealId, companyId: task.dealCompany.companyId, companyName: companyDisplay(task.dealCompany.company) } : null
     };
   }));
 
@@ -153,12 +188,15 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 
   const dealMap = new Map<string, any>();
   const peopleMap = new Map<string, any>();
+  const companyMap = new Map<string, any>();
   for (const task of tasks) {
     if (task.deal) dealMap.set(task.deal.id, task.deal);
+    if (task.company) companyMap.set(task.company.id, task.company);
     for (const person of [task.contact, task.assignedToContact, task.waitingOnContact]) {
       if (person) peopleMap.set(person.id, person);
     }
     if (task.dealContact) peopleMap.set(task.dealContact.contactId, { id: task.dealContact.contactId, name: task.dealContact.contactName });
+    if (task.dealCompany) companyMap.set(task.dealCompany.companyId, { id: task.dealCompany.companyId, name: task.dealCompany.companyName });
   }
 
   return {
@@ -175,6 +213,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
     tasks,
     relatedDeals: [...dealMap.values()],
     relatedPeople: [...peopleMap.values()],
+    relatedCompanies: [...companyMap.values()],
     options: await loadOptions(userId),
     projectStatuses: PROJECT_STATUSES,
     taskStatuses: TASK_STATUSES,
@@ -215,6 +254,8 @@ export const actions: Actions = {
     let contactId = String(form.get('contactId') || '').trim() || null;
     let dealId = String(form.get('dealId') || '').trim() || null;
     let dealContactId = String(form.get('dealContactId') || '').trim() || null;
+    let companyId = String(form.get('companyId') || '').trim() || null;
+    let dealCompanyId = String(form.get('dealCompanyId') || '').trim() || null;
     const assignedToContactId = String(form.get('assignedToContactId') || '').trim() || null;
     const waitingOnContactId = String(form.get('waitingOnContactId') || '').trim() || null;
 
@@ -228,13 +269,21 @@ export const actions: Actions = {
       contactId = contactId || link.contactId;
     }
 
-    const [contactOk, dealOk, assignedOk, waitingOk] = await Promise.all([
+    if (dealCompanyId) {
+      const link = await prisma.dealCompany.findFirst({ where: { id: dealCompanyId, userId }, select: { id: true, dealId: true, companyId: true } });
+      if (!link) return fail(404, { error: 'Deal-company thread not found.' });
+      dealId = link.dealId;
+      companyId = companyId || link.companyId;
+    }
+
+    const [contactOk, dealOk, companyOk, assignedOk, waitingOk] = await Promise.all([
       ownedIdExists(userId, 'contact', contactId),
       ownedIdExists(userId, 'deal', dealId),
+      ownedIdExists(userId, 'company', companyId),
       ownedIdExists(userId, 'contact', assignedToContactId),
       ownedIdExists(userId, 'contact', waitingOnContactId)
     ]);
-    if (!contactOk || !dealOk || !assignedOk || !waitingOk) return fail(404, { error: 'One of the selected links was not found.' });
+    if (!contactOk || !dealOk || !companyOk || !assignedOk || !waitingOk) return fail(404, { error: 'One of the selected links was not found.' });
 
     const notes = String(form.get('notes') || '').trim();
     const summary = String(form.get('summary') || '').trim();
@@ -261,7 +310,9 @@ export const actions: Actions = {
         waitingOnContactId,
         contactId,
         dealId,
-        dealContactId
+        dealContactId,
+        companyId,
+        dealCompanyId
       }
     });
 

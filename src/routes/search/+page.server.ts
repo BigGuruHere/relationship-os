@@ -7,6 +7,7 @@ import type { PageServerLoad } from './$types';
 import { prisma } from '$lib/db';
 import { decrypt, buildIndexToken } from '$lib/crypto';
 import { semanticSearchInteractions } from '$lib/embeddings';
+import { companyKindLabel, companyStatusLabel, safeDecryptCompany } from '$lib/companies';
 import { dealStatusLabel, formatDealValue, safeDecrypt } from '$lib/deals';
 
 type Scope = 'all' | 'contacts' | 'notes' | 'tags' | 'company' | 'deals';
@@ -22,7 +23,7 @@ function decryptContactField(value: string | null, aad: string) {
 
 export const load: PageServerLoad = async ({ url, locals }) => {
   if (!locals.user) {
-    return { q: '', scope: 'all', results: { contacts: [], notes: [], tags: [], deals: [] } };
+    return { q: '', scope: 'all', results: { contacts: [], notes: [], tags: [], companies: [], deals: [] } };
   }
 
   const q = (url.searchParams.get('q') || '').trim();
@@ -31,7 +32,7 @@ export const load: PageServerLoad = async ({ url, locals }) => {
     ? requestedScope
     : 'all';
 
-  if (!q) return { q: '', scope, results: { contacts: [], notes: [], tags: [], deals: [] } };
+  if (!q) return { q: '', scope, results: { contacts: [], notes: [], tags: [], companies: [], deals: [] } };
 
   const doContacts = scope === 'all' || scope === 'contacts';
   const doNotes = scope === 'all' || scope === 'notes';
@@ -42,6 +43,7 @@ export const load: PageServerLoad = async ({ url, locals }) => {
   const contacts: Array<{ id: string; name: string; email: string; phone: string; company: string; tags: { name: string }[] }> = [];
   const notes: Array<{ id: string; contactId: string; contactName: string; occurredAt: Date; preview: string }> = [];
   const tags: Array<{ id: string; name: string; contactCount: number }> = [];
+  const companies: Array<{ id: string; name: string; kindLabel: string; statusLabel: string; website: string; preview: string }> = [];
   const deals: Array<{ id: string; title: string; statusLabel: string; valueLabel: string; probability: number | null; preview: string }> = [];
 
   if (doContacts || doCompany) {
@@ -122,6 +124,49 @@ export const load: PageServerLoad = async ({ url, locals }) => {
       });
 
       if (contacts.length >= LIMIT) break;
+    }
+  }
+
+
+  if (doCompany) {
+    const companyRows: any[] = await prisma.company.findMany({
+      where: { userId: locals.user.id },
+      select: {
+        id: true,
+        nameEnc: true,
+        websiteEnc: true,
+        industryEnc: true,
+        descriptionEnc: true,
+        criteriaEnc: true,
+        notesEnc: true,
+        kind: true,
+        status: true
+      },
+      orderBy: { updatedAt: 'desc' },
+      take: 300
+    });
+
+    const qLower = q.toLowerCase();
+    for (const row of companyRows) {
+      const name = safeDecryptCompany(row.nameEnc, 'company.name', 'Untitled company');
+      const website = safeDecryptCompany(row.websiteEnc, 'company.website', '');
+      const industry = safeDecryptCompany(row.industryEnc, 'company.industry', '');
+      const description = safeDecryptCompany(row.descriptionEnc, 'company.description', '');
+      const criteria = safeDecryptCompany(row.criteriaEnc, 'company.criteria', '');
+      const notesText = safeDecryptCompany(row.notesEnc, 'company.notes', '');
+      const searchable = [name, website, industry, description, criteria, notesText].join(' ').toLowerCase();
+      if (!searchable.includes(qLower)) continue;
+
+      companies.push({
+        id: row.id,
+        name,
+        kindLabel: companyKindLabel(row.kind),
+        statusLabel: companyStatusLabel(row.status),
+        website,
+        preview: description.length > 180 ? `${description.slice(0, 177)}...` : description
+      });
+
+      if (companies.length >= LIMIT) break;
     }
   }
 
@@ -214,5 +259,5 @@ export const load: PageServerLoad = async ({ url, locals }) => {
     }
   }
 
-  return { q, scope, results: { contacts, notes, tags, deals } };
+  return { q, scope, results: { contacts, notes, tags, companies, deals } };
 };

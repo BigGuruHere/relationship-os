@@ -4,6 +4,7 @@
   // SECURITY: All data has been tenant-filtered and decrypted server side.
 
   import VoiceTextField from '$lib/recording/VoiceTextField.svelte';
+  import ExchangeItemsPanel from '$lib/ExchangeItemsPanel.svelte';
 
   export let data: any;
   export let form: any;
@@ -52,6 +53,8 @@
   </div>
 
   {#if form?.error}<div class="card error-card">{form.error}</div>{/if}
+
+  <ExchangeItemsPanel items={data.exchangeItems ?? []} entityLabel={data.project.title} />
 
   <div class="summary-grid">
     <div class="card stat"><span>Active</span><strong>{data.summary.active}</strong></div>

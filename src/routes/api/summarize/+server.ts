@@ -16,6 +16,11 @@ import { decrypt } from '$lib/crypto';
 import { summarizeText } from '$lib/ai';
 import { createEmbeddingForText } from '$lib/embeddings_api';
 
+import {
+  DEFAULT_TAG_MIN_SCORE,
+  DEFAULT_TAG_SUGGESTION_LIMIT
+} from '$lib/tag_suggestions';
+
 // helper - vector literal for pgvector
 function toVecLiteral(vec: number[]) {
   return `[${vec.join(',')}]`;
@@ -83,14 +88,19 @@ export const POST: RequestHandler = async ({ locals, request }) => {
         WHERE t."userId" = $2
           AND t."embedding_vec" IS NOT NULL
         ORDER BY t."embedding_vec" <=> $1::vector ASC
-        LIMIT 8
+        LIMIT ${DEFAULT_TAG_SUGGESTION_LIMIT}
         `,
         literal,
         locals.user.id
       );
 
-      const MIN = typeof body.minScore === 'number' ? Number(body.minScore) : 0.25;
-      suggestedTags = (rows || [])
+// IT: Use caller-supplied threshold if provided, otherwise use the app-wide default.
+const MIN =
+  typeof body.minScore === 'number'
+    ? Number(body.minScore)
+    : DEFAULT_TAG_MIN_SCORE;
+    
+    suggestedTags = (rows || [])
         .filter(r => Number(r.score) >= MIN)
         .map(r => ({ id: r.id, name: r.name, score: Number(r.score) }));
     }

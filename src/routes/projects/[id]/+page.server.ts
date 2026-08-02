@@ -9,6 +9,7 @@ import { buildIndexToken, encrypt } from '$lib/crypto';
 import { companyDisplay } from '$lib/companies';
 import { safeDecrypt } from '$lib/deals';
 import { contactDisplayName, contactOptionsForRows } from '$lib/server/contactDisplay';
+import { createExchangeItemFromForm, deleteExchangeItem, loadExchangeItems } from '$lib/server/exchange';
 import {
   PROJECT_STATUSES,
   TASK_IMPORTANCES,
@@ -178,6 +179,8 @@ export const load: PageServerLoad = async ({ params, locals }) => {
     };
   }));
 
+  const exchangeItems = await loadExchangeItems({ userId, links: { projectId: project.id } });
+
   const now = new Date();
   const summary = {
     active: tasks.filter((task) => ACTIVE_TASK_STATUSES.includes(task.status)).length,
@@ -214,6 +217,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
     relatedDeals: [...dealMap.values()],
     relatedPeople: [...peopleMap.values()],
     relatedCompanies: [...companyMap.values()],
+    exchangeItems,
     options: await loadOptions(userId),
     projectStatuses: PROJECT_STATUSES,
     taskStatuses: TASK_STATUSES,
@@ -224,6 +228,30 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 };
 
 export const actions: Actions = {
+
+  createExchangeItem: async ({ request, params, locals }) => {
+    if (!locals.user) throw redirect(303, '/auth/login');
+    const userId = locals.user.id;
+    const exists = await prisma.project.findFirst({ where: { id: params.id, userId }, select: { id: true } });
+    if (!exists) return fail(404, { error: 'Project not found.' });
+    try {
+      await createExchangeItemFromForm({ userId, form: await request.formData(), links: { projectId: params.id } });
+    } catch (err: any) {
+      console.error('[projects:createExchangeItem] failed', err);
+      return fail(400, { error: err?.message || 'Failed to save want/offer.' });
+    }
+    throw redirect(303, `/projects/${params.id}`);
+  },
+
+  deleteExchangeItem: async ({ request, params, locals }) => {
+    if (!locals.user) throw redirect(303, '/auth/login');
+    const form = await request.formData();
+    const exchangeItemId = String(form.get('exchangeItemId') || '').trim();
+    if (!exchangeItemId) return fail(400, { error: 'Missing want/offer id.' });
+    await deleteExchangeItem({ userId: locals.user.id, id: exchangeItemId, links: { projectId: params.id } });
+    throw redirect(303, `/projects/${params.id}`);
+  },
+
   updateProject: async ({ request, params, locals }) => {
     if (!locals.user) throw redirect(303, '/auth/login');
     const form = await request.formData();

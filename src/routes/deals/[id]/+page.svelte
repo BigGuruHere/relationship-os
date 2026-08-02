@@ -3,6 +3,7 @@
   // PURPOSE: Show one deal, its people, commercial conversation threads, notes, and tasks.
   // SECURITY: This page renders server-prepared decrypted display values only.
   import VoiceTextField from '$lib/recording/VoiceTextField.svelte';
+  import ExchangeItemsPanel from '$lib/ExchangeItemsPanel.svelte';
 
   export let data: any;
   export let form: any;
@@ -60,6 +61,8 @@
   {#if form?.error}
     <div class="card error-card">{form.error}</div>
   {/if}
+
+  <ExchangeItemsPanel items={data.exchangeItems ?? []} entityLabel={data.deal.title} />
 
   {#if showStateEditor}
     <div class="card panel">

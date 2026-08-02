@@ -7,6 +7,7 @@ import { fail, redirect } from '@sveltejs/kit';
 import { prisma } from '$lib/db';
 import { buildIndexToken, encrypt } from '$lib/crypto';
 import { contactDisplayName, contactOptionsForRows } from '$lib/server/contactDisplay';
+import { createExchangeItemFromForm, deleteExchangeItem, loadExchangeItems } from '$lib/server/exchange';
 import {
   COMPANY_CONTACT_STATUSES,
   COMPANY_KINDS,
@@ -242,6 +243,8 @@ export const load: PageServerLoad = async ({ params, locals }) => {
     waitingOnContact: task.waitingOnContact ? { id: task.waitingOnContact.id, name: await contactDisplayName(task.waitingOnContact) } : null
   })));
 
+  const exchangeItems = await loadExchangeItems({ userId, links: { companyId: row.id } });
+
   const [contactsRaw, dealsRaw, companiesRaw] = await Promise.all([
     prisma.contact.findMany({ where: { userId }, select: { id: true, fullNameEnc: true, linkedUserId: true }, orderBy: { createdAt: 'desc' }, take: 400 }),
     prisma.deal.findMany({ where: { userId }, select: { id: true, titleEnc: true, status: true }, orderBy: { updatedAt: 'desc' }, take: 300 }),
@@ -275,6 +278,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
     dealLinks,
     relationships,
     tasks,
+    exchangeItems,
     contactOptions: contactOptions.filter((contact: any) => !attachedContactIds.has(contact.id)),
     allContactOptions: contactOptions,
     dealOptions: dealOptions.filter((deal: any) => !attachedDealIds.has(deal.id)),
@@ -333,6 +337,30 @@ export const actions: Actions = {
       console.error('[companies:updateCompany] failed', err);
       return fail(500, { error: 'Could not update company.' });
     }
+    throw redirect(303, `/companies/${params.id}`);
+  },
+
+
+  createExchangeItem: async ({ request, params, locals }) => {
+    if (!locals.user) throw redirect(303, '/auth/login');
+    const userId = locals.user.id;
+    const exists = await ensureCompany(userId, params.id);
+    if (!exists) return fail(404, { error: 'Company not found.' });
+    try {
+      await createExchangeItemFromForm({ userId, form: await request.formData(), links: { companyId: params.id } });
+    } catch (err: any) {
+      console.error('[companies:createExchangeItem] failed', err);
+      return fail(400, { error: err?.message || 'Failed to save want/offer.' });
+    }
+    throw redirect(303, `/companies/${params.id}`);
+  },
+
+  deleteExchangeItem: async ({ request, params, locals }) => {
+    if (!locals.user) throw redirect(303, '/auth/login');
+    const form = await request.formData();
+    const exchangeItemId = String(form.get('exchangeItemId') || '').trim();
+    if (!exchangeItemId) return fail(400, { error: 'Missing want/offer id.' });
+    await deleteExchangeItem({ userId: locals.user.id, id: exchangeItemId, links: { companyId: params.id } });
     throw redirect(303, `/companies/${params.id}`);
   },
 

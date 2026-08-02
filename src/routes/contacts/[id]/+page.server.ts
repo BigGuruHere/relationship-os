@@ -8,6 +8,7 @@ import { fail, redirect } from '@sveltejs/kit';
 import { attachContactTags, detachContactTag } from '$lib/tags';
 import type { Actions, PageServerLoad } from './$types';
 import { getBestDisplayName } from '$lib/server/names';
+import { createExchangeItemFromForm, deleteExchangeItem, loadExchangeItems } from '$lib/server/exchange';
 import {
   DEAL_RELATIONSHIP_TYPES,
   dealRelationshipLabel,
@@ -377,6 +378,8 @@ export const load: PageServerLoad = async ({ params, locals }) => {
     statusLabel: dealStatusLabel(deal.status)
   }));
 
+  const exchangeItems = await loadExchangeItems({ userId: locals.user.id, links: { contactId: id } });
+
   const projectsRaw = await prisma.project.findMany({
     where: { userId: locals.user.id, status: { not: 'ARCHIVED' as any } },
     select: { id: true, titleEnc: true, status: true },
@@ -415,6 +418,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
     interactions,
     dealNotes,
     dealContactNotes,
+    exchangeItems,
     tasks,
     projectOptions,
     taskStatusOptions: TASK_STATUSES,
@@ -684,6 +688,30 @@ export const actions: Actions = {
       return fail(500, { error: 'Failed to remove deal relationship.' });
     }
 
+    throw redirect(303, `/contacts/${params.id}`);
+  },
+
+
+  createExchangeItem: async ({ request, params, locals }) => {
+    if (!locals.user) throw redirect(303, '/auth/login');
+    const userId = locals.user.id;
+    const exists = await prisma.contact.findFirst({ where: { id: params.id, userId }, select: { id: true } });
+    if (!exists) return fail(404, { error: 'Contact not found.' });
+    try {
+      await createExchangeItemFromForm({ userId, form: await request.formData(), links: { contactId: params.id } });
+    } catch (err: any) {
+      console.error('[contacts:createExchangeItem] failed', err);
+      return fail(400, { error: err?.message || 'Failed to save want/offer.' });
+    }
+    throw redirect(303, `/contacts/${params.id}`);
+  },
+
+  deleteExchangeItem: async ({ request, params, locals }) => {
+    if (!locals.user) throw redirect(303, '/auth/login');
+    const form = await request.formData();
+    const exchangeItemId = String(form.get('exchangeItemId') || '').trim();
+    if (!exchangeItemId) return fail(400, { error: 'Missing want/offer id.' });
+    await deleteExchangeItem({ userId: locals.user.id, id: exchangeItemId, links: { contactId: params.id } });
     throw redirect(303, `/contacts/${params.id}`);
   },
 

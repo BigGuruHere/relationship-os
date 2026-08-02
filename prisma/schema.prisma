@@ -75,6 +75,7 @@ model User {
   companyContacts       CompanyContact[]
   dealCompanies         DealCompany[]
   companyRelationships  CompanyRelationship[]
+  exchangeItems         ExchangeItem[]
 
   role       UserRole @default(member)
   publicSlug String?  @unique
@@ -335,6 +336,7 @@ model Contact {
 
   // IT: company memberships/employment history. A person can belong to more than one company over time.
   companyLinks      CompanyContact[]
+  exchangeItems     ExchangeItem[]
 
   // Indexes for search and tenancy
   @@index([userId])
@@ -581,6 +583,7 @@ model Deal {
   notes    DealNote[]
   dealContactNotes DealContactNote[]
   tasks    Task[]
+  exchangeItems ExchangeItem[]
 
   @@index([userId, status])
   @@index([userId, expectedCloseDate])
@@ -802,6 +805,7 @@ model Company {
   tasks            Task[]
   relationshipsAsA CompanyRelationship[] @relation("CompanyAsA")
   relationshipsAsB CompanyRelationship[] @relation("CompanyAsB")
+  exchangeItems     ExchangeItem[]
 
   @@unique([userId, nameIdx])
   @@index([userId, kind])
@@ -908,6 +912,117 @@ model CompanyRelationship {
   @@index([userId, relationshipType])
 }
 
+
+// ---------------------------------------------------------------------------
+// WANTS AND OFFERS MODELS
+// ---------------------------------------------------------------------------
+// IT: Whether the exchange item represents a need/want or something available to offer.
+enum ExchangeItemType {
+  WANT
+  OFFER
+}
+
+// IT: How soon this want/offer matters.
+enum ExchangeUrgency {
+  LOW
+  NORMAL
+  HIGH
+  IMMEDIATE
+}
+
+// IT: When the want/offer is relevant.
+enum ExchangeTimeHorizon {
+  NOW
+  NEXT_30_DAYS
+  NEXT_90_DAYS
+  THIS_YEAR
+  LATER
+  ONGOING
+}
+
+// IT: Lifecycle state to keep stale wants/offers out of future matching.
+enum ExchangeStatus {
+  ACTIVE
+  PAUSED
+  FULFILLED
+  EXPIRED
+  ARCHIVED
+}
+
+// IT: Confidence in whether this want/offer was explicitly stated or inferred.
+enum ExchangeConfidence {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+// IT: Direction gives more nuance than type alone while still keeping wants/offers simple.
+enum ExchangeDirection {
+  SEEKING
+  OFFERING
+  OPEN_TO
+  NOT_INTERESTED_IN
+  OTHER
+}
+
+// IT: A relationship value item attached to a person, company, deal, or project.
+// IT: Embedding is stored for future matching, but no matching/search algorithm is required yet.
+model ExchangeItem {
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  type      ExchangeItemType
+  direction ExchangeDirection @default(OTHER)
+  categoryEnc String?
+
+  titleEnc       String
+  descriptionEnc String?
+  summaryEnc     String?
+
+  importance Int @default(3)
+  urgency    ExchangeUrgency    @default(NORMAL)
+  timeHorizon ExchangeTimeHorizon @default(ONGOING)
+  status     ExchangeStatus     @default(ACTIVE)
+  confidence ExchangeConfidence @default(MEDIUM)
+
+  geographyEnc String?
+  valueMinCents Int?
+  valueMaxCents Int?
+  currency      String @default("AUD")
+  reviewAt      DateTime?
+  expiresAt     DateTime?
+
+  contactId String?
+  contact   Contact? @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  companyId String?
+  company   Company? @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  dealId String?
+  deal   Deal? @relation(fields: [dealId], references: [id], onDelete: Cascade)
+
+  projectId String?
+  project   Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  embeddingVec Unsupported("vector")? @map("embedding_vec")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, type])
+  @@index([userId, status])
+  @@index([userId, urgency])
+  @@index([userId, timeHorizon])
+  @@index([userId, confidence])
+  @@index([userId, reviewAt])
+  @@index([userId, expiresAt])
+  @@index([userId, contactId])
+  @@index([userId, companyId])
+  @@index([userId, dealId])
+  @@index([userId, projectId])
+}
+
 // ---------------------------------------------------------------------------
 // PROJECT AND TASK MODELS
 // ---------------------------------------------------------------------------
@@ -972,6 +1087,7 @@ model Project {
   updatedAt DateTime @updatedAt
 
   tasks Task[]
+  exchangeItems ExchangeItem[]
 
   @@index([userId, status])
   @@index([titleIdx])

@@ -6,6 +6,15 @@
 // - Score is 1 - cosine_distance so it falls in [0,1] where higher is better
 // - All IT code is commented
 
+// IT: Central defaults for automatic tag suggestions.
+// Increase DEFAULT_TAG_MIN_SCORE to make suggested tags stricter.
+// Decrease it to allow looser semantic matches.
+export const DEFAULT_TAG_MIN_SCORE = 0.4;
+
+// IT: Maximum number of suggested tags returned from semantic matching.
+// Lower this if the app suggests too many tags.
+export const DEFAULT_TAG_SUGGESTION_LIMIT = 4;
+
 import { prisma } from '$lib/db';
 
 export type TagSuggestion = {
@@ -20,12 +29,13 @@ type Params = {
   topK?: number;
   minScore?: number;
 };
-
 export async function suggestTagsForInteraction({
   userId,
   interactionId,
-  topK = 8,
-  minScore = 0.25
+  // IT: Use the central app-wide tag suggestion limit by default.
+  topK = DEFAULT_TAG_SUGGESTION_LIMIT,
+  // IT: Use the central app-wide semantic threshold by default.
+  minScore = DEFAULT_TAG_MIN_SCORE
 }: Params): Promise<TagSuggestion[]> {
   // IT: guard inputs
   if (!userId || !interactionId) return [];

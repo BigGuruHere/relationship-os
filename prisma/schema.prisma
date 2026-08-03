@@ -87,6 +87,7 @@ model User {
   agentArtifacts       AgentArtifact[]
   approvalRequests     ApprovalRequest[]
   researchCandidates   ResearchCandidate[]
+  researchSources      ResearchSource[]
   opportunityScores    OpportunityScore[]
 
   role       UserRole @default(member)
@@ -350,6 +351,7 @@ model Contact {
   companyLinks      CompanyContact[]
   exchangeItems     ExchangeItem[]
   opportunityScores OpportunityScore[]
+  researchSources   ResearchSource[]
 
   // Indexes for search and tenancy
   @@index([userId])
@@ -821,6 +823,7 @@ model Company {
   relationshipsAsB CompanyRelationship[] @relation("CompanyAsB")
   exchangeItems     ExchangeItem[]
   opportunityScores OpportunityScore[]
+  researchSources   ResearchSource[]
 
   @@unique([userId, nameIdx])
   @@index([userId, kind])
@@ -1190,6 +1193,16 @@ enum ResearchCandidateStatus {
   IMPORTED
 }
 
+
+// IT: Stage 3 source types captured by controlled live research tools.
+enum ResearchSourceType {
+  SEARCH_RESULT
+  WEB_PAGE
+  USER_SOURCE
+  EXTRACTED_PROFILE
+  OTHER
+}
+
 // IT: Temporary staging area. AI can propose candidates here without polluting real CRM data.
 model ResearchCandidate {
   id     String @id @default(uuid())
@@ -1217,6 +1230,7 @@ model ResearchCandidate {
   createdEntityId   String?
 
   opportunityScores OpportunityScore[]
+  researchSources    ResearchSource[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1224,6 +1238,50 @@ model ResearchCandidate {
   @@index([userId, status])
   @@index([userId, entityType])
   @@index([userId, nameIdx])
+  @@index([agentRunId])
+}
+
+
+// IT: Durable evidence/source log for live research.
+// IT: Agents can read web/search output, but Relish stores the source and only stages proposed CRM changes.
+model ResearchSource {
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  agentRunId String?
+  run        AgentRun? @relation(fields: [agentRunId], references: [id], onDelete: SetNull)
+
+  researchCandidateId String?
+  researchCandidate   ResearchCandidate? @relation(fields: [researchCandidateId], references: [id], onDelete: SetNull)
+
+  companyId String?
+  company   Company? @relation(fields: [companyId], references: [id], onDelete: SetNull)
+
+  contactId String?
+  contact   Contact? @relation(fields: [contactId], references: [id], onDelete: SetNull)
+
+  sourceType ResearchSourceType @default(SEARCH_RESULT)
+  provider   String @default("manual")
+  confidence Int    @default(50)
+
+  queryEnc   String?
+  titleEnc   String?
+  urlEnc     String?
+  snippetEnc String?
+  contentEnc String?
+
+  evidenceJson Json?
+  fetchedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, sourceType])
+  @@index([userId, provider])
+  @@index([userId, companyId])
+  @@index([userId, contactId])
+  @@index([userId, researchCandidateId])
   @@index([agentRunId])
 }
 
@@ -1401,6 +1459,7 @@ model AgentRun {
   approvals            ApprovalRequest[]
   entities             AgentRunEntity[]
   researchCandidates   ResearchCandidate[]
+  researchSources      ResearchSource[]
   opportunityScores    OpportunityScore[]
 
   @@index([userId, status])

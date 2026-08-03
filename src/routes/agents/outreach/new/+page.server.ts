@@ -35,6 +35,9 @@ export const actions: Actions = {
     const targetDescription = String(form.get('targetDescription') || '').trim();
     const outreachGoal = String(form.get('outreachGoal') || '').trim();
     const sourceText = String(form.get('sourceText') || '').trim();
+    const enableWebResearch = form.get('enableWebResearch') === 'on';
+    const findContacts = form.get('findContacts') === 'on';
+    const researchProvider = String(form.get('researchProvider') || '').trim() || undefined;
     const projectId = String(form.get('projectId') || '').trim() || undefined;
     const dealId = String(form.get('dealId') || '').trim() || undefined;
     const maxCandidatesRaw = Number.parseInt(String(form.get('maxCandidates') || '5'), 10);
@@ -58,6 +61,9 @@ export const actions: Actions = {
       outreachGoal: outreachGoal || undefined,
       sourceText: sourceText || undefined,
       maxCandidates,
+      enableWebResearch,
+      findContacts,
+      researchProvider,
       projectId,
       dealId
     });

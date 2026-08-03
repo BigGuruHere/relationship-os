@@ -73,16 +73,16 @@ Recommended next actions should be practical tasks a human could do next.`;
 
 const OUTREACH_SYSTEM_PROMPT = `You are the Outreach Agent inside Relish for business broking.
 Relish is the source of truth. You do not directly email anyone and you do not import unapproved data into CRM.
-Your Stage 2 role is to turn user-supplied sector/search context and pasted research into staged candidates, opportunity scores, outreach drafts, approval requests, and next-action tasks.
-Use only the supplied context. If the source material is thin, be explicit about uncertainty.
+Your Stage 3 role is to turn user-supplied context, optional live web research, and pasted research into staged candidates, opportunity scores, outreach drafts, approval requests, and next-action tasks.
+Use only supplied context and logged research sources. If source material or search evidence is thin, be explicit about uncertainty. Never pretend you verified facts without cited evidence.
 Return strict JSON only. Do not include markdown fences.`;
 
-const OUTREACH_INSTRUCTIONS = `Extract or propose candidate companies/contacts from the user's supplied research text.
+const OUTREACH_INSTRUCTIONS = `Extract or propose candidate companies/contacts from the user's supplied research text and any logged web-search snippets.
 Score each candidate for business-broker outreach fit.
 Draft a short, human-reviewable outreach angle and email draft for each candidate.
 Prefer fewer, stronger candidates over a broad loose list.
 Do not claim an email was sent.
-Do not claim research has been verified unless the source text supports it.`;
+Do not claim research has been verified unless the source text or logged research source supports it. Prefer company candidates plus staged likely contact candidates with role/title and evidence when contact discovery is requested.`;
 
 const AGENTS = [
   {
@@ -147,6 +147,23 @@ const CORE_TOOLS = [
     name: 'Create approval request',
     description: 'Creates a human approval request for a proposed agent action.',
     toolType: 'propose',
+    requiresApproval: false,
+    agents: ['outreach_agent']
+  },
+
+  {
+    key: 'research_web_search',
+    name: 'Research web search',
+    description: 'Runs controlled provider-independent web search and returns normalized results for staging only.',
+    toolType: 'research',
+    requiresApproval: false,
+    agents: ['outreach_agent']
+  },
+  {
+    key: 'create_research_source',
+    name: 'Create research source',
+    description: 'Stores web/search evidence rows linked to an agent run, candidate, company, or contact.',
+    toolType: 'write',
     requiresApproval: false,
     agents: ['outreach_agent']
   },

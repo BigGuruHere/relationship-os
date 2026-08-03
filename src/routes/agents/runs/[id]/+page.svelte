@@ -62,6 +62,25 @@
 
 
 
+  {#if data.researchSources?.length}
+    <section class="card panel">
+      <h2>Research sources</h2>
+      <p class="muted">Logged evidence from Stage 3 research. These sources support staged candidates, but nothing is imported into CRM until reviewed.</p>
+      <div class="source-list">
+        {#each data.researchSources as source}
+          <article class="source-row">
+            <div class="meta"><span>{source.sourceType}</span><span>{source.provider}</span><span>Confidence {source.confidence}/100</span></div>
+            <h3>{source.title}</h3>
+            {#if source.url}<p><a href={source.url} target="_blank" rel="noreferrer">{source.url}</a></p>{/if}
+            {#if source.query}<p class="muted">Query: {source.query}</p>{/if}
+            {#if source.snippet}<p>{source.snippet}</p>{/if}
+          </article>
+        {/each}
+      </div>
+    </section>
+  {/if}
+
+
   {#if data.candidates?.length}
     <section class="card panel">
       <h2>Outreach candidates</h2>
@@ -73,6 +92,8 @@
               <div>
                 <div class="meta"><span>{candidate.entityType}</span><span>{candidate.status}</span><span>Confidence {candidate.confidence}/100</span></div>
                 <h3>{candidate.name}</h3>
+                {#if candidate.structuredJson?.roleTitle}<p class="muted">Role/title: {candidate.structuredJson.roleTitle}</p>{/if}
+                {#if candidate.structuredJson?.companyName}<p class="muted">Company: {candidate.structuredJson.companyName}</p>{/if}
                 {#if candidate.website}<p><a href={candidate.website} target="_blank" rel="noreferrer">{candidate.website}</a></p>{/if}
                 {#if candidate.sourceUrl}<p class="muted">Source: <a href={candidate.sourceUrl} target="_blank" rel="noreferrer">{candidate.sourceLabel || candidate.sourceUrl}</a></p>{/if}
               </div>
@@ -193,8 +214,8 @@
   .muted { color: var(--muted); }
   .error { color: var(--danger); }
   .success { color: var(--success, #138a36); font-weight: 700; }
-  .candidate-list { display: grid; gap: 12px; margin-top: 10px; }
-  .candidate { border: 1px solid var(--border); border-radius: 14px; padding: 12px; }
+  .candidate-list, .source-list { display: grid; gap: 12px; margin-top: 10px; }
+  .candidate, .source-row { border: 1px solid var(--border); border-radius: 14px; padding: 12px; }
   .candidate-head { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }
   .score { border: 1px solid var(--border); border-radius: 12px; padding: 8px 12px; text-align: center; min-width: 70px; background: var(--surface-2); }
   .score strong { display: block; font-size: 1.4rem; }

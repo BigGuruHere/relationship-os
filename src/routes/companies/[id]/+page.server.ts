@@ -9,6 +9,8 @@ import { buildIndexToken, encrypt } from '$lib/crypto';
 import { contactDisplayName, contactOptionsForRows } from '$lib/server/contactDisplay';
 import { createExchangeItemFromForm, deleteExchangeItem, loadExchangeItems } from '$lib/server/exchange';
 import { loadAgentArtifacts } from '$lib/server/agents/artifacts';
+import { ensureCoreAgentSetup } from '$lib/server/agents/agentSetup';
+import { runOutreachAgent } from '$lib/server/agents/agents/outreachAgent';
 import {
   COMPANY_CONTACT_STATUSES,
   COMPANY_KINDS,
@@ -548,6 +550,43 @@ export const actions: Actions = {
       }
     });
     throw redirect(303, `/companies/${params.id}`);
+  },
+
+
+  researchCompany: async ({ request, params, locals }) => {
+    if (!locals.user) throw redirect(303, '/auth/login');
+    const userId = locals.user.id;
+    const company = await prisma.company.findFirst({
+      where: { id: params.id, userId },
+      select: { id: true, nameEnc: true, websiteEnc: true, industryEnc: true, locationEnc: true, descriptionEnc: true, criteriaEnc: true }
+    });
+    if (!company) return fail(404, { error: 'Company not found.' });
+
+    const form = await request.formData();
+    await ensureCoreAgentSetup(userId);
+
+    const companyName = safeDecryptCompany(company.nameEnc, 'company.name', 'Untitled company');
+    const website = safeDecryptCompany(company.websiteEnc, 'company.website', '');
+    const industry = safeDecryptCompany(company.industryEnc, 'company.industry', '');
+    const location = safeDecryptCompany(company.locationEnc, 'company.location', '');
+    const description = safeDecryptCompany(company.descriptionEnc, 'company.description', '');
+    const criteria = safeDecryptCompany(company.criteriaEnc, 'company.criteria', '');
+
+    const run = await runOutreachAgent({
+      userId,
+      sector: industry || companyName,
+      geography: location || undefined,
+      targetDescription: `Research this existing target company and identify likely owner/director/CEO/principal contacts. Company: ${companyName}. Website: ${website || 'unknown'}. Criteria/context: ${criteria || description || 'not specified'}.`,
+      outreachGoal: 'Research likely contact names and stage any supported contact candidates for human review before import.',
+      sourceText: [`Company: ${companyName}`, website ? `Website: ${website}` : '', description ? `Description: ${description}` : '', criteria ? `Criteria: ${criteria}` : ''].filter(Boolean).join('\n'),
+      maxCandidates: 8,
+      enableWebResearch: true,
+      findContacts: true,
+      researchProvider: String(form.get('researchProvider') || '').trim() || undefined
+    });
+
+    await prisma.agentRunEntity.create({ data: { agentRunId: run.id, entityType: 'company', entityId: params.id, role: 'research_target' } });
+    throw redirect(303, `/agents/runs/${run.id}`);
   },
 
   updateTaskStatus: async ({ request, params, locals }) => {

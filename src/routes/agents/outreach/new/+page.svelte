@@ -7,9 +7,9 @@
 <div class="container">
   <div class="card header">
     <div>
-      <div class="eyebrow">Stage 2</div>
+      <div class="eyebrow">Stage 3</div>
       <h1>Start Outreach Agent</h1>
-      <p class="muted">This safe version stages candidates, scores them, creates approval requests, drafts outreach, and creates review tasks. It does not send email.</p>
+      <p class="muted">This safe version can optionally run controlled web research, stage company/contact candidates, score them, log sources, draft outreach, and create review tasks. It does not send email.</p>
     </div>
     <div class="actions">
       <a class="btn" href="/agents">Agents</a>
@@ -62,6 +62,32 @@
       </label>
     </div>
 
+
+
+    <div class="card mini-panel">
+      <h2>Research options</h2>
+      <div class="grid three">
+        <label class="check-row">
+          <input type="checkbox" name="enableWebResearch" />
+          <span>Run live web research</span>
+        </label>
+        <label class="check-row">
+          <input type="checkbox" name="findContacts" checked />
+          <span>Find likely owner/contact names</span>
+        </label>
+        <label>
+          <span>Research provider</span>
+          <select name="researchProvider">
+            <option value="">Auto</option>
+            <option value="tavily">Tavily</option>
+            <option value="brave">Brave Search</option>
+            <option value="openai">OpenAI web search</option>
+          </select>
+        </label>
+      </div>
+      <p class="muted small">Live research requires a provider key such as TAVILY_API_KEY, BRAVE_SEARCH_API_KEY, or RESEARCH_PROVIDER=openai with OPENAI_API_KEY. Without a key, the agent still works from pasted research.</p>
+    </div>
+
     <label>
       <span>Pasted research / candidate list</span>
       <textarea name="sourceText" rows="10" placeholder="Paste Google results, directory listings, notes, company names, websites, owner names, or rough research here. The agent will stage candidates for review before anything is imported."></textarea>
@@ -81,6 +107,11 @@
   .eyebrow { color: var(--accent); font-weight: 700; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.04em; }
   .muted { color: var(--muted); }
   .panel { padding: 16px; display: grid; gap: 12px; }
+  .mini-panel { padding: 12px; display: grid; gap: 8px; }
+  .mini-panel h2 { margin: 0; font-size: 1rem; }
+  .check-row { display: flex; gap: 8px; align-items: center; padding: 10px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); }
+  .check-row input { width: auto; }
+  .small { font-size: 0.9rem; margin: 0; }
   .grid.two { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
   .grid.three { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
   label { display: grid; gap: 6px; font-weight: 700; }

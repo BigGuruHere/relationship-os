@@ -9,6 +9,8 @@ import { createResearchCandidateTool } from '$lib/server/agents/tools/createRese
 import { createOpportunityScoreTool } from '$lib/server/agents/tools/createOpportunityScore';
 import { createApprovalRequestTool } from '$lib/server/agents/tools/createApprovalRequest';
 import { createTaskTool } from '$lib/server/agents/tools/createTask';
+import { researchWebSearchTool } from '$lib/server/agents/tools/researchWebSearch';
+import { createResearchSourceTool } from '$lib/server/agents/tools/createResearchSource';
 
 const tools = new Map<string, ToolDefinition<any, any>>();
 
@@ -24,6 +26,8 @@ function ensureRegistered() {
   registerAgentTool(createOpportunityScoreTool);
   registerAgentTool(createApprovalRequestTool);
   registerAgentTool(createTaskTool);
+  registerAgentTool(researchWebSearchTool);
+  registerAgentTool(createResearchSourceTool);
 }
 
 export async function executeAgentTool<Input, Output>(

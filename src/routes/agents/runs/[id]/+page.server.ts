@@ -12,6 +12,48 @@ function dec(payload: string | null | undefined, aad: string, fallback = '') {
   return safeDecryptCompany(payload, aad, fallback);
 }
 
+
+async function loadResearchSources(userId: string, agentRunId: string) {
+  const rows = await prisma.researchSource.findMany({
+    where: { userId, agentRunId },
+    select: {
+      id: true,
+      sourceType: true,
+      provider: true,
+      confidence: true,
+      queryEnc: true,
+      titleEnc: true,
+      urlEnc: true,
+      snippetEnc: true,
+      evidenceJson: true,
+      researchCandidateId: true,
+      companyId: true,
+      contactId: true,
+      fetchedAt: true,
+      createdAt: true
+    },
+    orderBy: { createdAt: 'asc' },
+    take: 100
+  });
+
+  return rows.map((row) => ({
+    id: row.id,
+    sourceType: row.sourceType,
+    provider: row.provider,
+    confidence: row.confidence,
+    query: dec(row.queryEnc, 'research_source.query', ''),
+    title: dec(row.titleEnc, 'research_source.title', 'Untitled source'),
+    url: dec(row.urlEnc, 'research_source.url', ''),
+    snippet: dec(row.snippetEnc, 'research_source.snippet', ''),
+    evidenceJson: row.evidenceJson,
+    researchCandidateId: row.researchCandidateId,
+    companyId: row.companyId,
+    contactId: row.contactId,
+    fetchedAt: row.fetchedAt,
+    createdAt: row.createdAt
+  }));
+}
+
 async function loadCandidates(userId: string, agentRunId: string) {
   const rows = await prisma.researchCandidate.findMany({
     where: { userId, agentRunId },
@@ -115,12 +157,13 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 
   if (!run) throw redirect(303, '/agents/runs');
 
-  const [artifacts, candidates] = await Promise.all([
+  const [artifacts, candidates, researchSources] = await Promise.all([
     loadAgentArtifacts({ userId, agentRunId: run.id, take: 30 }),
-    loadCandidates(userId, run.id)
+    loadCandidates(userId, run.id),
+    loadResearchSources(userId, run.id)
   ]);
 
-  return { run, artifacts, candidates };
+  return { run, artifacts, candidates, researchSources };
 };
 
 function redirectBack(runId: string) {
@@ -179,6 +222,30 @@ export const actions: Actions = {
           companyIdx: website ? buildIndexToken(website) : null
         }
       });
+
+      // IT: If this run was launched from an existing company, attach the imported person to that company as an employee/contact.
+      const targetCompany = await prisma.agentRunEntity.findFirst({
+        where: { agentRunId: params.id, entityType: 'company', role: 'research_target' },
+        select: { entityId: true }
+      });
+      if (targetCompany?.entityId) {
+        const structured: any = candidate.structuredJson || {};
+        await prisma.companyContact.upsert({
+          where: { companyId_contactId: { companyId: targetCompany.entityId, contactId: contact.id } },
+          update: {
+            titleEnc: structured.roleTitle ? encrypt(String(structured.roleTitle), 'company_contact.title') : undefined,
+            notesEnc: notes ? encrypt(notes, 'company_contact.notes') : undefined
+          },
+          create: {
+            userId: locals.user.id,
+            companyId: targetCompany.entityId,
+            contactId: contact.id,
+            titleEnc: structured.roleTitle ? encrypt(String(structured.roleTitle), 'company_contact.title') : null,
+            notesEnc: notes ? encrypt(notes, 'company_contact.notes') : null,
+            status: 'UNKNOWN' as any
+          }
+        });
+      }
 
       await prisma.researchCandidate.update({ where: { id: candidate.id }, data: { status: 'IMPORTED' as any, createdEntityType: 'contact', createdEntityId: contact.id } });
       await prisma.agentRunEntity.create({ data: { agentRunId: params.id, entityType: 'contact', entityId: contact.id, role: 'imported_candidate' } });

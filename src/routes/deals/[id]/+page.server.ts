@@ -8,6 +8,7 @@ import { prisma } from '$lib/db';
 import { encrypt } from '$lib/crypto';
 import { contactDisplayName, contactOptionsForRows } from '$lib/server/contactDisplay';
 import { createExchangeItemFromForm, deleteExchangeItem, loadExchangeItems } from '$lib/server/exchange';
+import { loadAgentArtifacts } from '$lib/server/agents/artifacts';
 import { companyKindLabel, safeDecryptCompany } from '$lib/companies';
 import {
   DEAL_RELATIONSHIP_TYPES,
@@ -346,6 +347,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
   }));
 
   const exchangeItems = await loadExchangeItems({ userId: locals.user.id, links: { dealId: row.id } });
+  const agentArtifacts = await loadAgentArtifacts({ userId: locals.user.id, entityType: 'deal', entityId: row.id });
 
   const weighted = weightedValueCents(row.valueCents, row.probability);
 
@@ -376,6 +378,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
     threadNotes,
     tasks,
     exchangeItems,
+    agentArtifacts,
     projectOptions,
     contactOptions: await contactOptionsForRows(availableContactsRaw),
     companyOptions: availableCompaniesRaw.map((company: any) => ({

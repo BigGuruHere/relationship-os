@@ -4,6 +4,7 @@
   // SECURITY: This page renders server-prepared decrypted display values only.
   import VoiceTextField from '$lib/recording/VoiceTextField.svelte';
   import ExchangeItemsPanel from '$lib/ExchangeItemsPanel.svelte';
+  import AgentBriefingsPanel from '$lib/AgentBriefingsPanel.svelte';
 
   export let data: any;
   export let form: any;
@@ -63,6 +64,8 @@
   {/if}
 
   <ExchangeItemsPanel items={data.exchangeItems ?? []} entityLabel={data.deal.title} />
+
+  <AgentBriefingsPanel entityType="deal" entityId={data.deal.id} entityLabel={data.deal.title} artifacts={data.agentArtifacts ?? []} />
 
   {#if showStateEditor}
     <div class="card panel">

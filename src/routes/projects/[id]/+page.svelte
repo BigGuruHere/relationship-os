@@ -5,6 +5,7 @@
 
   import VoiceTextField from '$lib/recording/VoiceTextField.svelte';
   import ExchangeItemsPanel from '$lib/ExchangeItemsPanel.svelte';
+  import AgentBriefingsPanel from '$lib/AgentBriefingsPanel.svelte';
 
   export let data: any;
   export let form: any;
@@ -55,6 +56,8 @@
   {#if form?.error}<div class="card error-card">{form.error}</div>{/if}
 
   <ExchangeItemsPanel items={data.exchangeItems ?? []} entityLabel={data.project.title} />
+
+  <AgentBriefingsPanel entityType="project" entityId={data.project.id} entityLabel={data.project.title} artifacts={data.agentArtifacts ?? []} />
 
   <div class="summary-grid">
     <div class="card stat"><span>Active</span><strong>{data.summary.active}</strong></div>

@@ -10,6 +10,7 @@ import { companyDisplay } from '$lib/companies';
 import { safeDecrypt } from '$lib/deals';
 import { contactDisplayName, contactOptionsForRows } from '$lib/server/contactDisplay';
 import { createExchangeItemFromForm, deleteExchangeItem, loadExchangeItems } from '$lib/server/exchange';
+import { loadAgentArtifacts } from '$lib/server/agents/artifacts';
 import {
   PROJECT_STATUSES,
   TASK_IMPORTANCES,
@@ -180,6 +181,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
   }));
 
   const exchangeItems = await loadExchangeItems({ userId, links: { projectId: project.id } });
+  const agentArtifacts = await loadAgentArtifacts({ userId, entityType: 'project', entityId: project.id });
 
   const now = new Date();
   const summary = {
@@ -218,6 +220,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
     relatedPeople: [...peopleMap.values()],
     relatedCompanies: [...companyMap.values()],
     exchangeItems,
+    agentArtifacts,
     options: await loadOptions(userId),
     projectStatuses: PROJECT_STATUSES,
     taskStatuses: TASK_STATUSES,

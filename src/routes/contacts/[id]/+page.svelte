@@ -4,6 +4,7 @@
   // SECURITY: Data has already been decrypted server side where needed.
   import VoiceTextField from '$lib/recording/VoiceTextField.svelte';
   import ExchangeItemsPanel from '$lib/ExchangeItemsPanel.svelte';
+  import AgentBriefingsPanel from '$lib/AgentBriefingsPanel.svelte';
 
   export let data: any;
 
@@ -181,6 +182,8 @@
     </div>
 
     <ExchangeItemsPanel items={data.exchangeItems ?? []} entityLabel={contact.name} />
+
+    <AgentBriefingsPanel entityType="contact" entityId={contact.id} entityLabel={contact.name} artifacts={data.agentArtifacts ?? []} />
 
     {#if showAddTask}
       <div class="inline-panel">

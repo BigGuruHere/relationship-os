@@ -9,6 +9,7 @@ import { attachContactTags, detachContactTag } from '$lib/tags';
 import type { Actions, PageServerLoad } from './$types';
 import { getBestDisplayName } from '$lib/server/names';
 import { createExchangeItemFromForm, deleteExchangeItem, loadExchangeItems } from '$lib/server/exchange';
+import { loadAgentArtifacts } from '$lib/server/agents/artifacts';
 import {
   DEAL_RELATIONSHIP_TYPES,
   dealRelationshipLabel,
@@ -379,6 +380,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
   }));
 
   const exchangeItems = await loadExchangeItems({ userId: locals.user.id, links: { contactId: id } });
+  const agentArtifacts = await loadAgentArtifacts({ userId: locals.user.id, entityType: 'contact', entityId: id });
 
   const projectsRaw = await prisma.project.findMany({
     where: { userId: locals.user.id, status: { not: 'ARCHIVED' as any } },
@@ -419,6 +421,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
     dealNotes,
     dealContactNotes,
     exchangeItems,
+    agentArtifacts,
     tasks,
     projectOptions,
     taskStatusOptions: TASK_STATUSES,

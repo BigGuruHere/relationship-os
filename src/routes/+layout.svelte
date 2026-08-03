@@ -232,6 +232,7 @@
         <a class="nav-link" href="/companies">▥ Companies</a>
         <a class="nav-link" href="/tasks">☑ Tasks{#if (data.tasksOpenCount || 0) > 0} <span class="pill">{data.tasksOpenCount}</span>{/if}</a>
         <a class="nav-link" href="/projects">▣ Projects</a>
+        <a class="nav-link" href="/agents">⚙ Agents</a>
       {/if}
       <a class="nav-link" href="/search">Search</a>
 
@@ -291,6 +292,8 @@
           <a href="/deals" aria-label="Deals">Deals</a>
           <span aria-hidden="true">·</span>
           <a href="/companies" aria-label="Companies">Companies</a>
+          <span aria-hidden="true">·</span>
+          <a href="/agents" aria-label="Agents">Agents</a>
         {/if}
         <span aria-hidden="true">·</span>
         {#if !data.user}

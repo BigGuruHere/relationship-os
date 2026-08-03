@@ -77,6 +77,16 @@ model User {
   companyRelationships  CompanyRelationship[]
   exchangeItems         ExchangeItem[]
 
+  // IT: agent framework records. Agents read/write through Relish services and every run is logged.
+  agentDefinitions     AgentDefinition[]
+  agentPromptVersions  AgentPromptVersion[]
+  agentToolDefinitions AgentToolDefinition[]
+  agentRuns            AgentRun[]
+  agentToolCalls       AgentToolCall[]
+  modelInvocations     ModelInvocation[]
+  agentArtifacts       AgentArtifact[]
+  approvalRequests     ApprovalRequest[]
+
   role       UserRole @default(member)
   publicSlug String?  @unique
 
@@ -1155,5 +1165,303 @@ model Task {
   @@index([userId, companyId])
   @@index([userId, dealCompanyId])
   @@index([userId, waitingOnContactId])
+}
+
+// ---------------------------------------------------------------------------
+// AGENT FRAMEWORK MODELS
+// ---------------------------------------------------------------------------
+// IT: AgentDefinition is the durable configuration for a specialised agent.
+// IT: Relish remains the source of truth - agents act through registered tools and logged runs.
+model AgentDefinition {
+  id                      String   @id @default(uuid())
+  userId                  String
+  user                    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  key                     String
+  name                    String
+  description             String?
+  category                String   @default("general")
+  status                  String   @default("active")
+  defaultModelProvider    String   @default("openai")
+  defaultModelName        String   @default("gpt-4o-mini")
+  systemPrompt            String
+  instructions            String?
+  outputSchemaJson        Json?
+  requiresApprovalDefault Boolean  @default(false)
+
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+
+  promptVersions          AgentPromptVersion[]
+  runs                    AgentRun[]
+  toolPermissions         AgentToolPermission[]
+
+  @@unique([userId, key])
+  @@index([userId, status])
+  @@index([userId, category])
+}
+
+// IT: Prompt versions let you audit which prompt produced which run.
+model AgentPromptVersion {
+  id                  String   @id @default(uuid())
+  userId              String
+  user                User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  agentDefinitionId   String
+  agentDefinition     AgentDefinition @relation(fields: [agentDefinitionId], references: [id], onDelete: Cascade)
+
+  version             Int
+  systemPrompt        String
+  instructions        String?
+  outputSchemaJson    Json?
+  isActive            Boolean  @default(false)
+  createdBy           String   @default("system")
+  createdAt           DateTime @default(now())
+
+  runs                AgentRun[]
+
+  @@unique([agentDefinitionId, version])
+  @@index([userId, agentDefinitionId, isActive])
+}
+
+// IT: Tool definitions describe what an agent is allowed to do through Relish.
+model AgentToolDefinition {
+  id               String   @id @default(uuid())
+  userId           String
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  key              String
+  name             String
+  description      String?
+  toolType         String   @default("read")
+  inputSchemaJson  Json?
+  outputSchemaJson Json?
+  requiresApproval Boolean  @default(false)
+  isEnabled        Boolean  @default(true)
+
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  permissions      AgentToolPermission[]
+
+  @@unique([userId, key])
+  @@index([userId, toolType])
+  @@index([userId, isEnabled])
+}
+
+// IT: Agent-to-tool permissions support read/propose/execute boundaries.
+model AgentToolPermission {
+  id                  String   @id @default(uuid())
+  agentDefinitionId   String
+  toolDefinitionId    String
+
+  permissionLevel     String   @default("read")
+  requiresApproval    Boolean  @default(false)
+  constraintsJson     Json?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  agentDefinition     AgentDefinition @relation(fields: [agentDefinitionId], references: [id], onDelete: Cascade)
+  toolDefinition      AgentToolDefinition @relation(fields: [toolDefinitionId], references: [id], onDelete: Cascade)
+
+  @@unique([agentDefinitionId, toolDefinitionId])
+  @@index([toolDefinitionId])
+}
+
+// IT: One durable run for each agent execution.
+model AgentRun {
+  id                   String   @id @default(uuid())
+  userId               String
+  user                 User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  agentDefinitionId    String
+  agentDefinition      AgentDefinition @relation(fields: [agentDefinitionId], references: [id], onDelete: Cascade)
+
+  promptVersionId      String?
+  promptVersion        AgentPromptVersion? @relation(fields: [promptVersionId], references: [id], onDelete: SetNull)
+
+  status               String   @default("queued")
+  triggerType          String   @default("manual")
+  triggerEntityType    String?
+  triggerEntityId      String?
+
+  inputJson            Json?
+  resultJson           Json?
+  errorMessage         String?
+
+  startedAt            DateTime?
+  completedAt          DateTime?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  steps                AgentStep[]
+  toolCalls            AgentToolCall[]
+  modelInvocations     ModelInvocation[]
+  artifacts            AgentArtifact[]
+  approvals            ApprovalRequest[]
+  entities             AgentRunEntity[]
+
+  @@index([userId, status])
+  @@index([userId, agentDefinitionId])
+  @@index([triggerEntityType, triggerEntityId])
+  @@index([createdAt])
+}
+
+// IT: Runs are broken into explicit steps so the UI can show what happened.
+model AgentStep {
+  id               String   @id @default(uuid())
+  agentRunId       String
+  run              AgentRun @relation(fields: [agentRunId], references: [id], onDelete: Cascade)
+
+  stepKey          String
+  stepName         String
+  status           String   @default("queued")
+  inputJson        Json?
+  outputJson       Json?
+  errorMessage     String?
+  startedAt        DateTime?
+  completedAt      DateTime?
+  createdAt        DateTime @default(now())
+
+  toolCalls        AgentToolCall[]
+  modelInvocations ModelInvocation[]
+
+  @@index([agentRunId, status])
+  @@index([stepKey])
+}
+
+// IT: Every tool execution is logged, including tools that only read data.
+model AgentToolCall {
+  id                String   @id @default(uuid())
+  userId            String
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  agentRunId         String
+  run               AgentRun @relation(fields: [agentRunId], references: [id], onDelete: Cascade)
+
+  agentStepId        String?
+  step              AgentStep? @relation(fields: [agentStepId], references: [id], onDelete: SetNull)
+
+  toolKey            String
+  status             String   @default("running")
+  inputJson          Json?
+  outputJson         Json?
+  errorMessage       String?
+
+  createdEntityType  String?
+  createdEntityId    String?
+
+  startedAt          DateTime?
+  completedAt        DateTime?
+  createdAt          DateTime @default(now())
+
+  @@index([userId, toolKey])
+  @@index([agentRunId])
+  @@index([agentStepId])
+}
+
+// IT: Provider-independent model call log. Providers can change without changing agent tables.
+model ModelInvocation {
+  id                   String   @id @default(uuid())
+  userId               String
+  user                 User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  agentRunId            String?
+  run                  AgentRun? @relation(fields: [agentRunId], references: [id], onDelete: SetNull)
+
+  agentStepId           String?
+  step                 AgentStep? @relation(fields: [agentStepId], references: [id], onDelete: SetNull)
+
+  provider             String
+  model                String
+  purpose              String?
+
+  inputTokens          Int?
+  outputTokens         Int?
+  costEstimate         Decimal? @db.Decimal(12, 6)
+
+  requestJsonRedacted  Json?
+  responseJsonRedacted Json?
+  structuredOutputJson Json?
+
+  status               String   @default("success")
+  errorMessage         String?
+  createdAt            DateTime @default(now())
+
+  @@index([userId, provider])
+  @@index([agentRunId])
+  @@index([agentStepId])
+}
+
+// IT: Artifacts are durable outputs generated by agents, such as broker briefings or research reports.
+model AgentArtifact {
+  id             String   @id @default(uuid())
+  userId         String
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  agentRunId      String?
+  run            AgentRun? @relation(fields: [agentRunId], references: [id], onDelete: SetNull)
+
+  agentStepId     String?
+  artifactType   String
+  title          String
+  contentEnc     String?
+  summaryEnc     String?
+  structuredJson Json?
+
+  entityType     String?
+  entityId       String?
+
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([userId, artifactType])
+  @@index([userId, entityType, entityId])
+  @@index([agentRunId])
+}
+
+// IT: Approval requests pause risky actions until a human approves or rejects them.
+model ApprovalRequest {
+  id                 String   @id @default(uuid())
+  userId             String
+  user               User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  agentRunId          String?
+  run                AgentRun? @relation(fields: [agentRunId], references: [id], onDelete: SetNull)
+
+  agentStepId         String?
+  actionType          String
+  entityType          String?
+  entityId            String?
+
+  proposedActionJson  Json?
+  proposedDiffJson    Json?
+
+  status              String   @default("pending")
+  reviewerNote        String?
+  approvedAt          DateTime?
+  rejectedAt          DateTime?
+  expiresAt           DateTime?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@index([userId, status])
+  @@index([agentRunId])
+  @@index([entityType, entityId])
+}
+
+// IT: Links a run to every Relish record it read, created, updated, or referenced.
+model AgentRunEntity {
+  id          String   @id @default(uuid())
+  agentRunId  String
+  run         AgentRun @relation(fields: [agentRunId], references: [id], onDelete: Cascade)
+
+  entityType  String
+  entityId    String
+  role        String   @default("referenced")
+  createdAt   DateTime @default(now())
+
+  @@index([agentRunId])
+  @@index([entityType, entityId])
 }
 

@@ -1,6 +1,7 @@
 <!-- src/routes/companies/[id]/+page.svelte -->
 <script lang="ts">
   import ExchangeItemsPanel from '$lib/ExchangeItemsPanel.svelte';
+  import AgentBriefingsPanel from '$lib/AgentBriefingsPanel.svelte';
   // PURPOSE: Company command centre for employees, deal links, company relationships, and tasks.
   import VoiceTextField from '$lib/recording/VoiceTextField.svelte';
 
@@ -94,6 +95,8 @@
   {/if}
 
   <ExchangeItemsPanel items={data.exchangeItems ?? []} entityLabel={data.company.name} />
+
+  <AgentBriefingsPanel entityType="company" entityId={data.company.id} entityLabel={data.company.name} artifacts={data.agentArtifacts ?? []} />
 
   <div class="grid main-grid">
     <section class="card panel">

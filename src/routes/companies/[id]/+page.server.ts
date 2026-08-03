@@ -8,6 +8,7 @@ import { prisma } from '$lib/db';
 import { buildIndexToken, encrypt } from '$lib/crypto';
 import { contactDisplayName, contactOptionsForRows } from '$lib/server/contactDisplay';
 import { createExchangeItemFromForm, deleteExchangeItem, loadExchangeItems } from '$lib/server/exchange';
+import { loadAgentArtifacts } from '$lib/server/agents/artifacts';
 import {
   COMPANY_CONTACT_STATUSES,
   COMPANY_KINDS,
@@ -244,6 +245,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
   })));
 
   const exchangeItems = await loadExchangeItems({ userId, links: { companyId: row.id } });
+  const agentArtifacts = await loadAgentArtifacts({ userId, entityType: 'company', entityId: row.id });
 
   const [contactsRaw, dealsRaw, companiesRaw] = await Promise.all([
     prisma.contact.findMany({ where: { userId }, select: { id: true, fullNameEnc: true, linkedUserId: true }, orderBy: { createdAt: 'desc' }, take: 400 }),
@@ -279,6 +281,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
     relationships,
     tasks,
     exchangeItems,
+    agentArtifacts,
     contactOptions: contactOptions.filter((contact: any) => !attachedContactIds.has(contact.id)),
     allContactOptions: contactOptions,
     dealOptions: dealOptions.filter((deal: any) => !attachedDealIds.has(deal.id)),

@@ -1,6 +1,6 @@
 // src/lib/contacts/view.ts
 // PURPOSE: map raw Contact rows to view models with a live name fallback when linkedUserId exists
-// SECURITY: decryption happens server side only - no plaintext leaves the server unless intended
+// SECURITY: decryption happens server side only - no plaintext leaves the server unless it is intended
 
 import { prisma } from '$lib/db';
 import { decrypt } from '$lib/crypto';

@@ -1,2 +1,4 @@
--- AlterTable
-ALTER TABLE "public"."ResearchSource" ALTER COLUMN "updatedAt" DROP DEFAULT;
+-- No-op migration.
+-- IT: This migration was generated locally before ResearchSource existed in production.
+-- The real Stage 3 ResearchSource creation happens in:
+-- 20260803213000_add_agent_research_stage3.

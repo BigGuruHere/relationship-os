@@ -20,6 +20,7 @@
     if (type === 'company') return `/companies/${id}`;
     if (type === 'deal') return `/deals/${id}`;
     if (type === 'project') return `/projects/${id}`;
+    if (type === 'task') return `/tasks/${id}/edit`;
     return '';
   }
 </script>
@@ -56,6 +57,55 @@
           {#if artifact.content}<pre class="content">{artifact.content}</pre>{/if}
         </article>
       {/each}
+    </section>
+  {/if}
+
+
+
+  {#if data.candidates?.length}
+    <section class="card panel">
+      <h2>Outreach candidates</h2>
+      <p class="muted">These are staged records only. Approve/reject them here, then import useful candidates into CRM when you are ready.</p>
+      <div class="candidate-list">
+        {#each data.candidates as candidate}
+          <article class="candidate">
+            <div class="candidate-head">
+              <div>
+                <div class="meta"><span>{candidate.entityType}</span><span>{candidate.status}</span><span>Confidence {candidate.confidence}/100</span></div>
+                <h3>{candidate.name}</h3>
+                {#if candidate.website}<p><a href={candidate.website} target="_blank" rel="noreferrer">{candidate.website}</a></p>{/if}
+                {#if candidate.sourceUrl}<p class="muted">Source: <a href={candidate.sourceUrl} target="_blank" rel="noreferrer">{candidate.sourceLabel || candidate.sourceUrl}</a></p>{/if}
+              </div>
+              <div class="score">
+                <strong>{candidate.score?.totalScore ?? 0}</strong>
+                <span>score</span>
+              </div>
+            </div>
+
+            {#if candidate.notes}<p>{candidate.notes}</p>{/if}
+            {#if candidate.score?.rationaleJson}<details class="detail"><summary>Score rationale</summary><pre>{pretty(candidate.score.rationaleJson)}</pre></details>{/if}
+
+            {#if candidate.createdEntityType && candidate.createdEntityId}
+              <p class="success">Imported as {candidate.createdEntityType}.
+                {#if entityHref(candidate.createdEntityType, candidate.createdEntityId)}<a href={entityHref(candidate.createdEntityType, candidate.createdEntityId)}>Open record</a>{/if}
+              </p>
+            {/if}
+
+            <div class="actions small-actions">
+              {#if candidate.status !== 'APPROVED' && candidate.status !== 'IMPORTED'}
+                <form method="post" action="?/approveCandidate"><input type="hidden" name="candidateId" value={candidate.id} /><button class="btn" type="submit">Approve</button></form>
+              {/if}
+              {#if candidate.status !== 'REJECTED' && candidate.status !== 'IMPORTED'}
+                <form method="post" action="?/rejectCandidate"><input type="hidden" name="candidateId" value={candidate.id} /><button class="btn danger" type="submit">Reject</button></form>
+              {/if}
+              {#if candidate.status !== 'IMPORTED' && candidate.status !== 'REJECTED'}
+                <form method="post" action="?/importCandidate"><input type="hidden" name="candidateId" value={candidate.id} /><button class="btn primary" type="submit">Import to CRM</button></form>
+              {/if}
+              <form method="post" action="?/createReviewTask"><input type="hidden" name="candidateId" value={candidate.id} /><button class="btn" type="submit">Create review task</button></form>
+            </div>
+          </article>
+        {/each}
+      </div>
     </section>
   {/if}
 
@@ -142,5 +192,14 @@
   .mini-row { justify-content: space-between; border-bottom: 1px solid var(--border); padding: 8px 0; }
   .muted { color: var(--muted); }
   .error { color: var(--danger); }
+  .success { color: var(--success, #138a36); font-weight: 700; }
+  .candidate-list { display: grid; gap: 12px; margin-top: 10px; }
+  .candidate { border: 1px solid var(--border); border-radius: 14px; padding: 12px; }
+  .candidate-head { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }
+  .score { border: 1px solid var(--border); border-radius: 12px; padding: 8px 12px; text-align: center; min-width: 70px; background: var(--surface-2); }
+  .score strong { display: block; font-size: 1.4rem; }
+  .score span { color: var(--muted); font-size: 0.8rem; }
+  .small-actions { margin-top: 10px; }
+  .btn.danger { border-color: var(--danger); color: var(--danger); }
   @media (max-width: 760px) { .header, .grid.two, .cols { display: grid; grid-template-columns: 1fr; } }
 </style>

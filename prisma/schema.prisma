@@ -86,6 +86,8 @@ model User {
   modelInvocations     ModelInvocation[]
   agentArtifacts       AgentArtifact[]
   approvalRequests     ApprovalRequest[]
+  researchCandidates   ResearchCandidate[]
+  opportunityScores    OpportunityScore[]
 
   role       UserRole @default(member)
   publicSlug String?  @unique
@@ -347,6 +349,7 @@ model Contact {
   // IT: company memberships/employment history. A person can belong to more than one company over time.
   companyLinks      CompanyContact[]
   exchangeItems     ExchangeItem[]
+  opportunityScores OpportunityScore[]
 
   // Indexes for search and tenancy
   @@index([userId])
@@ -594,6 +597,7 @@ model Deal {
   dealContactNotes DealContactNote[]
   tasks    Task[]
   exchangeItems ExchangeItem[]
+  opportunityScores OpportunityScore[]
 
   @@index([userId, status])
   @@index([userId, expectedCloseDate])
@@ -816,6 +820,7 @@ model Company {
   relationshipsAsA CompanyRelationship[] @relation("CompanyAsA")
   relationshipsAsB CompanyRelationship[] @relation("CompanyAsB")
   exchangeItems     ExchangeItem[]
+  opportunityScores OpportunityScore[]
 
   @@unique([userId, nameIdx])
   @@index([userId, kind])
@@ -1167,6 +1172,101 @@ model Task {
   @@index([userId, waitingOnContactId])
 }
 
+
+// ---------------------------------------------------------------------------
+// AGENT STAGE 2 OUTREACH MODELS
+// ---------------------------------------------------------------------------
+// IT: Candidate type staged by the Outreach Agent before importing into CRM.
+enum ResearchCandidateEntityType {
+  COMPANY
+  CONTACT
+}
+
+// IT: Review/import lifecycle for AI-found or manually pasted research candidates.
+enum ResearchCandidateStatus {
+  CANDIDATE
+  APPROVED
+  REJECTED
+  IMPORTED
+}
+
+// IT: Temporary staging area. AI can propose candidates here without polluting real CRM data.
+model ResearchCandidate {
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  agentRunId String?
+  run        AgentRun? @relation(fields: [agentRunId], references: [id], onDelete: SetNull)
+
+  entityType ResearchCandidateEntityType @default(COMPANY)
+  status     ResearchCandidateStatus     @default(CANDIDATE)
+
+  nameEnc       String
+  nameIdx       String
+  websiteEnc    String?
+  websiteIdx    String?
+  sourceUrlEnc  String?
+  sourceLabelEnc String?
+  confidence    Int @default(50)
+
+  structuredJson Json?
+  notesEnc       String?
+
+  createdEntityType String?
+  createdEntityId   String?
+
+  opportunityScores OpportunityScore[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, status])
+  @@index([userId, entityType])
+  @@index([userId, nameIdx])
+  @@index([agentRunId])
+}
+
+// IT: Structured opportunity scoring for a staged candidate or existing CRM record.
+model OpportunityScore {
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  agentRunId String?
+  run        AgentRun? @relation(fields: [agentRunId], references: [id], onDelete: SetNull)
+
+  researchCandidateId String?
+  researchCandidate   ResearchCandidate? @relation(fields: [researchCandidateId], references: [id], onDelete: SetNull)
+
+  companyId String?
+  company   Company? @relation(fields: [companyId], references: [id], onDelete: SetNull)
+
+  contactId String?
+  contact   Contact? @relation(fields: [contactId], references: [id], onDelete: SetNull)
+
+  dealId String?
+  deal   Deal? @relation(fields: [dealId], references: [id], onDelete: SetNull)
+
+  totalScore          Int @default(0)
+  sectorFitScore      Int?
+  ownerLedScore       Int?
+  dealLikelihoodScore Int?
+  outreachFitScore    Int?
+  timingScore         Int?
+  confidenceScore     Int?
+  rationaleJson       Json?
+
+  createdAt DateTime @default(now())
+
+  @@index([userId, totalScore])
+  @@index([userId, companyId])
+  @@index([userId, contactId])
+  @@index([userId, dealId])
+  @@index([userId, researchCandidateId])
+  @@index([agentRunId])
+}
+
 // ---------------------------------------------------------------------------
 // AGENT FRAMEWORK MODELS
 // ---------------------------------------------------------------------------
@@ -1300,6 +1400,8 @@ model AgentRun {
   artifacts            AgentArtifact[]
   approvals            ApprovalRequest[]
   entities             AgentRunEntity[]
+  researchCandidates   ResearchCandidate[]
+  opportunityScores    OpportunityScore[]
 
   @@index([userId, status])
   @@index([userId, agentDefinitionId])

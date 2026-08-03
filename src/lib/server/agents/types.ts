@@ -1,7 +1,7 @@
 // src/lib/server/agents/types.ts
 // PURPOSE: Shared Stage 1 Agent Framework types.
 
-export type AgentEntityType = 'contact' | 'company' | 'deal' | 'project';
+export type AgentEntityType = 'contact' | 'company' | 'deal' | 'project' | 'research_candidate';
 
 export type ToolContext = {
   userId: string;
@@ -26,4 +26,35 @@ export type BrokerBriefingOutput = {
   risks: string[];
   opportunities: string[];
   recommendedNextActions: string[];
+};
+
+export type OutreachCandidateOutput = {
+  entityType?: 'COMPANY' | 'CONTACT';
+  name: string;
+  website?: string;
+  sourceUrl?: string;
+  sourceLabel?: string;
+  confidence?: number;
+  notes?: string;
+  totalScore?: number;
+  sectorFitScore?: number;
+  ownerLedScore?: number;
+  dealLikelihoodScore?: number;
+  outreachFitScore?: number;
+  timingScore?: number;
+  confidenceScore?: number;
+  scoreRationale?: string[];
+  outreachAngle?: string;
+  draftSubject?: string;
+  draftBody?: string;
+  nextActionTitle?: string;
+};
+
+export type OutreachAgentOutput = {
+  candidates: OutreachCandidateOutput[];
+  runBriefing?: {
+    title?: string;
+    summary?: string;
+    recommendedNextActions?: string[];
+  };
 };

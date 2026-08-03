@@ -15,12 +15,13 @@
     <div>
       <div class="eyebrow">Agent Framework</div>
       <h1>Agents</h1>
-      <p class="muted">Stage 1 foundation: definitions, runs, steps, tool calls, model logs, artifacts, and approvals.</p>
+      <p class="muted">Agent framework: definitions, runs, steps, tool calls, model logs, artifacts, approvals, and staged outreach candidates.</p>
     </div>
     <div class="actions">
       <form method="post" action="?/ensureDefaults">
         <button class="btn" type="submit">Ensure defaults</button>
       </form>
+      <a class="btn" href="/agents/outreach/new">Start outreach</a>
       <a class="btn" href="/agents/runs">All runs</a>
     </div>
   </div>
@@ -60,7 +61,7 @@
       <a class="btn" href="/agents/runs">View all</a>
     </div>
     {#if !data.recentRuns?.length}
-      <p class="muted">No agent runs yet. Open a contact, company, deal, or project and click Prepare broker briefing.</p>
+      <p class="muted">No agent runs yet. Open a contact/company/deal/project for a broker briefing, or start a safe outreach run.</p>
     {:else}
       <div class="list">
         {#each data.recentRuns as run}

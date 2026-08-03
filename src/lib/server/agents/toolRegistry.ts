@@ -5,6 +5,10 @@ import { prisma } from '$lib/db';
 import type { ToolContext, ToolDefinition } from '$lib/server/agents/types';
 import { readEntityContextTool } from '$lib/server/agents/tools/readEntityContext';
 import { createAgentArtifactTool } from '$lib/server/agents/tools/createArtifact';
+import { createResearchCandidateTool } from '$lib/server/agents/tools/createResearchCandidate';
+import { createOpportunityScoreTool } from '$lib/server/agents/tools/createOpportunityScore';
+import { createApprovalRequestTool } from '$lib/server/agents/tools/createApprovalRequest';
+import { createTaskTool } from '$lib/server/agents/tools/createTask';
 
 const tools = new Map<string, ToolDefinition<any, any>>();
 
@@ -16,6 +20,10 @@ function ensureRegistered() {
   if (tools.size > 0) return;
   registerAgentTool(readEntityContextTool);
   registerAgentTool(createAgentArtifactTool);
+  registerAgentTool(createResearchCandidateTool);
+  registerAgentTool(createOpportunityScoreTool);
+  registerAgentTool(createApprovalRequestTool);
+  registerAgentTool(createTaskTool);
 }
 
 export async function executeAgentTool<Input, Output>(

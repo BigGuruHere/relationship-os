@@ -9,6 +9,7 @@ import { encrypt } from '$lib/crypto';
 import { contactDisplayName, contactOptionsForRows } from '$lib/server/contactDisplay';
 import { createExchangeItemFromForm, deleteExchangeItem, loadExchangeItems } from '$lib/server/exchange';
 import { loadAgentArtifacts } from '$lib/server/agents/artifacts';
+import { runOpportunityScoringAgent } from '$lib/server/agents/agents/opportunityScoringAgent';
 import { companyKindLabel, safeDecryptCompany } from '$lib/companies';
 import {
   DEAL_RELATIONSHIP_TYPES,
@@ -400,6 +401,20 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 };
 
 export const actions: Actions = {
+  scoreDeal: async ({ params, locals }) => {
+    if (!locals.user) throw redirect(303, '/auth/login');
+    const deal = await ensureOwnedDeal(locals.user.id, params.id);
+    if (!deal) return fail(404, { error: 'Deal not found.' });
+    const run = await runOpportunityScoringAgent({
+      userId: locals.user.id,
+      entityType: 'deal',
+      entityId: params.id,
+      sector: 'Business broking deal',
+      scoringGoal: 'Prioritise this deal and recommend the next human action.'
+    });
+    throw redirect(303, `/agents/runs/${run.id}`);
+  },
+
   updateState: async ({ request, params, locals }) => {
     if (!locals.user) throw redirect(303, '/auth/login');
 

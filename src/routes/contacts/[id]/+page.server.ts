@@ -10,6 +10,7 @@ import type { Actions, PageServerLoad } from './$types';
 import { getBestDisplayName } from '$lib/server/names';
 import { createExchangeItemFromForm, deleteExchangeItem, loadExchangeItems } from '$lib/server/exchange';
 import { loadAgentArtifacts } from '$lib/server/agents/artifacts';
+import { runOpportunityScoringAgent } from '$lib/server/agents/agents/opportunityScoringAgent';
 import {
   DEAL_RELATIONSHIP_TYPES,
   dealRelationshipLabel,
@@ -433,6 +434,20 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 };
 
 export const actions: Actions = {
+  scoreContact: async ({ params, locals }) => {
+    if (!locals.user) throw redirect(303, '/auth/login');
+    const contact = await prisma.contact.findFirst({ where: { id: params.id, userId: locals.user.id }, select: { id: true } });
+    if (!contact) return fail(404, { error: 'Contact not found.' });
+    const run = await runOpportunityScoringAgent({
+      userId: locals.user.id,
+      entityType: 'contact',
+      entityId: params.id,
+      sector: 'Relationship-led opportunity',
+      scoringGoal: 'Prioritise this contact for relationship-driven outreach, broker follow-up, or deal work.'
+    });
+    throw redirect(303, `/agents/runs/${run.id}`);
+  },
+
   addTag: async ({ request, params, locals }) => {
     if (!locals.user) throw redirect(303, '/auth/login');
 

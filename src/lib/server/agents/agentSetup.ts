@@ -42,6 +42,15 @@ const OUTREACH_OUTPUT_SCHEMA = {
           outreachFitScore: { type: 'number' },
           timingScore: { type: 'number' },
           confidenceScore: { type: 'number' },
+          strategicFitScore: { type: 'number' },
+          valuePotentialScore: { type: 'number' },
+          relationshipPathScore: { type: 'number' },
+          evidenceQualityScore: { type: 'number' },
+          riskScore: { type: 'number' },
+          scoreLabel: { type: 'string' },
+          priority: { type: 'string' },
+          recommendedAction: { type: 'string' },
+          scoreFactors: { type: 'array', items: { type: 'object' } },
           scoreRationale: { type: 'array', items: { type: 'string' } },
           outreachAngle: { type: 'string' },
           draftSubject: { type: 'string' },
@@ -58,6 +67,53 @@ const OUTREACH_OUTPUT_SCHEMA = {
         recommendedNextActions: { type: 'array', items: { type: 'string' } }
       }
     }
+  }
+};
+
+
+const OPPORTUNITY_SCORING_OUTPUT_SCHEMA = {
+  type: 'object',
+  required: ['targetName', 'totalScore', 'factors', 'rationale', 'risks', 'missingInformation', 'nextActions'],
+  properties: {
+    targetName: { type: 'string' },
+    entityType: { type: 'string' },
+    totalScore: { type: 'number' },
+    scoreLabel: { type: 'string', enum: ['hot', 'warm', 'watch', 'low', 'reject'] },
+    priority: { type: 'string', enum: ['urgent', 'high', 'medium', 'low'] },
+    recommendedAction: { type: 'string' },
+    sectorFitScore: { type: 'number' },
+    ownerLedScore: { type: 'number' },
+    dealLikelihoodScore: { type: 'number' },
+    outreachFitScore: { type: 'number' },
+    timingScore: { type: 'number' },
+    confidenceScore: { type: 'number' },
+    strategicFitScore: { type: 'number' },
+    valuePotentialScore: { type: 'number' },
+    relationshipPathScore: { type: 'number' },
+    evidenceQualityScore: { type: 'number' },
+    riskScore: { type: 'number' },
+    factors: {
+      type: 'array',
+      items: {
+        type: 'object',
+        required: ['criterionKey', 'criterionLabel', 'score', 'rationale'],
+        properties: {
+          criterionKey: { type: 'string' },
+          criterionLabel: { type: 'string' },
+          score: { type: 'number' },
+          weight: { type: 'number' },
+          polarity: { type: 'string' },
+          confidence: { type: 'number' },
+          evidence: { type: 'string' },
+          rationale: { type: 'string' },
+          sourceUrl: { type: 'string' }
+        }
+      }
+    },
+    rationale: { type: 'array', items: { type: 'string' } },
+    risks: { type: 'array', items: { type: 'string' } },
+    missingInformation: { type: 'array', items: { type: 'string' } },
+    nextActions: { type: 'array', items: { type: 'string' } }
   }
 };
 
@@ -80,9 +136,25 @@ Return strict JSON only. Do not include markdown fences.`;
 const OUTREACH_INSTRUCTIONS = `Extract or propose candidate companies/contacts from the user's supplied research text and any logged web-search snippets.
 Score each candidate for business-broker outreach fit.
 Draft a short, human-reviewable outreach angle and email draft for each candidate.
+For cold first-contact drafts, use a low-pressure relevance-check style. The aim is to create a conversation, not ask the person to sell immediately.
+Use plain human language, acknowledge uncertainty, and make the ask a quick conversation. Avoid corporate filler such as "I hope this message finds you well", "unlock value", "enhance client service", or asking directly whether they want to sell unless the user specifically asked for a direct sale message.
 Prefer fewer, stronger candidates over a broad loose list.
 Do not claim an email was sent.
 Do not claim research has been verified unless the source text or logged research source supports it. Prefer company candidates plus staged likely contact candidates with role/title and evidence when contact discovery is requested.`;
+
+
+const OPPORTUNITY_SCORING_SYSTEM_PROMPT = `You are the Opportunity Scoring Agent inside Relish.
+Relish is the source of truth. Your job is to prioritise attention, not to declare truth or take action.
+You score candidates, contacts, companies, and deals for business-broking relevance using supplied CRM context, user context, and evidence.
+Never invent evidence. If context is thin, lower evidence quality and confidence. Return strict JSON only. Do not include markdown fences.`;
+
+const OPPORTUNITY_SCORING_INSTRUCTIONS = `Create an explainable scorecard for the target.
+Use a 0-100 scale where 100 is strongest.
+Score the following criteria where relevant: sector fit, owner-led likelihood, deal likelihood, outreach fit, timing, confidence, strategic fit, value potential, relationship path, evidence quality, and risk.
+Use scoreLabel hot/warm/watch/low/reject and priority urgent/high/medium/low.
+A high score requires both commercial fit and usable evidence. Do not over-score thin research.
+Recommended actions must be human next steps, such as review evidence, confirm contact details, call principal, import candidate, or create a deal only if actual interest exists.
+Factors must include rationale and, where available, evidence or sourceUrl.`;
 
 const AGENTS = [
   {
@@ -93,6 +165,17 @@ const AGENTS = [
     systemPrompt: BROKER_BRIEF_SYSTEM_PROMPT,
     instructions: BROKER_BRIEF_INSTRUCTIONS,
     outputSchemaJson: BROKER_BRIEF_OUTPUT_SCHEMA,
+    requiresApprovalDefault: false,
+    promptVersion: 1
+  },
+  {
+    key: 'opportunity_scoring_agent',
+    name: 'Opportunity Scoring Agent',
+    description: 'Creates explainable scorecards for candidates, companies, contacts, and deals.',
+    category: 'scoring',
+    systemPrompt: OPPORTUNITY_SCORING_SYSTEM_PROMPT,
+    instructions: OPPORTUNITY_SCORING_INSTRUCTIONS,
+    outputSchemaJson: OPPORTUNITY_SCORING_OUTPUT_SCHEMA,
     requiresApprovalDefault: false,
     promptVersion: 1
   },
@@ -116,7 +199,7 @@ const CORE_TOOLS = [
     description: 'Reads a contact, company, deal, or project context from Relish.',
     toolType: 'read',
     requiresApproval: false,
-    agents: ['broker_brief_agent', 'outreach_agent']
+    agents: ['broker_brief_agent', 'outreach_agent', 'opportunity_scoring_agent']
   },
   {
     key: 'create_agent_artifact',
@@ -124,7 +207,7 @@ const CORE_TOOLS = [
     description: 'Stores an encrypted durable output produced by an agent.',
     toolType: 'write',
     requiresApproval: false,
-    agents: ['broker_brief_agent', 'outreach_agent']
+    agents: ['broker_brief_agent', 'outreach_agent', 'opportunity_scoring_agent']
   },
   {
     key: 'create_research_candidate',
@@ -140,7 +223,7 @@ const CORE_TOOLS = [
     description: 'Stores a structured scorecard for a candidate or existing CRM record.',
     toolType: 'write',
     requiresApproval: false,
-    agents: ['outreach_agent']
+    agents: ['outreach_agent', 'opportunity_scoring_agent']
   },
   {
     key: 'create_approval_request',
@@ -173,7 +256,7 @@ const CORE_TOOLS = [
     description: 'Creates a Relish task for follow-up or human review.',
     toolType: 'write',
     requiresApproval: false,
-    agents: ['outreach_agent']
+    agents: ['outreach_agent', 'opportunity_scoring_agent']
   }
 ];
 

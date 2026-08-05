@@ -87,6 +87,7 @@
           <a class="btn primary" href={`/contacts/${contact.id}/interactions/new`}>Add voice/note</a>
           <button class="btn" type="button" on:click={() => (showAddTask = !showAddTask)}>{showAddTask ? 'Cancel task' : 'Add task'}</button>
           <a class="btn" href={getVcardUrl()} download aria-label="Download vCard" title="Download vCard">vCard</a>
+          <form method="post" action="?/scoreContact"><button class="btn" type="submit">Score opportunity</button></form>
           <a class="btn" href={`/contacts/${contact.id}/edit`} aria-label="Edit contact" title="Edit contact">Edit</a>
         </div>
       </div>

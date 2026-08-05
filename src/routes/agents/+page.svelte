@@ -22,6 +22,7 @@
         <button class="btn" type="submit">Ensure defaults</button>
       </form>
       <a class="btn" href="/agents/outreach/new">Start outreach</a>
+      <a class="btn" href="/agents/scoring/new">Score opportunity</a>
       <a class="btn" href="/agents/runs">All runs</a>
     </div>
   </div>

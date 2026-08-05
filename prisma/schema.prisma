@@ -89,6 +89,7 @@ model User {
   researchCandidates   ResearchCandidate[]
   researchSources      ResearchSource[]
   opportunityScores    OpportunityScore[]
+  opportunityScoreFactors OpportunityScoreFactor[]
 
   role       UserRole @default(member)
   publicSlug String?  @unique
@@ -351,6 +352,7 @@ model Contact {
   companyLinks      CompanyContact[]
   exchangeItems     ExchangeItem[]
   opportunityScores OpportunityScore[]
+  opportunityScoreFactors OpportunityScoreFactor[]
   researchSources   ResearchSource[]
 
   // Indexes for search and tenancy
@@ -600,6 +602,7 @@ model Deal {
   tasks    Task[]
   exchangeItems ExchangeItem[]
   opportunityScores OpportunityScore[]
+  opportunityScoreFactors OpportunityScoreFactor[]
 
   @@index([userId, status])
   @@index([userId, expectedCloseDate])
@@ -823,6 +826,7 @@ model Company {
   relationshipsAsB CompanyRelationship[] @relation("CompanyAsB")
   exchangeItems     ExchangeItem[]
   opportunityScores OpportunityScore[]
+  opportunityScoreFactors OpportunityScoreFactor[]
   researchSources   ResearchSource[]
 
   @@unique([userId, nameIdx])
@@ -1230,6 +1234,7 @@ model ResearchCandidate {
   createdEntityId   String?
 
   opportunityScores OpportunityScore[]
+  opportunityScoreFactors OpportunityScoreFactor[]
   researchSources    ResearchSource[]
 
   createdAt DateTime @default(now())
@@ -1306,6 +1311,12 @@ model OpportunityScore {
   dealId String?
   deal   Deal? @relation(fields: [dealId], references: [id], onDelete: SetNull)
 
+  // IT: Stage 4 scorecards are still advisory. They rank attention, not truth.
+  scoreVersion        Int    @default(2)
+  scoreLabel          String @default("watch")
+  priority            String @default("medium")
+  recommendedAction   String?
+
   totalScore          Int @default(0)
   sectorFitScore      Int?
   ownerLedScore       Int?
@@ -1313,16 +1324,70 @@ model OpportunityScore {
   outreachFitScore    Int?
   timingScore         Int?
   confidenceScore     Int?
+
+  strategicFitScore      Int?
+  valuePotentialScore    Int?
+  relationshipPathScore  Int?
+  evidenceQualityScore   Int?
+  riskScore              Int?
+
   rationaleJson       Json?
+  factors             OpportunityScoreFactor[]
 
   createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([userId, totalScore])
+  @@index([userId, scoreLabel])
+  @@index([userId, priority])
   @@index([userId, companyId])
   @@index([userId, contactId])
   @@index([userId, dealId])
   @@index([userId, researchCandidateId])
   @@index([agentRunId])
+}
+
+// IT: Stage 4 score-factor table. Each score is explainable and reviewable.
+model OpportunityScoreFactor {
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  opportunityScoreId String
+  opportunityScore   OpportunityScore @relation(fields: [opportunityScoreId], references: [id], onDelete: Cascade)
+
+  researchCandidateId String?
+  researchCandidate   ResearchCandidate? @relation(fields: [researchCandidateId], references: [id], onDelete: SetNull)
+
+  companyId String?
+  company   Company? @relation(fields: [companyId], references: [id], onDelete: SetNull)
+
+  contactId String?
+  contact   Contact? @relation(fields: [contactId], references: [id], onDelete: SetNull)
+
+  dealId String?
+  deal   Deal? @relation(fields: [dealId], references: [id], onDelete: SetNull)
+
+  criterionKey   String
+  criterionLabel String
+  score          Int @default(0)
+  weight         Int @default(1)
+  polarity       String @default("positive")
+  confidence     Int @default(50)
+
+  evidenceEnc    String?
+  rationaleEnc   String?
+  sourceUrlEnc   String?
+  metadataJson   Json?
+
+  createdAt DateTime @default(now())
+
+  @@index([userId, criterionKey])
+  @@index([userId, opportunityScoreId])
+  @@index([userId, researchCandidateId])
+  @@index([userId, companyId])
+  @@index([userId, contactId])
+  @@index([userId, dealId])
 }
 
 // ---------------------------------------------------------------------------

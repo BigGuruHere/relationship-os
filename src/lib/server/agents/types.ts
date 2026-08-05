@@ -1,7 +1,7 @@
 // src/lib/server/agents/types.ts
 // PURPOSE: Shared Stage 1 Agent Framework types.
 
-export type AgentEntityType = 'contact' | 'company' | 'deal' | 'project' | 'research_candidate' | 'research_source';
+export type AgentEntityType = 'contact' | 'company' | 'deal' | 'project' | 'research_candidate' | 'research_source' | 'opportunity_score';
 
 export type ToolContext = {
   userId: string;
@@ -43,6 +43,15 @@ export type OutreachCandidateOutput = {
   outreachFitScore?: number;
   timingScore?: number;
   confidenceScore?: number;
+  strategicFitScore?: number;
+  valuePotentialScore?: number;
+  relationshipPathScore?: number;
+  evidenceQualityScore?: number;
+  riskScore?: number;
+  scoreLabel?: string;
+  priority?: string;
+  recommendedAction?: string;
+  scoreFactors?: OpportunityScoreFactorOutput[];
   scoreRationale?: string[];
   outreachAngle?: string;
   draftSubject?: string;
@@ -61,4 +70,42 @@ export type OutreachAgentOutput = {
     summary?: string;
     recommendedNextActions?: string[];
   };
+};
+
+
+export type OpportunityScoreFactorOutput = {
+  criterionKey: string;
+  criterionLabel: string;
+  score: number;
+  weight?: number;
+  polarity?: 'positive' | 'negative' | 'neutral';
+  confidence?: number;
+  evidence?: string;
+  rationale?: string;
+  sourceUrl?: string;
+};
+
+export type OpportunityScoringOutput = {
+  targetName: string;
+  entityType?: 'COMPANY' | 'CONTACT' | 'DEAL' | 'RESEARCH_CANDIDATE';
+  totalScore: number;
+  scoreLabel?: string;
+  priority?: string;
+  recommendedAction?: string;
+  sectorFitScore?: number;
+  ownerLedScore?: number;
+  dealLikelihoodScore?: number;
+  outreachFitScore?: number;
+  timingScore?: number;
+  confidenceScore?: number;
+  strategicFitScore?: number;
+  valuePotentialScore?: number;
+  relationshipPathScore?: number;
+  evidenceQualityScore?: number;
+  riskScore?: number;
+  factors: OpportunityScoreFactorOutput[];
+  rationale: string[];
+  risks: string[];
+  missingInformation: string[];
+  nextActions: string[];
 };

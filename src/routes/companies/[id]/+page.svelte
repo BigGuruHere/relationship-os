@@ -42,6 +42,7 @@
       <button class="btn" type="button" on:click={() => (showEdit = !showEdit)}>{showEdit ? 'Cancel' : 'Edit company'}</button>
       <button class="btn primary" type="button" on:click={() => (showAddTask = !showAddTask)}>{showAddTask ? 'Cancel task' : 'Add task'}</button>
       <form method="post" action="?/researchCompany"><button class="btn" type="submit">Research company/contact names</button></form>
+      <form method="post" action="?/scoreCompany"><button class="btn" type="submit">Score opportunity</button></form>
       <a class="btn" href="/companies">Back</a>
     </div>
   </header>

@@ -55,6 +55,7 @@
       <button class="btn" type="button" on:click={() => (showStateEditor = !showStateEditor)}>{showStateEditor ? 'Close state' : 'Update state'}</button>
       <button class="btn" type="button" on:click={() => (showAddTask = !showAddTask)}>{showAddTask ? 'Cancel task' : 'Add task'}</button>
       <a class="btn" href={`/deals/${data.deal.id}/notes/new`}>Add voice/note</a>
+      <form method="post" action="?/scoreDeal"><button class="btn" type="submit">Score opportunity</button></form>
       <a class="btn" href={`/deals/${data.deal.id}/edit`}>Edit</a>
     </div>
   </div>

@@ -62,6 +62,65 @@
 
 
 
+
+
+  {#if data.opportunityScores?.length}
+    <section class="card panel">
+      <h2>Opportunity scorecards</h2>
+      <p class="muted">Stage 4 scorecards are advisory. Use them to prioritise review, not as proof of fit.</p>
+      <div class="scorecard-list">
+        {#each data.opportunityScores as score}
+          <article class="scorecard">
+            <div class="candidate-head">
+              <div>
+                <div class="meta"><span>v{score.scoreVersion}</span><span>{score.scoreLabel}</span><span>{score.priority}</span><span>{fmt(score.createdAt)}</span></div>
+                <h3>Score {score.totalScore}/100</h3>
+                {#if score.recommendedAction}<p><strong>Recommended action:</strong> {score.recommendedAction}</p>{/if}
+              </div>
+              <div class="score">
+                <strong>{score.totalScore}</strong>
+                <span>{score.scoreLabel}</span>
+              </div>
+            </div>
+
+            <div class="score-grid">
+              <span>Sector {score.sectorFitScore ?? '-'}</span>
+              <span>Owner-led {score.ownerLedScore ?? '-'}</span>
+              <span>Deal likelihood {score.dealLikelihoodScore ?? '-'}</span>
+              <span>Outreach {score.outreachFitScore ?? '-'}</span>
+              <span>Timing {score.timingScore ?? '-'}</span>
+              <span>Evidence {score.evidenceQualityScore ?? score.confidenceScore ?? '-'}</span>
+              <span>Value {score.valuePotentialScore ?? '-'}</span>
+              <span>Risk {score.riskScore ?? '-'}</span>
+            </div>
+
+            {#if score.factors?.length}
+              <details class="detail" open>
+                <summary>Score factors</summary>
+                <div class="factor-list">
+                  {#each score.factors as factor}
+                    <div class="factor-row">
+                      <div>
+                        <strong>{factor.criterionLabel}</strong>
+                        <div class="meta"><span>{factor.polarity}</span><span>Weight {factor.weight}</span><span>Confidence {factor.confidence}/100</span></div>
+                        {#if factor.rationale}<p>{factor.rationale}</p>{/if}
+                        {#if factor.evidence}<p class="muted">Evidence: {factor.evidence}</p>{/if}
+                        {#if factor.sourceUrl}<p><a href={factor.sourceUrl} target="_blank" rel="noreferrer">Source</a></p>{/if}
+                      </div>
+                      <strong>{factor.score}/100</strong>
+                    </div>
+                  {/each}
+                </div>
+              </details>
+            {/if}
+
+            {#if score.rationaleJson}<details class="detail"><summary>Full rationale JSON</summary><pre>{pretty(score.rationaleJson)}</pre></details>{/if}
+          </article>
+        {/each}
+      </div>
+    </section>
+  {/if}
+
   {#if data.researchSources?.length}
     <section class="card panel">
       <h2>Research sources</h2>
@@ -104,6 +163,14 @@
             </div>
 
             {#if candidate.notes}<p>{candidate.notes}</p>{/if}
+            {#if candidate.score?.recommendedAction}<p><strong>Recommended action:</strong> {candidate.score.recommendedAction}</p>{/if}
+            {#if candidate.score?.factors?.length}
+              <details class="detail"><summary>Score factors</summary>
+                {#each candidate.score.factors as factor}
+                  <div class="factor-row"><span>{factor.criterionLabel}</span><strong>{factor.score}/100</strong></div>
+                {/each}
+              </details>
+            {/if}
             {#if candidate.score?.rationaleJson}<details class="detail"><summary>Score rationale</summary><pre>{pretty(candidate.score.rationaleJson)}</pre></details>{/if}
 
             {#if candidate.createdEntityType && candidate.createdEntityId}
@@ -214,11 +281,15 @@
   .muted { color: var(--muted); }
   .error { color: var(--danger); }
   .success { color: var(--success, #138a36); font-weight: 700; }
-  .candidate-list, .source-list { display: grid; gap: 12px; margin-top: 10px; }
-  .candidate, .source-row { border: 1px solid var(--border); border-radius: 14px; padding: 12px; }
+  .candidate-list, .source-list, .scorecard-list { display: grid; gap: 12px; margin-top: 10px; }
+  .candidate, .source-row, .scorecard { border: 1px solid var(--border); border-radius: 14px; padding: 12px; }
   .candidate-head { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }
   .score { border: 1px solid var(--border); border-radius: 12px; padding: 8px 12px; text-align: center; min-width: 70px; background: var(--surface-2); }
   .score strong { display: block; font-size: 1.4rem; }
+  .score-grid { display: flex; gap: 8px; flex-wrap: wrap; margin: 10px 0; }
+  .score-grid span { border: 1px solid var(--border); border-radius: 999px; padding: 4px 8px; background: var(--surface-2); }
+  .factor-list { display: grid; gap: 8px; margin-top: 8px; }
+  .factor-row { display: flex; justify-content: space-between; gap: 12px; border-bottom: 1px solid var(--border); padding: 8px 0; }
   .score span { color: var(--muted); font-size: 0.8rem; }
   .small-actions { margin-top: 10px; }
   .btn.danger { border-color: var(--danger); color: var(--danger); }

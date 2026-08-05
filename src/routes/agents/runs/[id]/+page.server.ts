@@ -54,6 +54,61 @@ async function loadResearchSources(userId: string, agentRunId: string) {
   }));
 }
 
+
+async function loadOpportunityScores(userId: string, agentRunId: string) {
+  const rows = await prisma.opportunityScore.findMany({
+    where: { userId, agentRunId },
+    select: {
+      id: true,
+      researchCandidateId: true,
+      companyId: true,
+      contactId: true,
+      dealId: true,
+      scoreVersion: true,
+      scoreLabel: true,
+      priority: true,
+      recommendedAction: true,
+      totalScore: true,
+      sectorFitScore: true,
+      ownerLedScore: true,
+      dealLikelihoodScore: true,
+      outreachFitScore: true,
+      timingScore: true,
+      confidenceScore: true,
+      strategicFitScore: true,
+      valuePotentialScore: true,
+      relationshipPathScore: true,
+      evidenceQualityScore: true,
+      riskScore: true,
+      rationaleJson: true,
+      createdAt: true,
+      factors: {
+        select: { id: true, criterionKey: true, criterionLabel: true, score: true, weight: true, polarity: true, confidence: true, evidenceEnc: true, rationaleEnc: true, sourceUrlEnc: true },
+        orderBy: { createdAt: 'asc' },
+        take: 25
+      }
+    },
+    orderBy: { createdAt: 'desc' },
+    take: 20
+  });
+
+  return rows.map((row) => ({
+    ...row,
+    factors: row.factors.map((factor) => ({
+      id: factor.id,
+      criterionKey: factor.criterionKey,
+      criterionLabel: factor.criterionLabel,
+      score: factor.score,
+      weight: factor.weight,
+      polarity: factor.polarity,
+      confidence: factor.confidence,
+      evidence: dec(factor.evidenceEnc, 'opportunity_score_factor.evidence', ''),
+      rationale: dec(factor.rationaleEnc, 'opportunity_score_factor.rationale', ''),
+      sourceUrl: dec(factor.sourceUrlEnc, 'opportunity_score_factor.source_url', '')
+    }))
+  }));
+}
+
 async function loadCandidates(userId: string, agentRunId: string) {
   const rows = await prisma.researchCandidate.findMany({
     where: { userId, agentRunId },
@@ -75,6 +130,10 @@ async function loadCandidates(userId: string, agentRunId: string) {
       opportunityScores: {
         select: {
           id: true,
+          scoreVersion: true,
+          scoreLabel: true,
+          priority: true,
+          recommendedAction: true,
           totalScore: true,
           sectorFitScore: true,
           ownerLedScore: true,
@@ -82,8 +141,18 @@ async function loadCandidates(userId: string, agentRunId: string) {
           outreachFitScore: true,
           timingScore: true,
           confidenceScore: true,
+          strategicFitScore: true,
+          valuePotentialScore: true,
+          relationshipPathScore: true,
+          evidenceQualityScore: true,
+          riskScore: true,
           rationaleJson: true,
-          createdAt: true
+          createdAt: true,
+          factors: {
+            select: { id: true, criterionKey: true, criterionLabel: true, score: true, weight: true, polarity: true, confidence: true, evidenceEnc: true, rationaleEnc: true, sourceUrlEnc: true },
+            orderBy: { createdAt: 'asc' },
+            take: 20
+          }
         },
         orderBy: { createdAt: 'desc' },
         take: 1
@@ -157,13 +226,14 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 
   if (!run) throw redirect(303, '/agents/runs');
 
-  const [artifacts, candidates, researchSources] = await Promise.all([
+  const [artifacts, candidates, researchSources, opportunityScores] = await Promise.all([
     loadAgentArtifacts({ userId, agentRunId: run.id, take: 30 }),
     loadCandidates(userId, run.id),
-    loadResearchSources(userId, run.id)
+    loadResearchSources(userId, run.id),
+    loadOpportunityScores(userId, run.id)
   ]);
 
-  return { run, artifacts, candidates, researchSources };
+  return { run, artifacts, candidates, researchSources, opportunityScores };
 };
 
 function redirectBack(runId: string) {

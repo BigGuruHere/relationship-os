@@ -11,6 +11,7 @@ import { createExchangeItemFromForm, deleteExchangeItem, loadExchangeItems } fro
 import { loadAgentArtifacts } from '$lib/server/agents/artifacts';
 import { ensureCoreAgentSetup } from '$lib/server/agents/agentSetup';
 import { runOutreachAgent } from '$lib/server/agents/agents/outreachAgent';
+import { runOpportunityScoringAgent } from '$lib/server/agents/agents/opportunityScoringAgent';
 import {
   COMPANY_CONTACT_STATUSES,
   COMPANY_KINDS,
@@ -305,6 +306,20 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 };
 
 export const actions: Actions = {
+  scoreCompany: async ({ params, locals }) => {
+    if (!locals.user) throw redirect(303, '/auth/login');
+    const company = await ensureCompany(locals.user.id, params.id);
+    if (!company) return fail(404, { error: 'Company not found.' });
+    const run = await runOpportunityScoringAgent({
+      userId: locals.user.id,
+      entityType: 'company',
+      entityId: params.id,
+      sector: 'Business broking target',
+      scoringGoal: 'Prioritise this company for relationship-driven business-broker outreach or deal work.'
+    });
+    throw redirect(303, `/agents/runs/${run.id}`);
+  },
+
   updateCompany: async ({ request, params, locals }) => {
     if (!locals.user) throw redirect(303, '/auth/login');
     const userId = locals.user.id;

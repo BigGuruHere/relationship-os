@@ -16,6 +16,24 @@ function usableUrl(value: string) {
   return /^https?:\/\//i.test(value.trim()) ? value.trim() : '';
 }
 
+
+function inferredFactorPolarity(factor: { criterionKey?: string | null; criterionLabel?: string | null; score: number; polarity?: string | null }) {
+  const criterion = `${factor.criterionKey || ''} ${factor.criterionLabel || ''}`.toLowerCase();
+  const supplied = String(factor.polarity || '').toLowerCase();
+  const isRisk = criterion.includes('risk');
+
+  // IT: For risk, higher score means worse risk. For all other factors, higher score means better fit.
+  if (isRisk) {
+    if (factor.score >= 60) return 'negative';
+    if (factor.score >= 40) return 'neutral';
+    return 'positive';
+  }
+
+  if (factor.score >= 65) return ['positive', 'neutral', 'negative'].includes(supplied) ? supplied : 'positive';
+  if (factor.score >= 40) return supplied === 'negative' ? 'negative' : 'neutral';
+  return 'negative';
+}
+
 function factorScore(factors: Array<{ criterionKey: string; criterionLabel: string; score: number }>, aliases: string[], fallback: number | null | undefined) {
   const lowered = aliases.map((alias) => alias.toLowerCase());
   const match = factors.find((factor) => {
@@ -113,7 +131,7 @@ async function loadOpportunityScores(userId: string, agentRunId: string) {
       criterionLabel: factor.criterionLabel,
       score: factor.score,
       weight: factor.weight,
-      polarity: String(factor.criterionKey || factor.criterionLabel || '').toLowerCase().includes('risk') ? 'negative' : factor.polarity,
+      polarity: inferredFactorPolarity(factor),
       confidence: factor.confidence,
       evidence: dec(factor.evidenceEnc, 'opportunity_score_factor.evidence', ''),
       rationale: dec(factor.rationaleEnc, 'opportunity_score_factor.rationale', ''),

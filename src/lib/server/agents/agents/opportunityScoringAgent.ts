@@ -74,6 +74,28 @@ function scoreFromFactors(factors: OpportunityScoringOutput['factors'], aliases:
   return clamp(match?.score ?? fallback, defaultValue);
 }
 
+
+function isRiskCriterion(value: unknown) {
+  return clean(value).toLowerCase().includes('risk');
+}
+
+function factorPolarity(criterion: unknown, score: number, supplied: unknown) {
+  const raw = clean(supplied).toLowerCase();
+  const validRaw = ['positive', 'negative', 'neutral'].includes(raw) ? raw : '';
+
+  // IT: For risk, higher score means worse risk, so invert the normal meaning.
+  if (isRiskCriterion(criterion)) {
+    if (score >= 60) return 'negative';
+    if (score >= 40) return 'neutral';
+    return 'positive';
+  }
+
+  // IT: For normal factors, low scores should not display as positive just because the criterion is useful.
+  if (score >= 65) return validRaw || 'positive';
+  if (score >= 40) return validRaw === 'negative' ? 'negative' : 'neutral';
+  return 'negative';
+}
+
 function hasUsableUrl(value: unknown) {
   const text = clean(value);
   return /^https?:\/\//i.test(text) ? text : '';
@@ -90,14 +112,28 @@ function combinedContextText(...parts: unknown[]) {
 function detectSoftSellerInterest(text: string) {
   const signals = [
     'would consider',
+    'willing to consider',
+    'expressed willingness',
+    'would be open',
+    'may be open',
+    'might be open',
     'open to a conversation',
+    'open to conversations',
+    'open to a chat',
     'open to discussions',
     'open to discussing',
+    'open to speaking',
     'quiet conversation',
+    'quiet chat',
     'serious buyer',
     'right price',
+    'right buyer',
+    'under nda',
+    'subject to nda',
     'reducing workload',
     'reduce workload',
+    'reduce his workload',
+    'reduce her workload',
     'stepping back',
     'step back',
     'partial exit',
@@ -105,10 +141,47 @@ function detectSoftSellerInterest(text: string) {
     'selling all',
     'sell part',
     'sell all',
+    'trail book',
     'client care is protected',
-    'for the right buyer'
+    'if client care is protected',
+    'for the right buyer',
+    'for the right offer'
   ];
-  return signals.some((signal) => text.includes(signal));
+
+  const negativeQualifiers = [
+    'no evidence of seller intent',
+    'no seller intent',
+    'seller intent has not been confirmed',
+    'not actively on the market',
+    'not currently on the market'
+  ];
+
+  // IT: A negative qualifier alone is not a soft-interest signal. It only matters if paired with
+  // an actual openness signal like right price, serious buyer, NDA, quiet conversation, or workload reduction.
+  const hasPositiveSignal = signals.some((signal) => text.includes(signal));
+  const hasOnlyNegativeQualifier = negativeQualifiers.some((signal) => text.includes(signal)) && !hasPositiveSignal;
+  return hasPositiveSignal && !hasOnlyNegativeQualifier;
+}
+
+function factorMatches(factor: any, aliases: string[]) {
+  const key = clean(factor?.criterionKey).toLowerCase();
+  const label = clean(factor?.criterionLabel).toLowerCase();
+  return aliases.some((alias) => key.includes(alias) || label.includes(alias));
+}
+
+function calibrateFactorScore(factors: OpportunityScoringOutput['factors'], aliases: string[], minScore: number, rationale?: string) {
+  return factors.map((factor: any) => {
+    if (!factorMatches(factor, aliases)) return factor;
+    const nextScore = Math.max(clamp(factor.score, 50), minScore);
+    const criterion = `${factor.criterionKey || ''} ${factor.criterionLabel || ''}`;
+    return {
+      ...factor,
+      score: nextScore,
+      polarity: factorPolarity(criterion, nextScore, factor.polarity) as any,
+      confidence: Math.max(clamp(factor.confidence, 50), Math.min(85, Math.max(65, nextScore - 5))),
+      rationale: rationale && clean(factor.rationale).length < 220 ? rationale : factor.rationale
+    };
+  });
 }
 
 function isGenericRecommendedAction(value: string) {
@@ -156,13 +229,53 @@ function calibrateOutput(output: OpportunityScoringOutput, contextText: string):
   let next = { ...output };
 
   if (softInterest) {
+    let calibratedFactors = next.factors || [];
+    calibratedFactors = calibrateFactorScore(
+      calibratedFactors,
+      ['deal likelihood', 'deal_likelihood'],
+      72,
+      'Conditional openness to a quiet conversation with a serious buyer makes this a stronger discovery opportunity, although it is not yet confirmed seller intent.'
+    );
+    calibratedFactors = calibrateFactorScore(
+      calibratedFactors,
+      ['outreach'],
+      78,
+      'Conditional openness means the best next step is a soft relevance-check, not a hard sale approach.'
+    );
+    calibratedFactors = calibrateFactorScore(
+      calibratedFactors,
+      ['timing'],
+      68,
+      'Workload-reduction or right-buyer language creates a plausible timing window, even if no process has started.'
+    );
+    calibratedFactors = calibrateFactorScore(
+      calibratedFactors,
+      ['evidence'],
+      65,
+      'The evidence is a soft interest signal. It is useful for prioritisation but should still be confirmed in a human conversation.'
+    );
+    calibratedFactors = calibrateFactorScore(
+      calibratedFactors,
+      ['relationship'],
+      62,
+      'There is enough relationship path for a direct relevance-check, but rapport still needs to be built.'
+    );
+
+    const dealLikelihoodScore = scoreFromFactors(calibratedFactors, ['deal likelihood', 'deal_likelihood'], next.dealLikelihoodScore, next.totalScore);
+    const outreachFitScore = scoreFromFactors(calibratedFactors, ['outreach'], next.outreachFitScore, next.totalScore);
+    const timingScore = scoreFromFactors(calibratedFactors, ['timing'], next.timingScore, next.totalScore);
+    const evidenceQualityScore = scoreFromFactors(calibratedFactors, ['evidence'], next.evidenceQualityScore, 50);
+    const relationshipPathScore = scoreFromFactors(calibratedFactors, ['relationship'], next.relationshipPathScore, 50);
+
     next = {
       ...next,
-      dealLikelihoodScore: Math.max(clamp(next.dealLikelihoodScore, next.totalScore), 68),
-      outreachFitScore: Math.max(clamp(next.outreachFitScore, next.totalScore), 78),
-      timingScore: Math.max(clamp(next.timingScore, next.totalScore), 68),
-      evidenceQualityScore: Math.max(clamp(next.evidenceQualityScore, 50), 65),
-      totalScore: Math.max(next.totalScore, Math.min(82, next.totalScore + 8))
+      factors: calibratedFactors,
+      dealLikelihoodScore: Math.max(clamp(next.dealLikelihoodScore, next.totalScore), dealLikelihoodScore, 72),
+      outreachFitScore: Math.max(clamp(next.outreachFitScore, next.totalScore), outreachFitScore, 78),
+      timingScore: Math.max(clamp(next.timingScore, next.totalScore), timingScore, 68),
+      evidenceQualityScore: Math.max(clamp(next.evidenceQualityScore, 50), evidenceQualityScore, 65),
+      relationshipPathScore: Math.max(clamp(next.relationshipPathScore, 50), relationshipPathScore, 62),
+      totalScore: Math.max(next.totalScore, Math.min(84, next.totalScore + 8))
     };
     next.scoreLabel = scoreLabel(next.totalScore, next.scoreLabel === 'watch' || next.scoreLabel === 'low' ? 'warm' : next.scoreLabel);
     next.priority = priority(next.totalScore, next.priority === 'medium' || next.priority === 'low' ? 'high' : next.priority);
@@ -254,19 +367,23 @@ async function loadResearchCandidateContext(userId: string, id: string) {
 
 function normaliseOutput(raw: OpportunityScoringOutput | null, fallbackName: string): OpportunityScoringOutput {
   const total = clamp(raw?.totalScore, 50);
-  const factors = Array.isArray(raw?.factors) ? raw!.factors.slice(0, 12).map((factor: any) => ({
-    criterionKey: clean(factor.criterionKey, 'unknown'),
-    criterionLabel: clean(factor.criterionLabel || factor.criterionKey, 'Unknown criterion'),
-    score: clamp(factor.score, 50),
-    weight: Math.max(1, Math.min(10, Math.round(Number(factor.weight ?? 1) || 1))),
-    polarity: clean(factor.criterionKey || factor.criterionLabel).toLowerCase().includes('risk')
-      ? 'negative'
-      : (['positive', 'negative', 'neutral'].includes(clean(factor.polarity).toLowerCase()) ? clean(factor.polarity).toLowerCase() as any : 'positive'),
-    confidence: clamp(factor.confidence, 50),
-    evidence: clean(factor.evidence),
-    rationale: clean(factor.rationale),
-    sourceUrl: hasUsableUrl(factor.sourceUrl)
-  })) : [];
+  const factors = Array.isArray(raw?.factors) ? raw!.factors.slice(0, 12).map((factor: any) => {
+    const score = clamp(factor.score, 50);
+    const criterionKey = clean(factor.criterionKey, 'unknown');
+    const criterionLabel = clean(factor.criterionLabel || factor.criterionKey, 'Unknown criterion');
+
+    return {
+      criterionKey,
+      criterionLabel,
+      score,
+      weight: Math.max(1, Math.min(10, Math.round(Number(factor.weight ?? 1) || 1))),
+      polarity: factorPolarity(`${criterionKey} ${criterionLabel}`, score, factor.polarity) as any,
+      confidence: clamp(factor.confidence, 50),
+      evidence: clean(factor.evidence),
+      rationale: clean(factor.rationale),
+      sourceUrl: hasUsableUrl(factor.sourceUrl)
+    };
+  }) : [];
 
   return {
     targetName: clean(raw?.targetName, fallbackName) || fallbackName,

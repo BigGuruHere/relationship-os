@@ -23,6 +23,13 @@
     if (type === 'task') return `/tasks/${id}/edit`;
     return '';
   }
+
+  function riskLabel(value: number | null | undefined) {
+    if (value === null || value === undefined) return '-';
+    if (value >= 70) return `${value} high`;
+    if (value >= 45) return `${value} moderate`;
+    return `${value} low`;
+  }
 </script>
 
 <div class="container">
@@ -84,14 +91,14 @@
             </div>
 
             <div class="score-grid">
-              <span>Sector {score.sectorFitScore ?? '-'}</span>
-              <span>Owner-led {score.ownerLedScore ?? '-'}</span>
-              <span>Deal likelihood {score.dealLikelihoodScore ?? '-'}</span>
-              <span>Outreach {score.outreachFitScore ?? '-'}</span>
-              <span>Timing {score.timingScore ?? '-'}</span>
-              <span>Evidence {score.evidenceQualityScore ?? score.confidenceScore ?? '-'}</span>
-              <span>Value {score.valuePotentialScore ?? '-'}</span>
-              <span>Risk {score.riskScore ?? '-'}</span>
+              <span>Sector {score.displayScores?.sectorFitScore ?? score.sectorFitScore ?? '-'}</span>
+              <span>Owner-led {score.displayScores?.ownerLedScore ?? score.ownerLedScore ?? '-'}</span>
+              <span>Deal likelihood {score.displayScores?.dealLikelihoodScore ?? score.dealLikelihoodScore ?? '-'}</span>
+              <span>Outreach {score.displayScores?.outreachFitScore ?? score.outreachFitScore ?? '-'}</span>
+              <span>Timing {score.displayScores?.timingScore ?? score.timingScore ?? '-'}</span>
+              <span>Evidence {score.displayScores?.evidenceQualityScore ?? score.evidenceQualityScore ?? score.confidenceScore ?? '-'}</span>
+              <span>Value {score.displayScores?.valuePotentialScore ?? score.valuePotentialScore ?? '-'}</span>
+              <span>Risk level {riskLabel(score.displayScores?.riskScore ?? score.riskScore)}</span>
             </div>
 
             {#if score.factors?.length}
@@ -102,10 +109,10 @@
                     <div class="factor-row">
                       <div>
                         <strong>{factor.criterionLabel}</strong>
-                        <div class="meta"><span>{factor.polarity}</span><span>Weight {factor.weight}</span><span>Confidence {factor.confidence}/100</span></div>
+                        <div class="meta"><span>{String(factor.criterionKey || factor.criterionLabel || '').toLowerCase().includes('risk') ? 'risk factor' : factor.polarity}</span><span>Weight {factor.weight}</span><span>Confidence {factor.confidence}/100</span></div>
                         {#if factor.rationale}<p>{factor.rationale}</p>{/if}
                         {#if factor.evidence}<p class="muted">Evidence: {factor.evidence}</p>{/if}
-                        {#if factor.sourceUrl}<p><a href={factor.sourceUrl} target="_blank" rel="noreferrer">Source</a></p>{/if}
+                        {#if factor.sourceUrl}<p><a href={factor.sourceUrl} target="_blank" rel="noreferrer">Open source</a></p>{/if}
                       </div>
                       <strong>{factor.score}/100</strong>
                     </div>

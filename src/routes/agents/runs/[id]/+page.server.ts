@@ -12,6 +12,20 @@ function dec(payload: string | null | undefined, aad: string, fallback = '') {
   return safeDecryptCompany(payload, aad, fallback);
 }
 
+function usableUrl(value: string) {
+  return /^https?:\/\//i.test(value.trim()) ? value.trim() : '';
+}
+
+function factorScore(factors: Array<{ criterionKey: string; criterionLabel: string; score: number }>, aliases: string[], fallback: number | null | undefined) {
+  const lowered = aliases.map((alias) => alias.toLowerCase());
+  const match = factors.find((factor) => {
+    const key = String(factor.criterionKey || '').toLowerCase();
+    const label = String(factor.criterionLabel || '').toLowerCase();
+    return lowered.some((alias) => key.includes(alias) || label.includes(alias));
+  });
+  return match?.score ?? fallback ?? null;
+}
+
 
 async function loadResearchSources(userId: string, agentRunId: string) {
   const rows = await prisma.researchSource.findMany({
@@ -92,21 +106,35 @@ async function loadOpportunityScores(userId: string, agentRunId: string) {
     take: 20
   });
 
-  return rows.map((row) => ({
-    ...row,
-    factors: row.factors.map((factor) => ({
+  return rows.map((row) => {
+    const factors = row.factors.map((factor) => ({
       id: factor.id,
       criterionKey: factor.criterionKey,
       criterionLabel: factor.criterionLabel,
       score: factor.score,
       weight: factor.weight,
-      polarity: factor.polarity,
+      polarity: String(factor.criterionKey || factor.criterionLabel || '').toLowerCase().includes('risk') ? 'negative' : factor.polarity,
       confidence: factor.confidence,
       evidence: dec(factor.evidenceEnc, 'opportunity_score_factor.evidence', ''),
       rationale: dec(factor.rationaleEnc, 'opportunity_score_factor.rationale', ''),
-      sourceUrl: dec(factor.sourceUrlEnc, 'opportunity_score_factor.source_url', '')
-    }))
-  }));
+      sourceUrl: usableUrl(dec(factor.sourceUrlEnc, 'opportunity_score_factor.source_url', ''))
+    }));
+
+    return {
+      ...row,
+      factors,
+      displayScores: {
+        sectorFitScore: factorScore(factors, ['sector'], row.sectorFitScore),
+        ownerLedScore: factorScore(factors, ['owner', 'principal', 'founder'], row.ownerLedScore),
+        dealLikelihoodScore: factorScore(factors, ['deal likelihood', 'deal_likelihood'], row.dealLikelihoodScore),
+        outreachFitScore: factorScore(factors, ['outreach'], row.outreachFitScore),
+        timingScore: factorScore(factors, ['timing'], row.timingScore),
+        evidenceQualityScore: factorScore(factors, ['evidence'], row.evidenceQualityScore ?? row.confidenceScore),
+        valuePotentialScore: factorScore(factors, ['value'], row.valuePotentialScore),
+        riskScore: factorScore(factors, ['risk'], row.riskScore)
+      }
+    };
+  });
 }
 
 async function loadCandidates(userId: string, agentRunId: string) {

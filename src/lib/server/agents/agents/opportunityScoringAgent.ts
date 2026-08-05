@@ -64,6 +64,123 @@ function cleanLines(values: unknown, fallback: string[] = []) {
   return Array.isArray(values) ? values.map((v) => clean(v)).filter(Boolean).slice(0, 12) : fallback;
 }
 
+function scoreFromFactors(factors: OpportunityScoringOutput['factors'], aliases: string[], fallback: unknown, defaultValue: number) {
+  const lowered = aliases.map((alias) => alias.toLowerCase());
+  const match = factors.find((factor: any) => {
+    const key = clean(factor.criterionKey).toLowerCase();
+    const label = clean(factor.criterionLabel).toLowerCase();
+    return lowered.some((alias) => key.includes(alias) || label.includes(alias));
+  });
+  return clamp(match?.score ?? fallback, defaultValue);
+}
+
+function hasUsableUrl(value: unknown) {
+  const text = clean(value);
+  return /^https?:\/\//i.test(text) ? text : '';
+}
+
+function combinedContextText(...parts: unknown[]) {
+  return parts.map((part) => {
+    if (!part) return '';
+    if (typeof part === 'string') return part;
+    try { return JSON.stringify(part); } catch { return String(part); }
+  }).join(' ').toLowerCase();
+}
+
+function detectSoftSellerInterest(text: string) {
+  const signals = [
+    'would consider',
+    'open to a conversation',
+    'open to discussions',
+    'open to discussing',
+    'quiet conversation',
+    'serious buyer',
+    'right price',
+    'reducing workload',
+    'reduce workload',
+    'stepping back',
+    'step back',
+    'partial exit',
+    'selling part',
+    'selling all',
+    'sell part',
+    'sell all',
+    'client care is protected',
+    'for the right buyer'
+  ];
+  return signals.some((signal) => text.includes(signal));
+}
+
+function isGenericRecommendedAction(value: string) {
+  const text = value.toLowerCase();
+  return !text || text.includes('review manually before outreach or deal action') || text === 'review manually.';
+}
+
+function recommendedActionFor(output: OpportunityScoringOutput, contextText: string) {
+  const label = String(output.scoreLabel || 'watch').toLowerCase();
+  const softInterest = detectSoftSellerInterest(contextText);
+  const noDecisionMaker = contextText.includes('no visible individual owner') || contextText.includes('no clear decision-maker') || contextText.includes('unclear decision-making');
+
+  if (softInterest) {
+    return 'Call or email with a soft relevance-check. Confirm whether they would speak with Sam or a serious buyer under NDA; do not frame it as a sale process yet.';
+  }
+  if (label === 'hot') {
+    return 'Prioritise a human follow-up after reviewing evidence. Create or update a deal only if the interest signal is confirmed.';
+  }
+  if (label === 'warm') {
+    return 'Confirm contact details, then use a low-pressure first contact. Keep it as outreach until interest is confirmed.';
+  }
+  if (label === 'watch' || noDecisionMaker) {
+    return 'Research further and confirm the decision-maker, contact details, and relationship path before outreach.';
+  }
+  if (label === 'low' || label === 'reject') {
+    return 'Low priority. Monitor only unless you identify a decision-maker, relationship path, or seller-intent signal.';
+  }
+  return 'Review evidence, confirm contact details, and choose the next human action.';
+}
+
+function dealActionGuidance(output: OpportunityScoringOutput, contextText: string) {
+  const softInterest = detectSoftSellerInterest(contextText);
+  const label = String(output.scoreLabel || 'watch').toLowerCase();
+  if (softInterest || label === 'hot') {
+    return 'Create or update a deal only after you confirm the interest signal in a human conversation. If the contact only expressed curiosity, keep the record as company/contact plus task.';
+  }
+  if (label === 'warm') {
+    return 'Do not create a deal yet unless there is a real seller-interest signal. Keep this as company/contact outreach with a task.';
+  }
+  return 'Do not create a deal. Keep this as research/watchlist until evidence of interest or a relationship path appears.';
+}
+
+function calibrateOutput(output: OpportunityScoringOutput, contextText: string): OpportunityScoringOutput {
+  const softInterest = detectSoftSellerInterest(contextText);
+  let next = { ...output };
+
+  if (softInterest) {
+    next = {
+      ...next,
+      dealLikelihoodScore: Math.max(clamp(next.dealLikelihoodScore, next.totalScore), 68),
+      outreachFitScore: Math.max(clamp(next.outreachFitScore, next.totalScore), 78),
+      timingScore: Math.max(clamp(next.timingScore, next.totalScore), 68),
+      evidenceQualityScore: Math.max(clamp(next.evidenceQualityScore, 50), 65),
+      totalScore: Math.max(next.totalScore, Math.min(82, next.totalScore + 8))
+    };
+    next.scoreLabel = scoreLabel(next.totalScore, next.scoreLabel === 'watch' || next.scoreLabel === 'low' ? 'warm' : next.scoreLabel);
+    next.priority = priority(next.totalScore, next.priority === 'medium' || next.priority === 'low' ? 'high' : next.priority);
+  }
+
+  if (isGenericRecommendedAction(clean(next.recommendedAction))) {
+    next.recommendedAction = recommendedActionFor(next, contextText);
+  }
+
+  return {
+    ...next,
+    rationale: cleanLines(next.rationale, ['Scored from supplied context.']),
+    risks: cleanLines(next.risks, ['Evidence may be incomplete.']),
+    missingInformation: cleanLines(next.missingInformation, ['Confirm role, contact details, owner intent, and commercial size before prioritising.']),
+    nextActions: cleanLines(next.nextActions, ['Review evidence.', 'Confirm contact details.', 'Decide whether to import or contact.'])
+  };
+}
+
 function scoreLabel(total: number, supplied?: string) {
   const raw = clean(supplied).toLowerCase();
   if (['hot', 'warm', 'watch', 'low', 'reject'].includes(raw)) return raw;
@@ -142,11 +259,13 @@ function normaliseOutput(raw: OpportunityScoringOutput | null, fallbackName: str
     criterionLabel: clean(factor.criterionLabel || factor.criterionKey, 'Unknown criterion'),
     score: clamp(factor.score, 50),
     weight: Math.max(1, Math.min(10, Math.round(Number(factor.weight ?? 1) || 1))),
-    polarity: ['positive', 'negative', 'neutral'].includes(clean(factor.polarity).toLowerCase()) ? clean(factor.polarity).toLowerCase() as any : 'positive',
+    polarity: clean(factor.criterionKey || factor.criterionLabel).toLowerCase().includes('risk')
+      ? 'negative'
+      : (['positive', 'negative', 'neutral'].includes(clean(factor.polarity).toLowerCase()) ? clean(factor.polarity).toLowerCase() as any : 'positive'),
     confidence: clamp(factor.confidence, 50),
     evidence: clean(factor.evidence),
     rationale: clean(factor.rationale),
-    sourceUrl: clean(factor.sourceUrl)
+    sourceUrl: hasUsableUrl(factor.sourceUrl)
   })) : [];
 
   return {
@@ -156,17 +275,17 @@ function normaliseOutput(raw: OpportunityScoringOutput | null, fallbackName: str
     scoreLabel: scoreLabel(total, raw?.scoreLabel),
     priority: priority(total, raw?.priority),
     recommendedAction: clean(raw?.recommendedAction) || 'Review manually before outreach or deal action.',
-    sectorFitScore: clamp(raw?.sectorFitScore, total),
-    ownerLedScore: clamp(raw?.ownerLedScore, total),
-    dealLikelihoodScore: clamp(raw?.dealLikelihoodScore, total),
-    outreachFitScore: clamp(raw?.outreachFitScore, total),
-    timingScore: clamp(raw?.timingScore, total),
-    confidenceScore: clamp(raw?.confidenceScore, 50),
-    strategicFitScore: clamp(raw?.strategicFitScore, total),
-    valuePotentialScore: clamp(raw?.valuePotentialScore, total),
-    relationshipPathScore: clamp(raw?.relationshipPathScore, 50),
-    evidenceQualityScore: clamp(raw?.evidenceQualityScore, 50),
-    riskScore: clamp(raw?.riskScore, 50),
+    sectorFitScore: scoreFromFactors(factors, ['sector'], raw?.sectorFitScore, total),
+    ownerLedScore: scoreFromFactors(factors, ['owner', 'principal', 'founder'], raw?.ownerLedScore, total),
+    dealLikelihoodScore: scoreFromFactors(factors, ['deal likelihood', 'deal_likelihood'], raw?.dealLikelihoodScore, total),
+    outreachFitScore: scoreFromFactors(factors, ['outreach'], raw?.outreachFitScore, total),
+    timingScore: scoreFromFactors(factors, ['timing'], raw?.timingScore, total),
+    confidenceScore: scoreFromFactors(factors, ['confidence'], raw?.confidenceScore, 50),
+    strategicFitScore: scoreFromFactors(factors, ['strategic'], raw?.strategicFitScore, total),
+    valuePotentialScore: scoreFromFactors(factors, ['value'], raw?.valuePotentialScore, total),
+    relationshipPathScore: scoreFromFactors(factors, ['relationship'], raw?.relationshipPathScore, 50),
+    evidenceQualityScore: scoreFromFactors(factors, ['evidence'], raw?.evidenceQualityScore, 50),
+    riskScore: scoreFromFactors(factors, ['risk'], raw?.riskScore, 50),
     factors,
     rationale: cleanLines(raw?.rationale, ['Scored from supplied context.']),
     risks: cleanLines(raw?.risks, ['Evidence may be incomplete.']),
@@ -175,10 +294,11 @@ function normaliseOutput(raw: OpportunityScoringOutput | null, fallbackName: str
   };
 }
 
-function markdownScorecard(output: OpportunityScoringOutput) {
+function markdownScorecard(output: OpportunityScoringOutput, contextText = '') {
   const factors = output.factors.length
     ? output.factors.map((f) => `- ${f.criterionLabel}: ${f.score}/100 - ${f.rationale || f.evidence || 'No rationale supplied.'}`).join('\n')
     : '- No score factors supplied.';
+  const dealGuidance = dealActionGuidance(output, contextText);
 
   return [
     `# Opportunity scorecard: ${output.targetName}`,
@@ -187,6 +307,7 @@ function markdownScorecard(output: OpportunityScoringOutput) {
     `Label: ${output.scoreLabel || 'watch'}`,
     `Priority: ${output.priority || 'medium'}`,
     `Recommended action: ${output.recommendedAction || 'Review manually.'}`,
+    `Deal guidance: ${dealGuidance}`,
     '',
     '## Factor scores',
     factors,
@@ -307,7 +428,8 @@ export async function runOpportunityScoringAgent(input: RunOpportunityScoringAge
       } as OpportunityScoringOutput;
     }
 
-    const output = normaliseOutput(structured, fallbackName);
+    const contextText = combinedContextText(entityContext, input.targetContext, input.buyerMandate, input.scoringGoal);
+    const output = calibrateOutput(normaliseOutput(structured, fallbackName), contextText);
     await completeAgentStep(modelStep.id, { totalScore: output.totalScore, label: output.scoreLabel, factorCount: output.factors.length });
 
     const stageStep = await createAgentStep({
@@ -342,7 +464,9 @@ export async function runOpportunityScoringAgent(input: RunOpportunityScoringAge
         rationale: output.rationale,
         risks: output.risks,
         missingInformation: output.missingInformation,
-        nextActions: output.nextActions
+        nextActions: output.nextActions,
+        dealActionGuidance: dealActionGuidance(output, contextText),
+        softSellerInterestSignal: detectSoftSellerInterest(contextText)
       },
       factors: output.factors
     }, { userId: input.userId, agentRunId: run.id, agentStepId: stageStep.id, agentDefinitionId: agent.id });
@@ -350,7 +474,7 @@ export async function runOpportunityScoringAgent(input: RunOpportunityScoringAge
     await executeAgentTool<any, any>('create_agent_artifact', {
       artifactType: 'opportunity_scorecard',
       title: `Opportunity scorecard: ${output.targetName}`,
-      content: markdownScorecard(output),
+      content: markdownScorecard(output, contextText),
       summary: `${output.scoreLabel || 'watch'} / ${output.priority || 'medium'} - ${output.totalScore}/100. ${output.recommendedAction || ''}`.trim(),
       structuredJson: { ...output, opportunityScoreId: score.id },
       entityType: (input.entityType as any) || 'opportunity_score',

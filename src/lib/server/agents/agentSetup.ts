@@ -152,9 +152,11 @@ const OPPORTUNITY_SCORING_INSTRUCTIONS = `Create an explainable scorecard for th
 Use a 0-100 scale where 100 is strongest.
 Score the following criteria where relevant: sector fit, owner-led likelihood, deal likelihood, outreach fit, timing, confidence, strategic fit, value potential, relationship path, evidence quality, and risk.
 Use scoreLabel hot/warm/watch/low/reject and priority urgent/high/medium/low.
-A high score requires both commercial fit and usable evidence. Do not over-score thin research.
-Recommended actions must be human next steps, such as review evidence, confirm contact details, call principal, import candidate, or create a deal only if actual interest exists.
-Factors must include rationale and, where available, evidence or sourceUrl.`;
+A high score requires both commercial fit and usable evidence. Do not over-score thin research or relevant-sector-only targets.
+Treat soft seller-interest signals as materially important, including "would consider a quiet conversation", "serious buyer", "right price", "reducing workload", "stepping back", "partial exit", or "client care is protected". These signals should usually lift deal likelihood, timing, outreach fit, and priority, but do not call the target hot unless intent and evidence are strong.
+Recommended actions must be specific human next steps. Prefer: confirm contact details, call principal with a soft relevance-check, ask whether they would speak with Sam or a serious buyer under NDA, or monitor only. Do not use generic wording like "Review manually before outreach or deal action" unless there is no better action.
+Add clear deal guidance in nextActions: do not create a deal until actual seller interest is confirmed; create or update a deal only when the person has indicated genuine openness to a buyer conversation.
+For risk, higher score means higher risk. Use polarity negative for risk factors. Factors must include rationale and, where available, evidence or a real sourceUrl. Do not include placeholder source URLs.`;
 
 const AGENTS = [
   {
@@ -177,7 +179,7 @@ const AGENTS = [
     instructions: OPPORTUNITY_SCORING_INSTRUCTIONS,
     outputSchemaJson: OPPORTUNITY_SCORING_OUTPUT_SCHEMA,
     requiresApprovalDefault: false,
-    promptVersion: 1
+    promptVersion: 2
   },
   {
     key: 'outreach_agent',

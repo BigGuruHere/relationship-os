@@ -1,0 +1,2 @@
+-- RenameIndex
+ALTER INDEX "public"."CompanyRelationship_userId_companyAId_companyBId_relationshipTy" RENAME TO "CompanyRelationship_userId_companyAId_companyBId_relationsh_key";

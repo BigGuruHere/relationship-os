@@ -1275,6 +1275,7 @@ enum TaskImportance {
 }
 
 enum TaskFocus {
+  NEW
   DOING_NOW
   NOT_DOING_NOW
   NEVER_DOING_NOW
@@ -1351,7 +1352,7 @@ model Task {
   status     TaskStatus     @default(OPEN)
   urgency    TaskUrgency    @default(NORMAL)
   importance TaskImportance @default(NORMAL)
-  focus      TaskFocus      @default(NOT_DOING_NOW)
+  focus      TaskFocus      @default(NEW)
   taskType   TaskType       @default(FOLLOW_UP)
 
   dueAt        DateTime?

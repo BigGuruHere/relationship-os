@@ -14,6 +14,13 @@
   let newTaskNotes = '';
   let newTaskSummary = '';
   let status = data.selectedStatus || '';
+  let focus = data.selectedFocus || '';
+  let projectId = data.selectedProjectId || '';
+  let marketLeadId = data.selectedMarketLeadId || '';
+  let contactId = data.selectedContactId || '';
+  let companyId = data.selectedCompanyId || '';
+  let dealId = data.selectedDealId || '';
+  let sort = data.selectedSort || 'focus';
 
   function fmt(value: string | Date | null | undefined) {
     if (!value) return 'No date';
@@ -54,6 +61,7 @@
 
   <div class="summary-grid">
     <div class="card stat"><span>Open</span><strong>{data.summary.open}</strong></div>
+    <div class="card stat"><span>New</span><strong>{data.summary.newTasks}</strong></div>
     <div class="card stat"><span>Doing now</span><strong>{data.summary.doingNow}</strong></div>
     <div class="card stat"><span>Overdue</span><strong>{data.summary.overdue}</strong></div>
     <div class="card stat"><span>Today</span><strong>{data.summary.today}</strong></div>
@@ -111,7 +119,7 @@
           </div>
           <div class="field">
             <label for="focusCreate">Focus</label>
-            <select id="focusCreate" name="focus">{#each data.taskFocusOptions as opt}<option value={opt.value} selected={opt.value === 'NOT_DOING_NOW'}>{opt.label}</option>{/each}</select>
+            <select id="focusCreate" name="focus">{#each data.taskFocusOptions as opt}<option value={opt.value} selected={opt.value === 'NEW'}>{opt.label}</option>{/each}</select>
           </div>
         </div>
 
@@ -230,14 +238,71 @@
   {/if}
 
   <div class="card filters">
-    <form method="GET" class="filter-row">
-      <input name="q" bind:value={q} placeholder="Search tasks, people, deals, projects" />
-      <select name="status" bind:value={status}>
-        <option value="">Active</option>
-        <option value="ALL">All</option>
-        {#each data.taskStatuses as opt}<option value={opt.value}>{opt.label}</option>{/each}
-      </select>
-      <button class="btn primary" type="submit">Filter</button>
+    <form method="GET" class="filter-grid">
+      <div class="field span2">
+        <label for="taskSearch">Search</label>
+        <input id="taskSearch" name="q" bind:value={q} placeholder="Search tasks, people, deals, projects, leads" />
+      </div>
+      <div class="field">
+        <label for="statusFilter">Status</label>
+        <select id="statusFilter" name="status" bind:value={status}>
+          <option value="">Active</option>
+          <option value="ALL">All</option>
+          {#each data.taskStatuses as opt}<option value={opt.value}>{opt.label}</option>{/each}
+        </select>
+      </div>
+      <div class="field">
+        <label for="focusFilter">Focus</label>
+        <select id="focusFilter" name="focus" bind:value={focus}>
+          <option value="">Any focus</option>
+          {#each data.taskFocusOptions as opt}<option value={opt.value}>{opt.label}</option>{/each}
+        </select>
+      </div>
+      <div class="field">
+        <label for="sortFilter">Sort</label>
+        <select id="sortFilter" name="sort" bind:value={sort}>
+          {#each data.taskSortOptions as opt}<option value={opt.value}>{opt.label}</option>{/each}
+        </select>
+      </div>
+      <div class="field">
+        <label for="projectFilter">Project</label>
+        <select id="projectFilter" name="projectId" bind:value={projectId}>
+          <option value="">Any project</option>
+          {#each data.options.projects as p}<option value={p.id}>{p.title}</option>{/each}
+        </select>
+      </div>
+      <div class="field">
+        <label for="leadFilter">Lead</label>
+        <select id="leadFilter" name="marketLeadId" bind:value={marketLeadId}>
+          <option value="">Any lead</option>
+          {#each data.options.marketLeads as lead}<option value={lead.id}>{lead.title}</option>{/each}
+        </select>
+      </div>
+      <div class="field">
+        <label for="contactFilter">Person</label>
+        <select id="contactFilter" name="contactId" bind:value={contactId}>
+          <option value="">Any person</option>
+          {#each data.options.contacts as c}<option value={c.id}>{c.name}</option>{/each}
+        </select>
+      </div>
+      <div class="field">
+        <label for="companyFilter">Company</label>
+        <select id="companyFilter" name="companyId" bind:value={companyId}>
+          <option value="">Any company</option>
+          {#each data.options.companies as c}<option value={c.id}>{c.name}</option>{/each}
+        </select>
+      </div>
+      <div class="field">
+        <label for="dealFilter">Deal</label>
+        <select id="dealFilter" name="dealId" bind:value={dealId}>
+          <option value="">Any deal</option>
+          {#each data.options.deals as d}<option value={d.id}>{d.title}</option>{/each}
+        </select>
+      </div>
+      <div class="filter-actions">
+        <button class="btn primary" type="submit">Apply filters</button>
+        <a class="btn" href="/tasks">Clear</a>
+      </div>
     </form>
   </div>
 
@@ -281,12 +346,14 @@
           <div class="task-actions">
             <form method="post" action="?/updateStatus">
               <input type="hidden" name="taskId" value={task.id} />
+              <input type="hidden" name="returnTo" value={data.currentPath} />
               <select name="status" aria-label="Update status" on:change={submitContainingForm}>
                 {#each data.taskStatuses as opt}<option value={opt.value} selected={task.status === opt.value}>{opt.label}</option>{/each}
               </select>
             </form>
             <form method="post" action="?/updateFocus">
               <input type="hidden" name="taskId" value={task.id} />
+              <input type="hidden" name="returnTo" value={data.currentPath} />
               <select name="focus" aria-label="Update focus" on:change={submitContainingForm}>
                 {#each data.taskFocusOptions as opt}<option value={opt.value} selected={task.focus === opt.value}>{opt.label}</option>{/each}
               </select>
@@ -294,6 +361,7 @@
             <a class="btn" href={`/tasks/${task.id}/edit`}>Edit</a>
             <form method="post" action="?/delete" on:submit={(event) => { if (!confirm('Delete this task?')) event.preventDefault(); }}>
               <input type="hidden" name="taskId" value={task.id} />
+              <input type="hidden" name="returnTo" value={data.currentPath} />
               <button class="btn" type="submit">Delete</button>
             </form>
           </div>
@@ -306,13 +374,15 @@
 <style>
   .page-head { display: flex; justify-content: space-between; gap: 16px; align-items: flex-start; margin-bottom: 14px; }
   .head-actions, .filter-row, .context-row, .task-title-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .filter-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; align-items: end; }
+  .filter-actions { display: flex; gap: 8px; align-items: center; }
   h1 { margin: 0; }
   h2 { margin: 0; font-size: 1.1rem; }
   .eyebrow { color: var(--accent); font-weight: 700; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.04em; }
   .muted { color: var(--muted); }
   .hint { color: var(--muted); font-size: 0.82rem; margin: 4px 0 0; }
   .small { font-size: 0.9rem; }
-  .summary-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; margin-bottom: 12px; }
+  .summary-grid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 10px; margin-bottom: 12px; }
   .stat { padding: 12px; display: grid; gap: 4px; }
   .stat span { color: var(--muted); font-size: 0.9rem; }
   .stat strong { font-size: 1.5rem; }
@@ -338,7 +408,7 @@
   textarea { resize: vertical; }
   @media (max-width: 860px) {
     .page-head, .task-card, .filter-row { flex-direction: column; align-items: stretch; }
-    .summary-grid, .grid.two, .grid.four, .grid.five { grid-template-columns: 1fr; }
+    .summary-grid, .filter-grid, .grid.two, .grid.four, .grid.five { grid-template-columns: 1fr; }
     .span2 { grid-column: auto; }
     .task-actions { min-width: 0; }
   }

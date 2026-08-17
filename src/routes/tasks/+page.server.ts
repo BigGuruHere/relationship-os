@@ -35,15 +35,109 @@ import {
 
 const ACTIVE_STATUSES = ['OPEN', 'IN_PROGRESS', 'WAITING', 'SNOOZED'];
 
+const TASK_SORT_OPTIONS = [
+  { value: 'focus', label: 'Focus order' },
+  { value: 'due_asc', label: 'Due date - soonest' },
+  { value: 'due_desc', label: 'Due date - latest' },
+  { value: 'urgency', label: 'Urgency' },
+  { value: 'importance', label: 'Importance' },
+  { value: 'updated_desc', label: 'Recently updated' },
+  { value: 'created_desc', label: 'Recently created' },
+  { value: 'title', label: 'Title A-Z' },
+  { value: 'project', label: 'Project A-Z' },
+  { value: 'lead', label: 'Lead A-Z' }
+] as const;
+
+type TaskSortValue = (typeof TASK_SORT_OPTIONS)[number]['value'];
+
+const TASK_FOCUS_ORDER: Record<string, number> = { NEW: 0, DOING_NOW: 1, NOT_DOING_NOW: 2, NEVER_DOING_NOW: 3 };
+const TASK_URGENCY_ORDER: Record<string, number> = { CRITICAL: 0, HIGH: 1, NORMAL: 2, LOW: 3 };
+const TASK_IMPORTANCE_ORDER: Record<string, number> = { HIGH: 0, NORMAL: 1, LOW: 2 };
+
+type TaskFilters = {
+  status: string;
+  focus: string;
+  projectId: string;
+  marketLeadId: string;
+  contactId: string;
+  companyId: string;
+  dealId: string;
+};
+
 type TaskRow = any;
 
-async function loadTaskRows(userId: string, status: string) {
+function normaliseSort(value: string): TaskSortValue {
+  return (TASK_SORT_OPTIONS.some((opt) => opt.value === value) ? value : 'focus') as TaskSortValue;
+}
+
+function taskOrderBy(sort: TaskSortValue): any {
+  switch (sort) {
+    case 'due_desc':
+      return [{ dueAt: 'desc' as const }, { updatedAt: 'desc' as const }];
+    case 'due_asc':
+      return [{ dueAt: 'asc' as const }, { updatedAt: 'desc' as const }];
+    case 'urgency':
+      return [{ urgency: 'desc' as const }, { dueAt: 'asc' as const }, { updatedAt: 'desc' as const }];
+    case 'importance':
+      return [{ importance: 'desc' as const }, { dueAt: 'asc' as const }, { updatedAt: 'desc' as const }];
+    case 'updated_desc':
+      return [{ updatedAt: 'desc' as const }];
+    case 'created_desc':
+      return [{ createdAt: 'desc' as const }];
+    default:
+      return [{ focus: 'asc' as const }, { dueAt: 'asc' as const }, { urgency: 'desc' as const }, { updatedAt: 'desc' as const }];
+  }
+}
+
+function compareText(a: string | null | undefined, b: string | null | undefined) {
+  return String(a || '').localeCompare(String(b || ''), undefined, { sensitivity: 'base' });
+}
+
+function sortMappedTasks(tasks: Awaited<ReturnType<typeof mapTask>>[], sort: TaskSortValue) {
+  const dueTime = (task: Awaited<ReturnType<typeof mapTask>>) => task.dueAt ? new Date(task.dueAt).getTime() : Number.POSITIVE_INFINITY;
+  const updatedTime = (task: Awaited<ReturnType<typeof mapTask>>) => task.updatedAt ? new Date(task.updatedAt).getTime() : 0;
+
+  return [...tasks].sort((a, b) => {
+    if (sort === 'title') return compareText(a.title, b.title) || updatedTime(b) - updatedTime(a);
+    if (sort === 'project') return compareText(a.project?.title, b.project?.title) || compareText(a.title, b.title);
+    if (sort === 'lead') return compareText(a.marketLead?.title, b.marketLead?.title) || compareText(a.title, b.title);
+    if (sort === 'due_desc') {
+      const av = dueTime(a) === Number.POSITIVE_INFINITY ? Number.NEGATIVE_INFINITY : dueTime(a);
+      const bv = dueTime(b) === Number.POSITIVE_INFINITY ? Number.NEGATIVE_INFINITY : dueTime(b);
+      return bv - av || updatedTime(b) - updatedTime(a);
+    }
+    if (sort === 'due_asc') return dueTime(a) - dueTime(b) || updatedTime(b) - updatedTime(a);
+    if (sort === 'urgency') return (TASK_URGENCY_ORDER[a.urgency] ?? 99) - (TASK_URGENCY_ORDER[b.urgency] ?? 99) || dueTime(a) - dueTime(b);
+    if (sort === 'importance') return (TASK_IMPORTANCE_ORDER[a.importance] ?? 99) - (TASK_IMPORTANCE_ORDER[b.importance] ?? 99) || dueTime(a) - dueTime(b);
+    if (sort === 'updated_desc') return updatedTime(b) - updatedTime(a);
+    if (sort === 'created_desc') return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+
+    return (
+      (TASK_FOCUS_ORDER[a.focus] ?? 99) - (TASK_FOCUS_ORDER[b.focus] ?? 99) ||
+      dueTime(a) - dueTime(b) ||
+      (TASK_URGENCY_ORDER[a.urgency] ?? 99) - (TASK_URGENCY_ORDER[b.urgency] ?? 99) ||
+      updatedTime(b) - updatedTime(a)
+    );
+  });
+}
+
+async function loadTaskRows(userId: string, filters: TaskFilters, sort: TaskSortValue) {
   const where: any = { userId };
-  if (status && TASK_STATUSES.some((s) => s.value === status)) {
-    where.status = status;
-  } else if (status !== 'ALL') {
+
+  if (filters.status && TASK_STATUSES.some((s) => s.value === filters.status)) {
+    where.status = filters.status;
+  } else if (filters.status !== 'ALL') {
     where.status = { in: ACTIVE_STATUSES };
   }
+
+  if (filters.focus && TASK_FOCUS_OPTIONS.some((f) => f.value === filters.focus)) where.focus = filters.focus;
+  if (filters.projectId) where.projectId = filters.projectId;
+  if (filters.marketLeadId) where.marketLeadId = filters.marketLeadId;
+  if (filters.contactId) where.contactId = filters.contactId;
+  if (filters.companyId) where.companyId = filters.companyId;
+  if (filters.dealId) where.dealId = filters.dealId;
+
+  const orderBy = taskOrderBy(sort);
 
   // IT: encrypted search is bounded and performed after decrypting below.
   return prisma.task.findMany({
@@ -90,8 +184,8 @@ async function loadTaskRows(userId: string, status: string) {
         }
       }
     },
-    orderBy: [{ focus: 'asc' }, { dueAt: 'asc' }, { urgency: 'desc' }, { updatedAt: 'desc' }],
-    take: 300
+    orderBy,
+    take: 500
   });
 }
 
@@ -249,12 +343,21 @@ export const load: PageServerLoad = async ({ locals, url }) => {
   if (!locals.user) throw redirect(303, '/auth/login');
 
   const userId = locals.user.id;
-  const status = String(url.searchParams.get('status') || '').trim().toUpperCase();
+  const filters: TaskFilters = {
+    status: String(url.searchParams.get('status') || '').trim().toUpperCase(),
+    focus: String(url.searchParams.get('focus') || '').trim().toUpperCase(),
+    projectId: String(url.searchParams.get('projectId') || '').trim(),
+    marketLeadId: String(url.searchParams.get('marketLeadId') || '').trim(),
+    contactId: String(url.searchParams.get('contactId') || '').trim(),
+    companyId: String(url.searchParams.get('companyId') || '').trim(),
+    dealId: String(url.searchParams.get('dealId') || '').trim()
+  };
   const q = String(url.searchParams.get('q') || '').trim();
+  const sort = normaliseSort(String(url.searchParams.get('sort') || '').trim());
 
-  const rows = await loadTaskRows(userId, status);
+  const rows = await loadTaskRows(userId, filters, sort);
   const mapped = await Promise.all(rows.map(mapTask));
-  const tasks = mapped.filter((task) => taskMatchesQuery(task, q));
+  const tasks = sortMappedTasks(mapped.filter((task) => taskMatchesQuery(task, q)), sort);
 
   const now = new Date();
   const startTomorrow = new Date(now);
@@ -262,6 +365,7 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 
   const summary = {
     open: await prisma.task.count({ where: { userId, status: { in: ACTIVE_STATUSES as any } } }),
+    newTasks: await prisma.task.count({ where: { userId, status: { in: ACTIVE_STATUSES as any }, focus: 'NEW' as any } }),
     doingNow: await prisma.task.count({ where: { userId, status: { in: ACTIVE_STATUSES as any }, focus: 'DOING_NOW' as any } }),
     waiting: await prisma.task.count({ where: { userId, status: 'WAITING' as any } }),
     overdue: await prisma.task.count({ where: { userId, status: { in: ACTIVE_STATUSES as any }, dueAt: { lt: now } } }),
@@ -270,7 +374,15 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 
   return {
     q,
-    selectedStatus: status || '',
+    selectedStatus: filters.status || '',
+    selectedFocus: filters.focus || '',
+    selectedProjectId: filters.projectId,
+    selectedMarketLeadId: filters.marketLeadId,
+    selectedContactId: filters.contactId,
+    selectedCompanyId: filters.companyId,
+    selectedDealId: filters.dealId,
+    selectedSort: sort,
+    currentPath: `${url.pathname}${url.search}`,
     tasks,
     summary,
     options: await loadOptions(userId),
@@ -279,9 +391,15 @@ export const load: PageServerLoad = async ({ locals, url }) => {
     taskImportances: TASK_IMPORTANCES,
     taskFocusOptions: TASK_FOCUS_OPTIONS,
     taskTypes: TASK_TYPES,
+    taskSortOptions: TASK_SORT_OPTIONS,
     projectStatuses: PROJECT_STATUSES
   };
 };
+
+function safeTaskReturnTo(value: FormDataEntryValue | null) {
+  const raw = String(value || '').trim();
+  return raw.startsWith('/tasks') ? raw : '/tasks';
+}
 
 export const actions: Actions = {
   create: async ({ request, locals }) => {
@@ -377,6 +495,7 @@ export const actions: Actions = {
   updateStatus: async ({ request, locals }) => {
     if (!locals.user) throw redirect(303, '/auth/login');
     const form = await request.formData();
+    const returnTo = safeTaskReturnTo(form.get('returnTo'));
     const taskId = String(form.get('taskId') || '').trim();
     const status = normaliseTaskStatus(form.get('status'));
     if (!taskId) return fail(400, { error: 'Missing task id.' });
@@ -395,12 +514,13 @@ export const actions: Actions = {
       return fail(500, { error: 'Could not update task.' });
     }
 
-    throw redirect(303, '/tasks');
+    throw redirect(303, returnTo);
   },
 
   updateFocus: async ({ request, locals }) => {
     if (!locals.user) throw redirect(303, '/auth/login');
     const form = await request.formData();
+    const returnTo = safeTaskReturnTo(form.get('returnTo'));
     const taskId = String(form.get('taskId') || '').trim();
     const focus = normaliseTaskFocus(form.get('focus'));
     if (!taskId) return fail(400, { error: 'Missing task id.' });
@@ -413,17 +533,18 @@ export const actions: Actions = {
       return fail(500, { error: 'Could not update task focus.' });
     }
 
-    throw redirect(303, '/tasks');
+    throw redirect(303, returnTo);
   },
 
   delete: async ({ request, locals }) => {
     if (!locals.user) throw redirect(303, '/auth/login');
     const form = await request.formData();
+    const returnTo = safeTaskReturnTo(form.get('returnTo'));
     const taskId = String(form.get('taskId') || '').trim();
     if (!taskId) return fail(400, { error: 'Missing task id.' });
 
     await prisma.task.deleteMany({ where: { id: taskId, userId: locals.user.id } });
-    throw redirect(303, '/tasks');
+    throw redirect(303, returnTo);
   },
 
   createProject: async ({ request, locals }) => {

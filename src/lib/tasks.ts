@@ -62,6 +62,7 @@ export const TASK_IMPORTANCES = [
 ] as const;
 
 export const TASK_FOCUS_OPTIONS = [
+  { value: 'NEW', label: 'New' },
   { value: 'DOING_NOW', label: 'Doing now' },
   { value: 'NOT_DOING_NOW', label: 'Not doing now' },
   { value: 'NEVER_DOING_NOW', label: 'Never doing now' }
@@ -108,7 +109,7 @@ export const dealConfidentialityLabel = (v: string | null | undefined) => labelF
 export const taskStatusLabel = (v: string | null | undefined) => labelFrom(TASK_STATUSES, v, 'Open');
 export const taskUrgencyLabel = (v: string | null | undefined) => labelFrom(TASK_URGENCIES, v, 'Normal');
 export const taskImportanceLabel = (v: string | null | undefined) => labelFrom(TASK_IMPORTANCES, v, 'Normal');
-export const taskFocusLabel = (v: string | null | undefined) => labelFrom(TASK_FOCUS_OPTIONS, v, 'Not doing now');
+export const taskFocusLabel = (v: string | null | undefined) => labelFrom(TASK_FOCUS_OPTIONS, v, 'New');
 export const taskTypeLabel = (v: string | null | undefined) => labelFrom(TASK_TYPES, v, 'Follow up');
 export const projectStatusLabel = (v: string | null | undefined) => labelFrom(PROJECT_STATUSES, v, 'Active');
 
@@ -118,7 +119,7 @@ export const normaliseDealConfidentiality = (v: FormDataEntryValue | null) => no
 export const normaliseTaskStatus = (v: FormDataEntryValue | null) => normaliseFrom(TASK_STATUSES, v, 'OPEN');
 export const normaliseTaskUrgency = (v: FormDataEntryValue | null) => normaliseFrom(TASK_URGENCIES, v, 'NORMAL');
 export const normaliseTaskImportance = (v: FormDataEntryValue | null) => normaliseFrom(TASK_IMPORTANCES, v, 'NORMAL');
-export const normaliseTaskFocus = (v: FormDataEntryValue | null) => normaliseFrom(TASK_FOCUS_OPTIONS, v, 'NOT_DOING_NOW');
+export const normaliseTaskFocus = (v: FormDataEntryValue | null) => normaliseFrom(TASK_FOCUS_OPTIONS, v, 'NEW');
 export const normaliseTaskType = (v: FormDataEntryValue | null) => normaliseFrom(TASK_TYPES, v, 'FOLLOW_UP');
 export const normaliseProjectStatus = (v: FormDataEntryValue | null) => normaliseFrom(PROJECT_STATUSES, v, 'ACTIVE');
 

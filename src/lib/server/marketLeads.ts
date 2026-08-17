@@ -247,6 +247,7 @@ export async function convertLeadToContact(userId: string, leadId: string) {
 
   if (lead.contactId) {
     await prisma.marketLead.updateMany({ where: { id: leadId, userId }, data: { status: 'CONVERTED' as any, convertedAt: new Date() } });
+    await prisma.task.updateMany({ where: { userId, marketLeadId: leadId, contactId: null }, data: { contactId: lead.contactId } }).catch(() => null);
     return lead.contactId;
   }
 
@@ -271,6 +272,7 @@ export async function convertLeadToContact(userId: string, leadId: string) {
   });
 
   await prisma.marketLead.updateMany({ where: { id: leadId, userId }, data: { contactId: contact.id, status: 'CONVERTED' as any, convertedAt: new Date() } });
+  await prisma.task.updateMany({ where: { userId, marketLeadId: leadId, contactId: null }, data: { contactId: contact.id } }).catch(() => null);
   return contact.id;
 }
 
@@ -283,6 +285,7 @@ export async function convertLeadToCompany(userId: string, leadId: string) {
 
   if (lead.companyId) {
     await prisma.marketLead.updateMany({ where: { id: leadId, userId }, data: { status: 'CONVERTED' as any, convertedAt: new Date() } });
+    await prisma.task.updateMany({ where: { userId, marketLeadId: leadId, companyId: null }, data: { companyId: lead.companyId } }).catch(() => null);
     return lead.companyId;
   }
 
@@ -304,6 +307,7 @@ export async function convertLeadToCompany(userId: string, leadId: string) {
   });
 
   await prisma.marketLead.updateMany({ where: { id: leadId, userId }, data: { companyId: company.id, status: 'CONVERTED' as any, convertedAt: new Date() } });
+  await prisma.task.updateMany({ where: { userId, marketLeadId: leadId, companyId: null }, data: { companyId: company.id } }).catch(() => null);
   return company.id;
 }
 
@@ -315,6 +319,7 @@ export async function convertLeadToDeal(userId: string, leadId: string) {
 
   if (lead.dealId) {
     await prisma.marketLead.updateMany({ where: { id: leadId, userId }, data: { status: 'CONVERTED' as any, convertedAt: new Date() } });
+    await prisma.task.updateMany({ where: { userId, marketLeadId: leadId, dealId: null }, data: { dealId: lead.dealId } }).catch(() => null);
     return lead.dealId;
   }
 
@@ -340,6 +345,7 @@ export async function convertLeadToDeal(userId: string, leadId: string) {
   }
 
   await prisma.marketLead.updateMany({ where: { id: leadId, userId }, data: { dealId: deal.id, status: 'CONVERTED' as any, convertedAt: new Date() } });
+  await prisma.task.updateMany({ where: { userId, marketLeadId: leadId, dealId: null }, data: { dealId: deal.id } }).catch(() => null);
   return deal.id;
 }
 

@@ -9,6 +9,7 @@ import { buildIndexToken, encrypt } from '$lib/crypto';
 import { companyDisplay } from '$lib/companies';
 import { contactDisplayName, contactOptionsForRows } from '$lib/server/contactDisplay';
 import { safeDecrypt } from '$lib/deals';
+import { marketLeadStatusLabel } from '$lib/marketLeads';
 import {
   PROJECT_STATUSES,
   TASK_IMPORTANCES,
@@ -68,6 +69,7 @@ async function loadTaskRows(userId: string, status: string) {
       waitingOnContact: { select: { id: true, fullNameEnc: true, linkedUserId: true } },
       deal: { select: { id: true, titleEnc: true, status: true } },
       project: { select: { id: true, titleEnc: true, status: true } },
+      marketLead: { select: { id: true, titleEnc: true, type: true, status: true, projectId: true } },
       company: { select: { id: true, nameEnc: true, kind: true, status: true } },
       dealCompany: {
         select: {
@@ -103,6 +105,7 @@ async function mapTask(row: TaskRow) {
   const waitingName = row.waitingOnContact ? await contactDisplayName(row.waitingOnContact) : '';
   const dealTitle = row.deal ? safeDecrypt(row.deal.titleEnc, 'deal.title', 'Untitled deal') : '';
   const projectTitle = row.project ? safeDecryptTask(row.project.titleEnc, 'project.title', 'Untitled project') : '';
+  const marketLeadTitle = row.marketLead ? safeDecryptTask(row.marketLead.titleEnc, 'market_lead.title', 'Untitled lead') : '';
   const companyName = row.company ? companyDisplay(row.company) : '';
   const dealCompanyDealTitle = row.dealCompany?.deal ? safeDecrypt(row.dealCompany.deal.titleEnc, 'deal.title', 'Untitled deal') : '';
   const dealCompanyName = row.dealCompany?.company ? companyDisplay(row.dealCompany.company) : '';
@@ -135,6 +138,7 @@ async function mapTask(row: TaskRow) {
     waitingOnContact: row.waitingOnContact ? { id: row.waitingOnContact.id, name: waitingName } : null,
     deal: row.deal ? { id: row.deal.id, title: dealTitle, status: row.deal.status } : null,
     project: row.project ? { id: row.project.id, title: projectTitle, statusLabel: projectStatusLabel(row.project.status) } : null,
+    marketLead: row.marketLead ? { id: row.marketLead.id, title: marketLeadTitle, type: row.marketLead.type, status: row.marketLead.status, statusLabel: marketLeadStatusLabel(row.marketLead.status), projectId: row.marketLead.projectId } : null,
     company: row.company ? { id: row.company.id, name: companyName, status: row.company.status } : null,
     dealCompany: row.dealCompany ? {
       id: row.dealCompany.id,
@@ -164,6 +168,7 @@ function taskMatchesQuery(task: Awaited<ReturnType<typeof mapTask>>, q: string) 
     task.contact?.name,
     task.deal?.title,
     task.project?.title,
+    task.marketLead?.title,
     task.company?.name,
     task.dealCompany?.dealTitle,
     task.dealCompany?.companyName,
@@ -177,11 +182,12 @@ function taskMatchesQuery(task: Awaited<ReturnType<typeof mapTask>>, q: string) 
 }
 
 async function loadOptions(userId: string) {
-  const [contactsRaw, dealsRaw, projectsRaw, companiesRaw, dealContactsRaw, dealCompaniesRaw] = await Promise.all([
+  const [contactsRaw, dealsRaw, projectsRaw, companiesRaw, marketLeadsRaw, dealContactsRaw, dealCompaniesRaw] = await Promise.all([
     prisma.contact.findMany({ where: { userId }, select: { id: true, fullNameEnc: true, linkedUserId: true }, orderBy: { createdAt: 'desc' }, take: 300 }),
     prisma.deal.findMany({ where: { userId }, select: { id: true, titleEnc: true, status: true }, orderBy: { updatedAt: 'desc' }, take: 200 }),
     prisma.project.findMany({ where: { userId, status: { not: 'ARCHIVED' as any } }, select: { id: true, titleEnc: true, status: true }, orderBy: { updatedAt: 'desc' }, take: 200 }),
     prisma.company.findMany({ where: { userId, status: { not: 'ARCHIVED' as any } }, select: { id: true, nameEnc: true, kind: true, status: true }, orderBy: { updatedAt: 'desc' }, take: 300 }),
+    prisma.marketLead.findMany({ where: { userId, status: { notIn: ['ARCHIVED', 'NOT_RELEVANT'] as any } }, select: { id: true, titleEnc: true, type: true, status: true, projectId: true }, orderBy: { updatedAt: 'desc' }, take: 300 }),
     prisma.dealContact.findMany({
       where: { userId },
       select: {
@@ -211,6 +217,7 @@ async function loadOptions(userId: string) {
   const deals = dealsRaw.map((d) => ({ id: d.id, title: safeDecrypt(d.titleEnc, 'deal.title', 'Untitled deal'), status: d.status }));
   const projects = projectsRaw.map((p) => ({ id: p.id, title: safeDecryptTask(p.titleEnc, 'project.title', 'Untitled project'), statusLabel: projectStatusLabel(p.status) }));
   const companies = companiesRaw.map((c) => ({ id: c.id, name: companyDisplay(c), kind: c.kind, status: c.status }));
+  const marketLeads = marketLeadsRaw.map((lead: any) => ({ id: lead.id, title: safeDecryptTask(lead.titleEnc, 'market_lead.title', 'Untitled lead'), type: lead.type, status: lead.status, statusLabel: marketLeadStatusLabel(lead.status), projectId: lead.projectId }));
   const dealContacts = await Promise.all(dealContactsRaw.map(async (link: any) => ({
     id: link.id,
     dealId: link.deal.id,
@@ -226,14 +233,15 @@ async function loadOptions(userId: string) {
     title: `${safeDecrypt(link.deal.titleEnc, 'deal.title', 'Untitled deal')} - ${companyDisplay(link.company)}${link.label ? ` (${link.label})` : ''}`
   }));
 
-  return { contacts, deals, projects, companies, dealContacts, dealCompanies };
+  return { contacts, deals, projects, companies, marketLeads, dealContacts, dealCompanies };
 }
 
-async function ownedIdExists(userId: string, kind: 'contact' | 'deal' | 'project' | 'company', id: string | null) {
+async function ownedIdExists(userId: string, kind: 'contact' | 'deal' | 'project' | 'company' | 'marketLead', id: string | null) {
   if (!id) return true;
   if (kind === 'contact') return !!(await prisma.contact.findFirst({ where: { id, userId }, select: { id: true } }));
   if (kind === 'deal') return !!(await prisma.deal.findFirst({ where: { id, userId }, select: { id: true } }));
   if (kind === 'company') return !!(await prisma.company.findFirst({ where: { id, userId }, select: { id: true } }));
+  if (kind === 'marketLead') return !!(await prisma.marketLead.findFirst({ where: { id, userId }, select: { id: true } }));
   return !!(await prisma.project.findFirst({ where: { id, userId }, select: { id: true } }));
 }
 
@@ -289,7 +297,8 @@ export const actions: Actions = {
     let dealContactId = String(form.get('dealContactId') || '').trim() || null;
     let companyId = String(form.get('companyId') || '').trim() || null;
     let dealCompanyId = String(form.get('dealCompanyId') || '').trim() || null;
-    const projectId = String(form.get('projectId') || '').trim() || null;
+    let marketLeadId = String(form.get('marketLeadId') || '').trim() || null;
+    let projectId = String(form.get('projectId') || '').trim() || null;
     const assignedToContactId = String(form.get('assignedToContactId') || '').trim() || null;
     const waitingOnContactId = String(form.get('waitingOnContactId') || '').trim() || null;
 
@@ -307,15 +316,25 @@ export const actions: Actions = {
       companyId = link.companyId;
     }
 
-    const [contactOk, dealOk, projectOk, companyOk, assignedOk, waitingOk] = await Promise.all([
+    if (marketLeadId) {
+      const lead = await prisma.marketLead.findFirst({ where: { id: marketLeadId, userId }, select: { id: true, projectId: true, contactId: true, companyId: true, dealId: true } });
+      if (!lead) return fail(404, { error: 'Lead not found.' });
+      projectId = projectId || lead.projectId || null;
+      contactId = contactId || lead.contactId || null;
+      companyId = companyId || lead.companyId || null;
+      dealId = dealId || lead.dealId || null;
+    }
+
+    const [contactOk, dealOk, projectOk, companyOk, leadOk, assignedOk, waitingOk] = await Promise.all([
       ownedIdExists(userId, 'contact', contactId),
       ownedIdExists(userId, 'deal', dealId),
       ownedIdExists(userId, 'project', projectId),
       ownedIdExists(userId, 'company', companyId),
+      ownedIdExists(userId, 'marketLead', marketLeadId),
       ownedIdExists(userId, 'contact', assignedToContactId),
       ownedIdExists(userId, 'contact', waitingOnContactId)
     ]);
-    if (!contactOk || !dealOk || !projectOk || !companyOk || !assignedOk || !waitingOk) return fail(404, { error: 'One of the selected links was not found.' });
+    if (!contactOk || !dealOk || !projectOk || !companyOk || !leadOk || !assignedOk || !waitingOk) return fail(404, { error: 'One of the selected links was not found.' });
 
     const notes = String(form.get('notes') || '').trim();
     const summary = String(form.get('summary') || '').trim();
@@ -343,6 +362,7 @@ export const actions: Actions = {
           dealContactId,
           companyId,
           dealCompanyId,
+          marketLeadId,
           projectId
         }
       });

@@ -12,10 +12,12 @@
 
   let showEdit = false;
   let showNewTask = false;
+  let showNewLead = false;
   let taskNotes = '';
   let taskSummary = '';
   let projectNoteText = '';
   let projectNoteSummary = '';
+  $: leadTaskOptions = (data.options.marketLeads || []).filter((lead: any) => !lead.projectId || lead.projectId === data.project.id);
 
   function fmt(value: string | Date | null | undefined) {
     if (!value) return 'No date';
@@ -50,6 +52,7 @@
     </div>
     <div class="actions">
       <button class="btn" type="button" on:click={() => (showEdit = !showEdit)}>{showEdit ? 'Close edit' : 'Edit project'}</button>
+      <button class="btn primary" type="button" on:click={() => (showNewLead = !showNewLead)}>{showNewLead ? 'Cancel lead' : '＋ New lead'}</button>
       <button class="btn primary" type="button" on:click={() => (showNewTask = !showNewTask)}>{showNewTask ? 'Cancel task' : '＋ New task'}</button>
       <a class="btn" href="/projects">All projects</a>
     </div>
@@ -66,6 +69,8 @@
     <div class="card stat"><span>Overdue</span><strong>{data.summary.overdue}</strong></div>
     <div class="card stat"><span>Waiting</span><strong>{data.summary.waiting}</strong></div>
     <div class="card stat"><span>Completed</span><strong>{data.summary.completed}</strong></div>
+    <div class="card stat"><span>Leads</span><strong>{data.summary.leads}</strong></div>
+    <div class="card stat"><span>Qualified leads</span><strong>{data.summary.readyLeads}</strong></div>
   </div>
 
   {#if showEdit}
@@ -76,6 +81,35 @@
         <div class="field"><label for="status">Status</label><select id="status" name="status">{#each data.projectStatuses as opt}<option value={opt.value} selected={data.project.status === opt.value}>{opt.label}</option>{/each}</select></div>
         <div class="field span2"><label for="description">Description</label><textarea id="description" name="description" rows="4">{data.project.description}</textarea></div>
         <div class="span2"><button class="btn primary" type="submit">Save project</button></div>
+      </form>
+    </section>
+  {/if}
+
+
+  {#if showNewLead}
+    <section class="card panel">
+      <h2>New project lead</h2>
+      <form method="post" action="?/createProjectLead">
+        <div class="grid two">
+          <div class="field"><label for="leadTitle">Lead title</label><input id="leadTitle" name="title" placeholder="e.g. Bayside broker principal to research" /></div>
+          <div class="field"><label for="leadType">Lead type</label><select id="leadType" name="type">{#each data.marketLeadTypes as opt}<option value={opt.value}>{opt.label}</option>{/each}</select></div>
+        </div>
+        <div class="grid three">
+          <div class="field"><label for="leadStatus">Status</label><select id="leadStatus" name="status">{#each data.marketLeadStatuses as opt}<option value={opt.value}>{opt.label}</option>{/each}</select></div>
+          <div class="field"><label for="leadSource">Source</label><select id="leadSource" name="source">{#each data.marketLeadSources as opt}<option value={opt.value}>{opt.label}</option>{/each}</select></div>
+          <div class="field"><label for="leadPriority">Priority 1-5</label><input id="leadPriority" name="priority" type="number" min="1" max="5" value="3" /></div>
+        </div>
+        <div class="grid two">
+          <div class="field"><label for="leadName">Person name</label><input id="leadName" name="name" /></div>
+          <div class="field"><label for="leadCompanyName">Company name</label><input id="leadCompanyName" name="companyName" /></div>
+        </div>
+        <div class="grid two">
+          <div class="field"><label for="leadPhone">Phone</label><input id="leadPhone" name="phone" /></div>
+          <div class="field"><label for="leadEmail">Email</label><input id="leadEmail" name="email" type="email" /></div>
+        </div>
+        <div class="field"><label for="leadDescription">Description</label><textarea id="leadDescription" name="description" rows="3" placeholder="Capture the rough signal, source, or hypothesis."></textarea></div>
+        <div class="field"><label for="leadNextAction">Next action</label><input id="leadNextAction" name="nextAction" placeholder="e.g. Find principal and direct phone" /></div>
+        <button class="btn primary" type="submit">Save lead</button>
       </form>
     </section>
   {/if}
@@ -106,8 +140,10 @@
 
         <div class="grid two">
           <div class="field"><label for="companyId">Attach company</label><select id="companyId" name="companyId"><option value="">No company</option>{#each data.options.companies as c}<option value={c.id}>{c.name}</option>{/each}</select></div>
-          <div class="field"><label for="assignedToText">Assigned to text</label><input id="assignedToText" name="assignedToText" placeholder="e.g. me, Sam, accountant" /></div>
+          <div class="field"><label for="marketLeadId">Attach lead</label><select id="marketLeadId" name="marketLeadId"><option value="">No lead</option>{#each leadTaskOptions as lead}<option value={lead.id}>{lead.title} - {lead.statusLabel}</option>{/each}</select></div>
         </div>
+
+        <div class="field"><label for="assignedToText">Assigned to text</label><input id="assignedToText" name="assignedToText" placeholder="e.g. me, Sam, accountant" /></div>
 
         <div class="grid two">
           <div class="field"><label for="dealContactId">Attach deal-person thread</label><select id="dealContactId" name="dealContactId"><option value="">No specific person thread</option>{#each data.options.dealContacts as dc}<option value={dc.id}>{dc.title}</option>{/each}</select></div>
@@ -177,6 +213,28 @@
     </details>
   </section>
 
+
+  <section class="card panel">
+    <div class="section-head"><h2>Project leads</h2><button class="btn" type="button" on:click={() => (showNewLead = !showNewLead)}>{showNewLead ? 'Cancel lead' : '＋ Add lead'}</button></div>
+    {#if data.projectLeads?.length}
+      <div class="lead-list">
+        {#each data.projectLeads as lead}
+          <a class="lead-row" href={`/leads/${lead.id}`}>
+            <div>
+              <strong>{lead.title}</strong>
+              <div class="muted small">{lead.typeLabel} - {lead.statusLabel} - priority {lead.priority} - confidence {lead.confidence}/100</div>
+              {#if lead.name || lead.companyName}<div class="muted small">{lead.name}{lead.name && lead.companyName ? ' - ' : ''}{lead.companyName}</div>{/if}
+              {#if lead.nextAction}<div class="small">Next: {lead.nextAction}</div>{/if}
+            </div>
+            <span class="status-chip">Open</span>
+          </a>
+        {/each}
+      </div>
+    {:else}
+      <p class="muted">No project leads yet. Add raw names, companies, mandates, or market signals here before they become contacts, companies, wants, offers, or deals.</p>
+    {/if}
+  </section>
+
   <div class="grid main-grid">
     <section class="card panel">
       <h2>Related deals</h2>
@@ -220,6 +278,7 @@
               {#if task.notes}<p class="preline small">{task.notes}</p>{/if}
               {#if task.summary}<div class="summary-box"><div class="muted small">AI summary</div><p>{task.summary}</p></div>{/if}
               <div class="context-row">
+                {#if task.marketLead}<a class="chip" href={`/leads/${task.marketLead.id}`}>Lead: {task.marketLead.title}</a>{/if}
                 {#if task.contact}<a class="chip" href={`/contacts/${task.contact.id}`}>Person: {task.contact.name}</a>{/if}
                 {#if task.deal}<a class="chip" href={`/deals/${task.deal.id}`}>Deal: {task.deal.title}</a>{/if}
                 {#if task.company}<a class="chip" href={`/companies/${task.company.id}`}>Company: {task.company.name}</a>{/if}
@@ -257,17 +316,19 @@
   .small { font-size: 0.9rem; }
   details summary { cursor: pointer; margin-bottom: 10px; }
   .nested-form { border: 1px solid var(--border); border-radius: 12px; padding: 12px; margin: 10px 0; background: var(--panel); }
-  .summary-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-bottom: 12px; }
+  .summary-grid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 10px; margin-bottom: 12px; }
   .stat { padding: 12px; display: grid; gap: 4px; }
   .stat strong { font-size: 1.5rem; }
   .panel, .error-card { padding: 14px; margin-bottom: 12px; }
   .error-card { color: var(--danger); }
   .grid.two { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+  .grid.three { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
   .grid.four { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
   .main-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
   .span2 { grid-column: 1 / span 2; }
   .preline { white-space: pre-wrap; }
-  .task-list, .mini-list { display: grid; gap: 8px; }
+  .task-list, .mini-list, .lead-list { display: grid; gap: 8px; }
+  .lead-row { display: flex; justify-content: space-between; gap: 12px; border-top: 1px solid var(--border); padding: 12px 0; color: var(--text); text-decoration: none; }
   .mini-row { border-top: 1px solid var(--border); padding: 12px 0; display: flex; justify-content: space-between; gap: 12px; }
   .task-row { border-top: 1px solid var(--border); padding: 12px 0; display: flex; justify-content: space-between; gap: 12px; }
   .task-row.overdue { border-color: var(--danger); }
@@ -280,7 +341,7 @@
   textarea { resize: vertical; }
   @media (max-width: 860px) {
     .project-header, .task-row, .section-head, .mini-row { flex-direction: column; }
-    .summary-grid, .grid.two, .grid.four, .main-grid { grid-template-columns: 1fr; }
+    .summary-grid, .grid.two, .grid.three, .grid.four, .main-grid { grid-template-columns: 1fr; }
     .span2 { grid-column: auto; }
     .task-actions { min-width: 0; }
   }

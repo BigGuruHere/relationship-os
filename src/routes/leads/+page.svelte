@@ -41,6 +41,7 @@
           <div class="field"><label for="sourceCreate">Source</label><select id="sourceCreate" name="source">{#each data.leadSources as opt}<option value={opt.value} selected={(form?.values?.source || 'MANUAL') === opt.value}>{opt.label}</option>{/each}</select></div>
           <div class="field"><label for="commCreate">Usual communication</label><select id="commCreate" name="usualCommunicationMethod">{#each data.communicationMethods as opt}<option value={opt.value} selected={(form?.values?.usualCommunicationMethod || '') === opt.value}>{opt.label}</option>{/each}</select></div>
         </div>
+        <div class="field"><label for="projectIdCreate">Project</label><select id="projectIdCreate" name="projectId"><option value="">Standalone lead</option>{#each data.projects as project}<option value={project.id} selected={(form?.values?.projectId || '') === project.id}>{project.title}</option>{/each}</select></div>
         <div class="grid two">
           <div class="field"><label for="name">Person name</label><input id="name" name="name" value={form?.values?.name || ''} /></div>
           <div class="field"><label for="companyName">Company name</label><input id="companyName" name="companyName" value={form?.values?.companyName || ''} /></div>

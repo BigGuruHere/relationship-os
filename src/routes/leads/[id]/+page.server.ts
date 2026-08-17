@@ -1,5 +1,5 @@
 // src/routes/leads/[id]/+page.server.ts
-// PURPOSE: View, edit, and convert a single Stage 6 market lead.
+// PURPOSE: View, edit, convert, note, and work a single Stage 6.1 market lead.
 // SECURITY: All operations are scoped by userId. PII remains encrypted at rest.
 
 import type { Actions, PageServerLoad } from './$types';
@@ -7,7 +7,7 @@ import { fail, redirect } from '@sveltejs/kit';
 import { prisma } from '$lib/db';
 import { decrypt, encrypt } from '$lib/crypto';
 import { safeDecrypt } from '$lib/deals';
-import { safeDecryptTask } from '$lib/tasks';
+import { safeDecryptCompany } from '$lib/companies';
 import {
   COMMUNICATION_METHODS,
   MARKET_LEAD_SOURCES,
@@ -24,11 +24,82 @@ import {
   mapMarketLead,
   marketLeadCreateData
 } from '$lib/server/marketLeads';
-import { safeDecryptCompany } from '$lib/companies';
+import {
+  TASK_FOCUS_OPTIONS,
+  TASK_IMPORTANCES,
+  TASK_STATUSES,
+  TASK_TYPES,
+  TASK_URGENCIES,
+  normaliseTaskFocus,
+  normaliseTaskImportance,
+  normaliseTaskStatus,
+  normaliseTaskType,
+  normaliseTaskUrgency,
+  parseDateTime,
+  projectStatusLabel,
+  safeDecryptTask,
+  taskFocusLabel,
+  taskImportanceLabel,
+  taskStatusLabel,
+  taskTypeLabel,
+  taskUrgencyLabel
+} from '$lib/tasks';
 
 function contactName(row: any) {
   if (!row) return '';
   try { return row.fullNameEnc ? decrypt(row.fullNameEnc, 'contact.full_name') : ''; } catch { return ''; }
+}
+
+async function loadProjectOptions(userId: string) {
+  const rows = await prisma.project.findMany({
+    where: { userId, status: { not: 'ARCHIVED' as any } },
+    select: { id: true, titleEnc: true, status: true },
+    orderBy: { updatedAt: 'desc' },
+    take: 200
+  });
+  return rows.map((project: any) => ({
+    id: project.id,
+    title: safeDecryptTask(project.titleEnc, 'project.title', 'Untitled project'),
+    status: project.status,
+    statusLabel: projectStatusLabel(project.status)
+  }));
+}
+
+function mapLeadNote(note: any) {
+  return {
+    id: note.id,
+    body: safeDecryptTask(note.bodyEnc, 'market_lead_note.body', ''),
+    summary: safeDecryptTask(note.summaryEnc, 'market_lead_note.summary', ''),
+    createdAt: note.createdAt,
+    updatedAt: note.updatedAt
+  };
+}
+
+function mapLeadTask(task: any) {
+  return {
+    id: task.id,
+    title: safeDecryptTask(task.titleEnc, 'task.title', 'Untitled task'),
+    notes: safeDecryptTask(task.notesEnc, 'task.notes', ''),
+    summary: safeDecryptTask(task.summaryEnc, 'task.summary', ''),
+    status: task.status,
+    statusLabel: taskStatusLabel(task.status),
+    urgency: task.urgency,
+    urgencyLabel: taskUrgencyLabel(task.urgency),
+    importance: task.importance,
+    importanceLabel: taskImportanceLabel(task.importance),
+    focus: task.focus,
+    focusLabel: taskFocusLabel(task.focus),
+    taskType: task.taskType,
+    taskTypeLabel: taskTypeLabel(task.taskType),
+    dueAt: task.dueAt,
+    snoozedUntil: task.snoozedUntil,
+    completedAt: task.completedAt,
+    updatedAt: task.updatedAt,
+    project: task.project ? { id: task.project.id, title: safeDecryptTask(task.project.titleEnc, 'project.title', 'Untitled project') } : null,
+    contact: task.contact ? { id: task.contact.id, name: contactName(task.contact) } : null,
+    company: task.company ? { id: task.company.id, name: safeDecryptCompany(task.company.nameEnc, 'company.name', 'Untitled company') } : null,
+    deal: task.deal ? { id: task.deal.id, title: safeDecrypt(task.deal.titleEnc, 'deal.title', 'Untitled deal') } : null
+  };
 }
 
 export const load: PageServerLoad = async ({ params, locals }) => {
@@ -81,6 +152,40 @@ export const load: PageServerLoad = async ({ params, locals }) => {
   if (!row) throw redirect(303, '/leads');
   const lead = mapMarketLead(row);
 
+  const [leadNotesRaw, leadTasksRaw, projects] = await Promise.all([
+    prisma.marketLeadNote.findMany({
+      where: { userId, marketLeadId: row.id },
+      select: { id: true, bodyEnc: true, summaryEnc: true, createdAt: true, updatedAt: true },
+      orderBy: { createdAt: 'desc' },
+      take: 120
+    }),
+    prisma.task.findMany({
+      where: { userId, marketLeadId: row.id },
+      select: {
+        id: true,
+        titleEnc: true,
+        notesEnc: true,
+        summaryEnc: true,
+        status: true,
+        urgency: true,
+        importance: true,
+        focus: true,
+        taskType: true,
+        dueAt: true,
+        snoozedUntil: true,
+        completedAt: true,
+        updatedAt: true,
+        project: { select: { id: true, titleEnc: true } },
+        contact: { select: { id: true, fullNameEnc: true } },
+        company: { select: { id: true, nameEnc: true } },
+        deal: { select: { id: true, titleEnc: true } }
+      },
+      orderBy: [{ focus: 'asc' }, { status: 'asc' }, { dueAt: 'asc' }, { updatedAt: 'desc' }],
+      take: 150
+    }),
+    loadProjectOptions(userId)
+  ]);
+
   return {
     lead: {
       ...lead,
@@ -93,10 +198,18 @@ export const load: PageServerLoad = async ({ params, locals }) => {
       linkedProjectTitle: row.project ? safeDecryptTask(row.project.titleEnc, 'project.title', '') : '',
       linkedExchangeTitle: row.exchangeItem ? safeDecrypt(row.exchangeItem.titleEnc, 'exchange.title', '') : ''
     },
+    leadNotes: leadNotesRaw.map(mapLeadNote),
+    leadTasks: leadTasksRaw.map(mapLeadTask),
+    projects,
     leadTypes: MARKET_LEAD_TYPES,
     leadStatuses: MARKET_LEAD_STATUSES,
     leadSources: MARKET_LEAD_SOURCES,
-    communicationMethods: COMMUNICATION_METHODS
+    communicationMethods: COMMUNICATION_METHODS,
+    taskStatuses: TASK_STATUSES,
+    taskUrgencies: TASK_URGENCIES,
+    taskImportances: TASK_IMPORTANCES,
+    taskFocusOptions: TASK_FOCUS_OPTIONS,
+    taskTypes: TASK_TYPES
   };
 };
 
@@ -110,14 +223,109 @@ export const actions: Actions = {
     const values = leadFormValues(await request.formData());
     if (!values.title && !values.name && !values.companyName) return fail(400, { error: 'Add a title, person name, or company name.' });
 
+    if (values.projectId) {
+      const projectOk = await prisma.project.findFirst({ where: { id: values.projectId, userId }, select: { id: true } });
+      if (!projectOk) return fail(404, { error: 'Selected project was not found.' });
+    }
+
     const data: any = marketLeadCreateData(userId, values);
     delete data.userId;
-    // IT: editing text/status fields should not unlink already converted records.
+    // IT: editing text/status/project fields should not unlink already converted records.
     delete data.contactId;
     delete data.companyId;
     delete data.dealId;
-    delete data.projectId;
     await prisma.marketLead.updateMany({ where: { id: params.id, userId }, data });
+    throw redirect(303, `/leads/${params.id}`);
+  },
+
+  createLeadNote: async ({ request, params, locals }) => {
+    if (!locals.user) throw redirect(303, '/auth/login');
+    const userId = locals.user.id;
+    const lead = await prisma.marketLead.findFirst({ where: { id: params.id, userId }, select: { id: true } });
+    if (!lead) return fail(404, { error: 'Lead not found.' });
+
+    const form = await request.formData();
+    const body = String(form.get('body') || form.get('note') || '').trim();
+    const summary = String(form.get('summary') || '').trim();
+    if (!body) return fail(400, { error: 'Lead note is required.' });
+
+    await prisma.marketLeadNote.create({
+      data: {
+        userId,
+        marketLeadId: params.id,
+        bodyEnc: encrypt(body, 'market_lead_note.body'),
+        summaryEnc: summary ? encrypt(summary, 'market_lead_note.summary') : null
+      }
+    });
+    throw redirect(303, `/leads/${params.id}`);
+  },
+
+  deleteLeadNote: async ({ request, params, locals }) => {
+    if (!locals.user) throw redirect(303, '/auth/login');
+    const noteId = String((await request.formData()).get('noteId') || '').trim();
+    if (!noteId) return fail(400, { error: 'Missing lead note id.' });
+    await prisma.marketLeadNote.deleteMany({ where: { id: noteId, userId: locals.user.id, marketLeadId: params.id } });
+    throw redirect(303, `/leads/${params.id}`);
+  },
+
+  createTask: async ({ request, params, locals }) => {
+    if (!locals.user) throw redirect(303, '/auth/login');
+    const userId = locals.user.id;
+    const lead = await prisma.marketLead.findFirst({ where: { id: params.id, userId }, select: { id: true, projectId: true, contactId: true, companyId: true, dealId: true } });
+    if (!lead) return fail(404, { error: 'Lead not found.' });
+
+    const form = await request.formData();
+    const title = String(form.get('title') || '').trim();
+    if (!title) return fail(400, { error: 'Task title is required.' });
+    const notes = String(form.get('notes') || '').trim();
+    const summary = String(form.get('summary') || '').trim();
+    const assignedToText = String(form.get('assignedToText') || '').trim();
+    const status = normaliseTaskStatus(form.get('status'));
+
+    await prisma.task.create({
+      data: {
+        userId,
+        marketLeadId: params.id,
+        projectId: lead.projectId || null,
+        contactId: lead.contactId || null,
+        companyId: lead.companyId || null,
+        dealId: lead.dealId || null,
+        titleEnc: encrypt(title, 'task.title'),
+        notesEnc: notes ? encrypt(notes, 'task.notes') : null,
+        summaryEnc: summary ? encrypt(summary, 'task.summary') : null,
+        status: status as any,
+        urgency: normaliseTaskUrgency(form.get('urgency')) as any,
+        importance: normaliseTaskImportance(form.get('importance')) as any,
+        focus: normaliseTaskFocus(form.get('focus')) as any,
+        taskType: normaliseTaskType(form.get('taskType')) as any,
+        dueAt: parseDateTime(form.get('dueAt')),
+        snoozedUntil: parseDateTime(form.get('snoozedUntil')),
+        completedAt: status === 'DONE' ? new Date() : null,
+        cancelledAt: status === 'CANCELLED' ? new Date() : null,
+        assignedToTextEnc: assignedToText ? encrypt(assignedToText, 'task.assigned_to_text') : null
+      }
+    });
+    throw redirect(303, `/leads/${params.id}`);
+  },
+
+  updateTaskStatus: async ({ request, params, locals }) => {
+    if (!locals.user) throw redirect(303, '/auth/login');
+    const form = await request.formData();
+    const taskId = String(form.get('taskId') || '').trim();
+    const status = normaliseTaskStatus(form.get('status'));
+    if (!taskId) return fail(400, { error: 'Missing task id.' });
+    await prisma.task.updateMany({
+      where: { id: taskId, userId: locals.user.id, marketLeadId: params.id },
+      data: { status, completedAt: status === 'DONE' ? new Date() : null, cancelledAt: status === 'CANCELLED' ? new Date() : null }
+    });
+    throw redirect(303, `/leads/${params.id}`);
+  },
+
+  deleteTask: async ({ request, params, locals }) => {
+    if (!locals.user) throw redirect(303, '/auth/login');
+    const taskId = String((await request.formData()).get('taskId') || '').trim();
+    if (!taskId) return fail(400, { error: 'Missing task id.' });
+    await prisma.task.deleteMany({ where: { id: taskId, userId: locals.user.id, marketLeadId: params.id } });
     throw redirect(303, `/leads/${params.id}`);
   },
 

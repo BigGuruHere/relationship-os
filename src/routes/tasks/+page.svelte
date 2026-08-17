@@ -160,6 +160,15 @@
           </div>
         </div>
 
+        <div class="field">
+          <label for="marketLeadId">Attach lead</label>
+          <select id="marketLeadId" name="marketLeadId">
+            <option value="">No lead</option>
+            {#each data.options.marketLeads as lead}<option value={lead.id}>{lead.title} - {lead.statusLabel}</option>{/each}
+          </select>
+          <p class="hint">Selecting a lead can also inherit its project, contact, company, or deal links.</p>
+        </div>
+
         <div class="grid two">
           <div class="field">
             <label for="dealContactId">Attach deal-person thread</label>
@@ -262,6 +271,7 @@
               {#if task.dealContact}<a class="chip" href={`/deals/${task.dealContact.dealId}/relationships/${task.dealContact.id}`}>Person thread: {task.dealContact.contactName}</a>{/if}
               {#if task.dealCompany}<a class="chip" href={`/companies/${task.dealCompany.companyId}`}>Company thread: {task.dealCompany.companyName}</a>{/if}
               {#if task.project}<a class="chip" href={`/projects/${task.project.id}`}>Project: {task.project.title}</a>{/if}
+              {#if task.marketLead}<a class="chip" href={`/leads/${task.marketLead.id}`}>Lead: {task.marketLead.title}</a>{/if}
               {#if task.waitingOnContact}<a class="chip" href={`/contacts/${task.waitingOnContact.id}`}>Waiting on: {task.waitingOnContact.name}</a>{/if}
               {#if task.assignedToContact}<a class="chip" href={`/contacts/${task.assignedToContact.id}`}>Assigned: {task.assignedToContact.name}</a>{/if}
               {#if task.assignedToText}<span class="chip">Assigned: {task.assignedToText}</span>{/if}

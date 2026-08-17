@@ -1,6 +1,6 @@
 // src/routes/projects/[id]/+page.server.ts
-// PURPOSE: Project command-centre page showing the tasks, people, deals, companies, and waiting items connected to one workstream.
-// SECURITY: Every read/write is tenant scoped by locals.user.id. Project/task text is encrypted at rest.
+// PURPOSE: Project command-centre page showing tasks, leads, notes, wants/offers, and linked market records.
+// SECURITY: Every read/write is tenant scoped by locals.user.id. Text fields are encrypted at rest.
 
 import type { Actions, PageServerLoad } from './$types';
 import { fail, redirect } from '@sveltejs/kit';
@@ -8,6 +8,8 @@ import { prisma } from '$lib/db';
 import { buildIndexToken, encrypt } from '$lib/crypto';
 import { companyDisplay } from '$lib/companies';
 import { safeDecrypt } from '$lib/deals';
+import { MARKET_LEAD_SOURCES, MARKET_LEAD_STATUSES, MARKET_LEAD_TYPES, marketLeadStatusLabel } from '$lib/marketLeads';
+import { leadFormValues, mapMarketLead, marketLeadCreateData } from '$lib/server/marketLeads';
 import { contactDisplayName, contactOptionsForRows } from '$lib/server/contactDisplay';
 import { createExchangeItemFromForm, deleteExchangeItem, loadExchangeItems } from '$lib/server/exchange';
 import { loadAgentArtifacts } from '$lib/server/agents/artifacts';
@@ -37,10 +39,11 @@ import {
 const ACTIVE_TASK_STATUSES = ['OPEN', 'IN_PROGRESS', 'WAITING', 'SNOOZED'];
 
 async function loadOptions(userId: string) {
-  const [contactsRaw, dealsRaw, companiesRaw, dealContactsRaw, dealCompaniesRaw] = await Promise.all([
+  const [contactsRaw, dealsRaw, companiesRaw, marketLeadsRaw, dealContactsRaw, dealCompaniesRaw] = await Promise.all([
     prisma.contact.findMany({ where: { userId }, select: { id: true, fullNameEnc: true, linkedUserId: true }, orderBy: { createdAt: 'desc' }, take: 300 }),
     prisma.deal.findMany({ where: { userId }, select: { id: true, titleEnc: true, status: true }, orderBy: { updatedAt: 'desc' }, take: 200 }),
     prisma.company.findMany({ where: { userId, status: { not: 'ARCHIVED' as any } }, select: { id: true, nameEnc: true, kind: true, status: true }, orderBy: { updatedAt: 'desc' }, take: 300 }),
+    prisma.marketLead.findMany({ where: { userId, status: { notIn: ['ARCHIVED', 'NOT_RELEVANT'] as any } }, select: { id: true, titleEnc: true, type: true, status: true, projectId: true }, orderBy: { updatedAt: 'desc' }, take: 300 }),
     prisma.dealContact.findMany({
       where: { userId },
       select: {
@@ -68,6 +71,14 @@ async function loadOptions(userId: string) {
   const contacts = await contactOptionsForRows(contactsRaw as any);
   const deals = dealsRaw.map((deal) => ({ id: deal.id, title: safeDecrypt(deal.titleEnc, 'deal.title', 'Untitled deal'), status: deal.status }));
   const companies = companiesRaw.map((company) => ({ id: company.id, name: companyDisplay(company), kind: company.kind, status: company.status }));
+  const marketLeads = marketLeadsRaw.map((lead: any) => ({
+    id: lead.id,
+    title: safeDecryptTask(lead.titleEnc, 'market_lead.title', 'Untitled lead'),
+    type: lead.type,
+    status: lead.status,
+    statusLabel: marketLeadStatusLabel(lead.status),
+    projectId: lead.projectId
+  }));
   const dealContacts = await Promise.all(dealContactsRaw.map(async (link: any) => ({
     id: link.id,
     dealId: link.deal.id,
@@ -81,14 +92,52 @@ async function loadOptions(userId: string) {
     title: `${safeDecrypt(link.deal.titleEnc, 'deal.title', 'Untitled deal')} - ${companyDisplay(link.company)}${link.label ? ` (${link.label})` : ''}`
   }));
 
-  return { contacts, deals, companies, dealContacts, dealCompanies };
+  return { contacts, deals, companies, marketLeads, dealContacts, dealCompanies };
 }
 
-async function ownedIdExists(userId: string, kind: 'contact' | 'deal' | 'company', id: string | null) {
+async function ownedIdExists(userId: string, kind: 'contact' | 'deal' | 'company' | 'marketLead', id: string | null) {
   if (!id) return true;
   if (kind === 'contact') return !!(await prisma.contact.findFirst({ where: { id, userId }, select: { id: true } }));
   if (kind === 'company') return !!(await prisma.company.findFirst({ where: { id, userId }, select: { id: true } }));
+  if (kind === 'marketLead') return !!(await prisma.marketLead.findFirst({ where: { id, userId }, select: { id: true } }));
   return !!(await prisma.deal.findFirst({ where: { id, userId }, select: { id: true } }));
+}
+
+function marketLeadSelect() {
+  return {
+    id: true,
+    titleEnc: true,
+    nameEnc: true,
+    companyNameEnc: true,
+    emailEnc: true,
+    phoneEnc: true,
+    websiteEnc: true,
+    linkedinEnc: true,
+    roleTitleEnc: true,
+    geographyEnc: true,
+    descriptionEnc: true,
+    notesEnc: true,
+    sourceUrlEnc: true,
+    nextActionEnc: true,
+    nextActionAt: true,
+    type: true,
+    status: true,
+    source: true,
+    usualCommunicationMethod: true,
+    confidence: true,
+    priority: true,
+    valueMinCents: true,
+    valueMaxCents: true,
+    currency: true,
+    contactId: true,
+    companyId: true,
+    dealId: true,
+    projectId: true,
+    exchangeItemId: true,
+    convertedAt: true,
+    createdAt: true,
+    updatedAt: true
+  };
 }
 
 export const load: PageServerLoad = async ({ params, locals }) => {
@@ -97,16 +146,8 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 
   const project = await prisma.project.findFirst({
     where: { id: params.id, userId },
-    select: {
-      id: true,
-      titleEnc: true,
-      descriptionEnc: true,
-      status: true,
-      createdAt: true,
-      updatedAt: true
-    }
+    select: { id: true, titleEnc: true, descriptionEnc: true, status: true, createdAt: true, updatedAt: true }
   });
-
   if (!project) throw redirect(303, '/projects');
 
   const tasksRaw = await prisma.task.findMany({
@@ -125,6 +166,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
       snoozedUntil: true,
       completedAt: true,
       updatedAt: true,
+      marketLead: { select: { id: true, titleEnc: true, type: true, status: true } },
       contact: { select: { id: true, fullNameEnc: true, linkedUserId: true } },
       assignedToContact: { select: { id: true, fullNameEnc: true, linkedUserId: true } },
       waitingOnContact: { select: { id: true, fullNameEnc: true, linkedUserId: true } },
@@ -176,6 +218,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
       snoozedUntil: task.snoozedUntil,
       completedAt: task.completedAt,
       updatedAt: task.updatedAt,
+      marketLead: task.marketLead ? { id: task.marketLead.id, title: safeDecryptTask(task.marketLead.titleEnc, 'market_lead.title', 'Untitled lead'), type: task.marketLead.type, status: task.marketLead.status } : null,
       contact: task.contact ? { id: task.contact.id, name: await contactDisplayName(task.contact) } : null,
       assignedToContact: task.assignedToContact ? { id: task.assignedToContact.id, name: await contactDisplayName(task.assignedToContact) } : null,
       waitingOnContact: task.waitingOnContact ? { id: task.waitingOnContact.id, name: await contactDisplayName(task.waitingOnContact) } : null,
@@ -185,6 +228,14 @@ export const load: PageServerLoad = async ({ params, locals }) => {
       dealCompany: task.dealCompany ? { id: task.dealCompany.id, dealId: task.dealCompany.dealId, companyId: task.dealCompany.companyId, companyName: companyDisplay(task.dealCompany.company) } : null
     };
   }));
+
+  const projectLeadsRaw = await prisma.marketLead.findMany({
+    where: { userId, projectId: project.id, status: { not: 'ARCHIVED' as any } },
+    select: marketLeadSelect() as any,
+    orderBy: [{ status: 'asc' }, { priority: 'desc' }, { updatedAt: 'desc' }],
+    take: 300
+  });
+  const projectLeads = projectLeadsRaw.map(mapMarketLead);
 
   const exchangeItems = await loadExchangeItems({ userId, links: { projectId: project.id } });
   const agentArtifacts = await loadAgentArtifacts({ userId, entityType: 'project', entityId: project.id });
@@ -207,7 +258,9 @@ export const load: PageServerLoad = async ({ params, locals }) => {
     active: tasks.filter((task) => ACTIVE_TASK_STATUSES.includes(task.status)).length,
     waiting: tasks.filter((task) => task.status === 'WAITING').length,
     overdue: tasks.filter((task) => ACTIVE_TASK_STATUSES.includes(task.status) && task.dueAt && new Date(task.dueAt).getTime() < now.getTime()).length,
-    completed: tasks.filter((task) => task.status === 'DONE').length
+    completed: tasks.filter((task) => task.status === 'DONE').length,
+    leads: projectLeads.length,
+    readyLeads: projectLeads.filter((lead: any) => lead.status === 'QUALIFIED').length
   };
 
   const dealMap = new Map<string, any>();
@@ -216,9 +269,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
   for (const task of tasks) {
     if (task.deal) dealMap.set(task.deal.id, task.deal);
     if (task.company) companyMap.set(task.company.id, task.company);
-    for (const person of [task.contact, task.assignedToContact, task.waitingOnContact]) {
-      if (person) peopleMap.set(person.id, person);
-    }
+    for (const person of [task.contact, task.assignedToContact, task.waitingOnContact]) if (person) peopleMap.set(person.id, person);
     if (task.dealContact) peopleMap.set(task.dealContact.contactId, { id: task.dealContact.contactId, name: task.dealContact.contactName });
     if (task.dealCompany) companyMap.set(task.dealCompany.companyId, { id: task.dealCompany.companyId, name: task.dealCompany.companyName });
   }
@@ -241,6 +292,10 @@ export const load: PageServerLoad = async ({ params, locals }) => {
     exchangeItems,
     agentArtifacts,
     projectNotes,
+    projectLeads,
+    marketLeadTypes: MARKET_LEAD_TYPES,
+    marketLeadStatuses: MARKET_LEAD_STATUSES,
+    marketLeadSources: MARKET_LEAD_SOURCES,
     options: await loadOptions(userId),
     projectStatuses: PROJECT_STATUSES,
     taskStatuses: TASK_STATUSES,
@@ -252,6 +307,18 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 };
 
 export const actions: Actions = {
+  createProjectLead: async ({ request, params, locals }) => {
+    if (!locals.user) throw redirect(303, '/auth/login');
+    const userId = locals.user.id;
+    const project = await prisma.project.findFirst({ where: { id: params.id, userId }, select: { id: true } });
+    if (!project) return fail(404, { error: 'Project not found.' });
+    const values = leadFormValues(await request.formData(), { projectId: params.id });
+    values.projectId = params.id;
+    if (!values.title && !values.name && !values.companyName) return fail(400, { error: 'Add at least a lead title, person name, or company name.' });
+    const created = await prisma.marketLead.create({ data: marketLeadCreateData(userId, values) as any, select: { id: true } });
+    throw redirect(303, `/leads/${created.id}`);
+  },
+
   createProjectNote: async ({ request, params, locals }) => {
     if (!locals.user) throw redirect(303, '/auth/login');
     const userId = locals.user.id;
@@ -261,14 +328,7 @@ export const actions: Actions = {
     const body = String(form.get('body') || form.get('note') || '').trim();
     const summary = String(form.get('summary') || '').trim();
     if (!body) return fail(400, { error: 'Project note is required.' });
-    await prisma.projectNote.create({
-      data: {
-        userId,
-        projectId: params.id,
-        bodyEnc: encrypt(body, 'project_note.body'),
-        summaryEnc: summary ? encrypt(summary, 'project_note.summary') : null
-      }
-    });
+    await prisma.projectNote.create({ data: { userId, projectId: params.id, bodyEnc: encrypt(body, 'project_note.body'), summaryEnc: summary ? encrypt(summary, 'project_note.summary') : null } });
     throw redirect(303, `/projects/${params.id}`);
   },
 
@@ -312,17 +372,7 @@ export const actions: Actions = {
     const description = String(form.get('description') || '').trim();
     const duplicate = await prisma.project.findFirst({ where: { userId: locals.user.id, titleIdx: buildIndexToken(title), id: { not: params.id } }, select: { id: true } });
     if (duplicate) return fail(409, { error: 'Another project already uses this title.' });
-
-    await prisma.project.updateMany({
-      where: { id: params.id, userId: locals.user.id },
-      data: {
-        titleEnc: encrypt(title, 'project.title'),
-        titleIdx: buildIndexToken(title),
-        descriptionEnc: description ? encrypt(description, 'project.description') : null,
-        status: normaliseProjectStatus(form.get('status')) as any
-      }
-    });
-
+    await prisma.project.updateMany({ where: { id: params.id, userId: locals.user.id }, data: { titleEnc: encrypt(title, 'project.title'), titleIdx: buildIndexToken(title), descriptionEnc: description ? encrypt(description, 'project.description') : null, status: normaliseProjectStatus(form.get('status')) as any } });
     throw redirect(303, `/projects/${params.id}`);
   },
 
@@ -337,6 +387,7 @@ export const actions: Actions = {
     let dealId = String(form.get('dealId') || '').trim() || null;
     let dealContactId = String(form.get('dealContactId') || '').trim() || null;
     let companyId = String(form.get('companyId') || '').trim() || null;
+    let marketLeadId = String(form.get('marketLeadId') || '').trim() || null;
     let dealCompanyId = String(form.get('dealCompanyId') || '').trim() || null;
     const assignedToContactId = String(form.get('assignedToContactId') || '').trim() || null;
     const waitingOnContactId = String(form.get('waitingOnContactId') || '').trim() || null;
@@ -358,14 +409,24 @@ export const actions: Actions = {
       companyId = companyId || link.companyId;
     }
 
-    const [contactOk, dealOk, companyOk, assignedOk, waitingOk] = await Promise.all([
+    if (marketLeadId) {
+      const lead = await prisma.marketLead.findFirst({ where: { id: marketLeadId, userId }, select: { id: true, projectId: true, contactId: true, companyId: true, dealId: true } });
+      if (!lead) return fail(404, { error: 'Lead not found.' });
+      if (lead.projectId && lead.projectId !== params.id) return fail(400, { error: 'Lead belongs to another project.' });
+      contactId = contactId || lead.contactId || null;
+      companyId = companyId || lead.companyId || null;
+      dealId = dealId || lead.dealId || null;
+    }
+
+    const [contactOk, dealOk, companyOk, leadOk, assignedOk, waitingOk] = await Promise.all([
       ownedIdExists(userId, 'contact', contactId),
       ownedIdExists(userId, 'deal', dealId),
       ownedIdExists(userId, 'company', companyId),
+      ownedIdExists(userId, 'marketLead', marketLeadId),
       ownedIdExists(userId, 'contact', assignedToContactId),
       ownedIdExists(userId, 'contact', waitingOnContactId)
     ]);
-    if (!contactOk || !dealOk || !companyOk || !assignedOk || !waitingOk) return fail(404, { error: 'One of the selected links was not found.' });
+    if (!contactOk || !dealOk || !companyOk || !leadOk || !assignedOk || !waitingOk) return fail(404, { error: 'One of the selected links was not found.' });
 
     const notes = String(form.get('notes') || '').trim();
     const summary = String(form.get('summary') || '').trim();
@@ -376,6 +437,7 @@ export const actions: Actions = {
       data: {
         userId,
         projectId: params.id,
+        marketLeadId,
         titleEnc: encrypt(title, 'task.title'),
         notesEnc: notes ? encrypt(notes, 'task.notes') : null,
         summaryEnc: summary ? encrypt(summary, 'task.summary') : null,
@@ -398,7 +460,6 @@ export const actions: Actions = {
         dealCompanyId
       }
     });
-
     throw redirect(303, `/projects/${params.id}`);
   },
 
@@ -408,12 +469,7 @@ export const actions: Actions = {
     const taskId = String(form.get('taskId') || '').trim();
     const status = normaliseTaskStatus(form.get('status'));
     if (!taskId) return fail(400, { error: 'Missing task id.' });
-
-    await prisma.task.updateMany({
-      where: { id: taskId, userId: locals.user.id, projectId: params.id },
-      data: { status, completedAt: status === 'DONE' ? new Date() : null, cancelledAt: status === 'CANCELLED' ? new Date() : null }
-    });
-
+    await prisma.task.updateMany({ where: { id: taskId, userId: locals.user.id, projectId: params.id }, data: { status, completedAt: status === 'DONE' ? new Date() : null, cancelledAt: status === 'CANCELLED' ? new Date() : null } });
     throw redirect(303, `/projects/${params.id}`);
   },
 
@@ -422,7 +478,6 @@ export const actions: Actions = {
     const form = await request.formData();
     const taskId = String(form.get('taskId') || '').trim();
     if (!taskId) return fail(400, { error: 'Missing task id.' });
-
     await prisma.task.deleteMany({ where: { id: taskId, userId: locals.user.id, projectId: params.id } });
     throw redirect(303, `/projects/${params.id}`);
   }

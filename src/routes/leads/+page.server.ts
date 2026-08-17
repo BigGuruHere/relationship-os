@@ -12,6 +12,7 @@ import {
   MARKET_LEAD_TYPES
 } from '$lib/marketLeads';
 import { leadFormValues, mapMarketLead, marketLeadCreateData } from '$lib/server/marketLeads';
+import { safeDecryptTask } from '$lib/tasks';
 
 const LIMIT = 250;
 
@@ -27,7 +28,8 @@ export const load: PageServerLoad = async ({ locals, url }) => {
   if (type && MARKET_LEAD_TYPES.some((o) => o.value === type)) where.type = type;
   if (status && MARKET_LEAD_STATUSES.some((o) => o.value === status)) where.status = status;
 
-  const rows = await prisma.marketLead.findMany({
+  const [rows, projectsRaw] = await Promise.all([
+    prisma.marketLead.findMany({
     where,
     select: {
       id: true,
@@ -64,7 +66,16 @@ export const load: PageServerLoad = async ({ locals, url }) => {
     },
     orderBy: [{ status: 'asc' }, { priority: 'desc' }, { updatedAt: 'desc' }],
     take: LIMIT
-  });
+    }),
+    prisma.project.findMany({
+      where: { userId, status: { not: 'ARCHIVED' as any } },
+      select: { id: true, titleEnc: true, status: true },
+      orderBy: { updatedAt: 'desc' },
+      take: 200
+    })
+  ]);
+
+  const projects = projectsRaw.map((project: any) => ({ id: project.id, title: safeDecryptTask(project.titleEnc, 'project.title', 'Untitled project'), status: project.status }));
 
   const qLower = q.toLowerCase();
   const leads = rows.map(mapMarketLead).filter((lead) => {
@@ -92,7 +103,8 @@ export const load: PageServerLoad = async ({ locals, url }) => {
     leadTypes: MARKET_LEAD_TYPES,
     leadStatuses: MARKET_LEAD_STATUSES,
     leadSources: MARKET_LEAD_SOURCES,
-    communicationMethods: COMMUNICATION_METHODS
+    communicationMethods: COMMUNICATION_METHODS,
+    projects
   };
 };
 
@@ -106,6 +118,10 @@ export const actions: Actions = {
     }
 
     try {
+      if (values.projectId) {
+        const projectOk = await prisma.project.findFirst({ where: { id: values.projectId, userId: locals.user.id }, select: { id: true } });
+        if (!projectOk) return fail(404, { error: 'Selected project was not found.', values });
+      }
       const created = await prisma.marketLead.create({ data: marketLeadCreateData(locals.user.id, values) as any, select: { id: true } });
       throw redirect(303, `/leads/${created.id}`);
     } catch (err: any) {

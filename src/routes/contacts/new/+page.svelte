@@ -2,6 +2,7 @@
   // PURPOSE: Render the create contact form.
   // SECURITY: No decryption is done here - all data is plain inputs from the user.
   import { enhance } from '$app/forms'; // IT: use enhance so redirects are handled smoothly
+  export let data;
   export let form; // IT: SvelteKit enhances this with action results
 
   $: duplicateWarning = form?.duplicateWarning;
@@ -75,6 +76,15 @@
         <input id="linkedin" name="linkedin" type="url" inputmode="url" placeholder="https://www.linkedin.com/in/username" value={form?.values?.linkedin || ''} />
       </div>
 
+      <div class="field">
+        <label for="usualCommunicationMethod">Usual communication method</label>
+        <select id="usualCommunicationMethod" name="usualCommunicationMethod">
+          {#each data.communicationMethods as opt}
+            <option value={opt.value} selected={(form?.values?.usualCommunicationMethod || '') === opt.value}>{opt.label}</option>
+          {/each}
+        </select>
+      </div>
+
       <div style="display:flex; gap:8px; margin-top:12px; flex-wrap:wrap;">
         <button class="btn primary">{duplicateWarning ? 'Create anyway' : 'Save'}</button>
         <a class="btn" href="/">Cancel</a>
@@ -91,7 +101,7 @@
   /* Light styling helpers, shared classes assumed to exist in your app.css */
   .field { display:flex; flex-direction:column; gap:6px; margin-bottom:12px; }
   .field label { font-size:0.95rem; color:#444; }
-  .field input { padding:8px 10px; border:1px solid #ddd; border-radius:8px; }
+  .field input, .field select { padding:8px 10px; border:1px solid #ddd; border-radius:8px; }
   .btn { padding:8px 12px; border:1px solid #ccc; border-radius:10px; text-decoration:none; }
   .btn.primary { background:#111; color:#fff; border-color:#111; }
   .muted { color: var(--muted); }

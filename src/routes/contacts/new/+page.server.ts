@@ -6,6 +6,7 @@ import { fail, redirect } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import { prisma } from '$lib/db';
 import { encrypt, decrypt, buildIndexToken } from '$lib/crypto';
+import { COMMUNICATION_METHODS, normaliseCommunicationMethod } from '$lib/marketLeads';
 
 // IT: normalize a LinkedIn url for stable equality tokens
 function normalizeLinkedin(input: string) {
@@ -55,7 +56,7 @@ function contactDuplicateSummary(row: any, matchReasons: string[]) {
 export const load: PageServerLoad = async ({ locals }) => {
   // IT: require login
   if (!locals.user) throw redirect(303, '/auth/login');
-  return {};
+  return { communicationMethods: COMMUNICATION_METHODS };
 };
 
 export const actions: Actions = {
@@ -73,10 +74,11 @@ export const actions: Actions = {
     const position = String(fd.get('position') || '').trim();
     const linkedinRaw = String(fd.get('linkedin') || '').trim();
     const linkedin = linkedinRaw ? normalizeLinkedin(linkedinRaw) : '';
+    const usualCommunicationMethod = normaliseCommunicationMethod(fd.get('usualCommunicationMethod'));
     const forceCreate = String(fd.get('forceCreate') || '') === '1';
 
     // IT: preserve values for repopulation on error or duplicate review
-    const values = { fullName, email, phone, company, position, linkedin };
+    const values = { fullName, email, phone, company, position, linkedin, usualCommunicationMethod: usualCommunicationMethod || '' };
 
     if (!fullName) {
       return fail(400, { error: 'Name is required', values });
@@ -119,7 +121,8 @@ export const actions: Actions = {
     const data: any = {
       userId: locals.user.id,
       fullNameEnc: encrypt(fullName, 'contact.full_name'),
-      fullNameIdx: buildIndexToken(fullName)
+      fullNameIdx: buildIndexToken(fullName),
+      usualCommunicationMethod: usualCommunicationMethod as any
     };
 
     if (email) {

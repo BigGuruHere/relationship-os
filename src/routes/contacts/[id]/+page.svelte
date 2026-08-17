@@ -92,6 +92,7 @@
           <form method="post" action="?/scoreContact"><button class="btn" type="submit">Score opportunity</button></form>
           <form method="post" action="?/enrichContact"><button class="btn" type="submit">Enrich contact</button></form>
           <a class="btn" href={`/agents/enrichment/new?mode=contact&entityType=contact&entityId=${contact.id}&enableWebResearch=true&returnTo=/contacts/${contact.id}`}>Enrichment options</a>
+          <form method="post" action="?/createLeadFromContact"><button class="btn" type="submit">Create lead</button></form>
           <a class="btn" href={`/contacts/${contact.id}/edit`} aria-label="Edit contact" title="Edit contact">Edit</a>
         </div>
       </div>
@@ -239,6 +240,7 @@
           <div><strong>Company</strong></div><div>{contact.company || ' - '}</div>
           <div><strong>Position</strong></div><div>{contact.position || ' - '}</div>
           <div><strong>LinkedIn</strong></div><div>{contact.linkedin || ' - '}</div>
+          <div><strong>Usual communication</strong></div><div>{contact.usualCommunicationMethodLabel || 'Not set'}</div>
           <div><strong>Created</strong></div><div>{fmt(contact.createdAt)}</div>
           <div><strong>Cadence</strong></div><div>{contact.reconnectEveryDays ? `Every ${contact.reconnectEveryDays} days` : 'Not set'}</div>
           <div><strong>Last contacted</strong></div><div>{fmt(contact.lastContactedAt) || 'Not set'}</div>

@@ -21,6 +21,8 @@ import {
   safeDecrypt
 } from '$lib/deals';
 import { companyContactStatusLabel, companyKindLabel, safeDecryptCompany } from '$lib/companies';
+import { communicationMethodLabel } from '$lib/marketLeads';
+import { createLeadFromContact } from '$lib/server/marketLeads';
 import {
   DEAL_CONFIDENTIALITY_STAGES,
   DEAL_CONTACT_INTERESTS,
@@ -88,6 +90,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
       companyEnc: true,
       positionEnc: true,
       linkedinEnc: true,
+      usualCommunicationMethod: true,
       createdAt: true,
       reconnectEveryDays: true,
       lastContactedAt: true,
@@ -405,6 +408,8 @@ export const load: PageServerLoad = async ({ params, locals }) => {
       company: company || '',
       position: position || '',
       linkedin: linkedin || '',
+      usualCommunicationMethod: row.usualCommunicationMethod || '',
+      usualCommunicationMethodLabel: communicationMethodLabel(row.usualCommunicationMethod),
       createdAt: row.createdAt,
       reconnectEveryDays: row.reconnectEveryDays ?? null,
       lastContactedAt: row.lastContactedAt ?? null,
@@ -435,6 +440,18 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 };
 
 export const actions: Actions = {
+  createLeadFromContact: async ({ request, params, locals }) => {
+    if (!locals.user) throw redirect(303, '/auth/login');
+    try {
+      const leadId = await createLeadFromContact(locals.user.id, params.id, await request.formData());
+      throw redirect(303, `/leads/${leadId}`);
+    } catch (err: any) {
+      if (err?.status) throw err;
+      console.error('[contacts:createLeadFromContact] failed', err);
+      return fail(400, { error: err?.message || 'Could not create lead from contact.' });
+    }
+  },
+
   enrichContact: async ({ params, locals }) => {
     if (!locals.user) throw redirect(303, '/auth/login');
     const contact = await prisma.contact.findFirst({ where: { id: params.id, userId: locals.user.id }, select: { id: true } });

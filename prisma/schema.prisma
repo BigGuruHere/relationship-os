@@ -92,6 +92,7 @@ model User {
   researchSources      ResearchSource[]
   opportunityScores    OpportunityScore[]
   contactEnrichments   ContactEnrichment[]
+  marketLeads          MarketLead[]
   opportunityScoreFactors OpportunityScoreFactor[]
 
   role       UserRole @default(member)
@@ -322,6 +323,9 @@ model Contact {
   linkedinEnc String?
   linkedinIdx String?
 
+  // IT: usual/best channel for relationship follow-up. Stored as an enum, not encrypted, because it is workflow metadata.
+  usualCommunicationMethod CommunicationMethod?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -359,6 +363,7 @@ model Contact {
   opportunityScoreFactors OpportunityScoreFactor[]
   researchSources   ResearchSource[]
   contactEnrichments ContactEnrichment[]
+  marketLeads        MarketLead[]
 
   // Indexes for search and tenancy
   @@index([userId])
@@ -366,6 +371,7 @@ model Contact {
   @@index([emailIdx])
   @@index([phoneIdx])
   @@index([companyIdx])
+  @@index([userId, usualCommunicationMethod])
 
     // IT: new - one contact per owner-user pair; multiple NULLs are allowed by Postgres
   @@unique([userId, linkedUserId])
@@ -630,6 +636,7 @@ model Deal {
   exchangeItems ExchangeItem[]
   opportunityScores OpportunityScore[]
   opportunityScoreFactors OpportunityScoreFactor[]
+  marketLeads        MarketLead[]
 
   @@index([userId, status])
   @@index([userId, expectedCloseDate])
@@ -859,6 +866,7 @@ model Company {
   opportunityScoreFactors OpportunityScoreFactor[]
   researchSources   ResearchSource[]
   contactEnrichments ContactEnrichment[]
+  marketLeads        MarketLead[]
 
   @@index([userId, nameIdx])
   @@index([userId, kind])
@@ -1061,6 +1069,8 @@ model ExchangeItem {
 
   embeddingVec Unsupported("vector")? @map("embedding_vec")
 
+  marketLeads MarketLead[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -1075,6 +1085,138 @@ model ExchangeItem {
   @@index([userId, companyId])
   @@index([userId, dealId])
   @@index([userId, projectId])
+}
+
+
+// ---------------------------------------------------------------------------
+// STAGE 6 MARKET LEADS
+// ---------------------------------------------------------------------------
+// IT: Channel preference for contacts and leads. This is workflow metadata used
+// to choose the right relationship action.
+enum CommunicationMethod {
+  LINKEDIN
+  EMAIL
+  PHONE
+  SMS
+  WHATSAPP
+  IN_PERSON
+  OTHER
+  UNKNOWN
+}
+
+// IT: Broad lead types for market-making. These are deliberately broader than
+// Contact/Company/Deal so you can capture uncertain items before they are researched.
+enum MarketLeadType {
+  BUYER
+  SELLER
+  COMPANY
+  CONTACT
+  MANDATE
+  ASSET
+  REFERRER
+  OTHER
+}
+
+// IT: Review lifecycle for market leads.
+enum MarketLeadStatus {
+  NEW
+  RESEARCHING
+  QUALIFIED
+  CONVERTED
+  NOT_RELEVANT
+  ARCHIVED
+}
+
+// IT: Where this lead came from. Keep it high-level for filtering.
+enum MarketLeadSource {
+  MANUAL
+  OUTREACH
+  REFERRAL
+  INBOUND
+  RESEARCH
+  IMPORTED
+  AI
+  OTHER
+}
+
+// IT: A market-making lead: an unconfirmed person, company, mandate, asset,
+// referrer, buyer, or seller signal that may later become CRM truth.
+model MarketLead {
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  type   MarketLeadType   @default(OTHER)
+  status MarketLeadStatus @default(NEW)
+  source MarketLeadSource @default(MANUAL)
+
+  titleEnc       String
+  titleIdx       String
+  nameEnc        String?
+  nameIdx        String?
+  companyNameEnc String?
+  companyNameIdx String?
+  emailEnc       String?
+  emailIdx       String?
+  phoneEnc       String?
+  phoneIdx       String?
+  websiteEnc     String?
+  websiteIdx     String?
+  linkedinEnc    String?
+  linkedinIdx    String?
+  roleTitleEnc   String?
+  geographyEnc   String?
+  descriptionEnc String?
+  notesEnc       String?
+  sourceUrlEnc   String?
+
+  usualCommunicationMethod CommunicationMethod?
+
+  confidence Int @default(50)
+  priority   Int @default(3)
+  valueMinCents Int?
+  valueMaxCents Int?
+  currency      String @default("AUD")
+  nextActionEnc String?
+  nextActionAt  DateTime?
+
+  contactId String?
+  contact   Contact? @relation(fields: [contactId], references: [id], onDelete: SetNull)
+
+  companyId String?
+  company   Company? @relation(fields: [companyId], references: [id], onDelete: SetNull)
+
+  dealId String?
+  deal   Deal? @relation(fields: [dealId], references: [id], onDelete: SetNull)
+
+  projectId String?
+  project   Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
+  exchangeItemId String?
+  exchangeItem   ExchangeItem? @relation(fields: [exchangeItemId], references: [id], onDelete: SetNull)
+
+  convertedAt DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([userId, type])
+  @@index([userId, status])
+  @@index([userId, source])
+  @@index([userId, priority])
+  @@index([userId, confidence])
+  @@index([userId, usualCommunicationMethod])
+  @@index([userId, contactId])
+  @@index([userId, companyId])
+  @@index([userId, dealId])
+  @@index([userId, projectId])
+  @@index([userId, exchangeItemId])
+  @@index([titleIdx])
+  @@index([nameIdx])
+  @@index([companyNameIdx])
+  @@index([emailIdx])
+  @@index([phoneIdx])
+  @@index([websiteIdx])
+  @@index([linkedinIdx])
 }
 
 // ---------------------------------------------------------------------------
@@ -1149,6 +1291,7 @@ model Project {
   tasks Task[]
   notes ProjectNote[]
   exchangeItems ExchangeItem[]
+  marketLeads   MarketLead[]
 
   @@index([userId, status])
   @@index([titleIdx])

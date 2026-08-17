@@ -48,6 +48,15 @@
         <input id="linkedin" name="linkedin" type="url" inputmode="url" placeholder="https://www.linkedin.com/in/username" value={data.contact.linkedin} />
       </div>
 
+      <div class="field">
+        <label for="usualCommunicationMethod">Usual communication method</label>
+        <select id="usualCommunicationMethod" name="usualCommunicationMethod">
+          {#each data.communicationMethods as opt}
+            <option value={opt.value} selected={(data.contact.usualCommunicationMethod || '') === opt.value}>{opt.label}</option>
+          {/each}
+        </select>
+      </div>
+
       <div style="display:flex; gap:8px; margin-top:12px;">
         <button class="btn primary">Save changes</button>
         <a class="btn" href={'/contacts/' + data.contact.id}>Cancel</a>
@@ -84,7 +93,7 @@
   /* IT: light styling helpers - shared classes assumed to exist in your app.css */
   .field { display:flex; flex-direction:column; gap:6px; margin-bottom:12px; }
   .field label { font-size:0.95rem; color:#444; }
-  .field input { padding:8px 10px; border:1px solid #ddd; border-radius:8px; }
+  .field input, .field select { padding:8px 10px; border:1px solid #ddd; border-radius:8px; }
   .btn { padding:8px 12px; border:1px solid #ccc; border-radius:10px; text-decoration:none; }
   .btn.primary { background:#111; color:#fff; border-color:#111; }
   .btn.danger { background:#b00020; color:#fff; border-color:#b00020; }

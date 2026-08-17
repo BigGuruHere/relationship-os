@@ -153,6 +153,11 @@
           </svg>
         </a>
 
+        <!-- Leads -->
+        <a class="btn icon" href="/leads" aria-label="Leads" title="Leads">
+          <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2 21 7v10l-9 5-9-5V7l9-5zm0 2.3L5 8.1v7.8l7 3.9 7-3.9V8.1l-7-3.8z"/></svg>
+        </a>
+
         <!-- Tasks -->
         <a class="btn icon" href="/tasks" aria-label="Tasks" title="Tasks">
           <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
@@ -228,6 +233,7 @@
     <nav class="nav-group">
       <a class="nav-link" href="/">Contacts</a>
       {#if data.user}
+        <a class="nav-link" href="/leads">◇ Leads</a>
         <a class="nav-link" href="/deals">◆ Deals</a>
         <a class="nav-link" href="/companies">▥ Companies</a>
         <a class="nav-link" href="/tasks">☑ Tasks{#if (data.tasksOpenCount || 0) > 0} <span class="pill">{data.tasksOpenCount}</span>{/if}</a>

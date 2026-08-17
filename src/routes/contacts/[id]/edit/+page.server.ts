@@ -7,6 +7,7 @@ import type { Actions, PageServerLoad } from './$types';
 import { redirect, fail } from '@sveltejs/kit';
 import { prisma } from '$lib/db';
 import { decrypt, encrypt, buildIndexToken } from '$lib/crypto';
+import { COMMUNICATION_METHODS, normaliseCommunicationMethod } from '$lib/marketLeads';
 
 // IT: normalize a LinkedIn url for stable equality tokens.
 function normalizeLinkedin(input: string) {
@@ -34,7 +35,8 @@ export const load: PageServerLoad = async ({ params, locals }) => {
       phoneEnc: true,
       companyEnc: true,
       positionEnc: true,
-      linkedinEnc: true
+      linkedinEnc: true,
+      usualCommunicationMethod: true
     }
   });
   if (!row) throw redirect(303, '/contacts');
@@ -60,8 +62,11 @@ export const load: PageServerLoad = async ({ params, locals }) => {
       phone,
       company,
       position,
-      linkedin
-    }
+      linkedin,
+      usualCommunicationMethod: row.usualCommunicationMethod || ''
+    },
+    communicationMethods: COMMUNICATION_METHODS
+  
   };
 };
 
@@ -77,6 +82,7 @@ export const actions: Actions = {
     const position = String(form.get('position') || '').trim();
     const linkedinRaw = String(form.get('linkedin') || '').trim();
     const linkedin = linkedinRaw ? normalizeLinkedin(linkedinRaw) : '';
+    const usualCommunicationMethod = normaliseCommunicationMethod(form.get('usualCommunicationMethod'));
 
     if (!fullName) {
       return fail(400, { error: 'Full name is required.' });
@@ -94,7 +100,8 @@ export const actions: Actions = {
       positionEnc: position ? encrypt(position, 'contact.position') : null,
       positionIdx: position ? buildIndexToken(position) : null,
       linkedinEnc: linkedin ? encrypt(linkedin, 'contact.linkedin') : null,
-      linkedinIdx: linkedin ? buildIndexToken(linkedin) : null
+      linkedinIdx: linkedin ? buildIndexToken(linkedin) : null,
+      usualCommunicationMethod: usualCommunicationMethod as any
     };
 
     try {

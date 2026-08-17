@@ -10,11 +10,13 @@ import { companyDisplay } from '$lib/companies';
 import { safeDecrypt } from '$lib/deals';
 import { contactDisplayName, contactOptionsForRows } from '$lib/server/contactDisplay';
 import {
+  TASK_FOCUS_OPTIONS,
   TASK_IMPORTANCES,
   TASK_STATUSES,
   TASK_TYPES,
   TASK_URGENCIES,
   dateTimeToInputValue,
+  normaliseTaskFocus,
   normaliseTaskImportance,
   normaliseTaskStatus,
   normaliseTaskType,
@@ -22,6 +24,7 @@ import {
   parseDateTime,
   projectStatusLabel,
   safeDecryptTask,
+  taskFocusLabel,
   taskImportanceLabel,
   taskStatusLabel,
   taskTypeLabel,
@@ -100,6 +103,7 @@ export const load: PageServerLoad = async ({ params, locals, url }) => {
       status: true,
       urgency: true,
       importance: true,
+      focus: true,
       taskType: true,
       dueAt: true,
       snoozedUntil: true,
@@ -132,6 +136,8 @@ export const load: PageServerLoad = async ({ params, locals, url }) => {
       urgencyLabel: taskUrgencyLabel(row.urgency),
       importance: row.importance,
       importanceLabel: taskImportanceLabel(row.importance),
+      focus: row.focus,
+      focusLabel: taskFocusLabel(row.focus),
       taskType: row.taskType,
       taskTypeLabel: taskTypeLabel(row.taskType),
       dueAtInput: dateTimeToInputValue(row.dueAt),
@@ -152,6 +158,7 @@ export const load: PageServerLoad = async ({ params, locals, url }) => {
     taskStatuses: TASK_STATUSES,
     taskUrgencies: TASK_URGENCIES,
     taskImportances: TASK_IMPORTANCES,
+    taskFocusOptions: TASK_FOCUS_OPTIONS,
     taskTypes: TASK_TYPES
   };
 };
@@ -213,6 +220,7 @@ export const actions: Actions = {
         status: status as any,
         urgency: normaliseTaskUrgency(form.get('urgency')) as any,
         importance: normaliseTaskImportance(form.get('importance')) as any,
+        focus: normaliseTaskFocus(form.get('focus')) as any,
         taskType: normaliseTaskType(form.get('taskType')) as any,
         dueAt: parseDateTime(form.get('dueAt')),
         snoozedUntil: parseDateTime(form.get('snoozedUntil')),

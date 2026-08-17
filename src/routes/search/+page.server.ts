@@ -11,6 +11,10 @@ import { companyKindLabel, companyStatusLabel, safeDecryptCompany } from '$lib/c
 import { dealStatusLabel, formatDealValue, safeDecrypt } from '$lib/deals';
 
 type Scope = 'all' | 'contacts' | 'notes' | 'tags' | 'company' | 'deals';
+
+function phoneDigits(value: string) {
+  return value.replace(/\D/g, '');
+}
 const LIMIT = 20;
 
 function decryptContactField(value: string | null, aad: string) {
@@ -42,8 +46,8 @@ export const load: PageServerLoad = async ({ url, locals }) => {
 
   const contacts: Array<{ id: string; name: string; email: string; phone: string; company: string; tags: { name: string }[] }> = [];
   const notes: Array<{ id: string; contactId: string; contactName: string; occurredAt: Date; preview: string }> = [];
-  const tags: Array<{ id: string; name: string; contactCount: number }> = [];
-  const companies: Array<{ id: string; name: string; kindLabel: string; statusLabel: string; website: string; preview: string }> = [];
+  const tags: Array<{ id: string; name: string; contactCount: number; companyCount: number }> = [];
+  const companies: Array<{ id: string; name: string; kindLabel: string; statusLabel: string; website: string; phone: string; tags: { name: string }[]; preview: string }> = [];
   const deals: Array<{ id: string; title: string; statusLabel: string; valueLabel: string; probability: number | null; preview: string }> = [];
 
   if (doContacts || doCompany) {
@@ -86,28 +90,37 @@ export const load: PageServerLoad = async ({ url, locals }) => {
         })
       : [];
 
-    let companyContains: typeof exactRows = [];
-    if (doCompany) {
-      const sample: any[] = await prisma.contact.findMany({
-        where: { userId: locals.user.id },
-        select: {
-          id: true,
-          fullNameEnc: true,
-          emailEnc: true,
-          phoneEnc: true,
-          companyEnc: true,
-          tags: { select: { tag: { select: { name: true } } }, take: 12 }
-        },
-        take: 300
-      });
+    let containsRows: typeof exactRows = [];
+    const sample: any[] = await prisma.contact.findMany({
+      where: { userId: locals.user.id },
+      select: {
+        id: true,
+        fullNameEnc: true,
+        emailEnc: true,
+        phoneEnc: true,
+        companyEnc: true,
+        tags: { select: { tag: { select: { name: true } } }, take: 12 }
+      },
+      take: 500
+    });
 
-      const qLower = q.toLowerCase();
-      companyContains = sample
-        .filter((r: any) => decryptContactField(r.companyEnc, 'contact.company').toLowerCase().includes(qLower))
-        .slice(0, LIMIT);
-    }
+    const qLower = q.toLowerCase();
+    const qDigits = phoneDigits(q);
+    containsRows = sample
+      .filter((r: any) => {
+        const values = [
+          decryptContactField(r.fullNameEnc, 'contact.full_name'),
+          decryptContactField(r.emailEnc, 'contact.email'),
+          decryptContactField(r.companyEnc, 'contact.company'),
+          ...(r.tags || []).map((ct: any) => ct.tag.name)
+        ];
+        const textHit = values.join(' ').toLowerCase().includes(qLower);
+        const phoneHit = qDigits.length >= 3 && phoneDigits(decryptContactField(r.phoneEnc, 'contact.phone')).includes(qDigits);
+        return textHit || phoneHit;
+      })
+      .slice(0, LIMIT);
 
-    const rows = [...exactRows, ...companyContains, ...tagRows];
+    const rows = [...exactRows, ...containsRows, ...tagRows];
     const seen = new Set<string>();
 
     for (const r of rows) {
@@ -135,27 +148,33 @@ export const load: PageServerLoad = async ({ url, locals }) => {
         id: true,
         nameEnc: true,
         websiteEnc: true,
+        phoneEnc: true,
         industryEnc: true,
         descriptionEnc: true,
         criteriaEnc: true,
         notesEnc: true,
         kind: true,
-        status: true
+        status: true,
+        tags: { select: { tag: { select: { name: true } } }, take: 12 }
       },
       orderBy: { updatedAt: 'desc' },
       take: 300
     });
 
     const qLower = q.toLowerCase();
+    const qDigits = phoneDigits(q);
     for (const row of companyRows) {
       const name = safeDecryptCompany(row.nameEnc, 'company.name', 'Untitled company');
       const website = safeDecryptCompany(row.websiteEnc, 'company.website', '');
+      const phone = safeDecryptCompany(row.phoneEnc, 'company.phone', '');
       const industry = safeDecryptCompany(row.industryEnc, 'company.industry', '');
       const description = safeDecryptCompany(row.descriptionEnc, 'company.description', '');
       const criteria = safeDecryptCompany(row.criteriaEnc, 'company.criteria', '');
       const notesText = safeDecryptCompany(row.notesEnc, 'company.notes', '');
-      const searchable = [name, website, industry, description, criteria, notesText].join(' ').toLowerCase();
-      if (!searchable.includes(qLower)) continue;
+      const companyTags = (row.tags || []).map((ct: any) => ({ name: ct.tag.name }));
+      const searchable = [name, website, phone, industry, description, criteria, notesText, ...companyTags.map((t: any) => t.name)].join(' ').toLowerCase();
+      const phoneHit = qDigits.length >= 3 && phoneDigits(phone).includes(qDigits);
+      if (!searchable.includes(qLower) && !phoneHit) continue;
 
       companies.push({
         id: row.id,
@@ -163,6 +182,8 @@ export const load: PageServerLoad = async ({ url, locals }) => {
         kindLabel: companyKindLabel(row.kind),
         statusLabel: companyStatusLabel(row.status),
         website,
+        phone,
+        tags: companyTags,
         preview: description.length > 180 ? `${description.slice(0, 177)}...` : description
       });
 
@@ -214,12 +235,12 @@ export const load: PageServerLoad = async ({ url, locals }) => {
           { aliases: { some: { alias: { contains: q, mode: 'insensitive' } } } }
         ]
       },
-      select: { id: true, name: true, _count: { select: { contacts: true } } },
+      select: { id: true, name: true, _count: { select: { contacts: true, companies: true } } },
       orderBy: { name: 'asc' },
       take: LIMIT
     });
 
-    for (const t of tagRows) tags.push({ id: t.id, name: t.name, contactCount: t._count.contacts });
+    for (const t of tagRows) tags.push({ id: t.id, name: t.name, contactCount: t._count.contacts, companyCount: t._count.companies });
   }
 
   if (doNotes) {

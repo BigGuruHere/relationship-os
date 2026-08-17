@@ -14,6 +14,8 @@
   let showNewTask = false;
   let taskNotes = '';
   let taskSummary = '';
+  let projectNoteText = '';
+  let projectNoteSummary = '';
 
   function fmt(value: string | Date | null | undefined) {
     if (!value) return 'No date';
@@ -90,6 +92,7 @@
           <div class="field"><label for="importance">Importance</label><select id="importance" name="importance">{#each data.taskImportances as opt}<option value={opt.value} selected={opt.value === 'NORMAL'}>{opt.label}</option>{/each}</select></div>
           <div class="field"><label for="taskStatus">Status</label><select id="taskStatus" name="status">{#each data.taskStatuses as opt}<option value={opt.value}>{opt.label}</option>{/each}</select></div>
         </div>
+        <div class="field"><label for="taskFocus">Focus</label><select id="taskFocus" name="focus">{#each data.taskFocusOptions as opt}<option value={opt.value} selected={opt.value === 'NOT_DOING_NOW'}>{opt.label}</option>{/each}</select></div>
 
         <div class="grid two">
           <div class="field"><label for="dueAt">Due</label><input id="dueAt" name="dueAt" type="datetime-local" /></div>
@@ -135,6 +138,45 @@
     </section>
   {/if}
 
+  <section class="card panel">
+    <details open>
+      <summary><strong>Project notes</strong></summary>
+      <form method="post" action="?/createProjectNote" class="nested-form">
+        <VoiceTextField
+          id="projectNote"
+          textName="body"
+          summaryName="summary"
+          label="Add project note"
+          placeholder="Record or type project context, decisions, conversations, or next steps."
+          rows={4}
+          bind:value={projectNoteText}
+          bind:summary={projectNoteSummary}
+          contextLabel="project note"
+        />
+        <button class="btn primary" type="submit">Save note</button>
+      </form>
+      {#if data.projectNotes?.length}
+        <div class="mini-list">
+          {#each data.projectNotes as note}
+            <div class="mini-row">
+              <div>
+                <div class="muted small">{fmt(note.createdAt)}</div>
+                <p class="preline small">{note.body}</p>
+                {#if note.summary}<div class="summary-box"><div class="muted small">AI summary</div><p>{note.summary}</p></div>{/if}
+              </div>
+              <form method="post" action="?/deleteProjectNote" on:submit={(event) => { if (!confirm('Delete this project note?')) event.preventDefault(); }}>
+                <input type="hidden" name="noteId" value={note.id} />
+                <button class="btn" type="submit">Delete</button>
+              </form>
+            </div>
+          {/each}
+        </div>
+      {:else}
+        <p class="muted">No project notes yet.</p>
+      {/if}
+    </details>
+  </section>
+
   <div class="grid main-grid">
     <section class="card panel">
       <h2>Related deals</h2>
@@ -173,7 +215,7 @@
         {#each data.tasks as task}
           <article class="task-row {dueClass(task.dueAt, task.status)}">
             <div class="task-main">
-              <div class="task-title-row"><strong>{task.title}</strong><span class="status-chip">{task.statusLabel}</span><span class="status-chip">{task.urgencyLabel}</span></div>
+              <div class="task-title-row"><a href={`/tasks/${task.id}/edit?returnTo=/projects/${data.project.id}`}><strong>{task.title}</strong></a><span class="status-chip">{task.statusLabel}</span><span class="status-chip">{task.urgencyLabel}</span><span class="status-chip">{task.focusLabel}</span></div>
               <div class="muted small">{task.taskTypeLabel} - {task.importanceLabel} importance - due {fmt(task.dueAt)}</div>
               {#if task.notes}<p class="preline small">{task.notes}</p>{/if}
               {#if task.summary}<div class="summary-box"><div class="muted small">AI summary</div><p>{task.summary}</p></div>{/if}
@@ -213,6 +255,8 @@
   .eyebrow { color: var(--accent); font-weight: 700; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.04em; }
   .muted { color: var(--muted); }
   .small { font-size: 0.9rem; }
+  details summary { cursor: pointer; margin-bottom: 10px; }
+  .nested-form { border: 1px solid var(--border); border-radius: 12px; padding: 12px; margin: 10px 0; background: var(--panel); }
   .summary-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-bottom: 12px; }
   .stat { padding: 12px; display: grid; gap: 4px; }
   .stat strong { font-size: 1.5rem; }
@@ -223,7 +267,8 @@
   .main-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
   .span2 { grid-column: 1 / span 2; }
   .preline { white-space: pre-wrap; }
-  .task-list { display: grid; gap: 8px; }
+  .task-list, .mini-list { display: grid; gap: 8px; }
+  .mini-row { border-top: 1px solid var(--border); padding: 12px 0; display: flex; justify-content: space-between; gap: 12px; }
   .task-row { border-top: 1px solid var(--border); padding: 12px 0; display: flex; justify-content: space-between; gap: 12px; }
   .task-row.overdue { border-color: var(--danger); }
   .task-main { min-width: 0; }
@@ -234,7 +279,7 @@
   .summary-box p { margin: 4px 0 0; white-space: pre-wrap; }
   textarea { resize: vertical; }
   @media (max-width: 860px) {
-    .project-header, .task-row, .section-head { flex-direction: column; }
+    .project-header, .task-row, .section-head, .mini-row { flex-direction: column; }
     .summary-grid, .grid.two, .grid.four, .main-grid { grid-template-columns: 1fr; }
     .span2 { grid-column: auto; }
     .task-actions { min-width: 0; }

@@ -33,7 +33,7 @@
         <input id="title" name="title" required value={data.task.title} />
       </div>
 
-      <div class="grid four">
+      <div class="grid five">
         <div class="field">
           <label for="taskType">Type</label>
           <select id="taskType" name="taskType">{#each data.taskTypes as opt}<option value={opt.value} selected={data.task.taskType === opt.value}>{opt.label}</option>{/each}</select>
@@ -49,6 +49,10 @@
         <div class="field">
           <label for="status">Status</label>
           <select id="status" name="status">{#each data.taskStatuses as opt}<option value={opt.value} selected={data.task.status === opt.value}>{opt.label}</option>{/each}</select>
+        </div>
+        <div class="field">
+          <label for="focus">Focus</label>
+          <select id="focus" name="focus">{#each data.taskFocusOptions as opt}<option value={opt.value} selected={data.task.focus === opt.value}>{opt.label}</option>{/each}</select>
         </div>
       </div>
 
@@ -165,8 +169,9 @@
   .error-card { color: var(--danger); margin-bottom: 12px; }
   .grid.two { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
   .grid.four { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+  .grid.five { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; }
   @media (max-width: 820px) {
     .page-head { flex-direction: column; }
-    .grid.two, .grid.four { grid-template-columns: 1fr; }
+    .grid.two, .grid.four, .grid.five { grid-template-columns: 1fr; }
   }
 </style>

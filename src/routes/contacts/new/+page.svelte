@@ -13,23 +13,23 @@
     <form method="post" action="?/create">
       <div class="field">
         <label for="fullName">Full name</label>
-        <input id="fullName" name="fullName" required />
+        <input id="fullName" name="fullName" required value={form?.values?.fullName || ''} />
       </div>
 
       <div class="field">
         <label for="email">Email</label>
-        <input id="email" name="email" type="email" />
+        <input id="email" name="email" type="email" value={form?.values?.email || ''} />
       </div>
 
       <div class="field">
         <label for="phone">Phone</label>
-        <input id="phone" name="phone" />
+        <input id="phone" name="phone" value={form?.values?.phone || ''} />
       </div>
 
       <!-- IT: new company field - optional -->
       <div class="field">
         <label for="company">Company</label>
-        <input id="company" name="company" placeholder="e.g. ACME Pty Ltd" />
+        <input id="company" name="company" placeholder="e.g. ACME Pty Ltd" value={form?.values?.company || ''} />
       </div>
 
       <div class="field">

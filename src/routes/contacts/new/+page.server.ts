@@ -50,6 +50,13 @@ export const actions: Actions = {
       return fail(400, { error: 'Name is required', values });
     }
 
+    const [duplicateName, duplicatePhone] = await Promise.all([
+      prisma.contact.findFirst({ where: { userId: locals.user.id, fullNameIdx: buildIndexToken(fullName) }, select: { id: true } }),
+      phone ? prisma.contact.findFirst({ where: { userId: locals.user.id, phoneIdx: buildIndexToken(phone) }, select: { id: true } }) : null
+    ]);
+    if (duplicateName) return fail(409, { error: 'A contact with this name already exists.', values });
+    if (duplicatePhone) return fail(409, { error: 'A contact with this phone number already exists.', values });
+
     // IT: build encrypted payload
     const data: any = {
       userId: locals.user.id,
@@ -86,7 +93,7 @@ export const actions: Actions = {
     } catch (e: any) {
       // IT: handle uniqueness gracefully if you added a unique on linkedin
       if (e?.code === 'P2002') {
-        return fail(409, { error: 'A contact already uses this LinkedIn url', values });
+        return fail(409, { error: 'A contact already uses one of these unique details.', values });
       }
       console.error('contact create failed:', e);
       return fail(500, { error: 'Could not create contact', values });

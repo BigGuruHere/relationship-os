@@ -13,11 +13,13 @@ import { createExchangeItemFromForm, deleteExchangeItem, loadExchangeItems } fro
 import { loadAgentArtifacts } from '$lib/server/agents/artifacts';
 import {
   PROJECT_STATUSES,
+  TASK_FOCUS_OPTIONS,
   TASK_IMPORTANCES,
   TASK_STATUSES,
   TASK_TYPES,
   TASK_URGENCIES,
   normaliseProjectStatus,
+  normaliseTaskFocus,
   normaliseTaskImportance,
   normaliseTaskStatus,
   normaliseTaskType,
@@ -25,6 +27,7 @@ import {
   parseDateTime,
   projectStatusLabel,
   safeDecryptTask,
+  taskFocusLabel,
   taskImportanceLabel,
   taskStatusLabel,
   taskTypeLabel,
@@ -116,6 +119,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
       status: true,
       urgency: true,
       importance: true,
+      focus: true,
       taskType: true,
       dueAt: true,
       snoozedUntil: true,
@@ -147,7 +151,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
         }
       }
     },
-    orderBy: [{ status: 'asc' }, { dueAt: 'asc' }, { updatedAt: 'desc' }],
+    orderBy: [{ focus: 'asc' }, { status: 'asc' }, { dueAt: 'asc' }, { updatedAt: 'desc' }],
     take: 300
   });
 
@@ -165,6 +169,8 @@ export const load: PageServerLoad = async ({ params, locals }) => {
       urgency: task.urgency,
       urgencyLabel: taskUrgencyLabel(task.urgency),
       importanceLabel: taskImportanceLabel(task.importance),
+      focus: task.focus,
+      focusLabel: taskFocusLabel(task.focus),
       taskTypeLabel: taskTypeLabel(task.taskType),
       dueAt: task.dueAt,
       snoozedUntil: task.snoozedUntil,
@@ -182,6 +188,19 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 
   const exchangeItems = await loadExchangeItems({ userId, links: { projectId: project.id } });
   const agentArtifacts = await loadAgentArtifacts({ userId, entityType: 'project', entityId: project.id });
+  const projectNotesRaw = await prisma.projectNote.findMany({
+    where: { userId, projectId: project.id },
+    select: { id: true, bodyEnc: true, summaryEnc: true, createdAt: true, updatedAt: true },
+    orderBy: { createdAt: 'desc' },
+    take: 80
+  });
+  const projectNotes = projectNotesRaw.map((note: any) => ({
+    id: note.id,
+    body: safeDecryptTask(note.bodyEnc, 'project_note.body', ''),
+    summary: safeDecryptTask(note.summaryEnc, 'project_note.summary', ''),
+    createdAt: note.createdAt,
+    updatedAt: note.updatedAt
+  }));
 
   const now = new Date();
   const summary = {
@@ -221,16 +240,46 @@ export const load: PageServerLoad = async ({ params, locals }) => {
     relatedCompanies: [...companyMap.values()],
     exchangeItems,
     agentArtifacts,
+    projectNotes,
     options: await loadOptions(userId),
     projectStatuses: PROJECT_STATUSES,
     taskStatuses: TASK_STATUSES,
     taskUrgencies: TASK_URGENCIES,
     taskImportances: TASK_IMPORTANCES,
+    taskFocusOptions: TASK_FOCUS_OPTIONS,
     taskTypes: TASK_TYPES
   };
 };
 
 export const actions: Actions = {
+  createProjectNote: async ({ request, params, locals }) => {
+    if (!locals.user) throw redirect(303, '/auth/login');
+    const userId = locals.user.id;
+    const project = await prisma.project.findFirst({ where: { id: params.id, userId }, select: { id: true } });
+    if (!project) return fail(404, { error: 'Project not found.' });
+    const form = await request.formData();
+    const body = String(form.get('body') || form.get('note') || '').trim();
+    const summary = String(form.get('summary') || '').trim();
+    if (!body) return fail(400, { error: 'Project note is required.' });
+    await prisma.projectNote.create({
+      data: {
+        userId,
+        projectId: params.id,
+        bodyEnc: encrypt(body, 'project_note.body'),
+        summaryEnc: summary ? encrypt(summary, 'project_note.summary') : null
+      }
+    });
+    throw redirect(303, `/projects/${params.id}`);
+  },
+
+  deleteProjectNote: async ({ request, params, locals }) => {
+    if (!locals.user) throw redirect(303, '/auth/login');
+    const form = await request.formData();
+    const noteId = String(form.get('noteId') || '').trim();
+    if (!noteId) return fail(400, { error: 'Missing project note id.' });
+    await prisma.projectNote.deleteMany({ where: { id: noteId, userId: locals.user.id, projectId: params.id } });
+    throw redirect(303, `/projects/${params.id}`);
+  },
 
   createExchangeItem: async ({ request, params, locals }) => {
     if (!locals.user) throw redirect(303, '/auth/login');
@@ -261,6 +310,8 @@ export const actions: Actions = {
     const title = String(form.get('title') || '').trim();
     if (!title) return fail(400, { error: 'Project title is required.' });
     const description = String(form.get('description') || '').trim();
+    const duplicate = await prisma.project.findFirst({ where: { userId: locals.user.id, titleIdx: buildIndexToken(title), id: { not: params.id } }, select: { id: true } });
+    if (duplicate) return fail(409, { error: 'Another project already uses this title.' });
 
     await prisma.project.updateMany({
       where: { id: params.id, userId: locals.user.id },
@@ -331,6 +382,7 @@ export const actions: Actions = {
         status: status as any,
         urgency: normaliseTaskUrgency(form.get('urgency')) as any,
         importance: normaliseTaskImportance(form.get('importance')) as any,
+        focus: normaliseTaskFocus(form.get('focus')) as any,
         taskType: normaliseTaskType(form.get('taskType')) as any,
         dueAt: parseDateTime(form.get('dueAt')),
         snoozedUntil: parseDateTime(form.get('snoozedUntil')),

@@ -54,6 +54,7 @@ const FIELD_LABELS: Record<string, string> = {
   'contact.position': 'Role/title',
   'company.name': 'Company name',
   'company.website': 'Website',
+  'company.phone': 'Company phone',
   'company.industry': 'Industry',
   'company.location': 'Location',
   'company.description': 'Description',
@@ -150,6 +151,7 @@ function existingMapFromContext(entityContext: any) {
   if (entityContext.entityType === 'company') {
     map['company.name'] = clean(entityContext.name);
     map['company.website'] = clean(entityContext.website);
+    map['company.phone'] = clean(entityContext.phone);
     map['company.industry'] = clean(entityContext.industry);
     map['company.location'] = clean(entityContext.location);
     map['company.description'] = clean(entityContext.description);
@@ -164,7 +166,7 @@ function inferFieldKey(raw: any, key: string, mode: EnrichmentMode) {
   if (raw.fieldKey) return clean(raw.fieldKey);
   if (key === 'fullName') return 'contact.fullName';
   if (key === 'email') return 'contact.email';
-  if (key === 'phone') return 'contact.phone';
+  if (key === 'phone') return mode === 'company' ? 'company.phone' : 'contact.phone';
   if (key === 'linkedin') return 'contact.linkedin';
   if (key === 'roleTitle') return 'contact.position';
   if (key === 'companyName') return mode === 'company' ? 'company.name' : 'contact.company';

@@ -58,6 +58,8 @@ export const actions: Actions = {
     const title = String(form.get('title') || '').trim();
     if (!title) return fail(400, { error: 'Project title is required.' });
     const description = String(form.get('description') || '').trim();
+    const existing = await prisma.project.findFirst({ where: { userId: locals.user.id, titleIdx: buildIndexToken(title) }, select: { id: true } });
+    if (existing) return fail(409, { error: 'A project with this title already exists.' });
 
     await prisma.project.create({
       data: {

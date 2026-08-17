@@ -38,6 +38,10 @@
           <div class="field"><label for="website">Website</label><input id="website" name="website" placeholder="https://..." /></div>
         </div>
         <div class="grid two">
+          <div class="field"><label for="phone">Phone</label><input id="phone" name="phone" placeholder="Main phone number" /></div>
+          <div class="field"><label for="tags">Tags</label><input id="tags" name="tags" placeholder="mortgage broker, aged care, buyer" /></div>
+        </div>
+        <div class="grid two">
           <div class="field"><label for="kindCreate">Type</label><select id="kindCreate" name="kind">{#each data.companyKinds as opt}<option value={opt.value}>{opt.label}</option>{/each}</select></div>
           <div class="field"><label for="statusCreate">Status</label><select id="statusCreate" name="status">{#each data.companyStatuses as opt}<option value={opt.value}>{opt.label}</option>{/each}</select></div>
         </div>
@@ -55,7 +59,7 @@
 
   <section class="card filters">
     <form method="GET" class="filter-row">
-      <input name="q" bind:value={q} placeholder="Search companies, sectors, locations" />
+      <input name="q" bind:value={q} placeholder="Search companies, sectors, tags, phone, locations" />
       <select name="kind" bind:value={kind}>
         <option value="">All types</option>
         {#each data.companyKinds as opt}<option value={opt.value}>{opt.label}</option>{/each}
@@ -84,6 +88,8 @@
               {#if company.industry}{company.industry}{/if}{#if company.industry && company.location} - {/if}{#if company.location}{company.location}{/if}
             </div>
             {#if company.website}<div class="muted small">{company.website}</div>{/if}
+            {#if company.phone}<div class="muted small">{company.phone}</div>{/if}
+            {#if company.tags?.length}<div class="tag-row">{#each company.tags as tag}<span class="status-chip">{tag}</span>{/each}</div>{/if}
             {#if company.description}<p class="preline">{company.description}</p>{/if}
             <div class="muted small">{company.contactCount} contact{company.contactCount === 1 ? '' : 's'} - {company.dealCount} deal{company.dealCount === 1 ? '' : 's'} - {company.taskCount} task{company.taskCount === 1 ? '' : 's'}</div>
           </div>
@@ -106,6 +112,7 @@
   .container { padding: 12px; }
   .page-head, .company-card, .title-row, .filter-row, .card-actions { display: flex; gap: 12px; align-items: flex-start; justify-content: space-between; }
   .title-row { justify-content: flex-start; align-items: center; flex-wrap: wrap; }
+  .tag-row { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
   .filter-row, .card-actions { align-items: center; flex-wrap: wrap; }
   h1, h2 { margin: 0; }
   h2 { font-size: 1.1rem; }

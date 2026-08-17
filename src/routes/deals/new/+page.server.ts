@@ -75,6 +75,9 @@ export const actions: Actions = {
       return fail(400, { error: 'Deal title is required.', values });
     }
 
+    const duplicateDeal = await prisma.deal.findFirst({ where: { userId: locals.user.id, titleIdx: buildIndexToken(title) }, select: { id: true } });
+    if (duplicateDeal) return fail(409, { error: 'A deal with this title already exists.', values });
+
     if (firstContactId) {
       const contact = await prisma.contact.findFirst({
         where: { id: firstContactId, userId: locals.user.id },

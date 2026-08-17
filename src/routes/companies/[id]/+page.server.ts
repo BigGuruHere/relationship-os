@@ -6,6 +6,7 @@ import type { Actions, PageServerLoad } from './$types';
 import { fail, redirect } from '@sveltejs/kit';
 import { prisma } from '$lib/db';
 import { buildIndexToken, encrypt } from '$lib/crypto';
+import { resolveOrCreateTagForTenant } from '$lib/tags';
 import { contactDisplayName, contactOptionsForRows } from '$lib/server/contactDisplay';
 import { createExchangeItemFromForm, deleteExchangeItem, loadExchangeItems } from '$lib/server/exchange';
 import { loadAgentArtifacts } from '$lib/server/agents/artifacts';
@@ -39,6 +40,7 @@ import {
   DEAL_CONFIDENTIALITY_STAGES,
   DEAL_CONTACT_INTERESTS,
   DEAL_CONTACT_STAGES,
+  TASK_FOCUS_OPTIONS,
   TASK_IMPORTANCES,
   TASK_STATUSES,
   TASK_TYPES,
@@ -50,6 +52,7 @@ import {
   normaliseDealConfidentiality,
   normaliseDealContactInterest,
   normaliseDealContactStage,
+  normaliseTaskFocus,
   normaliseTaskImportance,
   normaliseTaskStatus,
   normaliseTaskType,
@@ -57,6 +60,7 @@ import {
   parseDateTime,
   projectStatusLabel,
   safeDecryptTask,
+  taskFocusLabel,
   taskImportanceLabel,
   taskStatusLabel,
   taskTypeLabel,
@@ -79,6 +83,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
       id: true,
       nameEnc: true,
       websiteEnc: true,
+      phoneEnc: true,
       industryEnc: true,
       locationEnc: true,
       descriptionEnc: true,
@@ -88,6 +93,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
       status: true,
       createdAt: true,
       updatedAt: true,
+      tags: { select: { id: true, tagId: true, tag: { select: { name: true } } }, orderBy: { assignedAt: 'desc' } },
       contacts: {
         select: {
           id: true,
@@ -221,13 +227,14 @@ export const load: PageServerLoad = async ({ params, locals }) => {
       status: true,
       urgency: true,
       importance: true,
+      focus: true,
       taskType: true,
       dueAt: true,
       deal: { select: { id: true, titleEnc: true } },
       contact: { select: { id: true, fullNameEnc: true, linkedUserId: true } },
       waitingOnContact: { select: { id: true, fullNameEnc: true, linkedUserId: true } }
     },
-    orderBy: [{ dueAt: 'asc' }, { updatedAt: 'desc' }],
+    orderBy: [{ focus: 'asc' }, { dueAt: 'asc' }, { updatedAt: 'desc' }],
     take: 40
   });
 
@@ -241,6 +248,8 @@ export const load: PageServerLoad = async ({ params, locals }) => {
     urgency: task.urgency,
     urgencyLabel: taskUrgencyLabel(task.urgency),
     importanceLabel: taskImportanceLabel(task.importance),
+    focus: task.focus,
+    focusLabel: taskFocusLabel(task.focus),
     taskTypeLabel: taskTypeLabel(task.taskType),
     dueAt: task.dueAt,
     deal: task.deal ? { id: task.deal.id, title: safeDecrypt(task.deal.titleEnc, 'deal.title', 'Untitled deal') } : null,
@@ -268,6 +277,8 @@ export const load: PageServerLoad = async ({ params, locals }) => {
       id: row.id,
       name: safeDecryptCompany(row.nameEnc, 'company.name', 'Untitled company'),
       website: safeDecryptCompany(row.websiteEnc, 'company.website', ''),
+      phone: safeDecryptCompany(row.phoneEnc, 'company.phone', ''),
+      tags: (row.tags || []).map((ct: any) => ({ id: ct.id, name: ct.tag.name })),
       industry: safeDecryptCompany(row.industryEnc, 'company.industry', ''),
       location: safeDecryptCompany(row.locationEnc, 'company.location', ''),
       description: safeDecryptCompany(row.descriptionEnc, 'company.description', ''),
@@ -302,6 +313,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
     taskStatuses: TASK_STATUSES,
     taskUrgencies: TASK_URGENCIES,
     taskImportances: TASK_IMPORTANCES,
+    taskFocusOptions: TASK_FOCUS_OPTIONS,
     taskTypes: TASK_TYPES
   };
 };
@@ -360,6 +372,7 @@ export const actions: Actions = {
     const name = String(form.get('name') || '').trim();
     if (!name) return fail(400, { error: 'Company name is required.' });
     const website = String(form.get('website') || '').trim();
+    const phone = String(form.get('phone') || '').trim();
     const industry = String(form.get('industry') || '').trim();
     const location = String(form.get('location') || '').trim();
     const description = String(form.get('description') || '').trim();
@@ -374,6 +387,8 @@ export const actions: Actions = {
           nameIdx: buildIndexToken(name),
           websiteEnc: website ? encrypt(website, 'company.website') : null,
           websiteIdx: website ? buildIndexToken(website) : null,
+          phoneEnc: phone ? encrypt(phone, 'company.phone') : null,
+          phoneIdx: phone ? buildIndexToken(phone) : null,
           industryEnc: industry ? encrypt(industry, 'company.industry') : null,
           locationEnc: location ? encrypt(location, 'company.location') : null,
           descriptionEnc: description ? encrypt(description, 'company.description') : null,
@@ -391,6 +406,30 @@ export const actions: Actions = {
     throw redirect(303, `/companies/${params.id}`);
   },
 
+  addCompanyTag: async ({ request, params, locals }) => {
+    if (!locals.user) throw redirect(303, '/auth/login');
+    const userId = locals.user.id;
+    if (!(await ensureCompany(userId, params.id))) return fail(404, { error: 'Company not found.' });
+    const form = await request.formData();
+    const tagName = String(form.get('tag') || '').trim();
+    if (!tagName) return fail(400, { error: 'Tag is required.' });
+    const tag = await resolveOrCreateTagForTenant(userId, tagName, 'user');
+    await prisma.companyTag.upsert({
+      where: { companyId_tagId: { companyId: params.id, tagId: tag.id } },
+      update: {},
+      create: { userId, companyId: params.id, tagId: tag.id, assignedBy: 'user' as any }
+    });
+    throw redirect(303, `/companies/${params.id}`);
+  },
+
+  removeCompanyTag: async ({ request, params, locals }) => {
+    if (!locals.user) throw redirect(303, '/auth/login');
+    const form = await request.formData();
+    const linkId = String(form.get('linkId') || '').trim();
+    if (!linkId) return fail(400, { error: 'Missing tag link id.' });
+    await prisma.companyTag.deleteMany({ where: { id: linkId, userId: locals.user.id, companyId: params.id } });
+    throw redirect(303, `/companies/${params.id}`);
+  },
 
   createExchangeItem: async ({ request, params, locals }) => {
     if (!locals.user) throw redirect(303, '/auth/login');
@@ -591,6 +630,7 @@ export const actions: Actions = {
         status: normaliseTaskStatus(form.get('status')) as any,
         urgency: normaliseTaskUrgency(form.get('urgency')) as any,
         importance: normaliseTaskImportance(form.get('importance')) as any,
+        focus: normaliseTaskFocus(form.get('focus')) as any,
         taskType: normaliseTaskType(form.get('taskType')) as any,
         dueAt: parseDateTime(form.get('dueAt'))
       }

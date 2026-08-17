@@ -15,6 +15,7 @@
       <p class="muted">Stage public contact details with source evidence. Nothing is applied to CRM until reviewed.</p>
     </div>
     <div class="actions">
+      <a class="btn" href={defaults.returnTo || '/agents'}>Back</a>
       <a class="btn" href="/agents">Agents</a>
       <a class="btn" href="/agents/runs">Runs</a>
     </div>

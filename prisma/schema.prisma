@@ -50,6 +50,8 @@ model User {
   contacts      Contact[]
   interactions  Interaction[]
   tags          Tag[]
+  companyTags   CompanyTag[]
+  projectNotes  ProjectNote[]
   oauthAccounts OAuthAccount[] // external accounts linked to this user
 
   // IT: back-relation for one-shot reminders
@@ -268,6 +270,7 @@ model Tag {
 
   aliases  TagAlias[]
   contacts ContactTag[]
+  companies CompanyTag[]
 
   @@unique([userId, name])
   @@unique([userId, slug])
@@ -417,6 +420,27 @@ model ContactTag {
   assignedAt DateTime   @default(now())
 
   @@id([contactId, tagId])
+  @@index([tagId])
+}
+
+// IT: tags can also be attached to companies so sector/search labels work beyond people.
+model CompanyTag {
+  id String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  companyId String
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  tagId String
+  tag   Tag    @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  assignedBy AssignedBy @default(user)
+  assignedAt DateTime   @default(now())
+
+  @@unique([companyId, tagId])
+  @@index([userId])
+  @@index([companyId])
   @@index([tagId])
 }
 
@@ -809,6 +833,8 @@ model Company {
   nameIdx        String
   websiteEnc     String?
   websiteIdx     String?
+  phoneEnc       String?
+  phoneIdx       String?
   industryEnc    String?
   locationEnc    String?
   descriptionEnc String?
@@ -822,6 +848,7 @@ model Company {
   updatedAt DateTime @updatedAt
 
   contacts         CompanyContact[]
+  tags             CompanyTag[]
   dealLinks        DealCompany[]
   tasks            Task[]
   relationshipsAsA CompanyRelationship[] @relation("CompanyAsA")
@@ -837,6 +864,7 @@ model Company {
   @@index([userId, status])
   @@index([nameIdx])
   @@index([websiteIdx])
+  @@index([phoneIdx])
 }
 
 // IT: links people to companies. This is employment/membership history rather than a single company field on Contact.
@@ -1080,6 +1108,12 @@ enum TaskImportance {
   HIGH
 }
 
+enum TaskFocus {
+  DOING_NOW
+  NOT_DOING_NOW
+  NEVER_DOING_NOW
+}
+
 enum TaskType {
   FOLLOW_UP
   CALL
@@ -1112,10 +1146,29 @@ model Project {
   updatedAt DateTime @updatedAt
 
   tasks Task[]
+  notes ProjectNote[]
   exchangeItems ExchangeItem[]
 
   @@index([userId, status])
   @@index([titleIdx])
+}
+
+// IT: time-stamped notes attached directly to a project. These are separate from the project description.
+model ProjectNote {
+  id String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  projectId String
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  bodyEnc    String
+  summaryEnc String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, projectId, createdAt])
 }
 
 // IT: unified action system. A task can link to a person, deal, deal-contact thread, or project.
@@ -1131,6 +1184,7 @@ model Task {
   status     TaskStatus     @default(OPEN)
   urgency    TaskUrgency    @default(NORMAL)
   importance TaskImportance @default(NORMAL)
+  focus      TaskFocus      @default(NOT_DOING_NOW)
   taskType   TaskType       @default(FOLLOW_UP)
 
   dueAt        DateTime?
@@ -1172,6 +1226,7 @@ model Task {
   updatedAt DateTime @updatedAt
 
   @@index([userId, status, dueAt])
+  @@index([userId, focus, dueAt])
   @@index([userId, urgency])
   @@index([userId, contactId])
   @@index([userId, dealId])

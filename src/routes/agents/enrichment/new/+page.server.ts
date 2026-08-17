@@ -17,22 +17,30 @@ export const load: PageServerLoad = async ({ locals, url }) => {
   const enableWebResearchParam = url.searchParams.get('enableWebResearch');
 
   const entityType = ENTITY_TYPES.has(rawEntityType) ? rawEntityType : '';
+  const entityId = String(url.searchParams.get('entityId') || '').trim();
   const mode = ENRICHMENT_MODES.has(rawMode)
     ? rawMode
     : entityType === 'company'
       ? 'company'
       : 'contact';
+  const explicitReturnTo = String(url.searchParams.get('returnTo') || '').trim();
+  const returnTo = explicitReturnTo || (entityType === 'contact' && entityId
+    ? `/contacts/${entityId}`
+    : entityType === 'company' && entityId
+      ? `/companies/${entityId}`
+      : '/agents');
 
   return {
     defaults: {
       mode,
       entityType,
-      entityId: String(url.searchParams.get('entityId') || '').trim(),
+      entityId,
       targetName: String(url.searchParams.get('targetName') || '').trim(),
       companyName: String(url.searchParams.get('companyName') || '').trim(),
       sourceText: String(url.searchParams.get('sourceText') || '').trim(),
       enrichmentGoal: String(url.searchParams.get('enrichmentGoal') || '').trim(),
       researchProvider: String(url.searchParams.get('researchProvider') || 'auto').trim(),
+      returnTo,
       // IT: Entity option screens default to web research on, but callers can pass enableWebResearch=false.
       enableWebResearch: enableWebResearchParam === null ? true : enableWebResearchParam !== 'false'
     }

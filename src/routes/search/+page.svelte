@@ -9,8 +9,8 @@
     results: {
       contacts: Array<{ id: string; name: string; email: string; phone: string; company: string; tags: { name: string }[] }>;
       notes: Array<{ id: string; contactId: string; contactName: string; occurredAt: string | Date; preview: string }>;
-      tags: Array<{ id: string; name: string; contactCount: number }>;
-      companies: Array<{ id: string; name: string; kindLabel: string; statusLabel: string; website: string; preview: string }>;
+      tags: Array<{ id: string; name: string; contactCount: number; companyCount: number }>;
+      companies: Array<{ id: string; name: string; kindLabel: string; statusLabel: string; website: string; phone: string; tags: { name: string }[]; preview: string }>;
       deals: Array<{ id: string; title: string; statusLabel: string; valueLabel: string; probability: number | null; preview: string }>;
     };
   };
@@ -55,7 +55,8 @@
         {#each data.results.companies as c}
           <div class="card result-card">
             <a href={`/companies/${c.id}`} class="link strong">▥ {c.name}</a>
-            <div class="muted small">{c.kindLabel} - {c.statusLabel}{c.website ? ` - ${c.website}` : ''}</div>
+            <div class="muted small">{c.kindLabel} - {c.statusLabel}{c.website ? ` - ${c.website}` : ''}{c.phone ? ` - ${c.phone}` : ''}</div>
+            {#if c.tags?.length}<div class="muted small">Tags: {c.tags.map((t) => t.name).join(', ')}</div>{/if}
             {#if c.preview}<div style="margin-top:6px;">{c.preview}</div>{/if}
           </div>
         {/each}
@@ -93,7 +94,7 @@
         {#each data.results.tags as t}
           <div class="card result-card">
             <div class="strong">{t.name}</div>
-            <div class="muted small">{t.contactCount} contact{t.contactCount === 1 ? '' : 's'}</div>
+            <div class="muted small">{t.contactCount} contact{t.contactCount === 1 ? '' : 's'} · {t.companyCount} compan{t.companyCount === 1 ? 'y' : 'ies'}</div>
           </div>
         {/each}
       {/if}
@@ -120,7 +121,8 @@
         {#each data.results.companies as c}
           <div class="card result-card">
             <a href={`/companies/${c.id}`} class="link strong">▥ {c.name}</a>
-            <div class="muted small">{c.kindLabel} - {c.statusLabel}{c.website ? ` - ${c.website}` : ''}</div>
+            <div class="muted small">{c.kindLabel} - {c.statusLabel}{c.website ? ` - ${c.website}` : ''}{c.phone ? ` - ${c.phone}` : ''}</div>
+            {#if c.tags?.length}<div class="muted small">Tags: {c.tags.map((t) => t.name).join(', ')}</div>{/if}
             {#if c.preview}<div style="margin-top:6px;">{c.preview}</div>{/if}
           </div>
         {/each}
@@ -167,7 +169,7 @@
         {#each data.results.tags as t}
           <div class="card result-card">
             <div class="strong">{t.name}</div>
-            <div class="muted small">{t.contactCount} contact{t.contactCount === 1 ? '' : 's'}</div>
+            <div class="muted small">{t.contactCount} contact{t.contactCount === 1 ? '' : 's'} · {t.companyCount} compan{t.companyCount === 1 ? 'y' : 'ies'}</div>
           </div>
         {/each}
       {:else}

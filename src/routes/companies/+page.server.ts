@@ -6,6 +6,7 @@ import type { Actions, PageServerLoad } from './$types';
 import { fail, redirect } from '@sveltejs/kit';
 import { prisma } from '$lib/db';
 import { buildIndexToken, encrypt } from '$lib/crypto';
+import { resolveOrCreateTagForTenant } from '$lib/tags';
 import {
   COMPANY_KINDS,
   COMPANY_STATUSES,
@@ -33,12 +34,14 @@ export const load: PageServerLoad = async ({ locals, url }) => {
       id: true,
       nameEnc: true,
       websiteEnc: true,
+      phoneEnc: true,
       industryEnc: true,
       locationEnc: true,
       descriptionEnc: true,
       kind: true,
       status: true,
       updatedAt: true,
+      tags: { select: { tag: { select: { name: true } } }, take: 12 },
       _count: { select: { contacts: true, dealLinks: true, tasks: true } }
     },
     orderBy: [{ updatedAt: 'desc' }],
@@ -48,6 +51,7 @@ export const load: PageServerLoad = async ({ locals, url }) => {
   const companies = rows.map((row: any) => {
     const name = safeDecryptCompany(row.nameEnc, 'company.name', 'Untitled company');
     const website = safeDecryptCompany(row.websiteEnc, 'company.website', '');
+    const phone = safeDecryptCompany(row.phoneEnc, 'company.phone', '');
     const industry = safeDecryptCompany(row.industryEnc, 'company.industry', '');
     const location = safeDecryptCompany(row.locationEnc, 'company.location', '');
     const description = safeDecryptCompany(row.descriptionEnc, 'company.description', '');
@@ -55,6 +59,7 @@ export const load: PageServerLoad = async ({ locals, url }) => {
       id: row.id,
       name,
       website,
+      phone,
       industry,
       location,
       description: description.length > 180 ? `${description.slice(0, 177)}...` : description,
@@ -65,11 +70,12 @@ export const load: PageServerLoad = async ({ locals, url }) => {
       contactCount: row._count?.contacts || 0,
       dealCount: row._count?.dealLinks || 0,
       taskCount: row._count?.tasks || 0,
+      tags: (row.tags || []).map((ct: any) => ct.tag.name),
       updatedAt: row.updatedAt
     };
   }).filter((company) => {
     if (!q) return true;
-    const haystack = [company.name, company.website, company.industry, company.location, company.description, company.kindLabel, company.statusLabel].join(' ').toLowerCase();
+    const haystack = [company.name, company.website, company.phone, company.industry, company.location, company.description, company.kindLabel, company.statusLabel, ...(company.tags || [])].join(' ').toLowerCase();
     return haystack.includes(q.toLowerCase());
   });
 
@@ -92,11 +98,15 @@ export const actions: Actions = {
     if (!name) return fail(400, { error: 'Company name is required.' });
 
     const website = String(form.get('website') || '').trim();
+    const phone = String(form.get('phone') || '').trim();
+    const tagsInput = String(form.get('tags') || '').trim();
     const industry = String(form.get('industry') || '').trim();
     const location = String(form.get('location') || '').trim();
     const description = String(form.get('description') || '').trim();
     const criteria = String(form.get('criteria') || '').trim();
     const notes = String(form.get('notes') || '').trim();
+    const existing = await prisma.company.findFirst({ where: { userId, nameIdx: buildIndexToken(name) }, select: { id: true } });
+    if (existing) return fail(409, { error: 'You already have a company with this name.' });
 
     try {
       const created = await prisma.company.create({
@@ -106,6 +116,8 @@ export const actions: Actions = {
           nameIdx: buildIndexToken(name),
           websiteEnc: website ? encrypt(website, 'company.website') : null,
           websiteIdx: website ? buildIndexToken(website) : null,
+          phoneEnc: phone ? encrypt(phone, 'company.phone') : null,
+          phoneIdx: phone ? buildIndexToken(phone) : null,
           industryEnc: industry ? encrypt(industry, 'company.industry') : null,
           locationEnc: location ? encrypt(location, 'company.location') : null,
           descriptionEnc: description ? encrypt(description, 'company.description') : null,
@@ -116,6 +128,17 @@ export const actions: Actions = {
         },
         select: { id: true }
       });
+
+      const tagNames = tagsInput.split(',').map((t) => t.trim()).filter(Boolean).slice(0, 12);
+      for (const tagName of tagNames) {
+        const tag = await resolveOrCreateTagForTenant(userId, tagName, 'user');
+        await prisma.companyTag.upsert({
+          where: { companyId_tagId: { companyId: created.id, tagId: tag.id } },
+          update: {},
+          create: { userId, companyId: created.id, tagId: tag.id, assignedBy: 'user' as any }
+        });
+      }
+
       throw redirect(303, `/companies/${created.id}`);
     } catch (err: any) {
       if (err?.status) throw err;

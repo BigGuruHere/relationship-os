@@ -471,11 +471,12 @@ export const actions: Actions = {
     if (fieldKey.startsWith('company.')) {
       const companyId = enrichment.companyId;
       if (!companyId) return fail(400, { error: 'This company enrichment is not linked to a company.' });
-      const existing = await prisma.company.findFirst({ where: { id: companyId, userId: locals.user.id }, select: { id: true, nameEnc: true, websiteEnc: true, industryEnc: true, locationEnc: true, descriptionEnc: true, criteriaEnc: true, notesEnc: true } });
+      const existing = await prisma.company.findFirst({ where: { id: companyId, userId: locals.user.id }, select: { id: true, nameEnc: true, websiteEnc: true, phoneEnc: true, industryEnc: true, locationEnc: true, descriptionEnc: true, criteriaEnc: true, notesEnc: true } });
       if (!existing) return fail(404, { error: 'Linked company not found.' });
       const data: any = {};
       if (fieldKey === 'company.name' && (overwrite || !existing.nameEnc)) { data.nameEnc = encrypt(proposedValue, 'company.name'); data.nameIdx = buildIndexToken(proposedValue); }
       if (fieldKey === 'company.website' && (overwrite || !existing.websiteEnc)) { data.websiteEnc = encrypt(proposedValue, 'company.website'); data.websiteIdx = buildIndexToken(proposedValue); }
+      if (fieldKey === 'company.phone' && (overwrite || !existing.phoneEnc)) { data.phoneEnc = encrypt(proposedValue, 'company.phone'); data.phoneIdx = buildIndexToken(proposedValue); }
       if (fieldKey === 'company.industry' && (overwrite || !existing.industryEnc)) data.industryEnc = encrypt(proposedValue, 'company.industry');
       if (fieldKey === 'company.location' && (overwrite || !existing.locationEnc)) data.locationEnc = encrypt(proposedValue, 'company.location');
       if (fieldKey === 'company.description' && (overwrite || !existing.descriptionEnc)) data.descriptionEnc = encrypt(proposedValue, 'company.description');

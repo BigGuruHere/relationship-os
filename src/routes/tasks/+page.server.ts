@@ -12,11 +12,13 @@ import { safeDecrypt } from '$lib/deals';
 import {
   PROJECT_STATUSES,
   TASK_IMPORTANCES,
+  TASK_FOCUS_OPTIONS,
   TASK_STATUSES,
   TASK_TYPES,
   TASK_URGENCIES,
   normaliseProjectStatus,
   normaliseTaskImportance,
+  normaliseTaskFocus,
   normaliseTaskStatus,
   normaliseTaskType,
   normaliseTaskUrgency,
@@ -24,6 +26,7 @@ import {
   projectStatusLabel,
   safeDecryptTask,
   taskImportanceLabel,
+  taskFocusLabel,
   taskStatusLabel,
   taskTypeLabel,
   taskUrgencyLabel
@@ -52,6 +55,7 @@ async function loadTaskRows(userId: string, status: string) {
       status: true,
       urgency: true,
       importance: true,
+      focus: true,
       taskType: true,
       dueAt: true,
       snoozedUntil: true,
@@ -84,7 +88,7 @@ async function loadTaskRows(userId: string, status: string) {
         }
       }
     },
-    orderBy: [{ dueAt: 'asc' }, { urgency: 'desc' }, { updatedAt: 'desc' }],
+    orderBy: [{ focus: 'asc' }, { dueAt: 'asc' }, { urgency: 'desc' }, { updatedAt: 'desc' }],
     take: 300
   });
 }
@@ -116,6 +120,8 @@ async function mapTask(row: TaskRow) {
     urgencyLabel: taskUrgencyLabel(row.urgency),
     importance: row.importance,
     importanceLabel: taskImportanceLabel(row.importance),
+    focus: row.focus,
+    focusLabel: taskFocusLabel(row.focus),
     taskType: row.taskType,
     taskTypeLabel: taskTypeLabel(row.taskType),
     dueAt: row.dueAt,
@@ -248,6 +254,7 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 
   const summary = {
     open: await prisma.task.count({ where: { userId, status: { in: ACTIVE_STATUSES as any } } }),
+    doingNow: await prisma.task.count({ where: { userId, status: { in: ACTIVE_STATUSES as any }, focus: 'DOING_NOW' as any } }),
     waiting: await prisma.task.count({ where: { userId, status: 'WAITING' as any } }),
     overdue: await prisma.task.count({ where: { userId, status: { in: ACTIVE_STATUSES as any }, dueAt: { lt: now } } }),
     today: await prisma.task.count({ where: { userId, status: { in: ACTIVE_STATUSES as any }, dueAt: { gte: now, lt: startTomorrow } } })
@@ -262,6 +269,7 @@ export const load: PageServerLoad = async ({ locals, url }) => {
     taskStatuses: TASK_STATUSES,
     taskUrgencies: TASK_URGENCIES,
     taskImportances: TASK_IMPORTANCES,
+    taskFocusOptions: TASK_FOCUS_OPTIONS,
     taskTypes: TASK_TYPES,
     projectStatuses: PROJECT_STATUSES
   };
@@ -323,6 +331,7 @@ export const actions: Actions = {
           status: normaliseTaskStatus(form.get('status')) as any,
           urgency: normaliseTaskUrgency(form.get('urgency')) as any,
           importance: normaliseTaskImportance(form.get('importance')) as any,
+          focus: normaliseTaskFocus(form.get('focus')) as any,
           taskType: normaliseTaskType(form.get('taskType')) as any,
           dueAt: parseDateTime(form.get('dueAt')),
           snoozedUntil: parseDateTime(form.get('snoozedUntil')),
@@ -369,6 +378,24 @@ export const actions: Actions = {
     throw redirect(303, '/tasks');
   },
 
+  updateFocus: async ({ request, locals }) => {
+    if (!locals.user) throw redirect(303, '/auth/login');
+    const form = await request.formData();
+    const taskId = String(form.get('taskId') || '').trim();
+    const focus = normaliseTaskFocus(form.get('focus'));
+    if (!taskId) return fail(400, { error: 'Missing task id.' });
+
+    try {
+      const res = await prisma.task.updateMany({ where: { id: taskId, userId: locals.user.id }, data: { focus: focus as any } });
+      if (!res.count) return fail(404, { error: 'Task not found.' });
+    } catch (err) {
+      console.error('[tasks:updateFocus] failed', err);
+      return fail(500, { error: 'Could not update task focus.' });
+    }
+
+    throw redirect(303, '/tasks');
+  },
+
   delete: async ({ request, locals }) => {
     if (!locals.user) throw redirect(303, '/auth/login');
     const form = await request.formData();
@@ -385,6 +412,8 @@ export const actions: Actions = {
     const title = String(form.get('projectTitle') || '').trim();
     if (!title) return fail(400, { error: 'Project title is required.' });
     const description = String(form.get('projectDescription') || '').trim();
+    const existing = await prisma.project.findFirst({ where: { userId: locals.user.id, titleIdx: buildIndexToken(title) }, select: { id: true } });
+    if (existing) return fail(409, { error: 'A project with this title already exists.' });
 
     await prisma.project.create({
       data: {

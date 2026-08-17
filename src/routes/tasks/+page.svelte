@@ -54,6 +54,7 @@
 
   <div class="summary-grid">
     <div class="card stat"><span>Open</span><strong>{data.summary.open}</strong></div>
+    <div class="card stat"><span>Doing now</span><strong>{data.summary.doingNow}</strong></div>
     <div class="card stat"><span>Overdue</span><strong>{data.summary.overdue}</strong></div>
     <div class="card stat"><span>Today</span><strong>{data.summary.today}</strong></div>
     <div class="card stat"><span>Waiting</span><strong>{data.summary.waiting}</strong></div>
@@ -91,7 +92,7 @@
           <input id="title" name="title" placeholder="e.g. Follow up Sam about Auspath investor list" required />
         </div>
 
-        <div class="grid four">
+        <div class="grid five">
           <div class="field">
             <label for="taskType">Type</label>
             <select id="taskType" name="taskType">{#each data.taskTypes as opt}<option value={opt.value}>{opt.label}</option>{/each}</select>
@@ -107,6 +108,10 @@
           <div class="field">
             <label for="statusCreate">Status</label>
             <select id="statusCreate" name="status">{#each data.taskStatuses as opt}<option value={opt.value}>{opt.label}</option>{/each}</select>
+          </div>
+          <div class="field">
+            <label for="focusCreate">Focus</label>
+            <select id="focusCreate" name="focus">{#each data.taskFocusOptions as opt}<option value={opt.value} selected={opt.value === 'NOT_DOING_NOW'}>{opt.label}</option>{/each}</select>
           </div>
         </div>
 
@@ -241,6 +246,7 @@
               <h2>{task.title}</h2>
               <span class="status-chip">{task.statusLabel}</span>
               <span class="status-chip">{task.urgencyLabel}</span>
+              <span class="status-chip">{task.focusLabel}</span>
             </div>
             <div class="muted small">
               {task.taskTypeLabel} - {task.importanceLabel} importance - due {fmt(task.dueAt)}
@@ -269,6 +275,12 @@
                 {#each data.taskStatuses as opt}<option value={opt.value} selected={task.status === opt.value}>{opt.label}</option>{/each}
               </select>
             </form>
+            <form method="post" action="?/updateFocus">
+              <input type="hidden" name="taskId" value={task.id} />
+              <select name="focus" aria-label="Update focus" on:change={submitContainingForm}>
+                {#each data.taskFocusOptions as opt}<option value={opt.value} selected={task.focus === opt.value}>{opt.label}</option>{/each}
+              </select>
+            </form>
             <a class="btn" href={`/tasks/${task.id}/edit`}>Edit</a>
             <form method="post" action="?/delete" on:submit={(event) => { if (!confirm('Delete this task?')) event.preventDefault(); }}>
               <input type="hidden" name="taskId" value={task.id} />
@@ -290,7 +302,7 @@
   .muted { color: var(--muted); }
   .hint { color: var(--muted); font-size: 0.82rem; margin: 4px 0 0; }
   .small { font-size: 0.9rem; }
-  .summary-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-bottom: 12px; }
+  .summary-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; margin-bottom: 12px; }
   .stat { padding: 12px; display: grid; gap: 4px; }
   .stat span { color: var(--muted); font-size: 0.9rem; }
   .stat strong { font-size: 1.5rem; }
@@ -298,6 +310,7 @@
   .error-card { color: var(--danger); }
   .grid.two { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
   .grid.four { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+  .grid.five { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; }
   .span2 { grid-column: 1 / span 2; }
   .task-list { display: grid; gap: 10px; }
   .task-card { padding: 14px; display: flex; justify-content: space-between; gap: 16px; }
@@ -315,7 +328,7 @@
   textarea { resize: vertical; }
   @media (max-width: 860px) {
     .page-head, .task-card, .filter-row { flex-direction: column; align-items: stretch; }
-    .summary-grid, .grid.two, .grid.four { grid-template-columns: 1fr; }
+    .summary-grid, .grid.two, .grid.four, .grid.five { grid-template-columns: 1fr; }
     .span2 { grid-column: auto; }
     .task-actions { min-width: 0; }
   }

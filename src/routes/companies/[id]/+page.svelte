@@ -37,15 +37,17 @@
         {#if data.company.location}<span>{data.company.location}</span>{/if}
       </div>
       {#if data.company.website}<div class="muted small">{data.company.website}</div>{/if}
+      {#if data.company.phone}<div class="muted small">{data.company.phone}</div>{/if}
+      {#if data.company.tags?.length}<div class="tag-row">{#each data.company.tags as tag}<span class="status-chip">{tag.name}</span>{/each}</div>{/if}
     </div>
     <div class="header-actions">
       <button class="btn" type="button" on:click={() => (showEdit = !showEdit)}>{showEdit ? 'Cancel' : 'Edit company'}</button>
       <button class="btn primary" type="button" on:click={() => (showAddTask = !showAddTask)}>{showAddTask ? 'Cancel task' : 'Add task'}</button>
       <form method="post" action="?/scoreCompany"><button class="btn" type="submit">Score opportunity</button></form>
       <form method="post" action="?/enrichCompany"><button class="btn" type="submit">Enrich company</button></form>
-      <a class="btn" href={`/agents/enrichment/new?mode=company&entityType=company&entityId=${data.company.id}&enableWebResearch=true`}>Company options</a>
+      <a class="btn" href={`/agents/enrichment/new?mode=company&entityType=company&entityId=${data.company.id}&enableWebResearch=true&returnTo=/companies/${data.company.id}`}>Company options</a>
       <form method="post" action="?/findCompanyContacts"><button class="btn" type="submit">Find contacts</button></form>
-      <a class="btn" href={`/agents/enrichment/new?mode=find_contacts&entityType=company&entityId=${data.company.id}&enableWebResearch=true`}>Contact find options</a>
+      <a class="btn" href={`/agents/enrichment/new?mode=find_contacts&entityType=company&entityId=${data.company.id}&enableWebResearch=true&returnTo=/companies/${data.company.id}`}>Contact find options</a>
       <a class="btn" href="/companies">Back</a>
     </div>
   </header>
@@ -61,7 +63,10 @@
           <div class="field"><label for="website">Website</label><input id="website" name="website" value={data.company.website} /></div>
         </div>
         <div class="grid two">
+          <div class="field"><label for="phone">Phone</label><input id="phone" name="phone" value={data.company.phone} /></div>
           <div class="field"><label for="kind">Type</label><select id="kind" name="kind">{#each data.companyKinds as opt}<option value={opt.value} selected={data.company.kind === opt.value}>{opt.label}</option>{/each}</select></div>
+        </div>
+        <div class="grid two">
           <div class="field"><label for="status">Status</label><select id="status" name="status">{#each data.companyStatuses as opt}<option value={opt.value} selected={data.company.status === opt.value}>{opt.label}</option>{/each}</select></div>
         </div>
         <div class="grid two">
@@ -87,6 +92,7 @@
           <div class="field"><label for="taskImportance">Importance</label><select id="taskImportance" name="importance">{#each data.taskImportances as opt}<option value={opt.value} selected={opt.value === 'NORMAL'}>{opt.label}</option>{/each}</select></div>
           <div class="field"><label for="taskStatus">Status</label><select id="taskStatus" name="status">{#each data.taskStatuses as opt}<option value={opt.value}>{opt.label}</option>{/each}</select></div>
         </div>
+        <div class="field"><label for="taskFocus">Focus</label><select id="taskFocus" name="focus">{#each data.taskFocusOptions as opt}<option value={opt.value} selected={opt.value === 'NOT_DOING_NOW'}>{opt.label}</option>{/each}</select></div>
         <div class="grid three">
           <div class="field"><label for="taskDueAt">Due</label><input id="taskDueAt" name="dueAt" type="datetime-local" /></div>
           <div class="field"><label for="taskDealId">Related deal</label><select id="taskDealId" name="dealId"><option value="">No deal</option>{#each data.allDealOptions as d}<option value={d.id}>{d.title}</option>{/each}</select></div>
@@ -98,6 +104,26 @@
       </form>
     </section>
   {/if}
+
+  <section class="card panel">
+    <div class="section-head"><h2>Company tags</h2></div>
+    {#if data.company.tags?.length}
+      <div class="tag-row">
+        {#each data.company.tags as tag}
+          <form method="post" action="?/removeCompanyTag" class="inline-form">
+            <input type="hidden" name="linkId" value={tag.id} />
+            <button class="status-chip" type="submit" title="Remove tag">{tag.name} ×</button>
+          </form>
+        {/each}
+      </div>
+    {:else}
+      <p class="muted">No company tags yet.</p>
+    {/if}
+    <form method="post" action="?/addCompanyTag" class="tag-add-row">
+      <input name="tag" placeholder="Add company tag" />
+      <button class="btn" type="submit">Add tag</button>
+    </form>
+  </section>
 
   <ExchangeItemsPanel items={data.exchangeItems ?? []} entityLabel={data.company.name} />
 
@@ -232,7 +258,7 @@
         {#each data.tasks as task}
           <div class="mini-row">
             <div>
-              <div class="title-line"><span>{task.title}</span><span class="status-chip">{task.statusLabel}</span><span class="status-chip">{task.urgencyLabel}</span></div>
+              <div class="title-line"><a href={`/tasks/${task.id}/edit?returnTo=/companies/${data.company.id}`}>{task.title}</a><span class="status-chip">{task.statusLabel}</span><span class="status-chip">{task.urgencyLabel}</span><span class="status-chip">{task.focusLabel}</span></div>
               <div class="muted small">{task.taskTypeLabel} - due {fmt(task.dueAt) || 'not set'}{task.deal ? ` - ${task.deal.title}` : ''}</div>
               {#if task.notes}<p class="preline small">{task.notes}</p>{/if}
               {#if task.summary}<div class="summary-box"><div class="muted small">AI summary</div><p>{task.summary}</p></div>{/if}
@@ -250,8 +276,8 @@
 
 <style>
   .container { padding: 12px; }
-  .company-header, .section-head, .mini-row, .deal-row, .title-line, .meta-row, .header-actions, .row-actions { display: flex; gap: 10px; align-items: flex-start; justify-content: space-between; }
-  .title-line, .meta-row, .header-actions, .row-actions { align-items: center; justify-content: flex-start; flex-wrap: wrap; }
+  .company-header, .section-head, .mini-row, .deal-row, .title-line, .meta-row, .header-actions, .row-actions, .tag-row, .tag-add-row { display: flex; gap: 10px; align-items: flex-start; justify-content: space-between; }
+  .title-line, .meta-row, .header-actions, .row-actions, .tag-row, .tag-add-row { align-items: center; justify-content: flex-start; flex-wrap: wrap; }
   .company-header { padding: 18px; margin-bottom: 12px; }
   h1, h2 { margin: 0; }
   h2 { font-size: 1.1rem; }
@@ -273,6 +299,9 @@
   .preline { white-space: pre-wrap; }
   .check-row { display: flex; gap: 8px; align-items: center; margin-bottom: 12px; }
   .check-row input { width: auto; }
+  .inline-form { display: inline; }
+  .tag-add-row { margin-top: 10px; }
+  .tag-add-row input { max-width: 320px; }
   textarea { resize: vertical; }
   @media (max-width: 860px) {
     .company-header, .section-head, .mini-row, .deal-row { flex-direction: column; align-items: stretch; }

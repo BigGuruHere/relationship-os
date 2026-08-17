@@ -17,6 +17,28 @@ import {
   safeDecryptCompany
 } from '$lib/companies';
 
+function uniqById<T extends { id: string }>(rows: T[]) {
+  const seen = new Set<string>();
+  return rows.filter((row) => {
+    if (seen.has(row.id)) return false;
+    seen.add(row.id);
+    return true;
+  });
+}
+
+function companyDuplicateSummary(row: any, matchReasons: string[]) {
+  return {
+    id: row.id,
+    label: safeDecryptCompany(row.nameEnc, 'company.name', 'Untitled company'),
+    website: safeDecryptCompany(row.websiteEnc, 'company.website', ''),
+    phone: safeDecryptCompany(row.phoneEnc, 'company.phone', ''),
+    industry: safeDecryptCompany(row.industryEnc, 'company.industry', ''),
+    location: safeDecryptCompany(row.locationEnc, 'company.location', ''),
+    href: `/companies/${row.id}`,
+    matchReasons
+  };
+}
+
 export const load: PageServerLoad = async ({ locals, url }) => {
   if (!locals.user) throw redirect(303, '/auth/login');
   const userId = locals.user.id;
@@ -95,8 +117,6 @@ export const actions: Actions = {
     const userId = locals.user.id;
     const form = await request.formData();
     const name = String(form.get('name') || '').trim();
-    if (!name) return fail(400, { error: 'Company name is required.' });
-
     const website = String(form.get('website') || '').trim();
     const phone = String(form.get('phone') || '').trim();
     const tagsInput = String(form.get('tags') || '').trim();
@@ -105,8 +125,46 @@ export const actions: Actions = {
     const description = String(form.get('description') || '').trim();
     const criteria = String(form.get('criteria') || '').trim();
     const notes = String(form.get('notes') || '').trim();
-    const existing = await prisma.company.findFirst({ where: { userId, nameIdx: buildIndexToken(name) }, select: { id: true } });
-    if (existing) return fail(409, { error: 'You already have a company with this name.' });
+    const kind = normaliseCompanyKind(form.get('kind')) as any;
+    const status = normaliseCompanyStatus(form.get('status')) as any;
+    const forceCreate = String(form.get('forceCreate') || '') === '1';
+
+    const values = { name, website, phone, tags: tagsInput, industry, location, description, criteria, notes, kind, status };
+
+    if (!name) return fail(400, { error: 'Company name is required.', values });
+
+    const duplicateSelect = {
+      id: true,
+      nameEnc: true,
+      websiteEnc: true,
+      phoneEnc: true,
+      industryEnc: true,
+      locationEnc: true
+    } as const;
+
+    const [sameNameRows, samePhoneRows, sameWebsiteRows] = await Promise.all([
+      prisma.company.findMany({ where: { userId, nameIdx: buildIndexToken(name) }, select: duplicateSelect, take: 6, orderBy: { updatedAt: 'desc' } }),
+      phone ? prisma.company.findMany({ where: { userId, phoneIdx: buildIndexToken(phone) }, select: duplicateSelect, take: 6, orderBy: { updatedAt: 'desc' } }) : Promise.resolve([]),
+      website ? prisma.company.findMany({ where: { userId, websiteIdx: buildIndexToken(website) }, select: duplicateSelect, take: 6, orderBy: { updatedAt: 'desc' } }) : Promise.resolve([])
+    ]);
+
+    const matchReasonsById = new Map<string, Set<string>>();
+    for (const row of sameNameRows) matchReasonsById.set(row.id, new Set([...(matchReasonsById.get(row.id) || []), 'same company name']));
+    for (const row of samePhoneRows) matchReasonsById.set(row.id, new Set([...(matchReasonsById.get(row.id) || []), 'same phone']));
+    for (const row of sameWebsiteRows) matchReasonsById.set(row.id, new Set([...(matchReasonsById.get(row.id) || []), 'same website']));
+
+    const duplicateRows = uniqById([...sameNameRows, ...samePhoneRows, ...sameWebsiteRows]);
+    if (!forceCreate && duplicateRows.length > 0) {
+      return fail(409, {
+        values,
+        duplicateWarning: {
+          title: 'Possible duplicate company found',
+          message: 'Review the existing company before creating a new one. Same or similar company names are allowed, but this helps avoid accidental duplicates.',
+          matches: duplicateRows.map((row) => companyDuplicateSummary(row, Array.from(matchReasonsById.get(row.id) || []))),
+          allowCreateAnyway: true
+        }
+      });
+    }
 
     try {
       const created = await prisma.company.create({
@@ -123,8 +181,8 @@ export const actions: Actions = {
           descriptionEnc: description ? encrypt(description, 'company.description') : null,
           criteriaEnc: criteria ? encrypt(criteria, 'company.criteria') : null,
           notesEnc: notes ? encrypt(notes, 'company.notes') : null,
-          kind: normaliseCompanyKind(form.get('kind')) as any,
-          status: normaliseCompanyStatus(form.get('status')) as any
+          kind,
+          status
         },
         select: { id: true }
       });
@@ -142,7 +200,7 @@ export const actions: Actions = {
       throw redirect(303, `/companies/${created.id}`);
     } catch (err: any) {
       if (err?.status) throw err;
-      if (err?.code === 'P2002') return fail(409, { error: 'You already have a company with this name.' });
+      if (err?.code === 'P2002') return fail(409, { error: 'A company already uses one of these unique details.', values });
       console.error('[companies:create] failed', err);
       return fail(500, { error: 'Could not create company.' });
     }

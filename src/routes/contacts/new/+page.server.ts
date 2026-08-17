@@ -5,7 +5,7 @@
 import { fail, redirect } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import { prisma } from '$lib/db';
-import { encrypt, buildIndexToken } from '$lib/crypto';
+import { encrypt, decrypt, buildIndexToken } from '$lib/crypto';
 
 // IT: normalize a LinkedIn url for stable equality tokens
 function normalizeLinkedin(input: string) {
@@ -19,6 +19,37 @@ function normalizeLinkedin(input: string) {
   } catch {
     return input.trim();
   }
+}
+
+function safeDecrypt(payload: string | null | undefined, aad: string, fallback = '') {
+  if (!payload) return fallback;
+  try {
+    return decrypt(payload, aad);
+  } catch {
+    return fallback;
+  }
+}
+
+function uniqById<T extends { id: string }>(rows: T[]) {
+  const seen = new Set<string>();
+  return rows.filter((row) => {
+    if (seen.has(row.id)) return false;
+    seen.add(row.id);
+    return true;
+  });
+}
+
+function contactDuplicateSummary(row: any, matchReasons: string[]) {
+  return {
+    id: row.id,
+    label: safeDecrypt(row.fullNameEnc, 'contact.full_name', 'Untitled contact'),
+    company: safeDecrypt(row.companyEnc, 'contact.company', ''),
+    email: safeDecrypt(row.emailEnc, 'contact.email', ''),
+    phone: safeDecrypt(row.phoneEnc, 'contact.phone', ''),
+    position: safeDecrypt(row.positionEnc, 'contact.position', ''),
+    href: `/contacts/${row.id}`,
+    matchReasons
+  };
 }
 
 export const load: PageServerLoad = async ({ locals }) => {
@@ -42,20 +73,47 @@ export const actions: Actions = {
     const position = String(fd.get('position') || '').trim();
     const linkedinRaw = String(fd.get('linkedin') || '').trim();
     const linkedin = linkedinRaw ? normalizeLinkedin(linkedinRaw) : '';
+    const forceCreate = String(fd.get('forceCreate') || '') === '1';
 
-    // IT: preserve values for repopulation on error
+    // IT: preserve values for repopulation on error or duplicate review
     const values = { fullName, email, phone, company, position, linkedin };
 
     if (!fullName) {
       return fail(400, { error: 'Name is required', values });
     }
 
-    const [duplicateName, duplicatePhone] = await Promise.all([
-      prisma.contact.findFirst({ where: { userId: locals.user.id, fullNameIdx: buildIndexToken(fullName) }, select: { id: true } }),
-      phone ? prisma.contact.findFirst({ where: { userId: locals.user.id, phoneIdx: buildIndexToken(phone) }, select: { id: true } }) : null
+    const selectDuplicateFields = {
+      id: true,
+      fullNameEnc: true,
+      emailEnc: true,
+      phoneEnc: true,
+      companyEnc: true,
+      positionEnc: true
+    } as const;
+
+    const [sameNameRows, samePhoneRows, sameEmailRows] = await Promise.all([
+      prisma.contact.findMany({ where: { userId: locals.user.id, fullNameIdx: buildIndexToken(fullName) }, select: selectDuplicateFields, take: 6, orderBy: { updatedAt: 'desc' } }),
+      phone ? prisma.contact.findMany({ where: { userId: locals.user.id, phoneIdx: buildIndexToken(phone) }, select: selectDuplicateFields, take: 6, orderBy: { updatedAt: 'desc' } }) : Promise.resolve([]),
+      email ? prisma.contact.findMany({ where: { userId: locals.user.id, emailIdx: buildIndexToken(email) }, select: selectDuplicateFields, take: 6, orderBy: { updatedAt: 'desc' } }) : Promise.resolve([])
     ]);
-    if (duplicateName) return fail(409, { error: 'A contact with this name already exists.', values });
-    if (duplicatePhone) return fail(409, { error: 'A contact with this phone number already exists.', values });
+
+    const matchReasonsById = new Map<string, Set<string>>();
+    for (const row of sameNameRows) matchReasonsById.set(row.id, new Set([...(matchReasonsById.get(row.id) || []), 'same name']));
+    for (const row of samePhoneRows) matchReasonsById.set(row.id, new Set([...(matchReasonsById.get(row.id) || []), 'same phone']));
+    for (const row of sameEmailRows) matchReasonsById.set(row.id, new Set([...(matchReasonsById.get(row.id) || []), 'same email']));
+
+    const duplicateRows = uniqById([...sameNameRows, ...samePhoneRows, ...sameEmailRows]);
+    if (!forceCreate && duplicateRows.length > 0) {
+      return fail(409, {
+        values,
+        duplicateWarning: {
+          title: 'Possible duplicate contact found',
+          message: 'Review the existing contact before creating a new one. Same names are allowed, but this helps avoid accidental duplicates.',
+          matches: duplicateRows.map((row) => contactDuplicateSummary(row, Array.from(matchReasonsById.get(row.id) || []))),
+          allowCreateAnyway: true
+        }
+      });
+    }
 
     // IT: build encrypted payload
     const data: any = {
@@ -91,7 +149,6 @@ export const actions: Actions = {
       const created = await prisma.contact.create({ data, select: { id: true } });
       createdId = created.id;
     } catch (e: any) {
-      // IT: handle uniqueness gracefully if you added a unique on linkedin
       if (e?.code === 'P2002') {
         return fail(409, { error: 'A contact already uses one of these unique details.', values });
       }

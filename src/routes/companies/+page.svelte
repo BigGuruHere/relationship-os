@@ -4,10 +4,11 @@
   export let data: any;
   export let form: any;
 
-  let showCreate = false;
+  let showCreate = Boolean(form?.values || form?.duplicateWarning);
   let q = data.q || '';
   let status = data.selectedStatus || '';
   let kind = data.selectedKind || '';
+  $: duplicateWarning = form?.duplicateWarning;
 
   function submitContainingForm(event: Event) {
     const formEl = (event.currentTarget as HTMLSelectElement).closest('form');
@@ -32,27 +33,54 @@
   {#if showCreate}
     <section class="card panel">
       <h2>Create company</h2>
+
+      {#if duplicateWarning}
+        <section class="duplicate-warning" aria-live="polite">
+          <h3>{duplicateWarning.title}</h3>
+          <p>{duplicateWarning.message}</p>
+          <div class="duplicate-list">
+            {#each duplicateWarning.matches as match}
+              <article class="duplicate-card">
+                <div>
+                  <strong>{match.label}</strong>
+                  {#if match.industry}<div class="muted small">{match.industry}</div>{/if}
+                  {#if match.location}<div class="muted small">{match.location}</div>{/if}
+                  {#if match.website}<div class="muted small">{match.website}</div>{/if}
+                  {#if match.phone}<div class="muted small">{match.phone}</div>{/if}
+                  {#if match.matchReasons?.length}
+                    <div class="reason-row">{#each match.matchReasons as reason}<span class="reason-chip">{reason}</span>{/each}</div>
+                  {/if}
+                </div>
+                <a class="btn" href={match.href} target="_blank" rel="noreferrer">Open</a>
+              </article>
+            {/each}
+          </div>
+          <p class="muted small">Opening an existing company uses a new tab so you do not lose this form.</p>
+        </section>
+      {/if}
+
       <form method="post" action="?/create" class="create-form">
+        {#if duplicateWarning}<input type="hidden" name="forceCreate" value="1" />{/if}
         <div class="grid two">
-          <div class="field"><label for="name">Company name</label><input id="name" name="name" required /></div>
-          <div class="field"><label for="website">Website</label><input id="website" name="website" placeholder="https://..." /></div>
+          <div class="field"><label for="name">Company name</label><input id="name" name="name" required value={form?.values?.name || ''} /></div>
+          <div class="field"><label for="website">Website</label><input id="website" name="website" placeholder="https://..." value={form?.values?.website || ''} /></div>
         </div>
         <div class="grid two">
-          <div class="field"><label for="phone">Phone</label><input id="phone" name="phone" placeholder="Main phone number" /></div>
-          <div class="field"><label for="tags">Tags</label><input id="tags" name="tags" placeholder="mortgage broker, aged care, buyer" /></div>
+          <div class="field"><label for="phone">Phone</label><input id="phone" name="phone" placeholder="Main phone number" value={form?.values?.phone || ''} /></div>
+          <div class="field"><label for="tags">Tags</label><input id="tags" name="tags" placeholder="mortgage broker, aged care, buyer" value={form?.values?.tags || ''} /></div>
         </div>
         <div class="grid two">
-          <div class="field"><label for="kindCreate">Type</label><select id="kindCreate" name="kind">{#each data.companyKinds as opt}<option value={opt.value}>{opt.label}</option>{/each}</select></div>
-          <div class="field"><label for="statusCreate">Status</label><select id="statusCreate" name="status">{#each data.companyStatuses as opt}<option value={opt.value}>{opt.label}</option>{/each}</select></div>
+          <div class="field"><label for="kindCreate">Type</label><select id="kindCreate" name="kind">{#each data.companyKinds as opt}<option value={opt.value} selected={(form?.values?.kind || 'OPERATING_BUSINESS') === opt.value}>{opt.label}</option>{/each}</select></div>
+          <div class="field"><label for="statusCreate">Status</label><select id="statusCreate" name="status">{#each data.companyStatuses as opt}<option value={opt.value} selected={(form?.values?.status || 'ACTIVE') === opt.value}>{opt.label}</option>{/each}</select></div>
         </div>
         <div class="grid two">
-          <div class="field"><label for="industry">Industry</label><input id="industry" name="industry" placeholder="e.g. healthcare, trades, childcare" /></div>
-          <div class="field"><label for="location">Location</label><input id="location" name="location" placeholder="e.g. Melbourne, Australia" /></div>
+          <div class="field"><label for="industry">Industry</label><input id="industry" name="industry" placeholder="e.g. healthcare, trades, childcare" value={form?.values?.industry || ''} /></div>
+          <div class="field"><label for="location">Location</label><input id="location" name="location" placeholder="e.g. Melbourne, Australia" value={form?.values?.location || ''} /></div>
         </div>
-        <div class="field"><label for="description">Description</label><textarea id="description" name="description" rows="3" placeholder="What they do and why they matter"></textarea></div>
-        <div class="field"><label for="criteria">Acquisition / buyer criteria</label><textarea id="criteria" name="criteria" rows="3" placeholder="Deal size, sector, geography, must-haves, hard no's"></textarea></div>
-        <div class="field"><label for="notes">Internal notes</label><textarea id="notes" name="notes" rows="3"></textarea></div>
-        <button class="btn primary" type="submit">Save company</button>
+        <div class="field"><label for="description">Description</label><textarea id="description" name="description" rows="3" placeholder="What they do and why they matter">{form?.values?.description || ''}</textarea></div>
+        <div class="field"><label for="criteria">Acquisition / buyer criteria</label><textarea id="criteria" name="criteria" rows="3" placeholder="Deal size, sector, geography, must-haves, hard no's">{form?.values?.criteria || ''}</textarea></div>
+        <div class="field"><label for="notes">Internal notes</label><textarea id="notes" name="notes" rows="3">{form?.values?.notes || ''}</textarea></div>
+        <button class="btn primary" type="submit">{duplicateWarning ? 'Create anyway' : 'Save company'}</button>
       </form>
     </section>
   {/if}
@@ -121,6 +149,12 @@
   .small { font-size: 0.9rem; }
   .panel, .filters, .empty, .error-card { padding: 14px; margin-bottom: 12px; }
   .error-card { color: var(--danger); }
+  .duplicate-warning { border: 1px solid #f0c36a; background: #fff8e5; border-radius: 12px; padding: 14px; margin: 12px 0 16px; }
+  .duplicate-warning h3 { margin: 0 0 6px; font-size: 1.05rem; }
+  .duplicate-list { display: grid; gap: 8px; margin-top: 10px; }
+  .duplicate-card { display: flex; gap: 12px; align-items: flex-start; justify-content: space-between; border: 1px solid rgba(0,0,0,0.08); background: white; border-radius: 10px; padding: 10px; }
+  .reason-row { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+  .reason-chip { border: 1px solid rgba(0,0,0,0.12); border-radius: 999px; padding: 2px 7px; font-size: 0.8rem; background: #fafafa; }
   .grid.two { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
   .company-list { display: grid; gap: 10px; }
   .company-card { padding: 14px; }

@@ -312,7 +312,7 @@ model Contact {
 
   // Deterministic indexable tokens
   fullNameIdx String
-  emailIdx    String? @unique
+  emailIdx    String?
   phoneIdx    String?
   companyIdx  String?
 
@@ -363,6 +363,7 @@ model Contact {
   // Indexes for search and tenancy
   @@index([userId])
   @@index([fullNameIdx])
+  @@index([emailIdx])
   @@index([phoneIdx])
   @@index([companyIdx])
 
@@ -859,7 +860,7 @@ model Company {
   researchSources   ResearchSource[]
   contactEnrichments ContactEnrichment[]
 
-  @@unique([userId, nameIdx])
+  @@index([userId, nameIdx])
   @@index([userId, kind])
   @@index([userId, status])
   @@index([nameIdx])

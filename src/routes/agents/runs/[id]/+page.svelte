@@ -72,28 +72,43 @@
 
   {#if data.contactEnrichments?.length}
     <section class="card panel">
-      <h2>Contact enrichments</h2>
-      <p class="muted">Stage 5 enrichments are proposed public contact details. Review evidence before applying anything to CRM.</p>
+      <h2>Data enrichments</h2>
+      <p class="muted">Stage 5.1 enrichments are field-level proposals. Review evidence before applying anything to CRM.</p>
       <div class="candidate-list">
         {#each data.contactEnrichments as item}
           <article class="candidate">
             <div class="candidate-head">
               <div>
-                <div class="meta"><span>{item.status}</span><span>Confidence {item.confidence}/100</span><span>{fmt(item.createdAt)}</span></div>
-                <h3>{item.targetName || item.fullName || item.companyName || 'Proposed enrichment'}</h3>
-                {#if item.roleTitle}<p class="muted">Role/title: {item.roleTitle}</p>{/if}
+                <div class="meta">
+                  <span>{item.status}</span>
+                  <span>{item.conflictStatus || 'NEW'}</span>
+                  <span>{item.evidenceType || 'UNKNOWN'}</span>
+                  <span>Confidence {item.confidence}/100</span>
+                  <span>{fmt(item.createdAt)}</span>
+                </div>
+                <h3>{item.fieldLabel || item.fieldKey || item.targetName || item.fullName || item.companyName || 'Proposed enrichment'}</h3>
+                {#if item.targetName}<p class="muted">Target: {item.targetName}</p>{/if}
                 {#if item.companyName}<p class="muted">Company: {item.companyName}</p>{/if}
               </div>
               <div class="score"><strong>{item.confidence}</strong><span>confidence</span></div>
             </div>
 
-            <div class="score-grid">
-              {#if item.fullName}<span>Name: {item.fullName}</span>{/if}
-              {#if item.email}<span>Email: {item.email}</span>{/if}
-              {#if item.phone}<span>Phone: {item.phone}</span>{/if}
-              {#if item.linkedin}<span>LinkedIn: {item.linkedin}</span>{/if}
-              {#if item.website}<span>Website: {item.website}</span>{/if}
-            </div>
+            {#if item.fieldKey}
+              <div class="score-grid">
+                <span>Field: {item.fieldKey}</span>
+                {#if item.proposedValue}<span>Proposed: {item.proposedValue}</span>{/if}
+                {#if item.existingValue}<span>Existing: {item.existingValue}</span>{/if}
+                <span>{item.isApplyable ? 'Applyable' : 'Not applyable'}</span>
+              </div>
+            {:else}
+              <div class="score-grid">
+                {#if item.fullName}<span>Name: {item.fullName}</span>{/if}
+                {#if item.email}<span>Email: {item.email}</span>{/if}
+                {#if item.phone}<span>Phone: {item.phone}</span>{/if}
+                {#if item.linkedin}<span>LinkedIn: {item.linkedin}</span>{/if}
+                {#if item.website}<span>Website: {item.website}</span>{/if}
+              </div>
+            {/if}
 
             {#if item.sourceUrl}<p class="muted">Source: <a href={item.sourceUrl} target="_blank" rel="noreferrer">{item.sourceLabel || item.sourceUrl}</a></p>{/if}
             {#if item.evidence}<p><strong>Evidence:</strong> {item.evidence}</p>{/if}
@@ -101,18 +116,20 @@
             {#if item.appliedAt}<p class="success">Applied to {item.appliedEntityType}. {#if entityHref(item.appliedEntityType, item.appliedEntityId)}<a href={entityHref(item.appliedEntityType, item.appliedEntityId)}>Open record</a>{/if}</p>{/if}
 
             <div class="actions small-actions">
-              {#if item.status !== 'APPROVED' && item.status !== 'APPLIED'}
+              {#if item.status !== 'APPROVED' && item.status !== 'APPLIED' && item.status !== 'NO_CHANGE'}
                 <form method="post" action="?/approveEnrichment"><input type="hidden" name="enrichmentId" value={item.id} /><button class="btn" type="submit">Approve</button></form>
               {/if}
               {#if item.status !== 'REJECTED' && item.status !== 'APPLIED'}
                 <form method="post" action="?/rejectEnrichment"><input type="hidden" name="enrichmentId" value={item.id} /><button class="btn danger" type="submit">Reject</button></form>
               {/if}
-              {#if item.status !== 'APPLIED' && item.status !== 'REJECTED'}
+              {#if item.isApplyable && item.status !== 'APPLIED' && item.status !== 'REJECTED' && item.status !== 'NO_CHANGE'}
                 <form method="post" action="?/applyEnrichment">
                   <input type="hidden" name="enrichmentId" value={item.id} />
                   <label class="inline-check"><input type="checkbox" name="overwrite" /> Overwrite existing fields</label>
                   <button class="btn primary" type="submit">Apply to CRM</button>
                 </form>
+              {:else if !item.isApplyable && item.status !== 'APPLIED'}
+                <span class="muted">Not applyable - verify manually or reject.</span>
               {/if}
             </div>
           </article>

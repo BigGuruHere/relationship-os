@@ -120,6 +120,15 @@ export type ContactEnrichmentOutput = {
   companyName?: string;
   roleTitle?: string;
   website?: string;
+  fieldKey?: string;
+  fieldLabel?: string;
+  proposedValue?: string;
+  existingValue?: string;
+  evidenceType?: string;
+  sourceKind?: string;
+  conflictStatus?: string;
+  isApplyable?: boolean;
+  groupKey?: string;
   sourceUrl?: string;
   sourceLabel?: string;
   confidence?: number;

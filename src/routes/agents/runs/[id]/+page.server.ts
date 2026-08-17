@@ -98,6 +98,15 @@ async function loadContactEnrichments(userId: string, agentRunId: string) {
       contactId: true,
       companyId: true,
       researchCandidateId: true,
+      groupKey: true,
+      fieldKey: true,
+      fieldLabel: true,
+      proposedValueEnc: true,
+      existingValueEnc: true,
+      evidenceType: true,
+      sourceKind: true,
+      conflictStatus: true,
+      isApplyable: true,
       targetNameEnc: true,
       fullNameEnc: true,
       emailEnc: true,
@@ -128,6 +137,15 @@ async function loadContactEnrichments(userId: string, agentRunId: string) {
     contactId: row.contactId,
     companyId: row.companyId,
     researchCandidateId: row.researchCandidateId,
+    groupKey: row.groupKey,
+    fieldKey: row.fieldKey,
+    fieldLabel: row.fieldLabel,
+    proposedValue: dec(row.proposedValueEnc, 'contact_enrichment.proposed_value', ''),
+    existingValue: dec(row.existingValueEnc, 'contact_enrichment.existing_value', ''),
+    evidenceType: row.evidenceType,
+    sourceKind: row.sourceKind,
+    conflictStatus: row.conflictStatus,
+    isApplyable: row.isApplyable,
     targetName: dec(row.targetNameEnc, 'contact_enrichment.target_name', ''),
     fullName: dec(row.fullNameEnc, 'contact_enrichment.full_name', ''),
     email: dec(row.emailEnc, 'contact_enrichment.email', ''),
@@ -390,28 +408,107 @@ export const actions: Actions = {
 
     const enrichment = await getOwnedEnrichment(locals.user.id, enrichmentId, params.id);
     if (!enrichment || enrichment.status === 'REJECTED') return fail(404, { error: 'Enrichment not found or rejected.' });
+    if (enrichment.isApplyable === false) return fail(400, { error: 'This enrichment is marked as not applyable. Verify manually instead.' });
 
-    const fullName = decryptEnrichmentValue(enrichment.fullNameEnc || enrichment.targetNameEnc, 'contact_enrichment.full_name') || decryptEnrichmentValue(enrichment.targetNameEnc, 'contact_enrichment.target_name');
-    const email = decryptEnrichmentValue(enrichment.emailEnc, 'contact_enrichment.email');
-    const phone = decryptEnrichmentValue(enrichment.phoneEnc, 'contact_enrichment.phone');
-    const linkedin = decryptEnrichmentValue(enrichment.linkedinEnc, 'contact_enrichment.linkedin');
-    const companyName = decryptEnrichmentValue(enrichment.companyNameEnc, 'contact_enrichment.company_name');
-    const roleTitle = decryptEnrichmentValue(enrichment.roleTitleEnc, 'contact_enrichment.role_title');
+    const fieldKey = String(enrichment.fieldKey || '').trim();
+    const proposedValue = decryptEnrichmentValue(enrichment.proposedValueEnc, 'contact_enrichment.proposed_value');
+
+    // IT: Legacy Stage 5 rows stored a package of values instead of one field. Keep applying those for backwards compatibility.
+    if (!fieldKey || !proposedValue) {
+      const fullName = decryptEnrichmentValue(enrichment.fullNameEnc || enrichment.targetNameEnc, 'contact_enrichment.full_name') || decryptEnrichmentValue(enrichment.targetNameEnc, 'contact_enrichment.target_name');
+      const email = decryptEnrichmentValue(enrichment.emailEnc, 'contact_enrichment.email');
+      const phone = decryptEnrichmentValue(enrichment.phoneEnc, 'contact_enrichment.phone');
+      const linkedin = decryptEnrichmentValue(enrichment.linkedinEnc, 'contact_enrichment.linkedin');
+      const companyName = decryptEnrichmentValue(enrichment.companyNameEnc, 'contact_enrichment.company_name');
+      const roleTitle = decryptEnrichmentValue(enrichment.roleTitleEnc, 'contact_enrichment.role_title');
+
+      let contactId = enrichment.contactId;
+
+      if (contactId) {
+        const existing = await prisma.contact.findFirst({ where: { id: contactId, userId: locals.user.id }, select: { id: true, emailEnc: true, phoneEnc: true, linkedinEnc: true, companyEnc: true, positionEnc: true } });
+        if (!existing) return fail(404, { error: 'Linked contact not found.' });
+        const data: any = {};
+        if (email && (overwrite || !existing.emailEnc)) { data.emailEnc = encrypt(email, 'contact.email'); data.emailIdx = buildIndexToken(email); }
+        if (phone && (overwrite || !existing.phoneEnc)) { data.phoneEnc = encrypt(phone, 'contact.phone'); data.phoneIdx = buildIndexToken(phone); }
+        if (linkedin && (overwrite || !existing.linkedinEnc)) { data.linkedinEnc = encrypt(linkedin, 'contact.linkedin'); data.linkedinIdx = buildIndexToken(linkedin); }
+        if (companyName && (overwrite || !existing.companyEnc)) { data.companyEnc = encrypt(companyName, 'contact.company'); data.companyIdx = buildIndexToken(companyName); }
+        if (roleTitle && (overwrite || !existing.positionEnc)) { data.positionEnc = encrypt(roleTitle, 'contact.position'); data.positionIdx = buildIndexToken(roleTitle); }
+        if (Object.keys(data).length) await prisma.contact.update({ where: { id: contactId }, data });
+      } else {
+        if (!fullName) return fail(400, { error: 'Cannot create a contact without a proposed name.' });
+        const contact = await prisma.contact.create({
+          data: {
+            userId: locals.user.id,
+            fullNameEnc: encrypt(fullName, 'contact.full_name'),
+            fullNameIdx: buildIndexToken(fullName),
+            emailEnc: email ? encrypt(email, 'contact.email') : null,
+            emailIdx: email ? buildIndexToken(email) : null,
+            phoneEnc: phone ? encrypt(phone, 'contact.phone') : null,
+            phoneIdx: phone ? buildIndexToken(phone) : null,
+            linkedinEnc: linkedin ? encrypt(linkedin, 'contact.linkedin') : null,
+            linkedinIdx: linkedin ? buildIndexToken(linkedin) : null,
+            companyEnc: companyName ? encrypt(companyName, 'contact.company') : null,
+            companyIdx: companyName ? buildIndexToken(companyName) : null,
+            positionEnc: roleTitle ? encrypt(roleTitle, 'contact.position') : null,
+            positionIdx: roleTitle ? buildIndexToken(roleTitle) : null
+          }
+        });
+        contactId = contact.id;
+      }
+
+      if (enrichment.companyId && contactId) {
+        await prisma.companyContact.upsert({
+          where: { companyId_contactId: { companyId: enrichment.companyId, contactId } },
+          update: roleTitle ? { titleEnc: encrypt(roleTitle, 'company_contact.title') } : {},
+          create: { userId: locals.user.id, companyId: enrichment.companyId, contactId, titleEnc: roleTitle ? encrypt(roleTitle, 'company_contact.title') : null, isPrimary: false }
+        });
+      }
+
+      await prisma.contactEnrichment.update({ where: { id: enrichment.id }, data: { status: 'APPLIED', appliedAt: new Date(), appliedEntityType: 'contact', appliedEntityId: contactId } });
+      redirectBack(params.id);
+    }
+
+    if (fieldKey.startsWith('company.')) {
+      const companyId = enrichment.companyId;
+      if (!companyId) return fail(400, { error: 'This company enrichment is not linked to a company.' });
+      const existing = await prisma.company.findFirst({ where: { id: companyId, userId: locals.user.id }, select: { id: true, nameEnc: true, websiteEnc: true, industryEnc: true, locationEnc: true, descriptionEnc: true, criteriaEnc: true, notesEnc: true } });
+      if (!existing) return fail(404, { error: 'Linked company not found.' });
+      const data: any = {};
+      if (fieldKey === 'company.name' && (overwrite || !existing.nameEnc)) { data.nameEnc = encrypt(proposedValue, 'company.name'); data.nameIdx = buildIndexToken(proposedValue); }
+      if (fieldKey === 'company.website' && (overwrite || !existing.websiteEnc)) { data.websiteEnc = encrypt(proposedValue, 'company.website'); data.websiteIdx = buildIndexToken(proposedValue); }
+      if (fieldKey === 'company.industry' && (overwrite || !existing.industryEnc)) data.industryEnc = encrypt(proposedValue, 'company.industry');
+      if (fieldKey === 'company.location' && (overwrite || !existing.locationEnc)) data.locationEnc = encrypt(proposedValue, 'company.location');
+      if (fieldKey === 'company.description' && (overwrite || !existing.descriptionEnc)) data.descriptionEnc = encrypt(proposedValue, 'company.description');
+      if (fieldKey === 'company.criteria' && (overwrite || !existing.criteriaEnc)) data.criteriaEnc = encrypt(proposedValue, 'company.criteria');
+      if (fieldKey === 'company.notes' && (overwrite || !existing.notesEnc)) data.notesEnc = encrypt(proposedValue, 'company.notes');
+      if (!Object.keys(data).length) {
+        await prisma.contactEnrichment.update({ where: { id: enrichment.id }, data: { status: 'NO_CHANGE' } });
+        redirectBack(params.id);
+      }
+      await prisma.company.update({ where: { id: companyId }, data });
+      await prisma.contactEnrichment.update({ where: { id: enrichment.id }, data: { status: 'APPLIED', appliedAt: new Date(), appliedEntityType: 'company', appliedEntityId: companyId } });
+      redirectBack(params.id);
+    }
+
+    if (!fieldKey.startsWith('contact.')) return fail(400, { error: `Unsupported enrichment field: ${fieldKey}` });
 
     let contactId = enrichment.contactId;
-
-    if (contactId) {
-      const existing = await prisma.contact.findFirst({ where: { id: contactId, userId: locals.user.id }, select: { id: true, emailEnc: true, phoneEnc: true, linkedinEnc: true, companyEnc: true, positionEnc: true } });
-      if (!existing) return fail(404, { error: 'Linked contact not found.' });
-      const data: any = {};
-      if (email && (overwrite || !existing.emailEnc)) { data.emailEnc = encrypt(email, 'contact.email'); data.emailIdx = buildIndexToken(email); }
-      if (phone && (overwrite || !existing.phoneEnc)) { data.phoneEnc = encrypt(phone, 'contact.phone'); data.phoneIdx = buildIndexToken(phone); }
-      if (linkedin && (overwrite || !existing.linkedinEnc)) { data.linkedinEnc = encrypt(linkedin, 'contact.linkedin'); data.linkedinIdx = buildIndexToken(linkedin); }
-      if (companyName && (overwrite || !existing.companyEnc)) { data.companyEnc = encrypt(companyName, 'contact.company'); data.companyIdx = buildIndexToken(companyName); }
-      if (roleTitle && (overwrite || !existing.positionEnc)) { data.positionEnc = encrypt(roleTitle, 'contact.position'); data.positionIdx = buildIndexToken(roleTitle); }
-      if (Object.keys(data).length) await prisma.contact.update({ where: { id: contactId }, data });
-    } else {
+    if (!contactId) {
+      const groupRows = enrichment.groupKey
+        ? await prisma.contactEnrichment.findMany({ where: { userId: locals.user.id, agentRunId: params.id, groupKey: enrichment.groupKey } })
+        : [enrichment];
+      const valueFor = (key: string, aad: string) => {
+        const row = groupRows.find((item: any) => item.fieldKey === key);
+        return row ? decryptEnrichmentValue(row.proposedValueEnc, aad) : '';
+      };
+      const fullName = valueFor('contact.fullName', 'contact_enrichment.proposed_value') || decryptEnrichmentValue(enrichment.targetNameEnc, 'contact_enrichment.target_name');
       if (!fullName) return fail(400, { error: 'Cannot create a contact without a proposed name.' });
+      const email = valueFor('contact.email', 'contact_enrichment.proposed_value');
+      const phone = valueFor('contact.phone', 'contact_enrichment.proposed_value');
+      const linkedin = valueFor('contact.linkedin', 'contact_enrichment.proposed_value');
+      const companyName = valueFor('contact.company', 'contact_enrichment.proposed_value') || decryptEnrichmentValue(enrichment.companyNameEnc, 'contact_enrichment.company_name');
+      const roleTitle = valueFor('contact.position', 'contact_enrichment.proposed_value');
+
       const contact = await prisma.contact.create({
         data: {
           userId: locals.user.id,
@@ -430,27 +527,30 @@ export const actions: Actions = {
         }
       });
       contactId = contact.id;
+      if (enrichment.groupKey) await prisma.contactEnrichment.updateMany({ where: { userId: locals.user.id, agentRunId: params.id, groupKey: enrichment.groupKey }, data: { contactId } });
+    } else {
+      const existing = await prisma.contact.findFirst({ where: { id: contactId, userId: locals.user.id }, select: { id: true, fullNameEnc: true, emailEnc: true, phoneEnc: true, linkedinEnc: true, companyEnc: true, positionEnc: true } });
+      if (!existing) return fail(404, { error: 'Linked contact not found.' });
+      const data: any = {};
+      if (fieldKey === 'contact.fullName' && (overwrite || !existing.fullNameEnc)) { data.fullNameEnc = encrypt(proposedValue, 'contact.full_name'); data.fullNameIdx = buildIndexToken(proposedValue); }
+      if (fieldKey === 'contact.email' && (overwrite || !existing.emailEnc)) { data.emailEnc = encrypt(proposedValue, 'contact.email'); data.emailIdx = buildIndexToken(proposedValue); }
+      if (fieldKey === 'contact.phone' && (overwrite || !existing.phoneEnc)) { data.phoneEnc = encrypt(proposedValue, 'contact.phone'); data.phoneIdx = buildIndexToken(proposedValue); }
+      if (fieldKey === 'contact.linkedin' && (overwrite || !existing.linkedinEnc)) { data.linkedinEnc = encrypt(proposedValue, 'contact.linkedin'); data.linkedinIdx = buildIndexToken(proposedValue); }
+      if (fieldKey === 'contact.company' && (overwrite || !existing.companyEnc)) { data.companyEnc = encrypt(proposedValue, 'contact.company'); data.companyIdx = buildIndexToken(proposedValue); }
+      if (fieldKey === 'contact.position' && (overwrite || !existing.positionEnc)) { data.positionEnc = encrypt(proposedValue, 'contact.position'); data.positionIdx = buildIndexToken(proposedValue); }
+      if (Object.keys(data).length) await prisma.contact.update({ where: { id: contactId }, data });
     }
 
     if (enrichment.companyId && contactId) {
+      const roleTitle = fieldKey === 'contact.position' ? proposedValue : '';
       await prisma.companyContact.upsert({
         where: { companyId_contactId: { companyId: enrichment.companyId, contactId } },
         update: roleTitle ? { titleEnc: encrypt(roleTitle, 'company_contact.title') } : {},
-        create: {
-          userId: locals.user.id,
-          companyId: enrichment.companyId,
-          contactId,
-          titleEnc: roleTitle ? encrypt(roleTitle, 'company_contact.title') : null,
-          isPrimary: false
-        }
+        create: { userId: locals.user.id, companyId: enrichment.companyId, contactId, titleEnc: roleTitle ? encrypt(roleTitle, 'company_contact.title') : null, isPrimary: false }
       });
     }
 
-    await prisma.contactEnrichment.update({
-      where: { id: enrichment.id },
-      data: { status: 'APPLIED', appliedAt: new Date(), appliedEntityType: 'contact', appliedEntityId: contactId }
-    });
-
+    await prisma.contactEnrichment.update({ where: { id: enrichment.id }, data: { status: 'APPLIED', appliedAt: new Date(), appliedEntityType: 'contact', appliedEntityId: contactId } });
     redirectBack(params.id);
   },
   approveCandidate: async ({ request, params, locals }) => {

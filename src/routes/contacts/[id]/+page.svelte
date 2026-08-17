@@ -89,6 +89,7 @@
           <a class="btn" href={getVcardUrl()} download aria-label="Download vCard" title="Download vCard">vCard</a>
           <form method="post" action="?/scoreContact"><button class="btn" type="submit">Score opportunity</button></form>
           <form method="post" action="?/enrichContact"><button class="btn" type="submit">Enrich contact</button></form>
+          <a class="btn" href={`/agents/enrichment/new?mode=contact&entityType=contact&entityId=${contact.id}&enableWebResearch=true`}>Enrichment options</a>
           <a class="btn" href={`/contacts/${contact.id}/edit`} aria-label="Edit contact" title="Edit contact">Edit</a>
         </div>
       </div>

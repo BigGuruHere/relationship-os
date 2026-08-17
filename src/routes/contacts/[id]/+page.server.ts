@@ -444,6 +444,7 @@ export const actions: Actions = {
       entityType: 'contact',
       entityId: params.id,
       enableWebResearch: true,
+      mode: 'contact',
       enrichmentGoal: 'Find public evidence-backed contact details for this contact. Stage only verified or clearly evidenced details for review before applying to CRM.'
     });
     throw redirect(303, `/agents/runs/${run.id}`);

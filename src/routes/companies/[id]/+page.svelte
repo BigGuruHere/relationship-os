@@ -41,9 +41,11 @@
     <div class="header-actions">
       <button class="btn" type="button" on:click={() => (showEdit = !showEdit)}>{showEdit ? 'Cancel' : 'Edit company'}</button>
       <button class="btn primary" type="button" on:click={() => (showAddTask = !showAddTask)}>{showAddTask ? 'Cancel task' : 'Add task'}</button>
-      <form method="post" action="?/researchCompany"><button class="btn" type="submit">Research company/contact names</button></form>
       <form method="post" action="?/scoreCompany"><button class="btn" type="submit">Score opportunity</button></form>
-      <form method="post" action="?/enrichCompany"><button class="btn" type="submit">Enrich contacts</button></form>
+      <form method="post" action="?/enrichCompany"><button class="btn" type="submit">Enrich company</button></form>
+      <a class="btn" href={`/agents/enrichment/new?mode=company&entityType=company&entityId=${data.company.id}&enableWebResearch=true`}>Company options</a>
+      <form method="post" action="?/findCompanyContacts"><button class="btn" type="submit">Find contacts</button></form>
+      <a class="btn" href={`/agents/enrichment/new?mode=find_contacts&entityType=company&entityId=${data.company.id}&enableWebResearch=true`}>Contact find options</a>
       <a class="btn" href="/companies">Back</a>
     </div>
   </header>

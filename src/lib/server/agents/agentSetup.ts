@@ -82,10 +82,19 @@ const CONTACT_ENRICHMENT_OUTPUT_SCHEMA = {
         properties: {
           targetName: { type: 'string' },
           fullName: { type: 'string' },
+          companyName: { type: 'string' },
+          fieldKey: { type: 'string' },
+          fieldLabel: { type: 'string' },
+          proposedValue: { type: 'string' },
+          existingValue: { type: 'string' },
+          evidenceType: { type: 'string' },
+          sourceKind: { type: 'string' },
+          conflictStatus: { type: 'string' },
+          isApplyable: { type: 'boolean' },
+          groupKey: { type: 'string' },
           email: { type: 'string' },
           phone: { type: 'string' },
           linkedin: { type: 'string' },
-          companyName: { type: 'string' },
           roleTitle: { type: 'string' },
           website: { type: 'string' },
           sourceUrl: { type: 'string' },
@@ -196,15 +205,18 @@ Add clear deal guidance in nextActions: do not create a deal until actual seller
 For risk, higher score means higher risk. Use polarity negative for risk factors. Factors must include rationale and, where available, evidence or a real sourceUrl. Do not include placeholder source URLs.`;
 
 const CONTACT_ENRICHMENT_SYSTEM_PROMPT = `You are the Contact Enrichment Agent inside Relish.
-Relish is the source of truth. Your job is to propose public contact details for review, not to overwrite CRM records.
-Use supplied CRM context, user-pasted research, and logged research sources. Never invent an email, phone number, LinkedIn URL, title, or website.
-If a detail is guessed from a pattern, mark it clearly as unverified and lower confidence. Return strict JSON only. Do not include markdown fences.`;
+Relish is the source of truth. Your job is to propose evidence-backed field-level CRM enrichments for review, not to overwrite CRM records.
+Use supplied CRM context, user-pasted source text, and logged research sources only. Never invent a person, email, phone number, LinkedIn URL, title, website, or source.
+If no supported evidence is available, return an empty enrichments array and explain what evidence is missing. Return strict JSON only. Do not include markdown fences.`;
 
-const CONTACT_ENRICHMENT_INSTRUCTIONS = `Find and stage public contact details for a person or company.
-Prioritise direct evidence: official website, team page, broker profile, LinkedIn profile, directory listing, ASIC/public profile if supplied, or user-pasted source text.
-Only include fields supported by evidence. Leave fields blank when unknown.
-For each proposed enrichment include sourceUrl/sourceLabel/evidence, confidence, notes, and a recommended next action.
-Do not update CRM. Do not claim outreach has been sent. Do not scrape private accounts or infer private contact details without evidence.`;
+const CONTACT_ENRICHMENT_INSTRUCTIONS = `Find and stage field-level enrichments for a person or company.
+Each enrichment must be one field only, using fieldKey, fieldLabel, proposedValue, evidenceType, sourceKind, conflictStatus, confidence, evidence, and recommendedAction.
+Allowed contact field keys: contact.fullName, contact.email, contact.phone, contact.linkedin, contact.company, contact.position.
+Allowed company field keys: company.name, company.website, company.industry, company.location, company.description, company.criteria, company.notes.
+Prioritise direct evidence: existing CRM context, user-pasted source text, official website/team page snippets, LinkedIn/profile snippets, directory listing snippets, or logged web-search snippets.
+Do not create applyable rows for guessed email patterns, guessed phone numbers, or inferred LinkedIn URLs. If a value is inferred only, either omit it or mark it INFERRED_ONLY and not applyable.
+For company contact discovery, never stage a person unless the name and relationship to the company are explicitly supported by evidence.
+Do not update CRM. Do not claim outreach has been sent.`;
 
 
 const AGENTS = [
@@ -240,7 +252,7 @@ const AGENTS = [
     instructions: CONTACT_ENRICHMENT_INSTRUCTIONS,
     outputSchemaJson: CONTACT_ENRICHMENT_OUTPUT_SCHEMA,
     requiresApprovalDefault: true,
-    promptVersion: 1
+    promptVersion: 2
   },
   {
     key: 'outreach_agent',

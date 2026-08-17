@@ -1,5 +1,5 @@
 // src/lib/server/agents/tools/createContactEnrichment.ts
-// PURPOSE: Stage proposed contact details found by an agent. Do not update CRM truth automatically.
+// PURPOSE: Stage proposed enrichment fields for review before CRM update.
 
 import { prisma } from '$lib/db';
 import { encrypt } from '$lib/crypto';
@@ -14,6 +14,15 @@ type Input = {
   companyName?: string;
   roleTitle?: string;
   website?: string;
+  fieldKey?: string;
+  fieldLabel?: string;
+  proposedValue?: string;
+  existingValue?: string;
+  evidenceType?: string;
+  sourceKind?: string;
+  conflictStatus?: string;
+  isApplyable?: boolean;
+  groupKey?: string;
   sourceUrl?: string;
   sourceLabel?: string;
   evidence?: string;
@@ -29,6 +38,10 @@ function clean(value: unknown) {
   return String(value ?? '').replace(/\s+/g, ' ').trim();
 }
 
+function cleanKey(value: unknown) {
+  return clean(value).replace(/[^a-zA-Z0-9_.:-]/g, '').slice(0, 120);
+}
+
 function clamp(value: unknown, fallback = 50) {
   const n = Number(value);
   if (!Number.isFinite(n)) return fallback;
@@ -42,11 +55,16 @@ function enc(value: unknown, aad: string) {
 
 export const createContactEnrichmentTool: ToolDefinition<Input, { id: string; createdEntityType: string; createdEntityId: string }> = {
   key: 'create_contact_enrichment',
-  description: 'Stages proposed public contact details for review before CRM update.',
+  description: 'Stages one proposed contact/company enrichment field for review before CRM update.',
   requiresApproval: false,
   execute: async (input, context) => {
-    const hasAnyDetail = [input.fullName, input.email, input.phone, input.linkedin, input.companyName, input.roleTitle, input.website].some((v) => clean(v));
-    if (!hasAnyDetail) throw new Error('At least one proposed enrichment detail is required.');
+    const proposedValue = clean(input.proposedValue);
+    const hasLegacyDetail = [input.fullName, input.email, input.phone, input.linkedin, input.companyName, input.roleTitle, input.website].some((v) => clean(v));
+    if (!proposedValue && !hasLegacyDetail) throw new Error('At least one proposed enrichment detail is required.');
+
+    const fieldKey = cleanKey(input.fieldKey);
+    const conflictStatus = clean(input.conflictStatus || 'NEW').toUpperCase();
+    const isApplyable = input.isApplyable !== false && !['VERIFIED_EXISTING', 'INFERRED_ONLY', 'UNSUPPORTED', 'NO_CHANGE'].includes(conflictStatus);
 
     const row = await prisma.contactEnrichment.create({
       data: {
@@ -57,6 +75,15 @@ export const createContactEnrichmentTool: ToolDefinition<Input, { id: string; cr
         contactId: clean(input.contactId) || null,
         status: 'CANDIDATE',
         confidence: clamp(input.confidence),
+        groupKey: clean(input.groupKey) || null,
+        fieldKey: fieldKey || null,
+        fieldLabel: clean(input.fieldLabel) || null,
+        proposedValueEnc: enc(input.proposedValue, 'contact_enrichment.proposed_value'),
+        existingValueEnc: enc(input.existingValue, 'contact_enrichment.existing_value'),
+        evidenceType: clean(input.evidenceType || 'UNKNOWN').toUpperCase(),
+        sourceKind: clean(input.sourceKind) || null,
+        conflictStatus: conflictStatus || 'NEW',
+        isApplyable,
         targetNameEnc: enc(input.targetName, 'contact_enrichment.target_name'),
         fullNameEnc: enc(input.fullName, 'contact_enrichment.full_name'),
         emailEnc: enc(input.email, 'contact_enrichment.email'),

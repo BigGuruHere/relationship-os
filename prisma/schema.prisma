@@ -1316,6 +1316,17 @@ model ContactEnrichment {
   status     String @default("CANDIDATE")
   confidence Int    @default(50)
 
+  // IT: Stage 5.1 stores enrichment at field level so email, phone, LinkedIn, role, and company data can be reviewed independently.
+  groupKey       String?
+  fieldKey       String?
+  fieldLabel     String?
+  proposedValueEnc String?
+  existingValueEnc String?
+  evidenceType   String @default("UNKNOWN")
+  sourceKind     String?
+  conflictStatus String @default("NEW")
+  isApplyable    Boolean @default(true)
+
   targetNameEnc String?
   fullNameEnc   String?
   emailEnc      String?
@@ -1343,6 +1354,9 @@ model ContactEnrichment {
   @@index([userId, companyId])
   @@index([userId, researchCandidateId])
   @@index([agentRunId])
+  @@index([userId, fieldKey])
+  @@index([agentRunId, groupKey])
+  @@index([userId, conflictStatus])
 }
 
 // IT: Structured opportunity scoring for a staged candidate or existing CRM record.

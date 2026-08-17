@@ -316,7 +316,23 @@ export const actions: Actions = {
       entityType: 'company',
       entityId: params.id,
       enableWebResearch: true,
-      enrichmentGoal: 'Find public evidence-backed owner, principal, director, broker, email, phone, LinkedIn, website, and role/title details for this company. Stage details for review before applying to CRM.'
+      mode: 'company',
+      enrichmentGoal: 'Find evidence-backed company details such as website, industry, location, services, description, ownership signals, and source evidence. Stage field-level company updates for review before applying to CRM.'
+    });
+    throw redirect(303, `/agents/runs/${run.id}`);
+  },
+
+  findCompanyContacts: async ({ params, locals }) => {
+    if (!locals.user) throw redirect(303, '/auth/login');
+    const company = await ensureCompany(locals.user.id, params.id);
+    if (!company) return fail(404, { error: 'Company not found.' });
+    const run = await runContactEnrichmentAgent({
+      userId: locals.user.id,
+      entityType: 'company',
+      entityId: params.id,
+      enableWebResearch: true,
+      mode: 'find_contacts',
+      enrichmentGoal: 'Find source-supported people connected to this company, such as owner, founder, director, CEO, principal broker, or broker. Stage only evidence-backed contact fields. If no supported person is found, return no enrichments.'
     });
     throw redirect(303, `/agents/runs/${run.id}`);
   },

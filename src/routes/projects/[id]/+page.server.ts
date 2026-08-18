@@ -43,7 +43,7 @@ async function loadOptions(userId: string) {
     prisma.contact.findMany({ where: { userId }, select: { id: true, fullNameEnc: true, linkedUserId: true }, orderBy: { createdAt: 'desc' }, take: 300 }),
     prisma.deal.findMany({ where: { userId }, select: { id: true, titleEnc: true, status: true }, orderBy: { updatedAt: 'desc' }, take: 200 }),
     prisma.company.findMany({ where: { userId, status: { not: 'ARCHIVED' as any } }, select: { id: true, nameEnc: true, kind: true, status: true }, orderBy: { updatedAt: 'desc' }, take: 300 }),
-    prisma.marketLead.findMany({ where: { userId, status: { notIn: ['ARCHIVED', 'NOT_RELEVANT'] as any } }, select: { id: true, titleEnc: true, type: true, status: true, projectId: true }, orderBy: { updatedAt: 'desc' }, take: 300 }),
+    prisma.marketLead.findMany({ where: { userId, status: { notIn: ['ARCHIVED', 'NOT_RELEVANT', 'CONVERTED'] as any } }, select: { id: true, titleEnc: true, type: true, status: true, projectId: true }, orderBy: { updatedAt: 'desc' }, take: 300 }),
     prisma.dealContact.findMany({
       where: { userId },
       select: {
@@ -237,7 +237,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
   }));
 
   const projectLeadsRaw = await prisma.marketLead.findMany({
-    where: { userId, projectId: project.id, status: { not: 'ARCHIVED' as any } },
+    where: { userId, projectId: project.id, status: { notIn: ['ARCHIVED', 'CONVERTED'] as any } },
     select: marketLeadSelect() as any,
     orderBy: [{ status: 'asc' }, { priority: 'desc' }, { updatedAt: 'desc' }],
     take: 300

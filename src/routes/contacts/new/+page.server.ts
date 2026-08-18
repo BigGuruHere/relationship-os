@@ -6,7 +6,19 @@ import { fail, redirect } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import { prisma } from '$lib/db';
 import { encrypt, decrypt, buildIndexToken } from '$lib/crypto';
-import { COMMUNICATION_METHODS, normaliseCommunicationMethod } from '$lib/marketLeads';
+import {
+  BUYER_QUALIFICATION_STATUSES,
+  COMMUNICATION_METHODS,
+  CONTACT_ATTEMPT_STATUSES,
+  SELLER_QUALIFICATION_STATUSES,
+  normaliseBuyerQualificationStatus,
+  normaliseCommunicationMethod,
+  normaliseContactAttemptStatus,
+  normaliseMarketLeadSource,
+  normaliseSellerQualificationStatus,
+  parseDateTime
+} from '$lib/marketLeads';
+import { buildLeadSourceOptions, loadLeadSources, resolveLeadSourceId } from '$lib/server/marketLeads';
 
 // IT: normalize a LinkedIn url for stable equality tokens
 function normalizeLinkedin(input: string) {
@@ -56,7 +68,14 @@ function contactDuplicateSummary(row: any, matchReasons: string[]) {
 export const load: PageServerLoad = async ({ locals }) => {
   // IT: require login
   if (!locals.user) throw redirect(303, '/auth/login');
-  return { communicationMethods: COMMUNICATION_METHODS };
+  const customLeadSources = await loadLeadSources(locals.user.id);
+  return {
+    communicationMethods: COMMUNICATION_METHODS,
+    leadSourceOptions: buildLeadSourceOptions(customLeadSources),
+    contactAttemptStatuses: CONTACT_ATTEMPT_STATUSES,
+    buyerQualificationStatuses: BUYER_QUALIFICATION_STATUSES,
+    sellerQualificationStatuses: SELLER_QUALIFICATION_STATUSES
+  };
 };
 
 export const actions: Actions = {
@@ -74,11 +93,29 @@ export const actions: Actions = {
     const position = String(fd.get('position') || '').trim();
     const linkedinRaw = String(fd.get('linkedin') || '').trim();
     const linkedin = linkedinRaw ? normalizeLinkedin(linkedinRaw) : '';
+    const address = String(fd.get('address') || '').trim();
     const usualCommunicationMethod = normaliseCommunicationMethod(fd.get('usualCommunicationMethod'));
+    const sourceChoice = String(fd.get('sourceChoice') || 'builtin:MANUAL').trim();
+    const newLeadSource = String(fd.get('newLeadSource') || '').trim();
+    let source = 'MANUAL';
+    let leadSourceId = '';
+    if (sourceChoice.startsWith('builtin:')) {
+      source = String(normaliseMarketLeadSource(sourceChoice.slice('builtin:'.length)) || 'MANUAL');
+    } else if (sourceChoice.startsWith('custom:')) {
+      source = 'OTHER';
+      leadSourceId = sourceChoice.slice('custom:'.length).trim();
+    } else if (sourceChoice === 'CUSTOM') {
+      source = 'OTHER';
+    }
+    leadSourceId = (await resolveLeadSourceId(locals.user.id, leadSourceId, newLeadSource)) || '';
+    const contactAttemptStatus = normaliseContactAttemptStatus(fd.get('contactAttemptStatus'));
+    const lastContactedAt = parseDateTime(fd.get('lastContactedAt'));
+    const buyerStatus = normaliseBuyerQualificationStatus(fd.get('buyerStatus'));
+    const sellerStatus = normaliseSellerQualificationStatus(fd.get('sellerStatus'));
     const forceCreate = String(fd.get('forceCreate') || '') === '1';
 
     // IT: preserve values for repopulation on error or duplicate review
-    const values = { fullName, email, phone, company, position, linkedin, usualCommunicationMethod: usualCommunicationMethod || '' };
+    const values = { fullName, email, phone, company, position, linkedin, address, usualCommunicationMethod: usualCommunicationMethod || '', sourceChoice: leadSourceId ? `custom:${leadSourceId}` : sourceChoice, newLeadSource, contactAttemptStatus, lastContactedAt: lastContactedAt ? lastContactedAt.toISOString().slice(0, 16) : '', buyerStatus, sellerStatus };
 
     if (!fullName) {
       return fail(400, { error: 'Name is required', values });
@@ -122,7 +159,15 @@ export const actions: Actions = {
       userId: locals.user.id,
       fullNameEnc: encrypt(fullName, 'contact.full_name'),
       fullNameIdx: buildIndexToken(fullName),
-      usualCommunicationMethod: usualCommunicationMethod as any
+      usualCommunicationMethod: usualCommunicationMethod as any,
+      source: source as any,
+      leadSourceId: leadSourceId || null,
+      addressEnc: address ? encrypt(address, 'contact.address') : null,
+      addressIdx: address ? buildIndexToken(address) : null,
+      contactAttemptStatus,
+      lastContactedAt,
+      buyerStatus,
+      sellerStatus
     };
 
     if (email) {

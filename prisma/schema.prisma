@@ -329,6 +329,18 @@ model Contact {
   // IT: usual/best channel for relationship follow-up. Stored as an enum, not encrypted, because it is workflow metadata.
   usualCommunicationMethod CommunicationMethod?
 
+  // IT: Stage 6.6 follow-up - ongoing outreach/origin fields live on Contact after lead conversion.
+  source       MarketLeadSource @default(MANUAL)
+  leadSourceId String?
+  leadSource   LeadSource? @relation(fields: [leadSourceId], references: [id], onDelete: SetNull)
+
+  addressEnc String?
+  addressIdx String?
+
+  contactAttemptStatus String @default("NOT_CONTACTED")
+  buyerStatus          String @default("NOT_ASKED")
+  sellerStatus         String @default("NOT_ASKED")
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -374,7 +386,13 @@ model Contact {
   @@index([emailIdx])
   @@index([phoneIdx])
   @@index([companyIdx])
+  @@index([addressIdx])
   @@index([userId, usualCommunicationMethod])
+  @@index([userId, source])
+  @@index([userId, leadSourceId])
+  @@index([userId, contactAttemptStatus])
+  @@index([userId, buyerStatus])
+  @@index([userId, sellerStatus])
 
     // IT: new - one contact per owner-user pair; multiple NULLs are allowed by Postgres
   @@unique([userId, linkedUserId])
@@ -1167,6 +1185,7 @@ model LeadSource {
   updatedAt DateTime @updatedAt
 
   marketLeads MarketLead[]
+  contacts    Contact[]
 
   @@unique([userId, nameIdx])
   @@index([userId, updatedAt])

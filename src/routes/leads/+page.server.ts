@@ -35,7 +35,12 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 
   const where: any = { userId };
   if (type && MARKET_LEAD_TYPES.some((o) => o.value === type)) where.type = type;
-  if (status && MARKET_LEAD_STATUSES.some((o) => o.value === status)) where.status = status;
+  if (status && MARKET_LEAD_STATUSES.some((o) => o.value === status)) {
+    where.status = status;
+  } else {
+    // IT: converted leads are preserved as origin/history records, but hidden from the active lead queue by default.
+    where.status = { notIn: ['ARCHIVED', 'CONVERTED'] as any };
+  }
   if (contactAttemptStatus && CONTACT_ATTEMPT_STATUSES.some((o) => o.value === contactAttemptStatus)) where.contactAttemptStatus = contactAttemptStatus;
   if (buyerStatus && BUYER_QUALIFICATION_STATUSES.some((o) => o.value === buyerStatus)) where.buyerStatus = buyerStatus;
   if (sellerStatus && SELLER_QUALIFICATION_STATUSES.some((o) => o.value === sellerStatus)) where.sellerStatus = sellerStatus;
@@ -109,7 +114,10 @@ export const load: PageServerLoad = async ({ locals, url }) => {
   });
 
   const counts = await prisma.marketLead.groupBy({ by: ['status'], where: { userId }, _count: { status: true } });
+  const openStatuses = counts.filter((row: any) => !['ARCHIVED', 'CONVERTED'].includes(String(row.status)));
   const summary = {
+    // IT: Open is the working lead count. Converted/archived leads are history and should not inflate the active pipeline number.
+    openCount: openStatuses.reduce((sum: number, row: any) => sum + row._count.status, 0),
     total: counts.reduce((sum: number, row: any) => sum + row._count.status, 0),
     newCount: counts.find((row: any) => row.status === 'NEW')?._count.status || 0,
     qualified: counts.find((row: any) => row.status === 'QUALIFIED')?._count.status || 0,

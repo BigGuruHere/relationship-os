@@ -100,6 +100,13 @@ export const load: PageServerLoad = async ({ params, locals }) => {
       positionEnc: true,
       linkedinEnc: true,
       usualCommunicationMethod: true,
+      addressEnc: true,
+      source: true,
+      leadSourceId: true,
+      leadSource: { select: { id: true, nameEnc: true } },
+      contactAttemptStatus: true,
+      buyerStatus: true,
+      sellerStatus: true,
       createdAt: true,
       reconnectEveryDays: true,
       lastContactedAt: true,
@@ -177,12 +184,17 @@ export const load: PageServerLoad = async ({ params, locals }) => {
   let company: string | null = null;
   let position: string | null = null;
   let linkedin: string | null = null;
+  let address: string | null = null;
 
   try { email = row.emailEnc ? decrypt(row.emailEnc, 'contact.email') : null; } catch {}
   try { phone = row.phoneEnc ? decrypt(row.phoneEnc, 'contact.phone') : null; } catch {}
   try { company = row.companyEnc ? decrypt(row.companyEnc, 'contact.company') : null; } catch {}
   try { position = row.positionEnc ? decrypt(row.positionEnc, 'contact.position') : null; } catch {}
   try { linkedin = row.linkedinEnc ? decrypt(row.linkedinEnc, 'contact.linkedin') : null; } catch {}
+  try { address = row.addressEnc ? decrypt(row.addressEnc, 'contact.address') : null; } catch {}
+  const contactSourceLabel = row.leadSource
+    ? safeDecryptLead(row.leadSource.nameEnc, 'lead_source.name', marketLeadSourceLabel(row.source))
+    : marketLeadSourceLabel(row.source);
 
   const tags = row.tags.map((ct: any) => ({ name: ct.tag.name, slug: ct.tag.slug }));
 
@@ -479,8 +491,18 @@ export const load: PageServerLoad = async ({ params, locals }) => {
       company: company || '',
       position: position || '',
       linkedin: linkedin || '',
+      address: address || '',
+      source: row.source || 'MANUAL',
+      sourceLabel: contactSourceLabel,
+      leadSourceId: row.leadSourceId || '',
       usualCommunicationMethod: row.usualCommunicationMethod || '',
       usualCommunicationMethodLabel: communicationMethodLabel(row.usualCommunicationMethod),
+      contactAttemptStatus: row.contactAttemptStatus || 'NOT_CONTACTED',
+      contactAttemptStatusLabel: contactAttemptStatusLabel(row.contactAttemptStatus),
+      buyerStatus: row.buyerStatus || 'NOT_ASKED',
+      buyerStatusLabel: buyerQualificationStatusLabel(row.buyerStatus),
+      sellerStatus: row.sellerStatus || 'NOT_ASKED',
+      sellerStatusLabel: sellerQualificationStatusLabel(row.sellerStatus),
       createdAt: row.createdAt,
       reconnectEveryDays: row.reconnectEveryDays ?? null,
       lastContactedAt: row.lastContactedAt ?? null,
@@ -620,7 +642,7 @@ export const actions: Actions = {
     try {
       await prisma.contact.updateMany({
         where: { id: params.id, userId: locals.user.id },
-        data: { lastContactedAt: new Date() }
+        data: { lastContactedAt: new Date(), contactAttemptStatus: 'CONTACT_MADE' }
       });
     } catch (e) {
       console.error('[contacts:markContactedToday] failed', { contactId: params.id, err: e });

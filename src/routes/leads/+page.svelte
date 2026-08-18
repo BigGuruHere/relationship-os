@@ -27,7 +27,7 @@
   {#if form?.error}<div class="card error-card">{form.error}</div>{/if}
 
   <div class="summary-grid">
-    <div class="card stat"><span>Total</span><strong>{data.summary.total}</strong></div>
+    <div class="card stat"><span>Open</span><strong>{data.summary.openCount}</strong></div>
     <div class="card stat"><span>New</span><strong>{data.summary.newCount}</strong></div>
     <div class="card stat"><span>Qualified</span><strong>{data.summary.qualified}</strong></div>
     <div class="card stat"><span>Converted</span><strong>{data.summary.converted}</strong></div>

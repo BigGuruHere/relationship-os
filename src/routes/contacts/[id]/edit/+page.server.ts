@@ -7,7 +7,19 @@ import type { Actions, PageServerLoad } from './$types';
 import { redirect, fail } from '@sveltejs/kit';
 import { prisma } from '$lib/db';
 import { decrypt, encrypt, buildIndexToken } from '$lib/crypto';
-import { COMMUNICATION_METHODS, normaliseCommunicationMethod } from '$lib/marketLeads';
+import {
+  BUYER_QUALIFICATION_STATUSES,
+  COMMUNICATION_METHODS,
+  CONTACT_ATTEMPT_STATUSES,
+  SELLER_QUALIFICATION_STATUSES,
+  normaliseBuyerQualificationStatus,
+  normaliseCommunicationMethod,
+  normaliseContactAttemptStatus,
+  normaliseMarketLeadSource,
+  normaliseSellerQualificationStatus,
+  parseDateTime
+} from '$lib/marketLeads';
+import { buildLeadSourceOptions, loadLeadSources, resolveLeadSourceId } from '$lib/server/marketLeads';
 
 // IT: normalize a LinkedIn url for stable equality tokens.
 function normalizeLinkedin(input: string) {
@@ -36,7 +48,14 @@ export const load: PageServerLoad = async ({ params, locals }) => {
       companyEnc: true,
       positionEnc: true,
       linkedinEnc: true,
-      usualCommunicationMethod: true
+      usualCommunicationMethod: true,
+      addressEnc: true,
+      source: true,
+      leadSourceId: true,
+      contactAttemptStatus: true,
+      lastContactedAt: true,
+      buyerStatus: true,
+      sellerStatus: true
     }
   });
   if (!row) throw redirect(303, '/contacts');
@@ -47,12 +66,16 @@ export const load: PageServerLoad = async ({ params, locals }) => {
   let company = '';
   let position = '';
   let linkedin = '';
+  let address = '';
   try { fullName = decrypt(row.fullNameEnc, 'contact.full_name'); } catch {}
   try { email = row.emailEnc ? decrypt(row.emailEnc, 'contact.email') : ''; } catch {}
   try { phone = row.phoneEnc ? decrypt(row.phoneEnc, 'contact.phone') : ''; } catch {}
   try { company = row.companyEnc ? decrypt(row.companyEnc, 'contact.company') : ''; } catch {}
   try { position = row.positionEnc ? decrypt(row.positionEnc, 'contact.position') : ''; } catch {}
   try { linkedin = row.linkedinEnc ? decrypt(row.linkedinEnc, 'contact.linkedin') : ''; } catch {}
+  try { address = row.addressEnc ? decrypt(row.addressEnc, 'contact.address') : ''; } catch {}
+
+  const customLeadSources = await loadLeadSources(locals.user.id);
 
   return {
     contact: {
@@ -63,9 +86,21 @@ export const load: PageServerLoad = async ({ params, locals }) => {
       company,
       position,
       linkedin,
-      usualCommunicationMethod: row.usualCommunicationMethod || ''
+      address,
+      usualCommunicationMethod: row.usualCommunicationMethod || '',
+      source: row.source || 'MANUAL',
+      leadSourceId: row.leadSourceId || '',
+      sourceChoice: row.leadSourceId ? `custom:${row.leadSourceId}` : `builtin:${row.source || 'MANUAL'}`,
+      contactAttemptStatus: row.contactAttemptStatus || 'NOT_CONTACTED',
+      lastContactedAt: row.lastContactedAt ? new Date(row.lastContactedAt).toISOString().slice(0, 16) : '',
+      buyerStatus: row.buyerStatus || 'NOT_ASKED',
+      sellerStatus: row.sellerStatus || 'NOT_ASKED'
     },
-    communicationMethods: COMMUNICATION_METHODS
+    communicationMethods: COMMUNICATION_METHODS,
+    leadSourceOptions: buildLeadSourceOptions(customLeadSources),
+    contactAttemptStatuses: CONTACT_ATTEMPT_STATUSES,
+    buyerQualificationStatuses: BUYER_QUALIFICATION_STATUSES,
+    sellerQualificationStatuses: SELLER_QUALIFICATION_STATUSES
   
   };
 };
@@ -82,7 +117,25 @@ export const actions: Actions = {
     const position = String(form.get('position') || '').trim();
     const linkedinRaw = String(form.get('linkedin') || '').trim();
     const linkedin = linkedinRaw ? normalizeLinkedin(linkedinRaw) : '';
+    const address = String(form.get('address') || '').trim();
     const usualCommunicationMethod = normaliseCommunicationMethod(form.get('usualCommunicationMethod'));
+    const sourceChoice = String(form.get('sourceChoice') || 'builtin:MANUAL').trim();
+    const newLeadSource = String(form.get('newLeadSource') || '').trim();
+    let source = 'MANUAL';
+    let leadSourceId = '';
+    if (sourceChoice.startsWith('builtin:')) {
+      source = String(normaliseMarketLeadSource(sourceChoice.slice('builtin:'.length)) || 'MANUAL');
+    } else if (sourceChoice.startsWith('custom:')) {
+      source = 'OTHER';
+      leadSourceId = sourceChoice.slice('custom:'.length).trim();
+    } else if (sourceChoice === 'CUSTOM') {
+      source = 'OTHER';
+    }
+    leadSourceId = (await resolveLeadSourceId(locals.user.id, leadSourceId, newLeadSource)) || '';
+    const contactAttemptStatus = normaliseContactAttemptStatus(form.get('contactAttemptStatus'));
+    const lastContactedAt = parseDateTime(form.get('lastContactedAt'));
+    const buyerStatus = normaliseBuyerQualificationStatus(form.get('buyerStatus'));
+    const sellerStatus = normaliseSellerQualificationStatus(form.get('sellerStatus'));
 
     if (!fullName) {
       return fail(400, { error: 'Full name is required.' });
@@ -101,7 +154,15 @@ export const actions: Actions = {
       positionIdx: position ? buildIndexToken(position) : null,
       linkedinEnc: linkedin ? encrypt(linkedin, 'contact.linkedin') : null,
       linkedinIdx: linkedin ? buildIndexToken(linkedin) : null,
-      usualCommunicationMethod: usualCommunicationMethod as any
+      usualCommunicationMethod: usualCommunicationMethod as any,
+      source: source as any,
+      leadSourceId: leadSourceId || null,
+      addressEnc: address ? encrypt(address, 'contact.address') : null,
+      addressIdx: address ? buildIndexToken(address) : null,
+      contactAttemptStatus,
+      lastContactedAt,
+      buyerStatus,
+      sellerStatus
     };
 
     try {

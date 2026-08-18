@@ -5,6 +5,8 @@
   export let data;
   export let form;
 
+  let sourceChoice = data.contact.sourceChoice || 'builtin:MANUAL';
+
   // IT: confirm handler to prevent accidental deletes
   function confirmDelete(e: SubmitEvent) {
     const ok = confirm('Delete this contact permanently? This cannot be undone.');
@@ -49,12 +51,66 @@
       </div>
 
       <div class="field">
-        <label for="usualCommunicationMethod">Usual communication method</label>
-        <select id="usualCommunicationMethod" name="usualCommunicationMethod">
-          {#each data.communicationMethods as opt}
-            <option value={opt.value} selected={(data.contact.usualCommunicationMethod || '') === opt.value}>{opt.label}</option>
-          {/each}
-        </select>
+        <label for="address">Address</label>
+        <input id="address" name="address" value={data.contact.address} />
+      </div>
+
+      <div class="grid two">
+        <div class="field">
+          <label for="sourceChoice">Source / origin</label>
+          <select id="sourceChoice" name="sourceChoice" bind:value={sourceChoice}>
+            {#each data.leadSourceOptions as opt}
+              <option value={opt.value}>{opt.label}</option>
+            {/each}
+          </select>
+        </div>
+        <div class="field">
+          <label for="usualCommunicationMethod">Usual communication method</label>
+          <select id="usualCommunicationMethod" name="usualCommunicationMethod">
+            {#each data.communicationMethods as opt}
+              <option value={opt.value} selected={(data.contact.usualCommunicationMethod || '') === opt.value}>{opt.label}</option>
+            {/each}
+          </select>
+        </div>
+      </div>
+
+      {#if sourceChoice === 'CUSTOM'}
+        <div class="field">
+          <label for="newLeadSource">Custom source</label>
+          <input id="newLeadSource" name="newLeadSource" placeholder="e.g. Sam spreadsheet" />
+        </div>
+      {/if}
+
+      <div class="grid three">
+        <div class="field">
+          <label for="contactAttemptStatus">Contact attempt</label>
+          <select id="contactAttemptStatus" name="contactAttemptStatus">
+            {#each data.contactAttemptStatuses as opt}
+              <option value={opt.value} selected={(data.contact.contactAttemptStatus || 'NOT_CONTACTED') === opt.value}>{opt.label}</option>
+            {/each}
+          </select>
+        </div>
+        <div class="field">
+          <label for="buyerStatus">Buyer status</label>
+          <select id="buyerStatus" name="buyerStatus">
+            {#each data.buyerQualificationStatuses as opt}
+              <option value={opt.value} selected={(data.contact.buyerStatus || 'NOT_ASKED') === opt.value}>{opt.label}</option>
+            {/each}
+          </select>
+        </div>
+        <div class="field">
+          <label for="sellerStatus">Seller status</label>
+          <select id="sellerStatus" name="sellerStatus">
+            {#each data.sellerQualificationStatuses as opt}
+              <option value={opt.value} selected={(data.contact.sellerStatus || 'NOT_ASKED') === opt.value}>{opt.label}</option>
+            {/each}
+          </select>
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="lastContactedAt">Last contacted</label>
+        <input id="lastContactedAt" name="lastContactedAt" type="datetime-local" value={data.contact.lastContactedAt || ''} />
       </div>
 
       <div style="display:flex; gap:8px; margin-top:12px;">
@@ -92,9 +148,12 @@
 <style>
   /* IT: light styling helpers - shared classes assumed to exist in your app.css */
   .field { display:flex; flex-direction:column; gap:6px; margin-bottom:12px; }
+  .grid.two { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; }
+  .grid.three { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; }
   .field label { font-size:0.95rem; color:#444; }
   .field input, .field select { padding:8px 10px; border:1px solid #ddd; border-radius:8px; }
   .btn { padding:8px 12px; border:1px solid #ccc; border-radius:10px; text-decoration:none; }
   .btn.primary { background:#111; color:#fff; border-color:#111; }
   .btn.danger { background:#b00020; color:#fff; border-color:#b00020; }
+  @media (max-width: 760px) { .grid.two, .grid.three { grid-template-columns:1fr; } }
 </style>

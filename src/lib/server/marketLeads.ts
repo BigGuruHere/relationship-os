@@ -324,10 +324,60 @@ export function decryptContactField(payload: string | null | undefined, aad: str
   try { return decrypt(payload, aad); } catch { return ''; }
 }
 
+function contactSourceChoice(row: { source?: string | null; leadSourceId?: string | null }) {
+  return row.leadSourceId ? `custom:${row.leadSourceId}` : `builtin:${row.source || 'MANUAL'}`;
+}
+
+function leadToContactUpdateData(display: any, lead: any, existingContact: any = null) {
+  // IT: Copy only the fields that should live on the ongoing relationship record.
+  // Existing contact values are preserved unless they are blank/default, so a conversion
+  // does not accidentally overwrite cleaner contact truth.
+  const data: any = {};
+  const currentAddress = existingContact ? decryptContactField(existingContact.addressEnc, 'contact.address') : '';
+
+  if (display.address && (!existingContact || !currentAddress)) {
+    data.addressEnc = encrypt(display.address, 'contact.address');
+    data.addressIdx = buildIndexToken(display.address);
+  }
+
+  if (display.usualCommunicationMethod && (!existingContact || !existingContact.usualCommunicationMethod)) {
+    data.usualCommunicationMethod = display.usualCommunicationMethod;
+  }
+
+  if (lead.source && (!existingContact || !existingContact.source || existingContact.source === 'MANUAL')) {
+    data.source = lead.source;
+  }
+  if (lead.leadSourceId && (!existingContact || !existingContact.leadSourceId)) {
+    data.leadSourceId = lead.leadSourceId;
+    data.source = 'OTHER';
+  }
+
+  const leadAttempt = display.contactAttemptStatus || 'NOT_CONTACTED';
+  if (leadAttempt !== 'NOT_CONTACTED' && (!existingContact || !existingContact.contactAttemptStatus || existingContact.contactAttemptStatus === 'NOT_CONTACTED')) {
+    data.contactAttemptStatus = leadAttempt;
+  }
+
+  if (lead.lastContactedAt && (!existingContact || !existingContact.lastContactedAt || new Date(lead.lastContactedAt) > new Date(existingContact.lastContactedAt))) {
+    data.lastContactedAt = lead.lastContactedAt;
+  }
+
+  const leadBuyer = display.buyerStatus || 'NOT_ASKED';
+  if (leadBuyer !== 'NOT_ASKED' && (!existingContact || !existingContact.buyerStatus || existingContact.buyerStatus === 'NOT_ASKED')) {
+    data.buyerStatus = leadBuyer;
+  }
+
+  const leadSeller = display.sellerStatus || 'NOT_ASKED';
+  if (leadSeller !== 'NOT_ASKED' && (!existingContact || !existingContact.sellerStatus || existingContact.sellerStatus === 'NOT_ASKED')) {
+    data.sellerStatus = leadSeller;
+  }
+
+  return data;
+}
+
 export async function createLeadFromContact(userId: string, contactId: string, form: FormData) {
   const contact = await prisma.contact.findFirst({
     where: { id: contactId, userId },
-    select: { id: true, fullNameEnc: true, emailEnc: true, phoneEnc: true, companyEnc: true, positionEnc: true, linkedinEnc: true, usualCommunicationMethod: true }
+    select: { id: true, fullNameEnc: true, emailEnc: true, phoneEnc: true, companyEnc: true, positionEnc: true, linkedinEnc: true, usualCommunicationMethod: true, addressEnc: true, source: true, leadSourceId: true, contactAttemptStatus: true, lastContactedAt: true, buyerStatus: true, sellerStatus: true }
   });
   if (!contact) throw new Error('Contact not found.');
 
@@ -337,6 +387,7 @@ export async function createLeadFromContact(userId: string, contactId: string, f
   const companyName = decryptContactField(contact.companyEnc, 'contact.company');
   const roleTitle = decryptContactField(contact.positionEnc, 'contact.position');
   const linkedin = decryptContactField(contact.linkedinEnc, 'contact.linkedin');
+  const address = decryptContactField(contact.addressEnc, 'contact.address');
 
   const values = leadFormValues(form, {
     title: name,
@@ -347,8 +398,14 @@ export async function createLeadFromContact(userId: string, contactId: string, f
     roleTitle,
     linkedin,
     type: 'CONTACT',
-    source: 'MANUAL',
-    usualCommunicationMethod: contact.usualCommunicationMethod || ''
+    source: contact.source || 'MANUAL',
+    leadSourceId: contact.leadSourceId || '',
+    address,
+    usualCommunicationMethod: contact.usualCommunicationMethod || '',
+    contactAttemptStatus: contact.contactAttemptStatus || 'NOT_CONTACTED',
+    lastContactedAt: contact.lastContactedAt ? new Date(contact.lastContactedAt).toISOString().slice(0, 16) : '',
+    buyerStatus: contact.buyerStatus || 'NOT_ASKED',
+    sellerStatus: contact.sellerStatus || 'NOT_ASKED'
   });
 
   const row = await prisma.marketLead.create({ data: { ...marketLeadCreateData(userId, values), contactId } as any, select: { id: true } });
@@ -363,6 +420,24 @@ export async function convertLeadToContact(userId: string, leadId: string) {
   if (!fullName) throw new Error('Lead needs a person name or title before it can become a contact.');
 
   if (lead.contactId) {
+    const existingContact = await prisma.contact.findFirst({
+      where: { id: lead.contactId, userId },
+      select: {
+        id: true,
+        addressEnc: true,
+        source: true,
+        leadSourceId: true,
+        usualCommunicationMethod: true,
+        contactAttemptStatus: true,
+        lastContactedAt: true,
+        buyerStatus: true,
+        sellerStatus: true
+      }
+    });
+    const updateData = existingContact ? leadToContactUpdateData(display, lead, existingContact) : {};
+    if (Object.keys(updateData).length) {
+      await prisma.contact.updateMany({ where: { id: lead.contactId, userId }, data: updateData }).catch(() => null);
+    }
     await prisma.marketLead.updateMany({ where: { id: leadId, userId }, data: { status: 'CONVERTED' as any, convertedAt: new Date() } });
     await prisma.task.updateMany({ where: { userId, marketLeadId: leadId, contactId: null }, data: { contactId: lead.contactId } }).catch(() => null);
     return lead.contactId;
@@ -383,7 +458,15 @@ export async function convertLeadToContact(userId: string, leadId: string) {
       positionIdx: display.roleTitle ? buildIndexToken(display.roleTitle) : null,
       linkedinEnc: display.linkedin ? encrypt(display.linkedin, 'contact.linkedin') : null,
       linkedinIdx: display.linkedin ? buildIndexToken(display.linkedin) : null,
-      usualCommunicationMethod: display.usualCommunicationMethod || null
+      usualCommunicationMethod: display.usualCommunicationMethod || null,
+      addressEnc: display.address ? encrypt(display.address, 'contact.address') : null,
+      addressIdx: display.address ? buildIndexToken(display.address) : null,
+      source: lead.source || 'MANUAL',
+      leadSourceId: lead.leadSourceId || null,
+      contactAttemptStatus: display.contactAttemptStatus || 'NOT_CONTACTED',
+      lastContactedAt: lead.lastContactedAt || null,
+      buyerStatus: display.buyerStatus || 'NOT_ASKED',
+      sellerStatus: display.sellerStatus || 'NOT_ASKED'
     } as any,
     select: { id: true }
   });

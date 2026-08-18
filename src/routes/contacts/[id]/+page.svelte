@@ -241,7 +241,12 @@
           <div><strong>Company</strong></div><div>{contact.company || ' - '}</div>
           <div><strong>Position</strong></div><div>{contact.position || ' - '}</div>
           <div><strong>LinkedIn</strong></div><div>{contact.linkedin || ' - '}</div>
+          <div><strong>Address</strong></div><div>{contact.address || ' - '}</div>
+          <div><strong>Source</strong></div><div>{contact.sourceLabel || 'Manual'}</div>
           <div><strong>Usual communication</strong></div><div>{contact.usualCommunicationMethodLabel || 'Not set'}</div>
+          <div><strong>Contact attempt</strong></div><div>{contact.contactAttemptStatusLabel || 'Not contacted'}</div>
+          <div><strong>Buyer status</strong></div><div>{contact.buyerStatusLabel || 'Not asked'}</div>
+          <div><strong>Seller status</strong></div><div>{contact.sellerStatusLabel || 'Not asked'}</div>
           <div><strong>Created</strong></div><div>{fmt(contact.createdAt)}</div>
           <div><strong>Cadence</strong></div><div>{contact.reconnectEveryDays ? `Every ${contact.reconnectEveryDays} days` : 'Not set'}</div>
           <div><strong>Last contacted</strong></div><div>{fmt(contact.lastContactedAt) || 'Not set'}</div>

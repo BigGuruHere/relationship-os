@@ -1211,6 +1211,12 @@ model MarketLead {
 
   usualCommunicationMethod CommunicationMethod?
 
+  // IT: Stage 6.6 outreach/qualification fields. Kept as text to avoid enum migration friction.
+  contactAttemptStatus String @default("NOT_CONTACTED")
+  lastContactedAt      DateTime?
+  buyerStatus          String @default("NOT_ASKED")
+  sellerStatus         String @default("NOT_ASKED")
+
   confidence Int @default(50)
   priority   Int @default(3)
   valueMinCents Int?
@@ -1248,6 +1254,10 @@ model MarketLead {
   @@index([userId, priority])
   @@index([userId, confidence])
   @@index([userId, usualCommunicationMethod])
+  @@index([userId, contactAttemptStatus])
+  @@index([userId, buyerStatus])
+  @@index([userId, sellerStatus])
+  @@index([userId, lastContactedAt])
   @@index([userId, contactId])
   @@index([userId, companyId])
   @@index([userId, dealId])

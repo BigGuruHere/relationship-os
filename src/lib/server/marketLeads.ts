@@ -9,13 +9,19 @@ import {
   MARKET_LEAD_SOURCES,
   clampInt,
   communicationMethodLabel,
+  buyerQualificationStatusLabel,
+  contactAttemptStatusLabel,
   marketLeadSourceLabel,
   marketLeadStatusLabel,
   marketLeadTypeLabel,
   normaliseCommunicationMethod,
+  normaliseBuyerQualificationStatus,
+  normaliseContactAttemptStatus,
   normaliseMarketLeadSource,
   normaliseMarketLeadStatus,
   normaliseMarketLeadType,
+  normaliseSellerQualificationStatus,
+  sellerQualificationStatusLabel,
   parseDateTime,
   safeDecryptLead
 } from '$lib/marketLeads';
@@ -41,6 +47,10 @@ export type MarketLeadFormValues = {
   leadSourceId: string;
   newLeadSource: string;
   usualCommunicationMethod: string;
+  contactAttemptStatus: string;
+  lastContactedAt: string;
+  buyerStatus: string;
+  sellerStatus: string;
   confidence: number;
   priority: number;
   valueMin: string;
@@ -106,6 +116,10 @@ export function leadFormValues(form: FormData, defaults: Partial<MarketLeadFormV
     leadSourceId,
     newLeadSource,
     usualCommunicationMethod: String(form.get('usualCommunicationMethod') || defaults.usualCommunicationMethod || '').trim().toUpperCase(),
+    contactAttemptStatus: String(form.get('contactAttemptStatus') || defaults.contactAttemptStatus || 'NOT_CONTACTED').trim().toUpperCase(),
+    lastContactedAt: String(form.get('lastContactedAt') || defaults.lastContactedAt || '').trim(),
+    buyerStatus: String(form.get('buyerStatus') || defaults.buyerStatus || 'NOT_ASKED').trim().toUpperCase(),
+    sellerStatus: String(form.get('sellerStatus') || defaults.sellerStatus || 'NOT_ASKED').trim().toUpperCase(),
     confidence: clampInt(form.get('confidence'), defaults.confidence ?? 50, 0, 100),
     priority: clampInt(form.get('priority'), defaults.priority ?? 3, 1, 5),
     valueMin: String(form.get('valueMin') || defaults.valueMin || '').trim(),
@@ -158,6 +172,10 @@ export function marketLeadCreateData(userId: string, values: MarketLeadFormValue
     notesEnc: optionalEncrypted(values.notes, 'market_lead.notes'),
     sourceUrlEnc: optionalEncrypted(values.sourceUrl, 'market_lead.source_url'),
     usualCommunicationMethod: normaliseCommunicationMethod(values.usualCommunicationMethod) as any,
+    contactAttemptStatus: normaliseContactAttemptStatus(values.contactAttemptStatus),
+    lastContactedAt: parseDateTime(values.lastContactedAt),
+    buyerStatus: normaliseBuyerQualificationStatus(values.buyerStatus),
+    sellerStatus: normaliseSellerQualificationStatus(values.sellerStatus),
     confidence: Math.min(100, Math.max(0, values.confidence)),
     priority: Math.min(5, Math.max(1, values.priority)),
     valueMinCents: parseMoneyToCents(values.valueMin),
@@ -216,6 +234,13 @@ export function mapMarketLead(row: any) {
     leadSourceId: row.leadSourceId,
     usualCommunicationMethod: row.usualCommunicationMethod,
     usualCommunicationMethodLabel: communicationMethodLabel(row.usualCommunicationMethod),
+    contactAttemptStatus: row.contactAttemptStatus || 'NOT_CONTACTED',
+    contactAttemptStatusLabel: contactAttemptStatusLabel(row.contactAttemptStatus),
+    lastContactedAt: row.lastContactedAt,
+    buyerStatus: row.buyerStatus || 'NOT_ASKED',
+    buyerStatusLabel: buyerQualificationStatusLabel(row.buyerStatus),
+    sellerStatus: row.sellerStatus || 'NOT_ASKED',
+    sellerStatusLabel: sellerQualificationStatusLabel(row.sellerStatus),
     confidence: row.confidence,
     priority: row.priority,
     valueMinCents: row.valueMinCents,

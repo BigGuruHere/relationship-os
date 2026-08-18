@@ -21,7 +21,16 @@ import {
   safeDecrypt
 } from '$lib/deals';
 import { companyContactStatusLabel, companyKindLabel, safeDecryptCompany } from '$lib/companies';
-import { communicationMethodLabel } from '$lib/marketLeads';
+import {
+  buyerQualificationStatusLabel,
+  contactAttemptStatusLabel,
+  communicationMethodLabel,
+  marketLeadSourceLabel,
+  marketLeadStatusLabel,
+  marketLeadTypeLabel,
+  safeDecryptLead,
+  sellerQualificationStatusLabel
+} from '$lib/marketLeads';
 import { createLeadFromContact } from '$lib/server/marketLeads';
 import {
   DEAL_CONFIDENTIALITY_STAGES,
@@ -399,6 +408,68 @@ export const load: PageServerLoad = async ({ params, locals }) => {
     statusLabel: projectStatusLabel(project.status)
   }));
 
+  const linkedLeadsRaw = await prisma.marketLead.findMany({
+    where: { userId: locals.user.id, contactId: id, status: { not: 'ARCHIVED' as any } },
+    select: {
+      id: true,
+      titleEnc: true,
+      nameEnc: true,
+      companyNameEnc: true,
+      type: true,
+      status: true,
+      source: true,
+      leadSourceId: true,
+      leadSource: { select: { id: true, nameEnc: true } },
+      contactAttemptStatus: true,
+      lastContactedAt: true,
+      buyerStatus: true,
+      sellerStatus: true,
+      confidence: true,
+      priority: true,
+      nextActionEnc: true,
+      convertedAt: true,
+      createdAt: true,
+      updatedAt: true,
+      project: { select: { id: true, titleEnc: true, status: true } }
+    },
+    orderBy: [{ convertedAt: 'desc' }, { updatedAt: 'desc' }],
+    take: 50
+  });
+
+  const linkedLeads = linkedLeadsRaw.map((lead: any) => {
+    const sourceLabel = lead.leadSource
+      ? safeDecryptLead(lead.leadSource.nameEnc, 'lead_source.name', marketLeadSourceLabel(lead.source))
+      : marketLeadSourceLabel(lead.source);
+
+    return {
+      id: lead.id,
+      title: safeDecryptLead(lead.titleEnc, 'market_lead.title', 'Untitled lead'),
+      name: safeDecryptLead(lead.nameEnc, 'market_lead.name', ''),
+      companyName: safeDecryptLead(lead.companyNameEnc, 'market_lead.company_name', ''),
+      type: lead.type,
+      typeLabel: marketLeadTypeLabel(lead.type),
+      status: lead.status,
+      statusLabel: marketLeadStatusLabel(lead.status),
+      sourceLabel,
+      contactAttemptStatus: lead.contactAttemptStatus || 'NOT_CONTACTED',
+      contactAttemptStatusLabel: contactAttemptStatusLabel(lead.contactAttemptStatus),
+      lastContactedAt: lead.lastContactedAt,
+      buyerStatus: lead.buyerStatus || 'NOT_ASKED',
+      buyerStatusLabel: buyerQualificationStatusLabel(lead.buyerStatus),
+      sellerStatus: lead.sellerStatus || 'NOT_ASKED',
+      sellerStatusLabel: sellerQualificationStatusLabel(lead.sellerStatus),
+      confidence: lead.confidence,
+      priority: lead.priority,
+      nextAction: safeDecryptLead(lead.nextActionEnc, 'market_lead.next_action', ''),
+      convertedAt: lead.convertedAt,
+      createdAt: lead.createdAt,
+      updatedAt: lead.updatedAt,
+      project: lead.project
+        ? { id: lead.project.id, title: safeDecryptTask(lead.project.titleEnc, 'project.title', 'Untitled project'), statusLabel: projectStatusLabel(lead.project.status) }
+        : null
+    };
+  });
+
   return {
     contact: {
       id: row.id,
@@ -431,6 +502,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
     agentArtifacts,
     tasks,
     projectOptions,
+    linkedLeads,
     taskStatusOptions: TASK_STATUSES,
     taskUrgencyOptions: TASK_URGENCIES,
     taskImportanceOptions: TASK_IMPORTANCES,

@@ -231,6 +231,7 @@
             <div>
               <strong>{lead.title}</strong>
               <div class="muted small">{lead.typeLabel} - {lead.statusLabel} - priority {lead.priority} - confidence {lead.confidence}/100</div>
+              <div class="muted small">Contact: {lead.contactAttemptStatusLabel} - Buyer: {lead.buyerStatusLabel} - Seller: {lead.sellerStatusLabel}</div>
               {#if lead.name || lead.companyName}<div class="muted small">{lead.name}{lead.name && lead.companyName ? ' - ' : ''}{lead.companyName}</div>{/if}
               {#if lead.nextAction}<div class="small">Next: {lead.nextAction}</div>{/if}
             </div>

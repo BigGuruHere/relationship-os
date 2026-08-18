@@ -57,6 +57,39 @@ export const MARKET_LEAD_SOURCES = [
 ] as const;
 
 
+
+export const CONTACT_ATTEMPT_STATUSES = [
+  { value: 'NOT_CONTACTED', label: 'Not contacted' },
+  { value: 'TRIED_NO_CONTACT', label: 'Tried - no contact' },
+  { value: 'LEFT_VOICEMAIL', label: 'Left voicemail' },
+  { value: 'SENT_EMAIL', label: 'Sent email' },
+  { value: 'SENT_SMS', label: 'Sent SMS' },
+  { value: 'SENT_LINKEDIN', label: 'Sent LinkedIn message' },
+  { value: 'FOLLOW_UP_NEEDED', label: 'Follow-up needed' },
+  { value: 'CONTACT_MADE', label: 'Contact made' },
+  { value: 'NOT_REACHABLE', label: 'Not reachable' },
+  { value: 'DO_NOT_CONTACT', label: 'Do not contact' }
+] as const;
+
+export const BUYER_QUALIFICATION_STATUSES = [
+  { value: 'NOT_ASKED', label: 'Not asked' },
+  { value: 'NO_TO_BUYING', label: 'No to buying' },
+  { value: 'POSSIBLY_BUYING', label: 'Possibly buying' },
+  { value: 'ACTIVELY_LOOKING', label: 'Actively looking' },
+  { value: 'VERY_KEEN_TO_BUY', label: 'Very keen to buy' },
+  { value: 'ENGAGED_ME_TO_SEARCH', label: 'Engaged me to search' }
+] as const;
+
+export const SELLER_QUALIFICATION_STATUSES = [
+  { value: 'NOT_ASKED', label: 'Not asked' },
+  { value: 'NO_TO_SELLING', label: 'No to selling' },
+  { value: 'OPEN_TO_OFFERS', label: 'Open to offers' },
+  { value: 'POTENTIALLY_SELLING', label: 'Potentially selling' },
+  { value: 'YES_TO_SELL', label: 'Yes to sell' },
+  { value: 'KEEN_TO_SELL', label: 'Keen to sell' },
+  { value: 'ENGAGED_ME_TO_SELL', label: 'Engaged me to sell' }
+] as const;
+
 export const NOTE_CHANNELS = [
   { value: 'note', label: 'Note' },
   { value: 'call', label: 'Call' },
@@ -84,6 +117,9 @@ export const communicationMethodLabel = (v: string | null | undefined) => labelF
 export const marketLeadTypeLabel = (v: string | null | undefined) => labelFrom(MARKET_LEAD_TYPES, v, 'Other');
 export const marketLeadStatusLabel = (v: string | null | undefined) => labelFrom(MARKET_LEAD_STATUSES, v, 'New');
 export const marketLeadSourceLabel = (v: string | null | undefined) => labelFrom(MARKET_LEAD_SOURCES, v, 'Manual');
+export const contactAttemptStatusLabel = (v: string | null | undefined) => labelFrom(CONTACT_ATTEMPT_STATUSES, v, 'Not contacted');
+export const buyerQualificationStatusLabel = (v: string | null | undefined) => labelFrom(BUYER_QUALIFICATION_STATUSES, v, 'Not asked');
+export const sellerQualificationStatusLabel = (v: string | null | undefined) => labelFrom(SELLER_QUALIFICATION_STATUSES, v, 'Not asked');
 export const noteChannelLabel = (v: string | null | undefined) => labelFrom(NOTE_CHANNELS, v, String(v || 'Note'));
 export const normaliseNoteChannel = (v: FormDataEntryValue | null) => {
   const raw = String(v || '').trim().toLowerCase();
@@ -99,6 +135,9 @@ export const normaliseCommunicationMethod = (v: FormDataEntryValue | null) => {
 export const normaliseMarketLeadType = (v: FormDataEntryValue | null) => normaliseFrom(MARKET_LEAD_TYPES, v, 'OTHER');
 export const normaliseMarketLeadStatus = (v: FormDataEntryValue | null) => normaliseFrom(MARKET_LEAD_STATUSES, v, 'NEW');
 export const normaliseMarketLeadSource = (v: FormDataEntryValue | null) => normaliseFrom(MARKET_LEAD_SOURCES, v, 'MANUAL');
+export const normaliseContactAttemptStatus = (v: FormDataEntryValue | null) => normaliseFrom(CONTACT_ATTEMPT_STATUSES, v, 'NOT_CONTACTED');
+export const normaliseBuyerQualificationStatus = (v: FormDataEntryValue | null) => normaliseFrom(BUYER_QUALIFICATION_STATUSES, v, 'NOT_ASKED');
+export const normaliseSellerQualificationStatus = (v: FormDataEntryValue | null) => normaliseFrom(SELLER_QUALIFICATION_STATUSES, v, 'NOT_ASKED');
 
 export function clampInt(value: FormDataEntryValue | null, fallback: number, min: number, max: number) {
   const parsed = Number.parseInt(String(value || ''), 10);

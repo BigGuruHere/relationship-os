@@ -7,9 +7,12 @@ import { fail, redirect } from '@sveltejs/kit';
 import { prisma } from '$lib/db';
 import {
   COMMUNICATION_METHODS,
+  BUYER_QUALIFICATION_STATUSES,
+  CONTACT_ATTEMPT_STATUSES,
   MARKET_LEAD_SOURCES,
   MARKET_LEAD_STATUSES,
-  MARKET_LEAD_TYPES
+  MARKET_LEAD_TYPES,
+  SELLER_QUALIFICATION_STATUSES
 } from '$lib/marketLeads';
 import { buildLeadSourceOptions, leadFormValues, loadLeadSources, mapMarketLead, marketLeadCreateData, normaliseLeadSourceChoice, resolveLeadSourceId } from '$lib/server/marketLeads';
 import { safeDecryptTask } from '$lib/tasks';
@@ -24,12 +27,18 @@ export const load: PageServerLoad = async ({ locals, url }) => {
   const type = String(url.searchParams.get('type') || '').trim().toUpperCase();
   const status = String(url.searchParams.get('status') || '').trim().toUpperCase();
   const selectedSource = String(url.searchParams.get('source') || '').trim();
+  const contactAttemptStatus = String(url.searchParams.get('contactAttemptStatus') || '').trim().toUpperCase();
+  const buyerStatus = String(url.searchParams.get('buyerStatus') || '').trim().toUpperCase();
+  const sellerStatus = String(url.searchParams.get('sellerStatus') || '').trim().toUpperCase();
 
   const customLeadSources = await loadLeadSources(userId);
 
   const where: any = { userId };
   if (type && MARKET_LEAD_TYPES.some((o) => o.value === type)) where.type = type;
   if (status && MARKET_LEAD_STATUSES.some((o) => o.value === status)) where.status = status;
+  if (contactAttemptStatus && CONTACT_ATTEMPT_STATUSES.some((o) => o.value === contactAttemptStatus)) where.contactAttemptStatus = contactAttemptStatus;
+  if (buyerStatus && BUYER_QUALIFICATION_STATUSES.some((o) => o.value === buyerStatus)) where.buyerStatus = buyerStatus;
+  if (sellerStatus && SELLER_QUALIFICATION_STATUSES.some((o) => o.value === sellerStatus)) where.sellerStatus = sellerStatus;
   const sourceFilter = normaliseLeadSourceChoice(selectedSource);
   if (sourceFilter.kind === 'builtin' && MARKET_LEAD_SOURCES.some((o) => o.value === sourceFilter.source)) where.source = sourceFilter.source;
   if (sourceFilter.kind === 'custom' && customLeadSources.some((source) => source.id === sourceFilter.id)) where.leadSourceId = sourceFilter.id;
@@ -59,6 +68,10 @@ export const load: PageServerLoad = async ({ locals, url }) => {
       leadSourceId: true,
       leadSource: { select: { id: true, nameEnc: true } },
       usualCommunicationMethod: true,
+      contactAttemptStatus: true,
+      lastContactedAt: true,
+      buyerStatus: true,
+      sellerStatus: true,
       confidence: true,
       priority: true,
       valueMinCents: true,
@@ -89,7 +102,7 @@ export const load: PageServerLoad = async ({ locals, url }) => {
   const qLower = q.toLowerCase();
   const leads = rows.map(mapMarketLead).filter((lead) => {
     if (!q) return true;
-    return [lead.title, lead.name, lead.companyName, lead.email, lead.phone, lead.website, lead.linkedin, lead.roleTitle, lead.geography, lead.address, lead.description, lead.notes, lead.typeLabel, lead.statusLabel, lead.sourceLabel, lead.sourceCategoryLabel]
+    return [lead.title, lead.name, lead.companyName, lead.email, lead.phone, lead.website, lead.linkedin, lead.roleTitle, lead.geography, lead.address, lead.description, lead.notes, lead.typeLabel, lead.statusLabel, lead.sourceLabel, lead.sourceCategoryLabel, lead.contactAttemptStatusLabel, lead.buyerStatusLabel, lead.sellerStatusLabel]
       .join(' ')
       .toLowerCase()
       .includes(qLower);
@@ -108,11 +121,17 @@ export const load: PageServerLoad = async ({ locals, url }) => {
     selectedType: type,
     selectedStatus: status,
     selectedSource,
+    selectedContactAttemptStatus: contactAttemptStatus,
+    selectedBuyerStatus: buyerStatus,
+    selectedSellerStatus: sellerStatus,
     leads,
     summary,
     leadTypes: MARKET_LEAD_TYPES,
     leadStatuses: MARKET_LEAD_STATUSES,
     leadSourceOptions: buildLeadSourceOptions(customLeadSources),
+    contactAttemptStatuses: CONTACT_ATTEMPT_STATUSES,
+    buyerQualificationStatuses: BUYER_QUALIFICATION_STATUSES,
+    sellerQualificationStatuses: SELLER_QUALIFICATION_STATUSES,
     communicationMethods: COMMUNICATION_METHODS,
     projects
   };

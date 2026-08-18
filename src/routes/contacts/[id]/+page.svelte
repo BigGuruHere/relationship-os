@@ -28,6 +28,7 @@
   const deals = data?.deals ?? [];
   const dealOptions = data?.dealOptions ?? [];
   const dealRelationshipOptions = data?.dealRelationshipOptions ?? [];
+  const linkedLeads = data?.linkedLeads ?? [];
 
   let showCadenceEditor = false;
   let showReminderPanel = false;
@@ -260,6 +261,47 @@
                     {#if company.industry || company.location}<div class="muted small">{company.industry}{company.industry && company.location ? ' - ' : ''}{company.location}</div>{/if}
                     {#if company.notes}<p class="preline muted small">{company.notes}</p>{/if}
                   </div>
+                </div>
+              {/each}
+            </div>
+          {/if}
+        </div>
+
+        <div class="section-block">
+          <div class="section-head compact-head">
+            <h2>Linked leads</h2>
+            <a class="btn" href={`/leads/new?contactId=${contact.id}`}>New lead</a>
+          </div>
+          {#if linkedLeads.length === 0}
+            <p class="muted">No leads are linked to this contact yet.</p>
+          {:else}
+            <div class="lead-list-small">
+              {#each linkedLeads as lead}
+                <div class="lead-card-small">
+                  <div>
+                    <div class="deal-title-line">
+                      <a href={`/leads/${lead.id}`}>{lead.title}</a>
+                      <span class="status-chip">{lead.typeLabel}</span>
+                      <span class="status-chip">{lead.statusLabel}</span>
+                    </div>
+                    <div class="muted small">
+                      Source: {lead.sourceLabel || 'Not set'}
+                      {#if lead.project}
+                        - Project: <a href={`/projects/${lead.project.id}`}>{lead.project.title}</a>
+                      {/if}
+                    </div>
+                    <div class="muted small">
+                      Contact: {lead.contactAttemptStatusLabel} - Buyer: {lead.buyerStatusLabel} - Seller: {lead.sellerStatusLabel}
+                    </div>
+                    <div class="muted small">
+                      Priority {lead.priority}/5 - Confidence {lead.confidence}/100
+                      {lead.convertedAt ? ` - converted ${fmtDate(lead.convertedAt)}` : ''}
+                      {lead.lastContactedAt ? ` - last contact ${fmtDate(lead.lastContactedAt)}` : ''}
+                    </div>
+                    {#if lead.companyName}<div class="muted small">Company from lead: {lead.companyName}</div>{/if}
+                    {#if lead.nextAction}<p class="preline muted small"><strong>Next:</strong> {lead.nextAction}</p>{/if}
+                  </div>
+                  <a class="btn" href={`/leads/${lead.id}`}>Open lead</a>
                 </div>
               {/each}
             </div>
@@ -558,6 +600,9 @@
   .mini-list { margin-top: 10px; display: grid; gap: 6px; }
   .deal-list { display: grid; gap: 8px; }
   .deal-card-inline { border-top: 1px solid var(--border); padding: 12px 0; }
+  .lead-list-small { margin-top: 10px; display: grid; gap: 8px; }
+  .lead-card-small { border-top: 1px solid var(--border); padding: 10px 0; display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }
+  .compact-head { margin-bottom: 8px; }
   .deal-title-line { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; font-weight: 700; }
   .deal-icon { color: var(--accent-2); line-height: 1; }
   .summary-box { border: 1px solid var(--border); background: var(--panel); border-radius: 10px; padding: 8px; margin: 8px 0; }
@@ -572,7 +617,7 @@
   .preline { white-space: pre-wrap; }
   textarea { resize: vertical; }
   @media (max-width: 860px) {
-    .title-row, .section-head, .deal-card-inline, .list-row, .cadence-strip { flex-direction: column; align-items: stretch; }
+    .title-row, .section-head, .deal-card-inline, .lead-card-small, .list-row, .cadence-strip { flex-direction: column; align-items: stretch; }
     .content-grid, .grid.two { grid-template-columns: 1fr; }
     .quick-row, .reminder-form { flex-direction: column; align-items: stretch; }
   }

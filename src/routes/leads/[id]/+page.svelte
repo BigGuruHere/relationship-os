@@ -44,6 +44,7 @@
       <div class="eyebrow">Lead</div>
       <h1>{lead.title}</h1>
       <p class="muted">{lead.typeLabel} - {lead.statusLabel} - {lead.sourceLabel}</p>
+      <p class="muted small">Contact: {lead.contactAttemptStatusLabel} - Buyer: {lead.buyerStatusLabel} - Seller: {lead.sellerStatusLabel}</p>
     </div>
     <div class="actions">
       <a class="btn" href="/leads">All leads</a>
@@ -69,6 +70,10 @@
         <strong>Geography</strong><span>{lead.geography || ' - '}</span>
         <strong>Address</strong><span>{lead.address || ' - '}</span>
         <strong>Usual communication</strong><span>{lead.usualCommunicationMethodLabel}</span>
+        <strong>Contact attempt</strong><span>{lead.contactAttemptStatusLabel}</span>
+        <strong>Last contacted</strong><span>{fmt(lead.lastContactedAt)}</span>
+        <strong>Buyer status</strong><span>{lead.buyerStatusLabel}</span>
+        <strong>Seller status</strong><span>{lead.sellerStatusLabel}</span>
         <strong>Priority</strong><span>{lead.priority}/5</span>
         <strong>Confidence</strong><span>{lead.confidence}/100</span>
         <strong>Project</strong><span>{#if lead.projectId}<a href={`/projects/${lead.projectId}`}>{lead.linkedProjectTitle || 'Open project'}</a>{:else}Standalone lead{/if}</span>
@@ -118,6 +123,12 @@
         {#if editSourceChoice === 'CUSTOM'}
           <div class="field"><label for="newLeadSourceEdit">Custom source</label><input id="newLeadSourceEdit" name="newLeadSource" placeholder="e.g. Sam spreadsheet, MFAA list" /></div>
         {/if}
+        <div class="grid three">
+          <div class="field"><label for="contactAttemptEdit">Contact attempt</label><select id="contactAttemptEdit" name="contactAttemptStatus">{#each data.contactAttemptStatuses as opt}<option value={opt.value} selected={lead.contactAttemptStatus === opt.value}>{opt.label}</option>{/each}</select></div>
+          <div class="field"><label for="buyerStatusEdit">Buyer status</label><select id="buyerStatusEdit" name="buyerStatus">{#each data.buyerQualificationStatuses as opt}<option value={opt.value} selected={lead.buyerStatus === opt.value}>{opt.label}</option>{/each}</select></div>
+          <div class="field"><label for="sellerStatusEdit">Seller status</label><select id="sellerStatusEdit" name="sellerStatus">{#each data.sellerQualificationStatuses as opt}<option value={opt.value} selected={lead.sellerStatus === opt.value}>{opt.label}</option>{/each}</select></div>
+        </div>
+        <div class="field"><label for="lastContactedAtEdit">Last contacted</label><input id="lastContactedAtEdit" name="lastContactedAt" type="datetime-local" value={lead.lastContactedAtInput} /></div>
         <div class="field"><label for="projectIdEdit">Project</label><select id="projectIdEdit" name="projectId"><option value="">Standalone lead</option>{#each data.projects as project}<option value={project.id} selected={(lead.projectId || '') === project.id}>{project.title}</option>{/each}</select></div>
         <div class="grid two"><div class="field"><label for="name">Person name</label><input id="name" name="name" value={lead.name} /></div><div class="field"><label for="companyName">Company name</label><input id="companyName" name="companyName" value={lead.companyName} /></div></div>
         <div class="grid two"><div class="field"><label for="email">Email</label><input id="email" name="email" type="email" value={lead.email} /></div><div class="field"><label for="phone">Phone</label><input id="phone" name="phone" value={lead.phone} /></div></div>

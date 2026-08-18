@@ -8,6 +8,7 @@
     statusOptions: Array<{ value: string; label: string }>;
     relationshipOptions: Array<{ value: string; label: string }>;
     contactOptions: Array<{ id: string; name: string }>;
+    selectedProject?: { id: string; title: string; statusLabel: string } | null;
   };
   export let form;
 
@@ -22,6 +23,7 @@
     probability?: string | number;
     expectedCloseDate?: string;
     firstContactId?: string;
+    projectId?: string;
     relationshipType?: string;
     label?: string;
   };
@@ -48,6 +50,16 @@
         <label for="title">Deal title</label>
         <input id="title" name="title" required placeholder="e.g. ACME advisory engagement" value={values.title || ''} />
       </div>
+
+      {#if data.selectedProject}
+        <div class="linked-project-box">
+          <strong>Project:</strong> <a href={`/projects/${data.selectedProject.id}`}>{data.selectedProject.title}</a>
+          <span class="muted">{data.selectedProject.statusLabel}</span>
+          <input type="hidden" name="projectId" value={data.selectedProject.id} />
+        </div>
+      {:else if values.projectId}
+        <input type="hidden" name="projectId" value={values.projectId} />
+      {/if}
 
       <div class="field">
         <label for="initialNoteChannel">Initial note type</label>
@@ -136,7 +148,7 @@
 
       <div class="actions">
         <button class="btn primary" type="submit">Save deal</button>
-        <a class="btn" href="/deals">Cancel</a>
+        <a class="btn" href={data.selectedProject ? `/projects/${data.selectedProject.id}` : '/deals'}>Cancel</a>
       </div>
     </form>
 
@@ -160,6 +172,7 @@
   textarea { resize: vertical; }
   hr { border: 0; border-top: 1px solid var(--border); margin: 18px 0; }
   .actions { display: flex; gap: 8px; margin-top: 14px; }
+  .linked-project-box { border: 1px solid var(--border); background: var(--panel); border-radius: 12px; padding: 10px; margin: 12px 0; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
   .error { color: var(--danger); margin-top: 12px; }
   @media (max-width: 720px) {
     .grid.two, .grid.three { grid-template-columns: 1fr; }

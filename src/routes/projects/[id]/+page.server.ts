@@ -237,6 +237,33 @@ export const load: PageServerLoad = async ({ params, locals }) => {
   });
   const projectLeads = projectLeadsRaw.map(mapMarketLead);
 
+  const linkedProjectDealsRaw = await prisma.projectDeal.findMany({
+    where: { userId, projectId: project.id },
+    select: {
+      id: true,
+      labelEnc: true,
+      notesEnc: true,
+      createdAt: true,
+      deal: { select: { id: true, titleEnc: true, status: true, valueCents: true, currency: true, probability: true, updatedAt: true } }
+    },
+    orderBy: { createdAt: 'desc' },
+    take: 200
+  });
+  const linkedDeals = linkedProjectDealsRaw.map((link: any) => ({
+    id: link.id,
+    dealId: link.deal.id,
+    title: safeDecrypt(link.deal.titleEnc, 'deal.title', 'Untitled deal'),
+    status: link.deal.status,
+    valueCents: link.deal.valueCents,
+    currency: link.deal.currency,
+    probability: link.deal.probability,
+    label: safeDecryptTask(link.labelEnc, 'project_deal.label', ''),
+    notes: safeDecryptTask(link.notesEnc, 'project_deal.notes', ''),
+    createdAt: link.createdAt,
+    updatedAt: link.deal.updatedAt
+  }));
+  const linkedDealIds = new Set(linkedDeals.map((deal: any) => deal.dealId));
+
   const exchangeItems = await loadExchangeItems({ userId, links: { projectId: project.id } });
   const agentArtifacts = await loadAgentArtifacts({ userId, entityType: 'project', entityId: project.id });
   const projectNotesRaw = await prisma.projectNote.findMany({
@@ -260,7 +287,8 @@ export const load: PageServerLoad = async ({ params, locals }) => {
     overdue: tasks.filter((task) => ACTIVE_TASK_STATUSES.includes(task.status) && task.dueAt && new Date(task.dueAt).getTime() < now.getTime()).length,
     completed: tasks.filter((task) => task.status === 'DONE').length,
     leads: projectLeads.length,
-    readyLeads: projectLeads.filter((lead: any) => lead.status === 'QUALIFIED').length
+    readyLeads: projectLeads.filter((lead: any) => lead.status === 'QUALIFIED').length,
+    deals: linkedDeals.length
   };
 
   const dealMap = new Map<string, any>();
@@ -274,6 +302,8 @@ export const load: PageServerLoad = async ({ params, locals }) => {
     if (task.dealCompany) companyMap.set(task.dealCompany.companyId, { id: task.dealCompany.companyId, name: task.dealCompany.companyName });
   }
 
+  const options = await loadOptions(userId);
+
   return {
     project: {
       id: project.id,
@@ -286,17 +316,19 @@ export const load: PageServerLoad = async ({ params, locals }) => {
     },
     summary,
     tasks,
-    relatedDeals: [...dealMap.values()],
+    relatedDeals: [...dealMap.values()].filter((deal: any) => !linkedDealIds.has(deal.id)),
     relatedPeople: [...peopleMap.values()],
     relatedCompanies: [...companyMap.values()],
     exchangeItems,
     agentArtifacts,
     projectNotes,
     projectLeads,
+    linkedDeals,
+    dealOptionsForLinking: options.deals.filter((deal: any) => !linkedDealIds.has(deal.id)),
     marketLeadTypes: MARKET_LEAD_TYPES,
     marketLeadStatuses: MARKET_LEAD_STATUSES,
     marketLeadSources: MARKET_LEAD_SOURCES,
-    options: await loadOptions(userId),
+    options,
     projectStatuses: PROJECT_STATUSES,
     taskStatuses: TASK_STATUSES,
     taskUrgencies: TASK_URGENCIES,
@@ -317,6 +349,47 @@ export const actions: Actions = {
     if (!values.title && !values.name && !values.companyName) return fail(400, { error: 'Add at least a lead title, person name, or company name.' });
     const created = await prisma.marketLead.create({ data: marketLeadCreateData(userId, values) as any, select: { id: true } });
     throw redirect(303, `/leads/${created.id}`);
+  },
+
+  linkDeal: async ({ request, params, locals }) => {
+    if (!locals.user) throw redirect(303, '/auth/login');
+    const userId = locals.user.id;
+    const form = await request.formData();
+    const dealId = String(form.get('dealId') || '').trim();
+    const label = String(form.get('label') || '').trim();
+    const notes = String(form.get('notes') || '').trim();
+    if (!dealId) return fail(400, { error: 'Choose a deal to link.' });
+
+    const [project, deal] = await Promise.all([
+      prisma.project.findFirst({ where: { id: params.id, userId }, select: { id: true } }),
+      prisma.deal.findFirst({ where: { id: dealId, userId }, select: { id: true } })
+    ]);
+    if (!project || !deal) return fail(404, { error: 'Project or deal not found.' });
+
+    await prisma.projectDeal.upsert({
+      where: { projectId_dealId: { projectId: params.id, dealId } },
+      update: {
+        labelEnc: label ? encrypt(label, 'project_deal.label') : undefined,
+        notesEnc: notes ? encrypt(notes, 'project_deal.notes') : undefined
+      },
+      create: {
+        userId,
+        projectId: params.id,
+        dealId,
+        labelEnc: label ? encrypt(label, 'project_deal.label') : null,
+        notesEnc: notes ? encrypt(notes, 'project_deal.notes') : null
+      }
+    });
+    throw redirect(303, `/projects/${params.id}`);
+  },
+
+  removeProjectDeal: async ({ request, params, locals }) => {
+    if (!locals.user) throw redirect(303, '/auth/login');
+    const form = await request.formData();
+    const linkId = String(form.get('linkId') || '').trim();
+    if (!linkId) return fail(400, { error: 'Missing project-deal link id.' });
+    await prisma.projectDeal.deleteMany({ where: { id: linkId, userId: locals.user.id, projectId: params.id } });
+    throw redirect(303, `/projects/${params.id}`);
   },
 
   createProjectNote: async ({ request, params, locals }) => {
@@ -460,6 +533,13 @@ export const actions: Actions = {
         dealCompanyId
       }
     });
+    if (dealId) {
+      await prisma.projectDeal.upsert({
+        where: { projectId_dealId: { projectId: params.id, dealId } },
+        update: {},
+        create: { userId, projectId: params.id, dealId }
+      }).catch(() => null);
+    }
     throw redirect(303, `/projects/${params.id}`);
   },
 

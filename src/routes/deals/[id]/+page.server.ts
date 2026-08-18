@@ -347,6 +347,31 @@ export const load: PageServerLoad = async ({ params, locals }) => {
     statusLabel: projectStatusLabel(project.status)
   }));
 
+  const linkedProjectDealsRaw = await prisma.projectDeal.findMany({
+    where: { userId: locals.user.id, dealId: row.id },
+    select: {
+      id: true,
+      labelEnc: true,
+      notesEnc: true,
+      createdAt: true,
+      project: { select: { id: true, titleEnc: true, status: true, updatedAt: true } }
+    },
+    orderBy: { createdAt: 'desc' },
+    take: 100
+  });
+  const linkedProjects = linkedProjectDealsRaw.map((link: any) => ({
+    id: link.id,
+    projectId: link.project.id,
+    title: safeDecryptTask(link.project.titleEnc, 'project.title', 'Untitled project'),
+    status: link.project.status,
+    statusLabel: projectStatusLabel(link.project.status),
+    label: safeDecryptTask(link.labelEnc, 'project_deal.label', ''),
+    notes: safeDecryptTask(link.notesEnc, 'project_deal.notes', ''),
+    createdAt: link.createdAt,
+    updatedAt: link.project.updatedAt
+  }));
+  const linkedProjectIds = new Set(linkedProjects.map((project: any) => project.projectId));
+
   const exchangeItems = await loadExchangeItems({ userId: locals.user.id, links: { dealId: row.id } });
   const agentArtifacts = await loadAgentArtifacts({ userId: locals.user.id, entityType: 'deal', entityId: row.id });
 
@@ -380,7 +405,9 @@ export const load: PageServerLoad = async ({ params, locals }) => {
     tasks,
     exchangeItems,
     agentArtifacts,
+    linkedProjects,
     projectOptions,
+    projectOptionsForLinking: projectOptions.filter((project: any) => !linkedProjectIds.has(project.id)),
     contactOptions: await contactOptionsForRows(availableContactsRaw),
     companyOptions: availableCompaniesRaw.map((company: any) => ({
       id: company.id,
@@ -447,6 +474,47 @@ export const actions: Actions = {
       return fail(500, { error: 'Could not update deal state.' });
     }
 
+    throw redirect(303, `/deals/${params.id}`);
+  },
+
+  linkProject: async ({ request, params, locals }) => {
+    if (!locals.user) throw redirect(303, '/auth/login');
+    const userId = locals.user.id;
+    const form = await request.formData();
+    const projectId = String(form.get('projectId') || '').trim();
+    const label = String(form.get('label') || '').trim();
+    const notes = String(form.get('notes') || '').trim();
+    if (!projectId) return fail(400, { error: 'Choose a project to link.' });
+
+    const [deal, project] = await Promise.all([
+      ensureOwnedDeal(userId, params.id),
+      prisma.project.findFirst({ where: { id: projectId, userId }, select: { id: true } })
+    ]);
+    if (!deal || !project) return fail(404, { error: 'Deal or project not found.' });
+
+    await prisma.projectDeal.upsert({
+      where: { projectId_dealId: { projectId, dealId: params.id } },
+      update: {
+        labelEnc: label ? encrypt(label, 'project_deal.label') : undefined,
+        notesEnc: notes ? encrypt(notes, 'project_deal.notes') : undefined
+      },
+      create: {
+        userId,
+        projectId,
+        dealId: params.id,
+        labelEnc: label ? encrypt(label, 'project_deal.label') : null,
+        notesEnc: notes ? encrypt(notes, 'project_deal.notes') : null
+      }
+    });
+    throw redirect(303, `/deals/${params.id}`);
+  },
+
+  removeProjectLink: async ({ request, params, locals }) => {
+    if (!locals.user) throw redirect(303, '/auth/login');
+    const form = await request.formData();
+    const linkId = String(form.get('linkId') || '').trim();
+    if (!linkId) return fail(400, { error: 'Missing project link id.' });
+    await prisma.projectDeal.deleteMany({ where: { id: linkId, userId: locals.user.id, dealId: params.id } });
     throw redirect(303, `/deals/${params.id}`);
   },
 
@@ -675,6 +743,13 @@ export const actions: Actions = {
           dueAt: parseDateTime(form.get('dueAt'))
         }
       });
+      if (projectId) {
+        await prisma.projectDeal.upsert({
+          where: { projectId_dealId: { projectId, dealId: params.id } },
+          update: {},
+          create: { userId, projectId, dealId: params.id }
+        }).catch(() => null);
+      }
     } catch (err) {
       console.error('[deals:createTask] failed', err);
       return fail(500, { error: 'Could not create task.' });

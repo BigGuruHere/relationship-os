@@ -13,6 +13,7 @@
   let showAddPerson = false;
   let showAddCompany = false;
   let showAddTask = false;
+  let showLinkProject = false;
   let newTaskNotes = '';
   let newTaskSummary = '';
 
@@ -53,6 +54,7 @@
     </div>
     <div class="actions">
       <button class="btn" type="button" on:click={() => (showStateEditor = !showStateEditor)}>{showStateEditor ? 'Close state' : 'Update state'}</button>
+      <button class="btn" type="button" on:click={() => (showLinkProject = !showLinkProject)}>{showLinkProject ? 'Cancel project link' : 'Link project'}</button>
       <button class="btn" type="button" on:click={() => (showAddTask = !showAddTask)}>{showAddTask ? 'Cancel task' : 'Add task'}</button>
       <a class="btn" href={`/deals/${data.deal.id}/notes/new`}>Add voice/note</a>
       <form method="post" action="?/scoreDeal"><button class="btn" type="submit">Score opportunity</button></form>
@@ -67,6 +69,51 @@
   <ExchangeItemsPanel items={data.exchangeItems ?? []} entityLabel={data.deal.title} />
 
   <AgentBriefingsPanel entityType="deal" entityId={data.deal.id} entityLabel={data.deal.title} artifacts={data.agentArtifacts ?? []} />
+
+  <section class="card panel">
+    <div class="section-head">
+      <h2>Linked projects</h2>
+      <button class="btn" type="button" on:click={() => (showLinkProject = !showLinkProject)}>{showLinkProject ? 'Cancel' : '＋ Link project'}</button>
+    </div>
+    <p class="muted small">These project links mean this deal belongs directly to a project. Deal tasks may still link to specific projects separately.</p>
+
+    {#if showLinkProject}
+      <form method="post" action="?/linkProject" class="add-person">
+        <div class="grid two">
+          <div class="field">
+            <label for="linkProjectId">Project</label>
+            <select id="linkProjectId" name="projectId" required>
+              <option value="">Choose project</option>
+              {#each data.projectOptionsForLinking as project}<option value={project.id}>{project.title} - {project.statusLabel}</option>{/each}
+            </select>
+          </div>
+          <div class="field"><label for="projectLinkLabel">Label</label><input id="projectLinkLabel" name="label" placeholder="e.g. main campaign, buyer mandate" /></div>
+        </div>
+        <div class="field"><label for="projectLinkNotes">Notes</label><textarea id="projectLinkNotes" name="notes" rows="2" placeholder="Why this deal belongs in the project"></textarea></div>
+        <button class="btn primary" type="submit">Link project</button>
+      </form>
+    {/if}
+
+    {#if data.linkedProjects?.length}
+      <div class="people-list">
+        {#each data.linkedProjects as link}
+          <div class="person-card">
+            <div>
+              <div class="person-title"><a href={`/projects/${link.projectId}`}>{link.title}</a><span class="status-chip">{link.statusLabel}</span></div>
+              {#if link.label}<div class="small">{link.label}</div>{/if}
+              {#if link.notes}<p class="preline small">{link.notes}</p>{/if}
+            </div>
+            <form method="post" action="?/removeProjectLink" on:submit={(event) => { if (!confirm('Remove this project link? The deal and project will not be deleted.')) event.preventDefault(); }}>
+              <input type="hidden" name="linkId" value={link.id} />
+              <button class="btn" type="submit">Remove link</button>
+            </form>
+          </div>
+        {/each}
+      </div>
+    {:else}
+      <p class="muted">This deal is not directly linked to any projects yet.</p>
+    {/if}
+  </section>
 
   {#if showStateEditor}
     <div class="card panel">

@@ -70,6 +70,7 @@
     <div class="card stat"><span>Waiting</span><strong>{data.summary.waiting}</strong></div>
     <div class="card stat"><span>Completed</span><strong>{data.summary.completed}</strong></div>
     <div class="card stat"><span>Leads</span><strong>{data.summary.leads}</strong></div>
+    <div class="card stat"><span>Deals</span><strong>{data.summary.deals}</strong></div>
     <div class="card stat"><span>Qualified leads</span><strong>{data.summary.readyLeads}</strong></div>
   </div>
 
@@ -235,11 +236,53 @@
     {/if}
   </section>
 
+  <section class="card panel">
+    <div class="section-head">
+      <h2>Linked deals</h2>
+      <a class="btn" href={`/deals/new?projectId=${data.project.id}`}>＋ New deal</a>
+    </div>
+    <p class="muted small">These deals belong directly to this project. Tasks can still be attached separately as next actions.</p>
+
+    <form method="post" action="?/linkDeal" class="nested-form grid two">
+      <div class="field">
+        <label for="projectDealId">Add existing deal</label>
+        <select id="projectDealId" name="dealId" required>
+          <option value="">Choose deal</option>
+          {#each data.dealOptionsForLinking as deal}<option value={deal.id}>{deal.title}</option>{/each}
+        </select>
+      </div>
+      <div class="field"><label for="projectDealLabel">Label</label><input id="projectDealLabel" name="label" placeholder="e.g. core deal, seller-side, buyer mandate" /></div>
+      <div class="field span2"><label for="projectDealNotes">Notes</label><textarea id="projectDealNotes" name="notes" rows="2" placeholder="Why this deal belongs in the project"></textarea></div>
+      <div class="span2"><button class="btn primary" type="submit">Link deal</button></div>
+    </form>
+
+    {#if data.linkedDeals?.length}
+      <div class="lead-list">
+        {#each data.linkedDeals as link}
+          <div class="lead-row">
+            <div>
+              <strong><a href={`/deals/${link.dealId}`}>{link.title}</a></strong>
+              <div class="muted small">{link.status}{link.probability === null || link.probability === undefined ? '' : ` - ${link.probability}% chance`}</div>
+              {#if link.label}<div class="small">{link.label}</div>{/if}
+              {#if link.notes}<p class="preline small">{link.notes}</p>{/if}
+            </div>
+            <form method="post" action="?/removeProjectDeal" on:submit={(event) => { if (!confirm('Remove this deal from the project? The deal itself will not be deleted.')) event.preventDefault(); }}>
+              <input type="hidden" name="linkId" value={link.id} />
+              <button class="btn" type="submit">Remove link</button>
+            </form>
+          </div>
+        {/each}
+      </div>
+    {:else}
+      <p class="muted">No deals are directly linked yet. Link an existing deal or create a new one from this project.</p>
+    {/if}
+  </section>
+
   <div class="grid main-grid">
     <section class="card panel">
-      <h2>Related deals</h2>
+      <h2>Task-linked deals</h2>
       {#if data.relatedDeals.length === 0}
-        <p class="muted">No deals are linked through project tasks yet.</p>
+        <p class="muted">No extra deals are appearing through project tasks yet.</p>
       {:else}
         <div class="chip-list">{#each data.relatedDeals as deal}<a class="chip" href={`/deals/${deal.id}`}>{deal.title}</a>{/each}</div>
       {/if}
@@ -316,7 +359,7 @@
   .small { font-size: 0.9rem; }
   details summary { cursor: pointer; margin-bottom: 10px; }
   .nested-form { border: 1px solid var(--border); border-radius: 12px; padding: 12px; margin: 10px 0; background: var(--panel); }
-  .summary-grid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 10px; margin-bottom: 12px; }
+  .summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; margin-bottom: 12px; }
   .stat { padding: 12px; display: grid; gap: 4px; }
   .stat strong { font-size: 1.5rem; }
   .panel, .error-card { padding: 14px; margin-bottom: 12px; }

@@ -64,6 +64,7 @@ model User {
 
   // IT: deal records owned by this user
   deals Deal[]
+  projectDeals ProjectDeal[]
   dealContacts DealContact[]
   dealNotes DealNote[]
   dealContactNotes DealContactNote[]
@@ -634,6 +635,7 @@ model Deal {
   notes    DealNote[]
   dealContactNotes DealContactNote[]
   tasks    Task[]
+  projects ProjectDeal[]
   exchangeItems ExchangeItem[]
   opportunityScores OpportunityScore[]
   opportunityScoreFactors OpportunityScoreFactor[]
@@ -1314,11 +1316,37 @@ model Project {
 
   tasks Task[]
   notes ProjectNote[]
+  deals ProjectDeal[]
   exchangeItems ExchangeItem[]
   marketLeads   MarketLead[]
 
   @@index([userId, status])
   @@index([titleIdx])
+}
+
+// IT: Direct many-to-many link between projects and deals.
+// IT: A task can still relate to both, but this table says the deal belongs to the project.
+model ProjectDeal {
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  projectId String
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  dealId String
+  deal   Deal @relation(fields: [dealId], references: [id], onDelete: Cascade)
+
+  labelEnc String?
+  notesEnc String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([projectId, dealId])
+  @@index([userId, projectId])
+  @@index([userId, dealId])
+  @@index([userId, createdAt])
 }
 
 // IT: time-stamped notes attached directly to a project. These are separate from the project description.

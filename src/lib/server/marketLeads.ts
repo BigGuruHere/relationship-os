@@ -319,6 +319,13 @@ export async function convertLeadToDeal(userId: string, leadId: string) {
 
   if (lead.dealId) {
     await prisma.marketLead.updateMany({ where: { id: leadId, userId }, data: { status: 'CONVERTED' as any, convertedAt: new Date() } });
+    if (lead.projectId) {
+      await prisma.projectDeal.upsert({
+        where: { projectId_dealId: { projectId: lead.projectId, dealId: lead.dealId } },
+        update: {},
+        create: { userId, projectId: lead.projectId, dealId: lead.dealId }
+      }).catch(() => null);
+    }
     await prisma.task.updateMany({ where: { userId, marketLeadId: leadId, dealId: null }, data: { dealId: lead.dealId } }).catch(() => null);
     return lead.dealId;
   }
@@ -342,6 +349,13 @@ export async function convertLeadToDeal(userId: string, leadId: string) {
   }
   if (lead.companyId) {
     await prisma.dealCompany.create({ data: { userId, dealId: deal.id, companyId: lead.companyId, label: display.type === 'BUYER' ? 'buyer lead' : display.type === 'SELLER' ? 'seller lead' : 'lead', relationshipType: display.type === 'BUYER' ? 'POTENTIAL_BUYER' as any : display.type === 'SELLER' ? 'SELLER' as any : null } }).catch(() => null);
+  }
+  if (lead.projectId) {
+    await prisma.projectDeal.upsert({
+      where: { projectId_dealId: { projectId: lead.projectId, dealId: deal.id } },
+      update: {},
+      create: { userId, projectId: lead.projectId, dealId: deal.id }
+    }).catch(() => null);
   }
 
   await prisma.marketLead.updateMany({ where: { id: leadId, userId }, data: { dealId: deal.id, status: 'CONVERTED' as any, convertedAt: new Date() } });

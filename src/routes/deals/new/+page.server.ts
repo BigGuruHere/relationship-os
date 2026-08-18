@@ -17,6 +17,7 @@ import {
   parseOptionalDate,
   parseProbability
 } from '$lib/deals';
+import { projectStatusLabel, safeDecryptTask } from '$lib/tasks';
 
 async function loadContactOptions(userId: string) {
   const contacts = await prisma.contact.findMany({
@@ -28,13 +29,22 @@ async function loadContactOptions(userId: string) {
   return contactOptionsForRows(contacts);
 }
 
-export const load: PageServerLoad = async ({ locals }) => {
+export const load: PageServerLoad = async ({ locals, url }) => {
   if (!locals.user) throw redirect(303, '/auth/login');
+  const projectId = String(url.searchParams.get('projectId') || '').trim();
+  const selectedProject = projectId
+    ? await prisma.project.findFirst({ where: { id: projectId, userId: locals.user.id }, select: { id: true, titleEnc: true, status: true } })
+    : null;
 
   return {
     statusOptions: DEAL_STATUSES,
     relationshipOptions: DEAL_RELATIONSHIP_TYPES,
-    contactOptions: await loadContactOptions(locals.user.id)
+    contactOptions: await loadContactOptions(locals.user.id),
+    selectedProject: selectedProject ? {
+      id: selectedProject.id,
+      title: safeDecryptTask(selectedProject.titleEnc, 'project.title', 'Untitled project'),
+      statusLabel: projectStatusLabel(selectedProject.status)
+    } : null
   };
 };
 
@@ -53,6 +63,7 @@ export const actions: Actions = {
     const valueCents = parseMoneyToCents(form.get('value'));
     const expectedCloseDate = parseOptionalDate(form.get('expectedCloseDate'));
     const firstContactId = String(form.get('firstContactId') || '').trim();
+    const projectId = String(form.get('projectId') || '').trim();
     const relationshipType = normaliseDealRelationshipType(form.get('relationshipType'));
     const label = String(form.get('label') || '').trim() || null;
 
@@ -67,6 +78,7 @@ export const actions: Actions = {
       value: String(form.get('value') || '').trim(),
       expectedCloseDate: String(form.get('expectedCloseDate') || '').trim(),
       firstContactId,
+      projectId,
       relationshipType: relationshipType || '',
       label: label || ''
     };
@@ -84,6 +96,14 @@ export const actions: Actions = {
         select: { id: true }
       });
       if (!contact) return fail(404, { error: 'Selected contact was not found.', values });
+    }
+
+    if (projectId) {
+      const project = await prisma.project.findFirst({
+        where: { id: projectId, userId: locals.user.id },
+        select: { id: true }
+      });
+      if (!project) return fail(404, { error: 'Selected project was not found.', values });
     }
 
     let dealId = '';
@@ -129,6 +149,9 @@ export const actions: Actions = {
         select: { id: true }
       });
       dealId = created.id;
+      if (projectId) {
+        await prisma.projectDeal.create({ data: { userId: locals.user.id, projectId, dealId: created.id } }).catch(() => null);
+      }
     } catch (err: any) {
       console.error('[deals:new] create failed', { message: err?.message, code: err?.code });
       return fail(500, { error: 'Could not create deal.', values });

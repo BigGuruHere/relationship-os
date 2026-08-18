@@ -1,0 +1,475 @@
+// src/routes/projects/[id]/workstreams/[workstreamId]/+page.server.ts
+// PURPOSE: Work inside one project workstream - leads, tasks, notes and linked deals.
+// SECURITY: Every read/write is tenant scoped by locals.user.id and the parent project id.
+
+import type { Actions, PageServerLoad } from './$types';
+import { fail, redirect } from '@sveltejs/kit';
+import { prisma } from '$lib/db';
+import { buildIndexToken, encrypt } from '$lib/crypto';
+import { safeDecrypt } from '$lib/deals';
+import { companyDisplay } from '$lib/companies';
+import {
+  MARKET_LEAD_STATUSES,
+  MARKET_LEAD_TYPES,
+  marketLeadStatusLabel,
+  marketLeadTypeLabel
+} from '$lib/marketLeads';
+import {
+  buildLeadSourceOptions,
+  leadFormValues,
+  loadLeadSources,
+  mapMarketLead,
+  marketLeadCreateData,
+  resolveLeadSourceId
+} from '$lib/server/marketLeads';
+import { contactDisplayName, contactOptionsForRows } from '$lib/server/contactDisplay';
+import {
+  TASK_FOCUS_OPTIONS,
+  TASK_IMPORTANCES,
+  TASK_STATUSES,
+  TASK_TYPES,
+  TASK_URGENCIES,
+  normaliseTaskFocus,
+  normaliseTaskImportance,
+  normaliseTaskStatus,
+  normaliseTaskType,
+  normaliseTaskUrgency,
+  parseDateTime,
+  safeDecryptTask,
+  taskFocusLabel,
+  taskImportanceLabel,
+  taskStatusLabel,
+  taskTypeLabel,
+  taskUrgencyLabel
+} from '$lib/tasks';
+
+const ACTIVE_TASK_STATUSES = ['OPEN', 'IN_PROGRESS', 'WAITING', 'SNOOZED'];
+const returnTo = (projectId: string, workstreamId: string) => `/projects/${projectId}/workstreams/${workstreamId}`;
+
+function workstreamDisplay(row: any) {
+  return {
+    id: row.id,
+    name: safeDecryptTask(row.nameEnc, 'project_workstream.name', 'Untitled workstream'),
+    description: safeDecryptTask(row.descriptionEnc, 'project_workstream.description', ''),
+    status: row.status,
+    sortOrder: row.sortOrder ?? 0,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt
+  };
+}
+
+function projectDisplay(row: any) {
+  return {
+    id: row.id,
+    title: safeDecryptTask(row.titleEnc, 'project.title', 'Untitled project'),
+    description: safeDecryptTask(row.descriptionEnc, 'project.description', ''),
+    status: row.status,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt
+  };
+}
+
+function marketLeadSelect() {
+  return {
+    id: true,
+    titleEnc: true,
+    nameEnc: true,
+    companyNameEnc: true,
+    emailEnc: true,
+    phoneEnc: true,
+    websiteEnc: true,
+    linkedinEnc: true,
+    roleTitleEnc: true,
+    geographyEnc: true,
+    addressEnc: true,
+    descriptionEnc: true,
+    notesEnc: true,
+    sourceUrlEnc: true,
+    nextActionEnc: true,
+    nextActionAt: true,
+    type: true,
+    status: true,
+    source: true,
+    leadSourceId: true,
+    leadSource: { select: { id: true, nameEnc: true } },
+    usualCommunicationMethod: true,
+    contactAttemptStatus: true,
+    lastContactedAt: true,
+    buyerStatus: true,
+    sellerStatus: true,
+    confidence: true,
+    priority: true,
+    valueMinCents: true,
+    valueMaxCents: true,
+    currency: true,
+    contactId: true,
+    companyId: true,
+    dealId: true,
+    projectId: true,
+    workstreamId: true,
+    workstream: { select: { id: true, nameEnc: true, projectId: true, status: true } },
+    exchangeItemId: true,
+    convertedAt: true,
+    createdAt: true,
+    updatedAt: true
+  };
+}
+
+async function assertProjectAndWorkstream(userId: string, projectId: string, workstreamId: string) {
+  const [project, workstream] = await Promise.all([
+    prisma.project.findFirst({ where: { id: projectId, userId }, select: { id: true, titleEnc: true, descriptionEnc: true, status: true, createdAt: true, updatedAt: true } }),
+    prisma.projectWorkstream.findFirst({
+      where: { id: workstreamId, userId, projectId },
+      select: { id: true, nameEnc: true, descriptionEnc: true, status: true, sortOrder: true, createdAt: true, updatedAt: true }
+    })
+  ]);
+  if (!project) throw redirect(303, '/projects');
+  if (!workstream) throw redirect(303, `/projects/${projectId}`);
+  return { project, workstream };
+}
+
+async function loadOptions(userId: string, projectId: string, workstreamId: string) {
+  const [contactsRaw, companiesRaw, dealsRaw, workstreamLeadsRaw, attachableLeadsRaw, linkedProjectDealsRaw, leadSourcesRaw] = await Promise.all([
+    prisma.contact.findMany({ where: { userId }, select: { id: true, fullNameEnc: true, linkedUserId: true }, orderBy: { updatedAt: 'desc' }, take: 300 }),
+    prisma.company.findMany({ where: { userId, status: { not: 'ARCHIVED' as any } }, select: { id: true, nameEnc: true, kind: true, status: true }, orderBy: { updatedAt: 'desc' }, take: 300 }),
+    prisma.deal.findMany({ where: { userId }, select: { id: true, titleEnc: true, status: true }, orderBy: { updatedAt: 'desc' }, take: 300 }),
+    prisma.marketLead.findMany({ where: { userId, projectId, workstreamId, status: { notIn: ['ARCHIVED', 'CONVERTED'] as any } }, select: { id: true, titleEnc: true, type: true, status: true }, orderBy: { updatedAt: 'desc' }, take: 300 }),
+    prisma.marketLead.findMany({ where: { userId, status: { notIn: ['ARCHIVED', 'CONVERTED'] as any }, OR: [{ projectId: null }, { projectId }] }, select: { id: true, titleEnc: true, type: true, status: true, projectId: true, workstreamId: true }, orderBy: { updatedAt: 'desc' }, take: 300 }),
+    prisma.projectDeal.findMany({ where: { userId, projectId }, select: { dealId: true }, take: 500 }),
+    loadLeadSources(userId)
+  ]);
+
+  const contacts = await contactOptionsForRows(contactsRaw as any);
+  const companies = companiesRaw.map((company: any) => ({ id: company.id, name: companyDisplay(company), kind: company.kind, status: company.status }));
+  const linkedDealIds = new Set(linkedProjectDealsRaw.map((row: any) => row.dealId));
+  const deals = dealsRaw.map((deal: any) => ({ id: deal.id, title: safeDecrypt(deal.titleEnc, 'deal.title', 'Untitled deal'), status: deal.status }));
+  const unlinkedDeals = deals.filter((deal: any) => !linkedDealIds.has(deal.id));
+  const workstreamLeads = workstreamLeadsRaw.map((lead: any) => ({ id: lead.id, title: safeDecryptTask(lead.titleEnc, 'market_lead.title', 'Untitled lead'), type: lead.type, typeLabel: marketLeadTypeLabel(lead.type), status: lead.status, statusLabel: marketLeadStatusLabel(lead.status) }));
+  const attachableLeads = attachableLeadsRaw
+    .filter((lead: any) => lead.workstreamId !== workstreamId)
+    .map((lead: any) => ({ id: lead.id, title: safeDecryptTask(lead.titleEnc, 'market_lead.title', 'Untitled lead'), type: lead.type, typeLabel: marketLeadTypeLabel(lead.type), status: lead.status, statusLabel: marketLeadStatusLabel(lead.status), projectId: lead.projectId, workstreamId: lead.workstreamId }));
+
+  return {
+    contacts,
+    companies,
+    deals,
+    unlinkedDeals,
+    workstreamLeads,
+    attachableLeads,
+    leadSources: buildLeadSourceOptions(leadSourcesRaw)
+  };
+}
+
+export const load: PageServerLoad = async ({ params, locals }) => {
+  if (!locals.user) throw redirect(303, '/auth/login');
+  const userId = locals.user.id;
+  const projectId = params.id;
+  const workstreamId = params.workstreamId;
+  const { project, workstream } = await assertProjectAndWorkstream(userId, projectId, workstreamId);
+
+  const [leadsRaw, tasksRaw, notesRaw, dealsRaw, options] = await Promise.all([
+    prisma.marketLead.findMany({
+      where: { userId, projectId, workstreamId, status: { notIn: ['ARCHIVED', 'CONVERTED'] as any } },
+      select: marketLeadSelect() as any,
+      orderBy: [{ priority: 'desc' }, { updatedAt: 'desc' }],
+      take: 300
+    }),
+    prisma.task.findMany({
+      where: { userId, projectId, workstreamId },
+      select: {
+        id: true,
+        titleEnc: true,
+        notesEnc: true,
+        summaryEnc: true,
+        status: true,
+        urgency: true,
+        importance: true,
+        focus: true,
+        taskType: true,
+        dueAt: true,
+        snoozedUntil: true,
+        completedAt: true,
+        updatedAt: true,
+        marketLead: { select: { id: true, titleEnc: true, type: true, status: true } },
+        contact: { select: { id: true, fullNameEnc: true, linkedUserId: true } },
+        assignedToContact: { select: { id: true, fullNameEnc: true, linkedUserId: true } },
+        waitingOnContact: { select: { id: true, fullNameEnc: true, linkedUserId: true } },
+        deal: { select: { id: true, titleEnc: true, status: true } },
+        company: { select: { id: true, nameEnc: true, kind: true, status: true } }
+      },
+      orderBy: [{ focus: 'asc' }, { status: 'asc' }, { dueAt: 'asc' }, { updatedAt: 'desc' }],
+      take: 300
+    }),
+    prisma.projectNote.findMany({
+      where: { userId, projectId, workstreamId },
+      select: { id: true, bodyEnc: true, summaryEnc: true, channel: true, occurredAt: true, createdAt: true, updatedAt: true },
+      orderBy: [{ occurredAt: 'desc' }, { createdAt: 'desc' }],
+      take: 120
+    }),
+    prisma.projectDeal.findMany({
+      where: { userId, projectId, workstreamId },
+      select: { id: true, labelEnc: true, notesEnc: true, createdAt: true, deal: { select: { id: true, titleEnc: true, status: true, valueCents: true, currency: true, probability: true, updatedAt: true } } },
+      orderBy: { createdAt: 'desc' },
+      take: 200
+    }),
+    loadOptions(userId, projectId, workstreamId)
+  ]);
+
+  const leads = leadsRaw.map(mapMarketLead);
+  const tasks = await Promise.all(tasksRaw.map(async (task: any) => ({
+    id: task.id,
+    title: safeDecryptTask(task.titleEnc, 'task.title', 'Untitled task'),
+    notes: safeDecryptTask(task.notesEnc, 'task.notes', ''),
+    summary: safeDecryptTask(task.summaryEnc, 'task.summary', ''),
+    status: task.status,
+    statusLabel: taskStatusLabel(task.status),
+    urgency: task.urgency,
+    urgencyLabel: taskUrgencyLabel(task.urgency),
+    importance: task.importance,
+    importanceLabel: taskImportanceLabel(task.importance),
+    focus: task.focus,
+    focusLabel: taskFocusLabel(task.focus),
+    taskType: task.taskType,
+    taskTypeLabel: taskTypeLabel(task.taskType),
+    dueAt: task.dueAt,
+    snoozedUntil: task.snoozedUntil,
+    completedAt: task.completedAt,
+    updatedAt: task.updatedAt,
+    marketLead: task.marketLead ? { id: task.marketLead.id, title: safeDecryptTask(task.marketLead.titleEnc, 'market_lead.title', 'Untitled lead'), type: task.marketLead.type, status: task.marketLead.status } : null,
+    contact: task.contact ? { id: task.contact.id, name: await contactDisplayName(task.contact) } : null,
+    assignedToContact: task.assignedToContact ? { id: task.assignedToContact.id, name: await contactDisplayName(task.assignedToContact) } : null,
+    waitingOnContact: task.waitingOnContact ? { id: task.waitingOnContact.id, name: await contactDisplayName(task.waitingOnContact) } : null,
+    deal: task.deal ? { id: task.deal.id, title: safeDecrypt(task.deal.titleEnc, 'deal.title', 'Untitled deal'), status: task.deal.status } : null,
+    company: task.company ? { id: task.company.id, name: companyDisplay(task.company), status: task.company.status } : null
+  })));
+  const notes = notesRaw.map((note: any) => ({
+    id: note.id,
+    body: safeDecryptTask(note.bodyEnc, 'project_note.body', ''),
+    summary: safeDecryptTask(note.summaryEnc, 'project_note.summary', ''),
+    channel: note.channel || 'note',
+    occurredAt: note.occurredAt,
+    createdAt: note.createdAt,
+    updatedAt: note.updatedAt
+  }));
+  const deals = dealsRaw.map((link: any) => ({
+    id: link.id,
+    dealId: link.deal.id,
+    title: safeDecrypt(link.deal.titleEnc, 'deal.title', 'Untitled deal'),
+    status: link.deal.status,
+    valueCents: link.deal.valueCents,
+    currency: link.deal.currency,
+    probability: link.deal.probability,
+    label: safeDecryptTask(link.labelEnc, 'project_deal.label', ''),
+    notes: safeDecryptTask(link.notesEnc, 'project_deal.notes', ''),
+    createdAt: link.createdAt,
+    updatedAt: link.deal.updatedAt
+  }));
+
+  const now = new Date();
+  const summary = {
+    leads: leads.length,
+    tasks: tasks.length,
+    openTasks: tasks.filter((task: any) => ACTIVE_TASK_STATUSES.includes(task.status)).length,
+    overdueTasks: tasks.filter((task: any) => ACTIVE_TASK_STATUSES.includes(task.status) && task.dueAt && new Date(task.dueAt).getTime() < now.getTime()).length,
+    deals: deals.length,
+    notes: notes.length,
+    readyLeads: leads.filter((lead: any) => lead.status === 'QUALIFIED').length
+  };
+
+  return {
+    project: projectDisplay(project),
+    workstream: workstreamDisplay(workstream),
+    leads,
+    tasks,
+    notes,
+    deals,
+    summary,
+    options,
+    marketLeadTypes: MARKET_LEAD_TYPES,
+    marketLeadStatuses: MARKET_LEAD_STATUSES,
+    taskStatuses: TASK_STATUSES,
+    taskUrgencies: TASK_URGENCIES,
+    taskImportances: TASK_IMPORTANCES,
+    taskFocusOptions: TASK_FOCUS_OPTIONS,
+    taskTypes: TASK_TYPES
+  };
+};
+
+export const actions: Actions = {
+  updateWorkstream: async ({ request, params, locals }) => {
+    if (!locals.user) throw redirect(303, '/auth/login');
+    const userId = locals.user.id;
+    const form = await request.formData();
+    const name = String(form.get('name') || '').trim();
+    const description = String(form.get('description') || '').trim();
+    if (!name) return fail(400, { error: 'Workstream name is required.' });
+    await assertProjectAndWorkstream(userId, params.id, params.workstreamId);
+    await prisma.projectWorkstream.updateMany({
+      where: { id: params.workstreamId, userId, projectId: params.id },
+      data: { nameEnc: encrypt(name, 'project_workstream.name'), nameIdx: buildIndexToken(name), descriptionEnc: description ? encrypt(description, 'project_workstream.description') : null }
+    });
+    throw redirect(303, returnTo(params.id, params.workstreamId));
+  },
+
+  createLead: async ({ request, params, locals }) => {
+    if (!locals.user) throw redirect(303, '/auth/login');
+    const userId = locals.user.id;
+    await assertProjectAndWorkstream(userId, params.id, params.workstreamId);
+    const values = leadFormValues(await request.formData(), { projectId: params.id, workstreamId: params.workstreamId });
+    values.projectId = params.id;
+    values.workstreamId = params.workstreamId;
+    values.leadSourceId = (await resolveLeadSourceId(userId, values.leadSourceId, values.newLeadSource)) || '';
+    if (!values.title && !values.name && !values.companyName) return fail(400, { error: 'Add at least a lead title, person name, or company name.' });
+    await prisma.marketLead.create({ data: marketLeadCreateData(userId, values) as any });
+    throw redirect(303, returnTo(params.id, params.workstreamId));
+  },
+
+  attachLead: async ({ request, params, locals }) => {
+    if (!locals.user) throw redirect(303, '/auth/login');
+    const userId = locals.user.id;
+    const form = await request.formData();
+    const leadId = String(form.get('leadId') || '').trim();
+    if (!leadId) return fail(400, { error: 'Choose a lead to attach.' });
+    await assertProjectAndWorkstream(userId, params.id, params.workstreamId);
+    const lead = await prisma.marketLead.findFirst({ where: { id: leadId, userId, status: { notIn: ['ARCHIVED', 'CONVERTED'] as any } }, select: { id: true, projectId: true } });
+    if (!lead) return fail(404, { error: 'Lead not found.' });
+    if (lead.projectId && lead.projectId !== params.id) return fail(400, { error: 'Lead already belongs to another project.' });
+    await prisma.marketLead.updateMany({ where: { id: leadId, userId }, data: { projectId: params.id, workstreamId: params.workstreamId } });
+    throw redirect(303, returnTo(params.id, params.workstreamId));
+  },
+
+  createTask: async ({ request, params, locals }) => {
+    if (!locals.user) throw redirect(303, '/auth/login');
+    const userId = locals.user.id;
+    const form = await request.formData();
+    const title = String(form.get('title') || '').trim();
+    if (!title) return fail(400, { error: 'Task title is required.' });
+    await assertProjectAndWorkstream(userId, params.id, params.workstreamId);
+
+    const marketLeadId = String(form.get('marketLeadId') || '').trim() || null;
+    const contactId = String(form.get('contactId') || '').trim() || null;
+    const companyId = String(form.get('companyId') || '').trim() || null;
+    const dealId = String(form.get('dealId') || '').trim() || null;
+    const assignedToContactId = String(form.get('assignedToContactId') || '').trim() || null;
+    const waitingOnContactId = String(form.get('waitingOnContactId') || '').trim() || null;
+
+    const [leadOk, contactOk, companyOk, dealOk, assignedOk, waitingOk] = await Promise.all([
+      marketLeadId ? prisma.marketLead.findFirst({ where: { id: marketLeadId, userId, projectId: params.id }, select: { id: true } }) : true,
+      contactId ? prisma.contact.findFirst({ where: { id: contactId, userId }, select: { id: true } }) : true,
+      companyId ? prisma.company.findFirst({ where: { id: companyId, userId }, select: { id: true } }) : true,
+      dealId ? prisma.deal.findFirst({ where: { id: dealId, userId }, select: { id: true } }) : true,
+      assignedToContactId ? prisma.contact.findFirst({ where: { id: assignedToContactId, userId }, select: { id: true } }) : true,
+      waitingOnContactId ? prisma.contact.findFirst({ where: { id: waitingOnContactId, userId }, select: { id: true } }) : true
+    ]);
+    if (!leadOk || !contactOk || !companyOk || !dealOk || !assignedOk || !waitingOk) return fail(404, { error: 'One of the selected links was not found.' });
+
+    const notes = String(form.get('notes') || '').trim();
+    const summary = String(form.get('summary') || '').trim();
+    const assignedToText = String(form.get('assignedToText') || '').trim();
+    const status = normaliseTaskStatus(form.get('status'));
+    await prisma.task.create({
+      data: {
+        userId,
+        projectId: params.id,
+        workstreamId: params.workstreamId,
+        marketLeadId,
+        contactId,
+        companyId,
+        dealId,
+        assignedToContactId,
+        waitingOnContactId,
+        titleEnc: encrypt(title, 'task.title'),
+        notesEnc: notes ? encrypt(notes, 'task.notes') : null,
+        summaryEnc: summary ? encrypt(summary, 'task.summary') : null,
+        status: status as any,
+        urgency: normaliseTaskUrgency(form.get('urgency')) as any,
+        importance: normaliseTaskImportance(form.get('importance')) as any,
+        focus: normaliseTaskFocus(form.get('focus')) as any,
+        taskType: normaliseTaskType(form.get('taskType')) as any,
+        dueAt: parseDateTime(form.get('dueAt')),
+        snoozedUntil: parseDateTime(form.get('snoozedUntil')),
+        completedAt: status === 'DONE' ? new Date() : null,
+        cancelledAt: status === 'CANCELLED' ? new Date() : null,
+        assignedToTextEnc: assignedToText ? encrypt(assignedToText, 'task.assigned_to_text') : null
+      }
+    });
+    if (dealId) {
+      await prisma.projectDeal.upsert({
+        where: { projectId_dealId: { projectId: params.id, dealId } },
+        update: { workstreamId: params.workstreamId },
+        create: { userId, projectId: params.id, dealId, workstreamId: params.workstreamId }
+      }).catch(() => null);
+    }
+    throw redirect(303, returnTo(params.id, params.workstreamId));
+  },
+
+  updateTaskStatus: async ({ request, params, locals }) => {
+    if (!locals.user) throw redirect(303, '/auth/login');
+    const form = await request.formData();
+    const taskId = String(form.get('taskId') || '').trim();
+    const status = normaliseTaskStatus(form.get('status'));
+    if (!taskId) return fail(400, { error: 'Missing task id.' });
+    await prisma.task.updateMany({ where: { id: taskId, userId: locals.user.id, projectId: params.id, workstreamId: params.workstreamId }, data: { status: status as any, completedAt: status === 'DONE' ? new Date() : null, cancelledAt: status === 'CANCELLED' ? new Date() : null } });
+    throw redirect(303, returnTo(params.id, params.workstreamId));
+  },
+
+  deleteTask: async ({ request, params, locals }) => {
+    if (!locals.user) throw redirect(303, '/auth/login');
+    const form = await request.formData();
+    const taskId = String(form.get('taskId') || '').trim();
+    if (!taskId) return fail(400, { error: 'Missing task id.' });
+    await prisma.task.deleteMany({ where: { id: taskId, userId: locals.user.id, projectId: params.id, workstreamId: params.workstreamId } });
+    throw redirect(303, returnTo(params.id, params.workstreamId));
+  },
+
+  createNote: async ({ request, params, locals }) => {
+    if (!locals.user) throw redirect(303, '/auth/login');
+    const userId = locals.user.id;
+    await assertProjectAndWorkstream(userId, params.id, params.workstreamId);
+    const form = await request.formData();
+    const body = String(form.get('body') || '').trim();
+    const summary = String(form.get('summary') || '').trim();
+    const channel = String(form.get('channel') || 'note').trim().toLowerCase() || 'note';
+    const occurredAt = parseDateTime(form.get('occurredAt')) || new Date();
+    if (!body) return fail(400, { error: 'Note body is required.' });
+    await prisma.projectNote.create({ data: { userId, projectId: params.id, workstreamId: params.workstreamId, channel, occurredAt, bodyEnc: encrypt(body, 'project_note.body'), summaryEnc: summary ? encrypt(summary, 'project_note.summary') : null } });
+    throw redirect(303, returnTo(params.id, params.workstreamId));
+  },
+
+  deleteNote: async ({ request, params, locals }) => {
+    if (!locals.user) throw redirect(303, '/auth/login');
+    const form = await request.formData();
+    const noteId = String(form.get('noteId') || '').trim();
+    if (!noteId) return fail(400, { error: 'Missing note id.' });
+    await prisma.projectNote.deleteMany({ where: { id: noteId, userId: locals.user.id, projectId: params.id, workstreamId: params.workstreamId } });
+    throw redirect(303, returnTo(params.id, params.workstreamId));
+  },
+
+  linkDeal: async ({ request, params, locals }) => {
+    if (!locals.user) throw redirect(303, '/auth/login');
+    const userId = locals.user.id;
+    const form = await request.formData();
+    const dealId = String(form.get('dealId') || '').trim();
+    const label = String(form.get('label') || '').trim();
+    const notes = String(form.get('notes') || '').trim();
+    if (!dealId) return fail(400, { error: 'Choose a deal to link.' });
+    await assertProjectAndWorkstream(userId, params.id, params.workstreamId);
+    const deal = await prisma.deal.findFirst({ where: { id: dealId, userId }, select: { id: true } });
+    if (!deal) return fail(404, { error: 'Deal not found.' });
+    await prisma.projectDeal.upsert({
+      where: { projectId_dealId: { projectId: params.id, dealId } },
+      update: { workstreamId: params.workstreamId, labelEnc: label ? encrypt(label, 'project_deal.label') : undefined, notesEnc: notes ? encrypt(notes, 'project_deal.notes') : undefined },
+      create: { userId, projectId: params.id, workstreamId: params.workstreamId, dealId, labelEnc: label ? encrypt(label, 'project_deal.label') : null, notesEnc: notes ? encrypt(notes, 'project_deal.notes') : null }
+    });
+    throw redirect(303, returnTo(params.id, params.workstreamId));
+  },
+
+  removeProjectDeal: async ({ request, params, locals }) => {
+    if (!locals.user) throw redirect(303, '/auth/login');
+    const form = await request.formData();
+    const linkId = String(form.get('linkId') || '').trim();
+    if (!linkId) return fail(400, { error: 'Missing project-deal link id.' });
+    await prisma.projectDeal.deleteMany({ where: { id: linkId, userId: locals.user.id, projectId: params.id, workstreamId: params.workstreamId } });
+    throw redirect(303, returnTo(params.id, params.workstreamId));
+  }
+};

@@ -96,6 +96,7 @@ model User {
   marketLeads          MarketLead[]
   marketLeadNotes      MarketLeadNote[]
   leadSources          LeadSource[]
+  projectWorkstreams   ProjectWorkstream[]
   opportunityScoreFactors OpportunityScoreFactor[]
 
   role       UserRole @default(member)
@@ -1256,6 +1257,9 @@ model MarketLead {
   projectId String?
   project   Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
 
+  workstreamId String?
+  workstream   ProjectWorkstream? @relation(fields: [workstreamId], references: [id], onDelete: SetNull)
+
   tasks Task[]
   notes MarketLeadNote[]
 
@@ -1281,6 +1285,7 @@ model MarketLead {
   @@index([userId, companyId])
   @@index([userId, dealId])
   @@index([userId, projectId])
+  @@index([userId, workstreamId])
   @@index([userId, exchangeItemId])
   @@index([titleIdx])
   @@index([nameIdx])
@@ -1320,6 +1325,14 @@ model MarketLeadNote {
 enum ProjectStatus {
   ACTIVE
   ON_HOLD
+  COMPLETED
+  ARCHIVED
+}
+
+// IT: Workstreams organise a project into lanes such as Buyer mandates, Seller outreach, Referrers, and Active deals.
+enum ProjectWorkstreamStatus {
+  ACTIVE
+  PAUSED
   COMPLETED
   ARCHIVED
 }
@@ -1389,9 +1402,40 @@ model Project {
   deals ProjectDeal[]
   exchangeItems ExchangeItem[]
   marketLeads   MarketLead[]
+  workstreams   ProjectWorkstream[]
 
   @@index([userId, status])
   @@index([titleIdx])
+}
+
+
+// IT: A lane within a project. Workstreams let one market/campaign contain buyer mandates, seller outreach, referrers, research, and active deals without creating separate projects.
+model ProjectWorkstream {
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  projectId String
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  nameEnc        String
+  nameIdx        String
+  descriptionEnc String?
+  status         ProjectWorkstreamStatus @default(ACTIVE)
+  sortOrder      Int @default(0)
+
+  marketLeads  MarketLead[]
+  tasks        Task[]
+  projectDeals ProjectDeal[]
+  projectNotes ProjectNote[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([projectId, nameIdx])
+  @@index([userId, projectId, status])
+  @@index([userId, status])
+  @@index([nameIdx])
 }
 
 // IT: Direct many-to-many link between projects and deals.
@@ -1404,6 +1448,9 @@ model ProjectDeal {
   projectId String
   project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
+  workstreamId String?
+  workstream   ProjectWorkstream? @relation(fields: [workstreamId], references: [id], onDelete: SetNull)
+
   dealId String
   deal   Deal @relation(fields: [dealId], references: [id], onDelete: Cascade)
 
@@ -1415,6 +1462,7 @@ model ProjectDeal {
 
   @@unique([projectId, dealId])
   @@index([userId, projectId])
+  @@index([userId, workstreamId])
   @@index([userId, dealId])
   @@index([userId, createdAt])
 }
@@ -1428,6 +1476,9 @@ model ProjectNote {
   projectId String
   project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
+  workstreamId String?
+  workstream   ProjectWorkstream? @relation(fields: [workstreamId], references: [id], onDelete: SetNull)
+
   occurredAt DateTime @default(now())
   channel    String   @default("note")
   bodyEnc    String
@@ -1437,6 +1488,7 @@ model ProjectNote {
   updatedAt DateTime @updatedAt
 
   @@index([userId, projectId, createdAt])
+  @@index([userId, workstreamId, createdAt])
 }
 
 // IT: unified action system. A task can link to a person, deal, deal-contact thread, or project.
@@ -1480,6 +1532,9 @@ model Task {
   projectId String?
   project   Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
 
+  workstreamId String?
+  workstream   ProjectWorkstream? @relation(fields: [workstreamId], references: [id], onDelete: SetNull)
+
   marketLeadId String?
   marketLead   MarketLead? @relation(fields: [marketLeadId], references: [id], onDelete: SetNull)
 
@@ -1503,6 +1558,7 @@ model Task {
   @@index([userId, dealId])
   @@index([userId, dealContactId])
   @@index([userId, projectId])
+  @@index([userId, workstreamId])
   @@index([userId, marketLeadId])
   @@index([userId, companyId])
   @@index([userId, dealCompanyId])

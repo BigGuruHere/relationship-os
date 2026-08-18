@@ -16,6 +16,7 @@
   let status = data.selectedStatus || '';
   let focus = data.selectedFocus || '';
   let projectId = data.selectedProjectId || '';
+  let workstreamId = data.selectedWorkstreamId || '';
   let marketLeadId = data.selectedMarketLeadId || '';
   let contactId = data.selectedContactId || '';
   let companyId = data.selectedCompanyId || '';
@@ -169,6 +170,15 @@
         </div>
 
         <div class="field">
+          <label for="workstreamIdCreate">Attach workstream</label>
+          <select id="workstreamIdCreate" name="workstreamId">
+            <option value="">No workstream</option>
+            {#each data.options.workstreams as ws}<option value={ws.id}>{ws.projectTitle} - {ws.name}</option>{/each}
+          </select>
+          <p class="hint">Selecting a workstream will also set the parent project.</p>
+        </div>
+
+        <div class="field">
           <label for="marketLeadId">Attach lead</label>
           <select id="marketLeadId" name="marketLeadId">
             <option value="">No lead</option>
@@ -272,6 +282,13 @@
         </select>
       </div>
       <div class="field">
+        <label for="workstreamFilter">Workstream</label>
+        <select id="workstreamFilter" name="workstreamId" bind:value={workstreamId}>
+          <option value="">Any workstream</option>
+          {#each data.options.workstreams as ws}<option value={ws.id}>{ws.projectTitle} - {ws.name}</option>{/each}
+        </select>
+      </div>
+      <div class="field">
         <label for="leadFilter">Lead</label>
         <select id="leadFilter" name="marketLeadId" bind:value={marketLeadId}>
           <option value="">Any lead</option>
@@ -336,6 +353,7 @@
               {#if task.dealContact}<a class="chip" href={`/deals/${task.dealContact.dealId}/relationships/${task.dealContact.id}`}>Person thread: {task.dealContact.contactName}</a>{/if}
               {#if task.dealCompany}<a class="chip" href={`/companies/${task.dealCompany.companyId}`}>Company thread: {task.dealCompany.companyName}</a>{/if}
               {#if task.project}<a class="chip" href={`/projects/${task.project.id}`}>Project: {task.project.title}</a>{/if}
+              {#if task.workstream}<span class="chip">Workstream: {task.workstream.name}</span>{/if}
               {#if task.marketLead}<a class="chip" href={`/leads/${task.marketLead.id}`}>Lead: {task.marketLead.title}</a>{/if}
               {#if task.waitingOnContact}<a class="chip" href={`/contacts/${task.waitingOnContact.id}`}>Waiting on: {task.waitingOnContact.name}</a>{/if}
               {#if task.assignedToContact}<a class="chip" href={`/contacts/${task.assignedToContact.id}`}>Assigned: {task.assignedToContact.name}</a>{/if}

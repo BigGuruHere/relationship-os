@@ -11,6 +11,8 @@
   let contactAttemptStatus = data.selectedContactAttemptStatus || '';
   let buyerStatus = data.selectedBuyerStatus || '';
   let sellerStatus = data.selectedSellerStatus || '';
+  let projectId = data.selectedProjectId || '';
+  let workstreamId = data.selectedWorkstreamId || '';
   let createSourceChoice = form?.values?.sourceChoice || (form?.values?.leadSourceId ? `custom:${form.values.leadSourceId}` : `builtin:${form?.values?.source || 'MANUAL'}`);
 </script>
 
@@ -55,7 +57,7 @@
           <div class="field"><label for="sellerStatusCreate">Seller status</label><select id="sellerStatusCreate" name="sellerStatus">{#each data.sellerQualificationStatuses as opt}<option value={opt.value} selected={(form?.values?.sellerStatus || 'NOT_ASKED') === opt.value}>{opt.label}</option>{/each}</select></div>
         </div>
         <div class="field"><label for="lastContactedAtCreate">Last contacted</label><input id="lastContactedAtCreate" name="lastContactedAt" type="datetime-local" value={form?.values?.lastContactedAt || ''} /></div>
-        <div class="field"><label for="projectIdCreate">Project</label><select id="projectIdCreate" name="projectId"><option value="">Standalone lead</option>{#each data.projects as project}<option value={project.id} selected={(form?.values?.projectId || '') === project.id}>{project.title}</option>{/each}</select></div>
+        <div class="grid two"><div class="field"><label for="projectIdCreate">Project</label><select id="projectIdCreate" name="projectId"><option value="">Standalone lead</option>{#each data.projects as project}<option value={project.id} selected={(form?.values?.projectId || '') === project.id}>{project.title}</option>{/each}</select></div><div class="field"><label for="workstreamIdCreate">Workstream</label><select id="workstreamIdCreate" name="workstreamId"><option value="">No workstream</option>{#each data.workstreams as ws}<option value={ws.id} selected={(form?.values?.workstreamId || '') === ws.id}>{ws.projectTitle} - {ws.name}</option>{/each}</select></div></div>
         <div class="grid two">
           <div class="field"><label for="name">Person name</label><input id="name" name="name" value={form?.values?.name || ''} /></div>
           <div class="field"><label for="companyName">Company name</label><input id="companyName" name="companyName" value={form?.values?.companyName || ''} /></div>
@@ -102,6 +104,8 @@
       <select name="contactAttemptStatus" bind:value={contactAttemptStatus}><option value="">All contact attempts</option>{#each data.contactAttemptStatuses as opt}<option value={opt.value}>{opt.label}</option>{/each}</select>
       <select name="buyerStatus" bind:value={buyerStatus}><option value="">All buyer statuses</option>{#each data.buyerQualificationStatuses as opt}<option value={opt.value}>{opt.label}</option>{/each}</select>
       <select name="sellerStatus" bind:value={sellerStatus}><option value="">All seller statuses</option>{#each data.sellerQualificationStatuses as opt}<option value={opt.value}>{opt.label}</option>{/each}</select>
+      <select name="projectId" bind:value={projectId}><option value="">All projects</option>{#each data.projects as project}<option value={project.id}>{project.title}</option>{/each}</select>
+      <select name="workstreamId" bind:value={workstreamId}><option value="">All workstreams</option>{#each data.workstreams as ws}<option value={ws.id}>{ws.projectTitle} - {ws.name}</option>{/each}</select>
       <button class="btn primary" type="submit">Filter</button>
     </form>
   </section>
@@ -117,6 +121,7 @@
             <div class="chip-row"><span class="status-chip">Priority {lead.priority}</span><span class="status-chip">{lead.confidence}/100</span><span class="status-chip">{lead.contactAttemptStatusLabel}</span></div>
           </div>
           {#if lead.name || lead.companyName || lead.roleTitle}<div class="muted small">{lead.name}{lead.roleTitle ? ` - ${lead.roleTitle}` : ''}{lead.companyName ? ` - ${lead.companyName}` : ''}</div>{/if}
+          {#if lead.workstream}<div class="muted small">Workstream: {lead.workstream.name}</div>{/if}
           {#if lead.email || lead.phone || lead.website}<div class="muted small">{lead.email}{lead.email && lead.phone ? ' - ' : ''}{lead.phone}{(lead.email || lead.phone) && lead.website ? ' - ' : ''}{lead.website}</div>{/if}
           {#if lead.descriptionPreview}<p>{lead.descriptionPreview}</p>{/if}
         </a>

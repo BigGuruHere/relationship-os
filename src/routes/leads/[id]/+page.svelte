@@ -77,6 +77,7 @@
         <strong>Priority</strong><span>{lead.priority}/5</span>
         <strong>Confidence</strong><span>{lead.confidence}/100</span>
         <strong>Project</strong><span>{#if lead.projectId}<a href={`/projects/${lead.projectId}`}>{lead.linkedProjectTitle || 'Open project'}</a>{:else}Standalone lead{/if}</span>
+        <strong>Workstream</strong><span>{lead.linkedWorkstreamTitle || ' - '}</span>
         <strong>Next action</strong><span>{lead.nextAction || ' - '}</span>
       </div>
       {#if lead.description}<h3>Description</h3><p class="preline">{lead.description}</p>{/if}
@@ -100,6 +101,7 @@
         <strong>Company</strong><span>{#if lead.companyId}<a href={`/companies/${lead.companyId}`}>{lead.linkedCompanyName || 'Open company'}</a>{:else} - {/if}</span>
         <strong>Deal</strong><span>{#if lead.dealId}<a href={`/deals/${lead.dealId}`}>{lead.linkedDealTitle || 'Open deal'}</a>{:else} - {/if}</span>
         <strong>Project</strong><span>{#if lead.projectId}<a href={`/projects/${lead.projectId}`}>{lead.linkedProjectTitle || 'Open project'}</a>{:else} - {/if}</span>
+        <strong>Workstream</strong><span>{lead.linkedWorkstreamTitle || ' - '}</span>
         <strong>Want/offer</strong><span>{#if lead.exchangeItemId}{lead.linkedExchangeTitle || 'Created'}{:else} - {/if}</span>
       </div>
       {#if lead.convertedAt}<p class="muted small">Converted on {fmt(lead.convertedAt)}</p>{/if}
@@ -129,7 +131,7 @@
           <div class="field"><label for="sellerStatusEdit">Seller status</label><select id="sellerStatusEdit" name="sellerStatus">{#each data.sellerQualificationStatuses as opt}<option value={opt.value} selected={lead.sellerStatus === opt.value}>{opt.label}</option>{/each}</select></div>
         </div>
         <div class="field"><label for="lastContactedAtEdit">Last contacted</label><input id="lastContactedAtEdit" name="lastContactedAt" type="datetime-local" value={lead.lastContactedAtInput} /></div>
-        <div class="field"><label for="projectIdEdit">Project</label><select id="projectIdEdit" name="projectId"><option value="">Standalone lead</option>{#each data.projects as project}<option value={project.id} selected={(lead.projectId || '') === project.id}>{project.title}</option>{/each}</select></div>
+        <div class="grid two"><div class="field"><label for="projectIdEdit">Project</label><select id="projectIdEdit" name="projectId"><option value="">Standalone lead</option>{#each data.projects as project}<option value={project.id} selected={(lead.projectId || '') === project.id}>{project.title}</option>{/each}</select></div><div class="field"><label for="workstreamIdEdit">Workstream</label><select id="workstreamIdEdit" name="workstreamId"><option value="">No workstream</option>{#each data.workstreams as ws}<option value={ws.id} selected={(lead.workstreamId || '') === ws.id}>{ws.projectTitle} - {ws.name}</option>{/each}</select></div></div>
         <div class="grid two"><div class="field"><label for="name">Person name</label><input id="name" name="name" value={lead.name} /></div><div class="field"><label for="companyName">Company name</label><input id="companyName" name="companyName" value={lead.companyName} /></div></div>
         <div class="grid two"><div class="field"><label for="email">Email</label><input id="email" name="email" type="email" value={lead.email} /></div><div class="field"><label for="phone">Phone</label><input id="phone" name="phone" value={lead.phone} /></div></div>
         <div class="grid two"><div class="field"><label for="website">Website</label><input id="website" name="website" value={lead.website} /></div><div class="field"><label for="linkedin">LinkedIn</label><input id="linkedin" name="linkedin" value={lead.linkedin} /></div></div>
@@ -247,6 +249,7 @@
               {#if task.summary}<div class="summary-box"><div class="muted small">AI summary</div><p>{task.summary}</p></div>{/if}
               <div class="context-row">
                 {#if task.project}<a class="chip" href={`/projects/${task.project.id}`}>Project: {task.project.title}</a>{/if}
+                {#if task.workstream}<span class="chip">Workstream: {task.workstream.name}</span>{/if}
                 {#if task.contact}<a class="chip" href={`/contacts/${task.contact.id}`}>Contact: {task.contact.name}</a>{/if}
                 {#if task.company}<a class="chip" href={`/companies/${task.company.id}`}>Company: {task.company.name}</a>{/if}
                 {#if task.deal}<a class="chip" href={`/deals/${task.deal.id}`}>Deal: {task.deal.title}</a>{/if}

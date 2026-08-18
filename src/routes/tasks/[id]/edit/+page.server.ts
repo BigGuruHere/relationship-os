@@ -31,20 +31,27 @@ import {
   taskUrgencyLabel
 } from '$lib/tasks';
 
-async function ownedIdExists(userId: string, kind: 'contact' | 'deal' | 'project' | 'company', id: string | null) {
+async function ownedIdExists(userId: string, kind: 'contact' | 'deal' | 'project' | 'company' | 'workstream', id: string | null) {
   if (!id) return true;
   if (kind === 'contact') return !!(await prisma.contact.findFirst({ where: { id, userId }, select: { id: true } }));
   if (kind === 'deal') return !!(await prisma.deal.findFirst({ where: { id, userId }, select: { id: true } }));
   if (kind === 'company') return !!(await prisma.company.findFirst({ where: { id, userId }, select: { id: true } }));
+  if (kind === 'workstream') return !!(await prisma.projectWorkstream.findFirst({ where: { id, userId, status: { not: 'ARCHIVED' as any } }, select: { id: true } }));
   return !!(await prisma.project.findFirst({ where: { id, userId }, select: { id: true } }));
 }
 
 async function loadOptions(userId: string) {
-  const [contactsRaw, dealsRaw, projectsRaw, companiesRaw, dealContactsRaw, dealCompaniesRaw] = await Promise.all([
+  const [contactsRaw, dealsRaw, projectsRaw, companiesRaw, workstreamsRaw, dealContactsRaw, dealCompaniesRaw] = await Promise.all([
     prisma.contact.findMany({ where: { userId }, select: { id: true, fullNameEnc: true, linkedUserId: true }, orderBy: { createdAt: 'desc' }, take: 300 }),
     prisma.deal.findMany({ where: { userId }, select: { id: true, titleEnc: true, status: true }, orderBy: { updatedAt: 'desc' }, take: 200 }),
     prisma.project.findMany({ where: { userId, status: { not: 'ARCHIVED' as any } }, select: { id: true, titleEnc: true, status: true }, orderBy: { updatedAt: 'desc' }, take: 200 }),
     prisma.company.findMany({ where: { userId, status: { not: 'ARCHIVED' as any } }, select: { id: true, nameEnc: true, kind: true, status: true }, orderBy: { updatedAt: 'desc' }, take: 300 }),
+    prisma.projectWorkstream.findMany({
+      where: { userId, status: { not: 'ARCHIVED' as any }, project: { status: { not: 'ARCHIVED' as any } } },
+      select: { id: true, nameEnc: true, status: true, projectId: true, project: { select: { id: true, titleEnc: true } } },
+      orderBy: [{ project: { updatedAt: 'desc' } }, { sortOrder: 'asc' }, { createdAt: 'asc' }],
+      take: 300
+    }),
     prisma.dealContact.findMany({
       where: { userId },
       select: {
@@ -73,6 +80,11 @@ async function loadOptions(userId: string) {
   const deals = dealsRaw.map((deal) => ({ id: deal.id, title: safeDecrypt(deal.titleEnc, 'deal.title', 'Untitled deal'), status: deal.status }));
   const projects = projectsRaw.map((project) => ({ id: project.id, title: safeDecryptTask(project.titleEnc, 'project.title', 'Untitled project'), statusLabel: projectStatusLabel(project.status) }));
   const companies = companiesRaw.map((company) => ({ id: company.id, name: companyDisplay(company), kind: company.kind, status: company.status }));
+  const workstreams = workstreamsRaw.map((workstream) => {
+    const name = safeDecryptTask(workstream.nameEnc, 'project_workstream.name', 'Untitled workstream');
+    const projectTitle = safeDecryptTask(workstream.project.titleEnc, 'project.title', 'Untitled project');
+    return { id: workstream.id, projectId: workstream.projectId, name, projectTitle, title: `${projectTitle} - ${name}`, status: workstream.status };
+  });
   const dealContacts = await Promise.all(dealContactsRaw.map(async (link: any) => ({
     id: link.id,
     dealId: link.deal.id,
@@ -86,7 +98,7 @@ async function loadOptions(userId: string) {
     title: `${safeDecrypt(link.deal.titleEnc, 'deal.title', 'Untitled deal')} - ${companyDisplay(link.company)}${link.label ? ` (${link.label})` : ''}`
   }));
 
-  return { contacts, deals, projects, companies, dealContacts, dealCompanies };
+  return { contacts, deals, projects, companies, workstreams, dealContacts, dealCompanies };
 }
 
 export const load: PageServerLoad = async ({ params, locals, url }) => {
@@ -113,6 +125,7 @@ export const load: PageServerLoad = async ({ params, locals, url }) => {
       companyId: true,
       dealCompanyId: true,
       projectId: true,
+      workstreamId: true,
       assignedToTextEnc: true,
       assignedToContactId: true,
       waitingOnContactId: true,
@@ -148,6 +161,7 @@ export const load: PageServerLoad = async ({ params, locals, url }) => {
       companyId: row.companyId || '',
       dealCompanyId: row.dealCompanyId || '',
       projectId: row.projectId || '',
+      workstreamId: row.workstreamId || '',
       assignedToText: safeDecryptTask(row.assignedToTextEnc, 'task.assigned_to_text', ''),
       assignedToContactId: row.assignedToContactId || '',
       waitingOnContactId: row.waitingOnContactId || '',
@@ -178,7 +192,8 @@ export const actions: Actions = {
     let dealContactId = String(form.get('dealContactId') || '').trim() || null;
     let companyId = String(form.get('companyId') || '').trim() || null;
     let dealCompanyId = String(form.get('dealCompanyId') || '').trim() || null;
-    const projectId = String(form.get('projectId') || '').trim() || null;
+    let projectId = String(form.get('projectId') || '').trim() || null;
+    const workstreamId = String(form.get('workstreamId') || '').trim() || null;
     const assignedToContactId = String(form.get('assignedToContactId') || '').trim() || null;
     const waitingOnContactId = String(form.get('waitingOnContactId') || '').trim() || null;
 
@@ -194,6 +209,16 @@ export const actions: Actions = {
       if (!link) return fail(404, { error: 'Deal-company thread not found.' });
       dealId = link.dealId;
       companyId = companyId || link.companyId;
+    }
+
+    if (workstreamId) {
+      const workstream = await prisma.projectWorkstream.findFirst({
+        where: { id: workstreamId, userId, status: { not: 'ARCHIVED' as any }, project: { status: { not: 'ARCHIVED' as any } } },
+        select: { id: true, projectId: true }
+      });
+      if (!workstream) return fail(404, { error: 'Selected workstream was not found.' });
+      if (projectId && projectId !== workstream.projectId) return fail(400, { error: 'Selected workstream does not belong to the selected project.' });
+      projectId = projectId || workstream.projectId;
     }
 
     const [contactOk, dealOk, projectOk, companyOk, assignedOk, waitingOk] = await Promise.all([
@@ -234,9 +259,18 @@ export const actions: Actions = {
         dealContactId,
         companyId,
         dealCompanyId,
-        projectId
+        projectId,
+        workstreamId
       }
     });
+
+    if (projectId && dealId) {
+      await prisma.projectDeal.upsert({
+        where: { projectId_dealId: { projectId, dealId } },
+        update: workstreamId ? { workstreamId } : {},
+        create: { userId, projectId, dealId, workstreamId }
+      }).catch(() => null);
+    }
 
     throw redirect(303, returnTo);
   }

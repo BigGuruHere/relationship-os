@@ -45,6 +45,7 @@ const TASK_SORT_OPTIONS = [
   { value: 'created_desc', label: 'Recently created' },
   { value: 'title', label: 'Title A-Z' },
   { value: 'project', label: 'Project A-Z' },
+  { value: 'workstream', label: 'Workstream A-Z' },
   { value: 'lead', label: 'Lead A-Z' }
 ] as const;
 
@@ -58,6 +59,7 @@ type TaskFilters = {
   status: string;
   focus: string;
   projectId: string;
+  workstreamId: string;
   marketLeadId: string;
   contactId: string;
   companyId: string;
@@ -100,6 +102,7 @@ function sortMappedTasks(tasks: Awaited<ReturnType<typeof mapTask>>[], sort: Tas
   return [...tasks].sort((a, b) => {
     if (sort === 'title') return compareText(a.title, b.title) || updatedTime(b) - updatedTime(a);
     if (sort === 'project') return compareText(a.project?.title, b.project?.title) || compareText(a.title, b.title);
+    if (sort === 'workstream') return compareText(a.workstream?.name, b.workstream?.name) || compareText(a.project?.title, b.project?.title) || compareText(a.title, b.title);
     if (sort === 'lead') return compareText(a.marketLead?.title, b.marketLead?.title) || compareText(a.title, b.title);
     if (sort === 'due_desc') {
       const av = dueTime(a) === Number.POSITIVE_INFINITY ? Number.NEGATIVE_INFINITY : dueTime(a);
@@ -132,6 +135,7 @@ async function loadTaskRows(userId: string, filters: TaskFilters, sort: TaskSort
 
   if (filters.focus && TASK_FOCUS_OPTIONS.some((f) => f.value === filters.focus)) where.focus = filters.focus;
   if (filters.projectId) where.projectId = filters.projectId;
+  if (filters.workstreamId) where.workstreamId = filters.workstreamId;
   if (filters.marketLeadId) where.marketLeadId = filters.marketLeadId;
   if (filters.contactId) where.contactId = filters.contactId;
   if (filters.companyId) where.companyId = filters.companyId;
@@ -163,7 +167,8 @@ async function loadTaskRows(userId: string, filters: TaskFilters, sort: TaskSort
       waitingOnContact: { select: { id: true, fullNameEnc: true, linkedUserId: true } },
       deal: { select: { id: true, titleEnc: true, status: true } },
       project: { select: { id: true, titleEnc: true, status: true } },
-      marketLead: { select: { id: true, titleEnc: true, type: true, status: true, projectId: true } },
+      workstream: { select: { id: true, nameEnc: true, projectId: true, status: true } },
+      marketLead: { select: { id: true, titleEnc: true, type: true, status: true, projectId: true, workstreamId: true } },
       company: { select: { id: true, nameEnc: true, kind: true, status: true } },
       dealCompany: {
         select: {
@@ -200,6 +205,7 @@ async function mapTask(row: TaskRow) {
   const dealTitle = row.deal ? safeDecrypt(row.deal.titleEnc, 'deal.title', 'Untitled deal') : '';
   const projectTitle = row.project ? safeDecryptTask(row.project.titleEnc, 'project.title', 'Untitled project') : '';
   const marketLeadTitle = row.marketLead ? safeDecryptTask(row.marketLead.titleEnc, 'market_lead.title', 'Untitled lead') : '';
+  const workstreamName = row.workstream ? safeDecryptTask(row.workstream.nameEnc, 'project_workstream.name', 'Untitled workstream') : '';
   const companyName = row.company ? companyDisplay(row.company) : '';
   const dealCompanyDealTitle = row.dealCompany?.deal ? safeDecrypt(row.dealCompany.deal.titleEnc, 'deal.title', 'Untitled deal') : '';
   const dealCompanyName = row.dealCompany?.company ? companyDisplay(row.dealCompany.company) : '';
@@ -232,6 +238,7 @@ async function mapTask(row: TaskRow) {
     waitingOnContact: row.waitingOnContact ? { id: row.waitingOnContact.id, name: waitingName } : null,
     deal: row.deal ? { id: row.deal.id, title: dealTitle, status: row.deal.status } : null,
     project: row.project ? { id: row.project.id, title: projectTitle, statusLabel: projectStatusLabel(row.project.status) } : null,
+    workstream: row.workstream ? { id: row.workstream.id, name: workstreamName, projectId: row.workstream.projectId, status: row.workstream.status } : null,
     marketLead: row.marketLead ? { id: row.marketLead.id, title: marketLeadTitle, type: row.marketLead.type, status: row.marketLead.status, statusLabel: marketLeadStatusLabel(row.marketLead.status), projectId: row.marketLead.projectId } : null,
     company: row.company ? { id: row.company.id, name: companyName, status: row.company.status } : null,
     dealCompany: row.dealCompany ? {
@@ -262,6 +269,7 @@ function taskMatchesQuery(task: Awaited<ReturnType<typeof mapTask>>, q: string) 
     task.contact?.name,
     task.deal?.title,
     task.project?.title,
+    task.workstream?.name,
     task.marketLead?.title,
     task.company?.name,
     task.dealCompany?.dealTitle,
@@ -276,12 +284,13 @@ function taskMatchesQuery(task: Awaited<ReturnType<typeof mapTask>>, q: string) 
 }
 
 async function loadOptions(userId: string) {
-  const [contactsRaw, dealsRaw, projectsRaw, companiesRaw, marketLeadsRaw, dealContactsRaw, dealCompaniesRaw] = await Promise.all([
+  const [contactsRaw, dealsRaw, projectsRaw, workstreamsRaw, companiesRaw, marketLeadsRaw, dealContactsRaw, dealCompaniesRaw] = await Promise.all([
     prisma.contact.findMany({ where: { userId }, select: { id: true, fullNameEnc: true, linkedUserId: true }, orderBy: { createdAt: 'desc' }, take: 300 }),
     prisma.deal.findMany({ where: { userId }, select: { id: true, titleEnc: true, status: true }, orderBy: { updatedAt: 'desc' }, take: 200 }),
     prisma.project.findMany({ where: { userId, status: { not: 'ARCHIVED' as any } }, select: { id: true, titleEnc: true, status: true }, orderBy: { updatedAt: 'desc' }, take: 200 }),
+    prisma.projectWorkstream.findMany({ where: { userId, status: { not: 'ARCHIVED' as any } }, select: { id: true, nameEnc: true, projectId: true, status: true, sortOrder: true, project: { select: { id: true, titleEnc: true } } }, orderBy: [{ sortOrder: 'asc' }, { updatedAt: 'desc' }], take: 300 }),
     prisma.company.findMany({ where: { userId, status: { not: 'ARCHIVED' as any } }, select: { id: true, nameEnc: true, kind: true, status: true }, orderBy: { updatedAt: 'desc' }, take: 300 }),
-    prisma.marketLead.findMany({ where: { userId, status: { notIn: ['ARCHIVED', 'NOT_RELEVANT', 'CONVERTED'] as any } }, select: { id: true, titleEnc: true, type: true, status: true, projectId: true }, orderBy: { updatedAt: 'desc' }, take: 300 }),
+    prisma.marketLead.findMany({ where: { userId, status: { notIn: ['ARCHIVED', 'NOT_RELEVANT', 'CONVERTED'] as any } }, select: { id: true, titleEnc: true, type: true, status: true, projectId: true, workstreamId: true }, orderBy: { updatedAt: 'desc' }, take: 300 }),
     prisma.dealContact.findMany({
       where: { userId },
       select: {
@@ -310,8 +319,9 @@ async function loadOptions(userId: string) {
   const contacts = await contactOptionsForRows(contactsRaw as any);
   const deals = dealsRaw.map((d) => ({ id: d.id, title: safeDecrypt(d.titleEnc, 'deal.title', 'Untitled deal'), status: d.status }));
   const projects = projectsRaw.map((p) => ({ id: p.id, title: safeDecryptTask(p.titleEnc, 'project.title', 'Untitled project'), statusLabel: projectStatusLabel(p.status) }));
+  const workstreams = workstreamsRaw.map((ws: any) => ({ id: ws.id, name: safeDecryptTask(ws.nameEnc, 'project_workstream.name', 'Untitled workstream'), projectId: ws.projectId, projectTitle: safeDecryptTask(ws.project?.titleEnc, 'project.title', 'Untitled project'), status: ws.status, sortOrder: ws.sortOrder }));
   const companies = companiesRaw.map((c) => ({ id: c.id, name: companyDisplay(c), kind: c.kind, status: c.status }));
-  const marketLeads = marketLeadsRaw.map((lead: any) => ({ id: lead.id, title: safeDecryptTask(lead.titleEnc, 'market_lead.title', 'Untitled lead'), type: lead.type, status: lead.status, statusLabel: marketLeadStatusLabel(lead.status), projectId: lead.projectId }));
+  const marketLeads = marketLeadsRaw.map((lead: any) => ({ id: lead.id, title: safeDecryptTask(lead.titleEnc, 'market_lead.title', 'Untitled lead'), type: lead.type, status: lead.status, statusLabel: marketLeadStatusLabel(lead.status), projectId: lead.projectId, workstreamId: lead.workstreamId }));
   const dealContacts = await Promise.all(dealContactsRaw.map(async (link: any) => ({
     id: link.id,
     dealId: link.deal.id,
@@ -327,12 +337,13 @@ async function loadOptions(userId: string) {
     title: `${safeDecrypt(link.deal.titleEnc, 'deal.title', 'Untitled deal')} - ${companyDisplay(link.company)}${link.label ? ` (${link.label})` : ''}`
   }));
 
-  return { contacts, deals, projects, companies, marketLeads, dealContacts, dealCompanies };
+  return { contacts, deals, projects, workstreams, companies, marketLeads, dealContacts, dealCompanies };
 }
 
-async function ownedIdExists(userId: string, kind: 'contact' | 'deal' | 'project' | 'company' | 'marketLead', id: string | null) {
+async function ownedIdExists(userId: string, kind: 'contact' | 'deal' | 'project' | 'workstream' | 'company' | 'marketLead', id: string | null) {
   if (!id) return true;
   if (kind === 'contact') return !!(await prisma.contact.findFirst({ where: { id, userId }, select: { id: true } }));
+  if (kind === 'workstream') return !!(await prisma.projectWorkstream.findFirst({ where: { id, userId }, select: { id: true } }));
   if (kind === 'deal') return !!(await prisma.deal.findFirst({ where: { id, userId }, select: { id: true } }));
   if (kind === 'company') return !!(await prisma.company.findFirst({ where: { id, userId }, select: { id: true } }));
   if (kind === 'marketLead') return !!(await prisma.marketLead.findFirst({ where: { id, userId }, select: { id: true } }));
@@ -347,6 +358,7 @@ export const load: PageServerLoad = async ({ locals, url }) => {
     status: String(url.searchParams.get('status') || '').trim().toUpperCase(),
     focus: String(url.searchParams.get('focus') || '').trim().toUpperCase(),
     projectId: String(url.searchParams.get('projectId') || '').trim(),
+    workstreamId: String(url.searchParams.get('workstreamId') || '').trim(),
     marketLeadId: String(url.searchParams.get('marketLeadId') || '').trim(),
     contactId: String(url.searchParams.get('contactId') || '').trim(),
     companyId: String(url.searchParams.get('companyId') || '').trim(),
@@ -377,6 +389,7 @@ export const load: PageServerLoad = async ({ locals, url }) => {
     selectedStatus: filters.status || '',
     selectedFocus: filters.focus || '',
     selectedProjectId: filters.projectId,
+    selectedWorkstreamId: filters.workstreamId,
     selectedMarketLeadId: filters.marketLeadId,
     selectedContactId: filters.contactId,
     selectedCompanyId: filters.companyId,
@@ -417,6 +430,7 @@ export const actions: Actions = {
     let dealCompanyId = String(form.get('dealCompanyId') || '').trim() || null;
     let marketLeadId = String(form.get('marketLeadId') || '').trim() || null;
     let projectId = String(form.get('projectId') || '').trim() || null;
+    let workstreamId = String(form.get('workstreamId') || '').trim() || null;
     const assignedToContactId = String(form.get('assignedToContactId') || '').trim() || null;
     const waitingOnContactId = String(form.get('waitingOnContactId') || '').trim() || null;
 
@@ -435,24 +449,33 @@ export const actions: Actions = {
     }
 
     if (marketLeadId) {
-      const lead = await prisma.marketLead.findFirst({ where: { id: marketLeadId, userId }, select: { id: true, projectId: true, contactId: true, companyId: true, dealId: true } });
+      const lead = await prisma.marketLead.findFirst({ where: { id: marketLeadId, userId }, select: { id: true, projectId: true, workstreamId: true, contactId: true, companyId: true, dealId: true } });
       if (!lead) return fail(404, { error: 'Lead not found.' });
       projectId = projectId || lead.projectId || null;
+      workstreamId = workstreamId || lead.workstreamId || null;
       contactId = contactId || lead.contactId || null;
       companyId = companyId || lead.companyId || null;
       dealId = dealId || lead.dealId || null;
     }
 
-    const [contactOk, dealOk, projectOk, companyOk, leadOk, assignedOk, waitingOk] = await Promise.all([
+    if (workstreamId) {
+      const ws = await prisma.projectWorkstream.findFirst({ where: { id: workstreamId, userId }, select: { id: true, projectId: true } });
+      if (!ws) return fail(404, { error: 'Workstream not found.' });
+      projectId = projectId || ws.projectId;
+      if (projectId !== ws.projectId) return fail(400, { error: 'Selected workstream belongs to a different project.' });
+    }
+
+    const [contactOk, dealOk, projectOk, workstreamOk, companyOk, leadOk, assignedOk, waitingOk] = await Promise.all([
       ownedIdExists(userId, 'contact', contactId),
       ownedIdExists(userId, 'deal', dealId),
       ownedIdExists(userId, 'project', projectId),
+      ownedIdExists(userId, 'workstream', workstreamId),
       ownedIdExists(userId, 'company', companyId),
       ownedIdExists(userId, 'marketLead', marketLeadId),
       ownedIdExists(userId, 'contact', assignedToContactId),
       ownedIdExists(userId, 'contact', waitingOnContactId)
     ]);
-    if (!contactOk || !dealOk || !projectOk || !companyOk || !leadOk || !assignedOk || !waitingOk) return fail(404, { error: 'One of the selected links was not found.' });
+    if (!contactOk || !dealOk || !projectOk || !workstreamOk || !companyOk || !leadOk || !assignedOk || !waitingOk) return fail(404, { error: 'One of the selected links was not found.' });
 
     const notes = String(form.get('notes') || '').trim();
     const summary = String(form.get('summary') || '').trim();
@@ -481,7 +504,8 @@ export const actions: Actions = {
           companyId,
           dealCompanyId,
           marketLeadId,
-          projectId
+          projectId,
+          workstreamId
         }
       });
     } catch (err) {

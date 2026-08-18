@@ -62,6 +62,7 @@ export type MarketLeadFormValues = {
   companyId: string;
   dealId: string;
   projectId: string;
+  workstreamId: string;
 };
 
 export function normaliseUrl(input: string) {
@@ -130,7 +131,8 @@ export function leadFormValues(form: FormData, defaults: Partial<MarketLeadFormV
     contactId: String(form.get('contactId') || defaults.contactId || '').trim(),
     companyId: String(form.get('companyId') || defaults.companyId || '').trim(),
     dealId: String(form.get('dealId') || defaults.dealId || '').trim(),
-    projectId: String(form.get('projectId') || defaults.projectId || '').trim()
+    projectId: String(form.get('projectId') || defaults.projectId || '').trim(),
+    workstreamId: String(form.get('workstreamId') || defaults.workstreamId || '').trim()
   };
 }
 
@@ -186,7 +188,8 @@ export function marketLeadCreateData(userId: string, values: MarketLeadFormValue
     contactId: values.contactId || null,
     companyId: values.companyId || null,
     dealId: values.dealId || null,
-    projectId: values.projectId || null
+    projectId: values.projectId || null,
+    workstreamId: values.workstreamId || null
   };
 }
 
@@ -250,6 +253,8 @@ export function mapMarketLead(row: any) {
     companyId: row.companyId,
     dealId: row.dealId,
     projectId: row.projectId,
+    workstreamId: row.workstreamId,
+    workstream: row.workstream ? { id: row.workstream.id, name: safeDecryptLead(row.workstream.nameEnc, 'project_workstream.name', 'Untitled workstream'), projectId: row.workstream.projectId, status: row.workstream.status } : null,
     exchangeItemId: row.exchangeItemId,
     convertedAt: row.convertedAt,
     createdAt: row.createdAt,
@@ -522,11 +527,11 @@ export async function convertLeadToDeal(userId: string, leadId: string) {
     if (lead.projectId) {
       await prisma.projectDeal.upsert({
         where: { projectId_dealId: { projectId: lead.projectId, dealId: lead.dealId } },
-        update: {},
-        create: { userId, projectId: lead.projectId, dealId: lead.dealId }
+        update: lead.workstreamId ? { workstreamId: lead.workstreamId } : {},
+        create: { userId, projectId: lead.projectId, dealId: lead.dealId, workstreamId: lead.workstreamId || null }
       }).catch(() => null);
     }
-    await prisma.task.updateMany({ where: { userId, marketLeadId: leadId, dealId: null }, data: { dealId: lead.dealId } }).catch(() => null);
+    await prisma.task.updateMany({ where: { userId, marketLeadId: leadId, dealId: null }, data: { dealId: lead.dealId, workstreamId: lead.workstreamId || undefined } }).catch(() => null);
     return lead.dealId;
   }
 
@@ -553,13 +558,13 @@ export async function convertLeadToDeal(userId: string, leadId: string) {
   if (lead.projectId) {
     await prisma.projectDeal.upsert({
       where: { projectId_dealId: { projectId: lead.projectId, dealId: deal.id } },
-      update: {},
-      create: { userId, projectId: lead.projectId, dealId: deal.id }
+      update: lead.workstreamId ? { workstreamId: lead.workstreamId } : {},
+      create: { userId, projectId: lead.projectId, dealId: deal.id, workstreamId: lead.workstreamId || null }
     }).catch(() => null);
   }
 
   await prisma.marketLead.updateMany({ where: { id: leadId, userId }, data: { dealId: deal.id, status: 'CONVERTED' as any, convertedAt: new Date() } });
-  await prisma.task.updateMany({ where: { userId, marketLeadId: leadId, dealId: null }, data: { dealId: deal.id } }).catch(() => null);
+  await prisma.task.updateMany({ where: { userId, marketLeadId: leadId, dealId: null }, data: { dealId: deal.id, workstreamId: lead.workstreamId || undefined } }).catch(() => null);
   return deal.id;
 }
 

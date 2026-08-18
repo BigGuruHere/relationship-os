@@ -95,6 +95,15 @@
         </div>
       </div>
 
+      <div class="field">
+        <label for="workstreamId">Attach workstream</label>
+        <select id="workstreamId" name="workstreamId">
+          <option value="">No workstream</option>
+          {#each data.options.workstreams as ws}<option value={ws.id} selected={data.task.workstreamId === ws.id}>{ws.title}</option>{/each}
+        </select>
+        <p class="hint">Selecting a workstream will automatically attach the task to that workstream's project.</p>
+      </div>
+
       <div class="grid two">
         <div class="field">
           <label for="dealContactId">Attach deal-person thread</label>

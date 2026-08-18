@@ -350,6 +350,20 @@ export const load: PageServerLoad = async ({ params, locals }) => {
     statusLabel: projectStatusLabel(project.status)
   }));
 
+  const workstreamsRaw = await prisma.projectWorkstream.findMany({
+    where: { userId: locals.user.id, status: { not: 'ARCHIVED' as any }, project: { status: { not: 'ARCHIVED' as any } } },
+    select: { id: true, nameEnc: true, projectId: true, status: true, project: { select: { id: true, titleEnc: true } } },
+    orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
+    take: 300
+  });
+  const workstreamOptions = workstreamsRaw.map((ws: any) => ({
+    id: ws.id,
+    projectId: ws.projectId,
+    name: safeDecryptTask(ws.nameEnc, 'project_workstream.name', 'Untitled workstream'),
+    projectTitle: safeDecryptTask(ws.project?.titleEnc, 'project.title', 'Untitled project'),
+    status: ws.status
+  }));
+
   const linkedProjectDealsRaw = await prisma.projectDeal.findMany({
     where: { userId: locals.user.id, dealId: row.id },
     select: {
@@ -357,6 +371,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
       labelEnc: true,
       notesEnc: true,
       createdAt: true,
+      workstream: { select: { id: true, nameEnc: true, projectId: true, status: true } },
       project: { select: { id: true, titleEnc: true, status: true, updatedAt: true } }
     },
     orderBy: { createdAt: 'desc' },
@@ -370,6 +385,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
     statusLabel: projectStatusLabel(link.project.status),
     label: safeDecryptTask(link.labelEnc, 'project_deal.label', ''),
     notes: safeDecryptTask(link.notesEnc, 'project_deal.notes', ''),
+    workstream: link.workstream ? { id: link.workstream.id, name: safeDecryptTask(link.workstream.nameEnc, 'project_workstream.name', 'Untitled workstream'), projectId: link.workstream.projectId, status: link.workstream.status } : null,
     createdAt: link.createdAt,
     updatedAt: link.project.updatedAt
   }));
@@ -410,6 +426,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
     agentArtifacts,
     linkedProjects,
     projectOptions,
+    workstreamOptions,
     projectOptionsForLinking: projectOptions.filter((project: any) => !linkedProjectIds.has(project.id)),
     contactOptions: await contactOptionsForRows(availableContactsRaw),
     companyOptions: availableCompaniesRaw.map((company: any) => ({
@@ -485,6 +502,7 @@ export const actions: Actions = {
     const userId = locals.user.id;
     const form = await request.formData();
     const projectId = String(form.get('projectId') || '').trim();
+    const workstreamId = String(form.get('workstreamId') || '').trim() || null;
     const label = String(form.get('label') || '').trim();
     const notes = String(form.get('notes') || '').trim();
     if (!projectId) return fail(400, { error: 'Choose a project to link.' });
@@ -494,19 +512,25 @@ export const actions: Actions = {
       prisma.project.findFirst({ where: { id: projectId, userId }, select: { id: true } })
     ]);
     if (!deal || !project) return fail(404, { error: 'Deal or project not found.' });
+    if (workstreamId) {
+      const ws = await prisma.projectWorkstream.findFirst({ where: { id: workstreamId, userId, projectId }, select: { id: true } });
+      if (!ws) return fail(404, { error: 'Selected workstream was not found for this project.' });
+    }
 
     await prisma.projectDeal.upsert({
       where: { projectId_dealId: { projectId, dealId: params.id } },
       update: {
         labelEnc: label ? encrypt(label, 'project_deal.label') : undefined,
-        notesEnc: notes ? encrypt(notes, 'project_deal.notes') : undefined
+        notesEnc: notes ? encrypt(notes, 'project_deal.notes') : undefined,
+        workstreamId
       },
       create: {
         userId,
         projectId,
         dealId: params.id,
         labelEnc: label ? encrypt(label, 'project_deal.label') : null,
-        notesEnc: notes ? encrypt(notes, 'project_deal.notes') : null
+        notesEnc: notes ? encrypt(notes, 'project_deal.notes') : null,
+        workstreamId
       }
     });
     throw redirect(303, `/deals/${params.id}`);

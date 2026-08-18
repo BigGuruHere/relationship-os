@@ -30,6 +30,8 @@ export const load: PageServerLoad = async ({ locals, url }) => {
   const contactAttemptStatus = String(url.searchParams.get('contactAttemptStatus') || '').trim().toUpperCase();
   const buyerStatus = String(url.searchParams.get('buyerStatus') || '').trim().toUpperCase();
   const sellerStatus = String(url.searchParams.get('sellerStatus') || '').trim().toUpperCase();
+  const selectedProjectId = String(url.searchParams.get('projectId') || '').trim();
+  const selectedWorkstreamId = String(url.searchParams.get('workstreamId') || '').trim();
 
   const customLeadSources = await loadLeadSources(userId);
 
@@ -44,11 +46,13 @@ export const load: PageServerLoad = async ({ locals, url }) => {
   if (contactAttemptStatus && CONTACT_ATTEMPT_STATUSES.some((o) => o.value === contactAttemptStatus)) where.contactAttemptStatus = contactAttemptStatus;
   if (buyerStatus && BUYER_QUALIFICATION_STATUSES.some((o) => o.value === buyerStatus)) where.buyerStatus = buyerStatus;
   if (sellerStatus && SELLER_QUALIFICATION_STATUSES.some((o) => o.value === sellerStatus)) where.sellerStatus = sellerStatus;
+  if (selectedProjectId) where.projectId = selectedProjectId;
+  if (selectedWorkstreamId) where.workstreamId = selectedWorkstreamId;
   const sourceFilter = normaliseLeadSourceChoice(selectedSource);
   if (sourceFilter.kind === 'builtin' && MARKET_LEAD_SOURCES.some((o) => o.value === sourceFilter.source)) where.source = sourceFilter.source;
   if (sourceFilter.kind === 'custom' && customLeadSources.some((source) => source.id === sourceFilter.id)) where.leadSourceId = sourceFilter.id;
 
-  const [rows, projectsRaw] = await Promise.all([
+  const [rows, projectsRaw, workstreamsRaw] = await Promise.all([
     prisma.marketLead.findMany({
     where,
     select: {
@@ -86,6 +90,8 @@ export const load: PageServerLoad = async ({ locals, url }) => {
       companyId: true,
       dealId: true,
       projectId: true,
+      workstreamId: true,
+      workstream: { select: { id: true, nameEnc: true, projectId: true, status: true } },
       exchangeItemId: true,
       convertedAt: true,
       createdAt: true,
@@ -99,15 +105,29 @@ export const load: PageServerLoad = async ({ locals, url }) => {
       select: { id: true, titleEnc: true, status: true },
       orderBy: { updatedAt: 'desc' },
       take: 200
+    }),
+    prisma.projectWorkstream.findMany({
+      where: { userId, status: { not: 'ARCHIVED' as any } },
+      select: { id: true, nameEnc: true, projectId: true, status: true, sortOrder: true, project: { select: { id: true, titleEnc: true } } },
+      orderBy: [{ sortOrder: 'asc' }, { updatedAt: 'desc' }],
+      take: 300
     })
   ]);
 
   const projects = projectsRaw.map((project: any) => ({ id: project.id, title: safeDecryptTask(project.titleEnc, 'project.title', 'Untitled project'), status: project.status }));
+  const workstreams = workstreamsRaw.map((ws: any) => ({
+    id: ws.id,
+    name: safeDecryptTask(ws.nameEnc, 'project_workstream.name', 'Untitled workstream'),
+    projectId: ws.projectId,
+    projectTitle: safeDecryptTask(ws.project?.titleEnc, 'project.title', 'Untitled project'),
+    status: ws.status,
+    sortOrder: ws.sortOrder
+  }));
 
   const qLower = q.toLowerCase();
   const leads = rows.map(mapMarketLead).filter((lead) => {
     if (!q) return true;
-    return [lead.title, lead.name, lead.companyName, lead.email, lead.phone, lead.website, lead.linkedin, lead.roleTitle, lead.geography, lead.address, lead.description, lead.notes, lead.typeLabel, lead.statusLabel, lead.sourceLabel, lead.sourceCategoryLabel, lead.contactAttemptStatusLabel, lead.buyerStatusLabel, lead.sellerStatusLabel]
+    return [lead.title, lead.name, lead.companyName, lead.email, lead.phone, lead.website, lead.linkedin, lead.roleTitle, lead.geography, lead.address, lead.description, lead.notes, lead.typeLabel, lead.statusLabel, lead.sourceLabel, lead.sourceCategoryLabel, lead.workstream?.name, lead.contactAttemptStatusLabel, lead.buyerStatusLabel, lead.sellerStatusLabel]
       .join(' ')
       .toLowerCase()
       .includes(qLower);
@@ -132,6 +152,8 @@ export const load: PageServerLoad = async ({ locals, url }) => {
     selectedContactAttemptStatus: contactAttemptStatus,
     selectedBuyerStatus: buyerStatus,
     selectedSellerStatus: sellerStatus,
+    selectedProjectId,
+    selectedWorkstreamId,
     leads,
     summary,
     leadTypes: MARKET_LEAD_TYPES,
@@ -141,7 +163,8 @@ export const load: PageServerLoad = async ({ locals, url }) => {
     buyerQualificationStatuses: BUYER_QUALIFICATION_STATUSES,
     sellerQualificationStatuses: SELLER_QUALIFICATION_STATUSES,
     communicationMethods: COMMUNICATION_METHODS,
-    projects
+    projects,
+    workstreams
   };
 };
 
@@ -159,6 +182,12 @@ export const actions: Actions = {
       if (values.projectId) {
         const projectOk = await prisma.project.findFirst({ where: { id: values.projectId, userId: locals.user.id }, select: { id: true } });
         if (!projectOk) return fail(404, { error: 'Selected project was not found.', values });
+      }
+      if (values.workstreamId) {
+        const ws = await prisma.projectWorkstream.findFirst({ where: { id: values.workstreamId, userId: locals.user.id }, select: { id: true, projectId: true } });
+        if (!ws) return fail(404, { error: 'Selected workstream was not found.', values });
+        values.projectId = values.projectId || ws.projectId;
+        if (values.projectId !== ws.projectId) return fail(400, { error: 'Selected workstream belongs to a different project.', values });
       }
       const created = await prisma.marketLead.create({ data: marketLeadCreateData(locals.user.id, values) as any, select: { id: true } });
       throw redirect(303, `/leads/${created.id}`);

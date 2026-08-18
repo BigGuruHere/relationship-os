@@ -74,6 +74,22 @@ async function loadProjectOptions(userId: string) {
   }));
 }
 
+async function loadWorkstreamOptions(userId: string) {
+  const rows = await prisma.projectWorkstream.findMany({
+    where: { userId, status: { not: 'ARCHIVED' as any } },
+    select: { id: true, nameEnc: true, projectId: true, status: true, project: { select: { id: true, titleEnc: true } } },
+    orderBy: [{ sortOrder: 'asc' }, { updatedAt: 'desc' }],
+    take: 300
+  });
+  return rows.map((ws: any) => ({
+    id: ws.id,
+    name: safeDecryptTask(ws.nameEnc, 'project_workstream.name', 'Untitled workstream'),
+    projectId: ws.projectId,
+    projectTitle: safeDecryptTask(ws.project?.titleEnc, 'project.title', 'Untitled project'),
+    status: ws.status
+  }));
+}
+
 function mapLeadNote(note: any) {
   return {
     id: note.id,
@@ -109,6 +125,7 @@ function mapLeadTask(task: any) {
     completedAt: task.completedAt,
     updatedAt: task.updatedAt,
     project: task.project ? { id: task.project.id, title: safeDecryptTask(task.project.titleEnc, 'project.title', 'Untitled project') } : null,
+    workstream: task.workstream ? { id: task.workstream.id, name: safeDecryptTask(task.workstream.nameEnc, 'project_workstream.name', 'Untitled workstream') } : null,
     contact: task.contact ? { id: task.contact.id, name: contactName(task.contact) } : null,
     company: task.company ? { id: task.company.id, name: safeDecryptCompany(task.company.nameEnc, 'company.name', 'Untitled company') } : null,
     deal: task.deal ? { id: task.deal.id, title: safeDecrypt(task.deal.titleEnc, 'deal.title', 'Untitled deal') } : null
@@ -157,6 +174,8 @@ export const load: PageServerLoad = async ({ params, locals }) => {
       companyId: true,
       dealId: true,
       projectId: true,
+      workstreamId: true,
+      workstream: { select: { id: true, nameEnc: true, projectId: true, status: true } },
       exchangeItemId: true,
       convertedAt: true,
       createdAt: true,
@@ -172,7 +191,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
   if (!row) throw redirect(303, '/leads');
   const lead = mapMarketLead(row);
 
-  const [leadNotesRaw, leadTasksRaw, projects, customLeadSources] = await Promise.all([
+  const [leadNotesRaw, leadTasksRaw, projects, workstreams, customLeadSources] = await Promise.all([
     prisma.marketLeadNote.findMany({
       where: { userId, marketLeadId: row.id },
       select: { id: true, channel: true, occurredAt: true, bodyEnc: true, summaryEnc: true, createdAt: true, updatedAt: true },
@@ -196,6 +215,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
         completedAt: true,
         updatedAt: true,
         project: { select: { id: true, titleEnc: true } },
+        workstream: { select: { id: true, nameEnc: true, projectId: true } },
         contact: { select: { id: true, fullNameEnc: true } },
         company: { select: { id: true, nameEnc: true } },
         deal: { select: { id: true, titleEnc: true } }
@@ -204,6 +224,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
       take: 150
     }),
     loadProjectOptions(userId),
+    loadWorkstreamOptions(userId),
     loadLeadSources(userId)
   ]);
 
@@ -218,11 +239,13 @@ export const load: PageServerLoad = async ({ params, locals }) => {
       linkedCompanyName: row.company ? safeDecryptCompany(row.company.nameEnc, 'company.name', '') : '',
       linkedDealTitle: row.deal ? safeDecrypt(row.deal.titleEnc, 'deal.title', '') : '',
       linkedProjectTitle: row.project ? safeDecryptTask(row.project.titleEnc, 'project.title', '') : '',
+      linkedWorkstreamTitle: row.workstream ? safeDecryptTask(row.workstream.nameEnc, 'project_workstream.name', '') : '',
       linkedExchangeTitle: row.exchangeItem ? safeDecrypt(row.exchangeItem.titleEnc, 'exchange.title', '') : ''
     },
     leadNotes: leadNotesRaw.map(mapLeadNote),
     leadTasks: leadTasksRaw.map(mapLeadTask),
     projects,
+    workstreams,
     leadTypes: MARKET_LEAD_TYPES,
     leadStatuses: MARKET_LEAD_STATUSES,
     leadSourceOptions: buildLeadSourceOptions(customLeadSources),
@@ -252,6 +275,12 @@ export const actions: Actions = {
     if (values.projectId) {
       const projectOk = await prisma.project.findFirst({ where: { id: values.projectId, userId }, select: { id: true } });
       if (!projectOk) return fail(404, { error: 'Selected project was not found.' });
+    }
+    if (values.workstreamId) {
+      const ws = await prisma.projectWorkstream.findFirst({ where: { id: values.workstreamId, userId }, select: { id: true, projectId: true } });
+      if (!ws) return fail(404, { error: 'Selected workstream was not found.' });
+      values.projectId = values.projectId || ws.projectId;
+      if (values.projectId !== ws.projectId) return fail(400, { error: 'Selected workstream belongs to a different project.' });
     }
 
     values.leadSourceId = (await resolveLeadSourceId(userId, values.leadSourceId, values.newLeadSource)) || '';
@@ -326,7 +355,7 @@ export const actions: Actions = {
   createTask: async ({ request, params, locals }) => {
     if (!locals.user) throw redirect(303, '/auth/login');
     const userId = locals.user.id;
-    const lead = await prisma.marketLead.findFirst({ where: { id: params.id, userId }, select: { id: true, projectId: true, contactId: true, companyId: true, dealId: true } });
+    const lead = await prisma.marketLead.findFirst({ where: { id: params.id, userId }, select: { id: true, projectId: true, workstreamId: true, contactId: true, companyId: true, dealId: true } });
     if (!lead) return fail(404, { error: 'Lead not found.' });
 
     const form = await request.formData();
@@ -342,6 +371,7 @@ export const actions: Actions = {
         userId,
         marketLeadId: params.id,
         projectId: lead.projectId || null,
+        workstreamId: lead.workstreamId || null,
         contactId: lead.contactId || null,
         companyId: lead.companyId || null,
         dealId: lead.dealId || null,

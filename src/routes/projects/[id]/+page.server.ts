@@ -38,12 +38,30 @@ import {
 
 const ACTIVE_TASK_STATUSES = ['OPEN', 'IN_PROGRESS', 'WAITING', 'SNOOZED'];
 
+function workstreamDisplay(row: any) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    name: safeDecryptTask(row.nameEnc, 'project_workstream.name', 'Untitled workstream'),
+    description: safeDecryptTask(row.descriptionEnc, 'project_workstream.description', ''),
+    status: row.status,
+    sortOrder: row.sortOrder ?? 0,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt
+  };
+}
+
+async function workstreamOk(userId: string, projectId: string, workstreamId: string | null) {
+  if (!workstreamId) return true;
+  return !!(await prisma.projectWorkstream.findFirst({ where: { id: workstreamId, userId, projectId }, select: { id: true } }));
+}
+
 async function loadOptions(userId: string) {
   const [contactsRaw, dealsRaw, companiesRaw, marketLeadsRaw, dealContactsRaw, dealCompaniesRaw] = await Promise.all([
     prisma.contact.findMany({ where: { userId }, select: { id: true, fullNameEnc: true, linkedUserId: true }, orderBy: { createdAt: 'desc' }, take: 300 }),
     prisma.deal.findMany({ where: { userId }, select: { id: true, titleEnc: true, status: true }, orderBy: { updatedAt: 'desc' }, take: 200 }),
     prisma.company.findMany({ where: { userId, status: { not: 'ARCHIVED' as any } }, select: { id: true, nameEnc: true, kind: true, status: true }, orderBy: { updatedAt: 'desc' }, take: 300 }),
-    prisma.marketLead.findMany({ where: { userId, status: { notIn: ['ARCHIVED', 'NOT_RELEVANT', 'CONVERTED'] as any } }, select: { id: true, titleEnc: true, type: true, status: true, projectId: true }, orderBy: { updatedAt: 'desc' }, take: 300 }),
+    prisma.marketLead.findMany({ where: { userId, status: { notIn: ['ARCHIVED', 'NOT_RELEVANT', 'CONVERTED'] as any } }, select: { id: true, titleEnc: true, type: true, status: true, projectId: true, workstreamId: true }, orderBy: { updatedAt: 'desc' }, take: 300 }),
     prisma.dealContact.findMany({
       where: { userId },
       select: {
@@ -77,7 +95,8 @@ async function loadOptions(userId: string) {
     type: lead.type,
     status: lead.status,
     statusLabel: marketLeadStatusLabel(lead.status),
-    projectId: lead.projectId
+    projectId: lead.projectId,
+    workstreamId: lead.workstreamId
   }));
   const dealContacts = await Promise.all(dealContactsRaw.map(async (link: any) => ({
     id: link.id,
@@ -140,6 +159,8 @@ function marketLeadSelect() {
     companyId: true,
     dealId: true,
     projectId: true,
+    workstreamId: true,
+    workstream: { select: { id: true, nameEnc: true, projectId: true, status: true } },
     exchangeItemId: true,
     convertedAt: true,
     createdAt: true,
@@ -157,6 +178,13 @@ export const load: PageServerLoad = async ({ params, locals }) => {
   });
   if (!project) throw redirect(303, '/projects');
 
+  const workstreamsRaw = await prisma.projectWorkstream.findMany({
+    where: { userId, projectId: project.id, status: { not: 'ARCHIVED' as any } },
+    select: { id: true, nameEnc: true, descriptionEnc: true, status: true, sortOrder: true, createdAt: true, updatedAt: true },
+    orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }]
+  });
+  const workstreams = workstreamsRaw.map(workstreamDisplay);
+
   const tasksRaw = await prisma.task.findMany({
     where: { userId, projectId: project.id },
     select: {
@@ -173,6 +201,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
       snoozedUntil: true,
       completedAt: true,
       updatedAt: true,
+      workstream: { select: { id: true, nameEnc: true, status: true } },
       marketLead: { select: { id: true, titleEnc: true, type: true, status: true } },
       contact: { select: { id: true, fullNameEnc: true, linkedUserId: true } },
       assignedToContact: { select: { id: true, fullNameEnc: true, linkedUserId: true } },
@@ -225,6 +254,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
       snoozedUntil: task.snoozedUntil,
       completedAt: task.completedAt,
       updatedAt: task.updatedAt,
+      workstream: task.workstream ? { id: task.workstream.id, name: safeDecryptTask(task.workstream.nameEnc, 'project_workstream.name', 'Untitled workstream'), status: task.workstream.status } : null,
       marketLead: task.marketLead ? { id: task.marketLead.id, title: safeDecryptTask(task.marketLead.titleEnc, 'market_lead.title', 'Untitled lead'), type: task.marketLead.type, status: task.marketLead.status } : null,
       contact: task.contact ? { id: task.contact.id, name: await contactDisplayName(task.contact) } : null,
       assignedToContact: task.assignedToContact ? { id: task.assignedToContact.id, name: await contactDisplayName(task.assignedToContact) } : null,
@@ -251,6 +281,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
       labelEnc: true,
       notesEnc: true,
       createdAt: true,
+      workstream: { select: { id: true, nameEnc: true, status: true } },
       deal: { select: { id: true, titleEnc: true, status: true, valueCents: true, currency: true, probability: true, updatedAt: true } }
     },
     orderBy: { createdAt: 'desc' },
@@ -267,7 +298,8 @@ export const load: PageServerLoad = async ({ params, locals }) => {
     label: safeDecryptTask(link.labelEnc, 'project_deal.label', ''),
     notes: safeDecryptTask(link.notesEnc, 'project_deal.notes', ''),
     createdAt: link.createdAt,
-    updatedAt: link.deal.updatedAt
+    updatedAt: link.deal.updatedAt,
+    workstream: link.workstream ? { id: link.workstream.id, name: safeDecryptTask(link.workstream.nameEnc, 'project_workstream.name', 'Untitled workstream'), status: link.workstream.status } : null
   }));
   const linkedDealIds = new Set(linkedDeals.map((deal: any) => deal.dealId));
 
@@ -275,7 +307,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
   const agentArtifacts = await loadAgentArtifacts({ userId, entityType: 'project', entityId: project.id });
   const projectNotesRaw = await prisma.projectNote.findMany({
     where: { userId, projectId: project.id },
-    select: { id: true, bodyEnc: true, summaryEnc: true, createdAt: true, updatedAt: true },
+    select: { id: true, bodyEnc: true, summaryEnc: true, channel: true, occurredAt: true, createdAt: true, updatedAt: true, workstream: { select: { id: true, nameEnc: true, status: true } } },
     orderBy: { createdAt: 'desc' },
     take: 80
   });
@@ -283,6 +315,9 @@ export const load: PageServerLoad = async ({ params, locals }) => {
     id: note.id,
     body: safeDecryptTask(note.bodyEnc, 'project_note.body', ''),
     summary: safeDecryptTask(note.summaryEnc, 'project_note.summary', ''),
+    channel: note.channel || 'note',
+    occurredAt: note.occurredAt,
+    workstream: note.workstream ? { id: note.workstream.id, name: safeDecryptTask(note.workstream.nameEnc, 'project_workstream.name', 'Untitled workstream'), status: note.workstream.status } : null,
     createdAt: note.createdAt,
     updatedAt: note.updatedAt
   }));
@@ -295,7 +330,8 @@ export const load: PageServerLoad = async ({ params, locals }) => {
     completed: tasks.filter((task) => task.status === 'DONE').length,
     leads: projectLeads.length,
     readyLeads: projectLeads.filter((lead: any) => lead.status === 'QUALIFIED').length,
-    deals: linkedDeals.length
+    deals: linkedDeals.length,
+    workstreams: workstreams.length
   };
 
   const dealMap = new Map<string, any>();
@@ -308,6 +344,18 @@ export const load: PageServerLoad = async ({ params, locals }) => {
     if (task.dealContact) peopleMap.set(task.dealContact.contactId, { id: task.dealContact.contactId, name: task.dealContact.contactName });
     if (task.dealCompany) companyMap.set(task.dealCompany.companyId, { id: task.dealCompany.companyId, name: task.dealCompany.companyName });
   }
+
+  const unassignedSection = { id: '', name: 'Unassigned', status: 'ACTIVE', leads: projectLeads.filter((lead: any) => !lead.workstreamId), tasks: tasks.filter((task: any) => !task.workstream), deals: linkedDeals.filter((deal: any) => !deal.workstream), notes: projectNotes.filter((note: any) => !note.workstream) };
+  const workstreamSections = [
+    ...workstreams.map((ws: any) => ({
+      ...ws,
+      leads: projectLeads.filter((lead: any) => lead.workstreamId === ws.id),
+      tasks: tasks.filter((task: any) => task.workstream?.id === ws.id),
+      deals: linkedDeals.filter((deal: any) => deal.workstream?.id === ws.id),
+      notes: projectNotes.filter((note: any) => note.workstream?.id === ws.id)
+    })),
+    unassignedSection
+  ];
 
   const [options, customLeadSources] = await Promise.all([loadOptions(userId), loadLeadSources(userId)]);
 
@@ -330,6 +378,8 @@ export const load: PageServerLoad = async ({ params, locals }) => {
     agentArtifacts,
     projectNotes,
     projectLeads,
+    workstreams,
+    workstreamSections,
     linkedDeals,
     dealOptionsForLinking: options.deals.filter((deal: any) => !linkedDealIds.has(deal.id)),
     marketLeadTypes: MARKET_LEAD_TYPES,
@@ -347,6 +397,49 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 
 export const actions: Actions = {
 
+  createWorkstream: async ({ request, params, locals }) => {
+    if (!locals.user) throw redirect(303, '/auth/login');
+    const userId = locals.user.id;
+    const form = await request.formData();
+    const name = String(form.get('name') || '').trim();
+    const description = String(form.get('description') || '').trim();
+    if (!name) return fail(400, { error: 'Workstream name is required.' });
+    const project = await prisma.project.findFirst({ where: { id: params.id, userId }, select: { id: true } });
+    if (!project) return fail(404, { error: 'Project not found.' });
+    const nameIdx = buildIndexToken(name);
+    await prisma.projectWorkstream.upsert({
+      where: { projectId_nameIdx: { projectId: params.id, nameIdx } },
+      update: { nameEnc: encrypt(name, 'project_workstream.name'), descriptionEnc: description ? encrypt(description, 'project_workstream.description') : null, status: 'ACTIVE' as any },
+      create: { userId, projectId: params.id, nameEnc: encrypt(name, 'project_workstream.name'), nameIdx, descriptionEnc: description ? encrypt(description, 'project_workstream.description') : null }
+    });
+    throw redirect(303, `/projects/${params.id}`);
+  },
+
+  archiveWorkstream: async ({ request, params, locals }) => {
+    if (!locals.user) throw redirect(303, '/auth/login');
+    const form = await request.formData();
+    const workstreamId = String(form.get('workstreamId') || '').trim();
+    if (!workstreamId) return fail(400, { error: 'Missing workstream id.' });
+    const userId = locals.user.id;
+    await prisma.$transaction(async (tx: any) => {
+      await tx.projectWorkstream.updateMany({ where: { id: workstreamId, userId, projectId: params.id }, data: { status: 'ARCHIVED' as any } });
+      await tx.marketLead.updateMany({ where: { userId, projectId: params.id, workstreamId }, data: { workstreamId: null } });
+      await tx.task.updateMany({ where: { userId, projectId: params.id, workstreamId }, data: { workstreamId: null } });
+      await tx.projectDeal.updateMany({ where: { userId, projectId: params.id, workstreamId }, data: { workstreamId: null } });
+      await tx.projectNote.updateMany({ where: { userId, projectId: params.id, workstreamId }, data: { workstreamId: null } });
+    });
+    throw redirect(303, `/projects/${params.id}`);
+  },
+
+  deleteWorkstream: async ({ request, params, locals }) => {
+    if (!locals.user) throw redirect(303, '/auth/login');
+    const form = await request.formData();
+    const workstreamId = String(form.get('workstreamId') || '').trim();
+    if (!workstreamId) return fail(400, { error: 'Missing workstream id.' });
+    await prisma.projectWorkstream.deleteMany({ where: { id: workstreamId, userId: locals.user.id, projectId: params.id } });
+    throw redirect(303, `/projects/${params.id}`);
+  },
+
   archiveProject: async ({ params, locals }) => {
     if (!locals.user) throw redirect(303, '/auth/login');
     await prisma.project.updateMany({
@@ -362,8 +455,8 @@ export const actions: Actions = {
     const project = await prisma.project.findFirst({ where: { id: params.id, userId }, select: { id: true } });
     if (!project) return fail(404, { error: 'Project not found.' });
     await prisma.$transaction(async (tx: any) => {
-      await tx.task.updateMany({ where: { userId, projectId: params.id }, data: { projectId: null } });
-      await tx.marketLead.updateMany({ where: { userId, projectId: params.id }, data: { projectId: null } });
+      await tx.task.updateMany({ where: { userId, projectId: params.id }, data: { projectId: null, workstreamId: null } });
+      await tx.marketLead.updateMany({ where: { userId, projectId: params.id }, data: { projectId: null, workstreamId: null } });
       await tx.exchangeItem.updateMany({ where: { userId, projectId: params.id }, data: { projectId: null } });
       await tx.project.deleteMany({ where: { id: params.id, userId } });
     });
@@ -377,6 +470,7 @@ export const actions: Actions = {
     if (!project) return fail(404, { error: 'Project not found.' });
     const values = leadFormValues(await request.formData(), { projectId: params.id });
     values.projectId = params.id;
+    if (values.workstreamId && !(await workstreamOk(userId, params.id, values.workstreamId))) return fail(404, { error: 'Selected workstream was not found.' });
     values.leadSourceId = (await resolveLeadSourceId(userId, values.leadSourceId, values.newLeadSource)) || '';
     if (!values.title && !values.name && !values.companyName) return fail(400, { error: 'Add at least a lead title, person name, or company name.' });
     const created = await prisma.marketLead.create({ data: marketLeadCreateData(userId, values) as any, select: { id: true } });
@@ -390,6 +484,8 @@ export const actions: Actions = {
     const dealId = String(form.get('dealId') || '').trim();
     const label = String(form.get('label') || '').trim();
     const notes = String(form.get('notes') || '').trim();
+    const workstreamId = String(form.get('workstreamId') || '').trim() || null;
+    if (workstreamId && !(await workstreamOk(userId, params.id, workstreamId))) return fail(404, { error: 'Selected workstream was not found.' });
     if (!dealId) return fail(400, { error: 'Choose a deal to link.' });
 
     const [project, deal] = await Promise.all([
@@ -402,14 +498,16 @@ export const actions: Actions = {
       where: { projectId_dealId: { projectId: params.id, dealId } },
       update: {
         labelEnc: label ? encrypt(label, 'project_deal.label') : undefined,
-        notesEnc: notes ? encrypt(notes, 'project_deal.notes') : undefined
+        notesEnc: notes ? encrypt(notes, 'project_deal.notes') : undefined,
+        workstreamId
       },
       create: {
         userId,
         projectId: params.id,
         dealId,
         labelEnc: label ? encrypt(label, 'project_deal.label') : null,
-        notesEnc: notes ? encrypt(notes, 'project_deal.notes') : null
+        notesEnc: notes ? encrypt(notes, 'project_deal.notes') : null,
+        workstreamId
       }
     });
     throw redirect(303, `/projects/${params.id}`);
@@ -432,8 +530,11 @@ export const actions: Actions = {
     const form = await request.formData();
     const body = String(form.get('body') || form.get('note') || '').trim();
     const summary = String(form.get('summary') || '').trim();
+    const channel = String(form.get('channel') || 'note').trim().toLowerCase() || 'note';
+    const workstreamId = String(form.get('workstreamId') || '').trim() || null;
+    if (workstreamId && !(await workstreamOk(userId, params.id, workstreamId))) return fail(404, { error: 'Selected workstream was not found.' });
     if (!body) return fail(400, { error: 'Project note is required.' });
-    await prisma.projectNote.create({ data: { userId, projectId: params.id, bodyEnc: encrypt(body, 'project_note.body'), summaryEnc: summary ? encrypt(summary, 'project_note.summary') : null } });
+    await prisma.projectNote.create({ data: { userId, projectId: params.id, workstreamId, channel, bodyEnc: encrypt(body, 'project_note.body'), summaryEnc: summary ? encrypt(summary, 'project_note.summary') : null } });
     throw redirect(303, `/projects/${params.id}`);
   },
 
@@ -494,6 +595,7 @@ export const actions: Actions = {
     let companyId = String(form.get('companyId') || '').trim() || null;
     let marketLeadId = String(form.get('marketLeadId') || '').trim() || null;
     let dealCompanyId = String(form.get('dealCompanyId') || '').trim() || null;
+    let workstreamId = String(form.get('workstreamId') || '').trim() || null;
     const assignedToContactId = String(form.get('assignedToContactId') || '').trim() || null;
     const waitingOnContactId = String(form.get('waitingOnContactId') || '').trim() || null;
 
@@ -515,13 +617,16 @@ export const actions: Actions = {
     }
 
     if (marketLeadId) {
-      const lead = await prisma.marketLead.findFirst({ where: { id: marketLeadId, userId }, select: { id: true, projectId: true, contactId: true, companyId: true, dealId: true } });
+      const lead = await prisma.marketLead.findFirst({ where: { id: marketLeadId, userId }, select: { id: true, projectId: true, workstreamId: true, contactId: true, companyId: true, dealId: true } });
       if (!lead) return fail(404, { error: 'Lead not found.' });
       if (lead.projectId && lead.projectId !== params.id) return fail(400, { error: 'Lead belongs to another project.' });
+      workstreamId = workstreamId || lead.workstreamId || null;
       contactId = contactId || lead.contactId || null;
       companyId = companyId || lead.companyId || null;
       dealId = dealId || lead.dealId || null;
     }
+
+    if (workstreamId && !(await workstreamOk(userId, params.id, workstreamId))) return fail(404, { error: 'Selected workstream was not found.' });
 
     const [contactOk, dealOk, companyOk, leadOk, assignedOk, waitingOk] = await Promise.all([
       ownedIdExists(userId, 'contact', contactId),
@@ -543,6 +648,7 @@ export const actions: Actions = {
         userId,
         projectId: params.id,
         marketLeadId,
+        workstreamId,
         titleEnc: encrypt(title, 'task.title'),
         notesEnc: notes ? encrypt(notes, 'task.notes') : null,
         summaryEnc: summary ? encrypt(summary, 'task.summary') : null,
@@ -568,8 +674,8 @@ export const actions: Actions = {
     if (dealId) {
       await prisma.projectDeal.upsert({
         where: { projectId_dealId: { projectId: params.id, dealId } },
-        update: {},
-        create: { userId, projectId: params.id, dealId }
+        update: workstreamId ? { workstreamId } : {},
+        create: { userId, projectId: params.id, dealId, workstreamId }
       }).catch(() => null);
     }
     throw redirect(303, `/projects/${params.id}`);

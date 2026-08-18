@@ -13,6 +13,7 @@
   let showEdit = false;
   let showNewTask = false;
   let showNewLead = false;
+  let showNewWorkstream = false;
   let taskNotes = '';
   let taskSummary = '';
   let projectNoteText = '';
@@ -38,6 +39,10 @@
     // IT: Status dropdowns submit immediately so there is no separate Update button.
     (event.currentTarget as HTMLSelectElement).form?.requestSubmit();
   }
+
+  function sectionFor(workstreamId: string) {
+    return (data.workstreamSections || []).find((section: any) => section.id === workstreamId) || { leads: [], tasks: [], deals: [], notes: [] };
+  }
 </script>
 
 <div class="container">
@@ -53,6 +58,7 @@
     </div>
     <div class="actions">
       <button class="btn" type="button" on:click={() => (showEdit = !showEdit)}>{showEdit ? 'Close edit' : 'Edit project'}</button>
+      <button class="btn" type="button" on:click={() => (showNewWorkstream = !showNewWorkstream)}>{showNewWorkstream ? 'Cancel workstream' : '＋ Workstream'}</button>
       <button class="btn primary" type="button" on:click={() => (showNewLead = !showNewLead)}>{showNewLead ? 'Cancel lead' : '＋ New lead'}</button>
       <button class="btn primary" type="button" on:click={() => (showNewTask = !showNewTask)}>{showNewTask ? 'Cancel task' : '＋ New task'}</button>
       <a class="btn" href="/projects">All projects</a>
@@ -74,6 +80,7 @@
     <div class="card stat"><span>Completed</span><strong>{data.summary.completed}</strong></div>
     <div class="card stat"><span>Leads</span><strong>{data.summary.leads}</strong></div>
     <div class="card stat"><span>Deals</span><strong>{data.summary.deals}</strong></div>
+    <div class="card stat"><span>Workstreams</span><strong>{data.summary.workstreams}</strong></div>
     <div class="card stat"><span>Qualified leads</span><strong>{data.summary.readyLeads}</strong></div>
   </div>
 
@@ -88,6 +95,54 @@
       </form>
     </section>
   {/if}
+
+  {#if showNewWorkstream}
+    <section class="card panel">
+      <h2>New workstream</h2>
+      <form method="post" action="?/createWorkstream" class="grid two">
+        <div class="field"><label for="workstreamName">Name</label><input id="workstreamName" name="name" placeholder="e.g. Buyer mandates, Seller outreach, Referrers" required /></div>
+        <div class="field span2"><label for="workstreamDescription">Description</label><textarea id="workstreamDescription" name="description" rows="2"></textarea></div>
+        <div class="span2"><button class="btn primary" type="submit">Create workstream</button></div>
+      </form>
+    </section>
+  {/if}
+
+  <section class="card panel">
+    <div class="section-head"><h2>Workstreams</h2><button class="btn" type="button" on:click={() => (showNewWorkstream = !showNewWorkstream)}>{showNewWorkstream ? 'Cancel workstream' : '＋ Add workstream'}</button></div>
+    <p class="muted small">Use workstreams as lanes inside this project, such as Buyer mandates, Seller outreach, Referrer outreach, Research, or Active deals.</p>
+    {#if data.workstreams?.length}
+      <div class="workstream-grid">
+        {#each data.workstreams as ws}
+          <div class="workstream-card">
+            <a class="workstream-card-main" href={`/projects/${data.project.id}/workstreams/${ws.id}`}>
+              <strong>{ws.name}</strong>
+              <div class="muted small">{ws.status}</div>
+              {#if ws.description}<p class="preline small">{ws.description}</p>{/if}
+              <div class="mini-stats">
+                <span>{sectionFor(ws.id).leads.length} leads</span>
+                <span>{sectionFor(ws.id).tasks.length} tasks</span>
+                <span>{sectionFor(ws.id).deals.length} deals</span>
+                <span>{sectionFor(ws.id).notes.length} notes</span>
+              </div>
+            </a>
+            <div class="actions">
+              <a class="btn primary" href={`/projects/${data.project.id}/workstreams/${ws.id}`}>Open</a>
+              <form method="post" action="?/archiveWorkstream" on:submit={(event) => { if (!confirm('Archive this workstream? Linked items will keep their project but lose the active workstream lane.')) event.preventDefault(); }}>
+                <input type="hidden" name="workstreamId" value={ws.id} />
+                <button class="btn" type="submit">Archive</button>
+              </form>
+              <form method="post" action="?/deleteWorkstream" on:submit={(event) => { if (!confirm('Delete this workstream? Linked leads, tasks, notes and deals will remain but lose the workstream link.')) event.preventDefault(); }}>
+                <input type="hidden" name="workstreamId" value={ws.id} />
+                <button class="btn danger" type="submit">Delete</button>
+              </form>
+            </div>
+          </div>
+        {/each}
+      </div>
+    {:else}
+      <p class="muted">No workstreams yet.</p>
+    {/if}
+  </section>
 
 
   {#if showNewLead}
@@ -106,6 +161,7 @@
         {#if projectLeadSourceChoice === 'CUSTOM'}
           <div class="field"><label for="projectNewLeadSource">Custom source</label><input id="projectNewLeadSource" name="newLeadSource" placeholder="e.g. Sam spreadsheet, aged-care consultant list" /></div>
         {/if}
+        <div class="field"><label for="leadWorkstreamId">Workstream</label><select id="leadWorkstreamId" name="workstreamId"><option value="">No workstream</option>{#each data.workstreams as ws}<option value={ws.id}>{ws.name}</option>{/each}</select></div>
         <div class="grid two">
           <div class="field"><label for="leadName">Person name</label><input id="leadName" name="name" /></div>
           <div class="field"><label for="leadCompanyName">Company name</label><input id="leadCompanyName" name="companyName" /></div>
@@ -134,7 +190,7 @@
           <div class="field"><label for="importance">Importance</label><select id="importance" name="importance">{#each data.taskImportances as opt}<option value={opt.value} selected={opt.value === 'NORMAL'}>{opt.label}</option>{/each}</select></div>
           <div class="field"><label for="taskStatus">Status</label><select id="taskStatus" name="status">{#each data.taskStatuses as opt}<option value={opt.value}>{opt.label}</option>{/each}</select></div>
         </div>
-        <div class="field"><label for="taskFocus">Focus</label><select id="taskFocus" name="focus">{#each data.taskFocusOptions as opt}<option value={opt.value} selected={opt.value === 'NEW'}>{opt.label}</option>{/each}</select></div>
+        <div class="grid two"><div class="field"><label for="taskFocus">Focus</label><select id="taskFocus" name="focus">{#each data.taskFocusOptions as opt}<option value={opt.value} selected={opt.value === 'NEW'}>{opt.label}</option>{/each}</select></div><div class="field"><label for="taskWorkstreamId">Workstream</label><select id="taskWorkstreamId" name="workstreamId"><option value="">No workstream</option>{#each data.workstreams as ws}<option value={ws.id}>{ws.name}</option>{/each}</select></div></div>
 
         <div class="grid two">
           <div class="field"><label for="dueAt">Due</label><input id="dueAt" name="dueAt" type="datetime-local" /></div>
@@ -186,6 +242,7 @@
     <details open>
       <summary><strong>Project notes</strong></summary>
       <form method="post" action="?/createProjectNote" class="nested-form">
+        <div class="field"><label for="projectNoteWorkstreamId">Workstream</label><select id="projectNoteWorkstreamId" name="workstreamId"><option value="">No workstream</option>{#each data.workstreams as ws}<option value={ws.id}>{ws.name}</option>{/each}</select></div>
         <VoiceTextField
           id="projectNote"
           textName="body"
@@ -204,7 +261,7 @@
           {#each data.projectNotes as note}
             <div class="mini-row">
               <div>
-                <div class="muted small">{fmt(note.createdAt)}</div>
+                <div class="muted small">{fmt(note.occurredAt || note.createdAt)}{#if note.workstream} - {note.workstream.name}{/if}</div>
                 <p class="preline small">{note.body}</p>
                 {#if note.summary}<div class="summary-box"><div class="muted small">AI summary</div><p>{note.summary}</p></div>{/if}
               </div>
@@ -233,6 +290,7 @@
               <div class="muted small">{lead.typeLabel} - {lead.statusLabel} - priority {lead.priority} - confidence {lead.confidence}/100</div>
               <div class="muted small">Contact: {lead.contactAttemptStatusLabel} - Buyer: {lead.buyerStatusLabel} - Seller: {lead.sellerStatusLabel}</div>
               {#if lead.name || lead.companyName}<div class="muted small">{lead.name}{lead.name && lead.companyName ? ' - ' : ''}{lead.companyName}</div>{/if}
+              {#if lead.workstream}<div class="muted small">Workstream: {lead.workstream.name}</div>{/if}
               {#if lead.nextAction}<div class="small">Next: {lead.nextAction}</div>{/if}
             </div>
             <span class="status-chip">Open</span>
@@ -259,6 +317,7 @@
           {#each data.dealOptionsForLinking as deal}<option value={deal.id}>{deal.title}</option>{/each}
         </select>
       </div>
+      <div class="field"><label for="projectDealWorkstreamId">Workstream</label><select id="projectDealWorkstreamId" name="workstreamId"><option value="">No workstream</option>{#each data.workstreams as ws}<option value={ws.id}>{ws.name}</option>{/each}</select></div>
       <div class="field"><label for="projectDealLabel">Label</label><input id="projectDealLabel" name="label" placeholder="e.g. core deal, seller-side, buyer mandate" /></div>
       <div class="field span2"><label for="projectDealNotes">Notes</label><textarea id="projectDealNotes" name="notes" rows="2" placeholder="Why this deal belongs in the project"></textarea></div>
       <div class="span2"><button class="btn primary" type="submit">Link deal</button></div>
@@ -270,7 +329,7 @@
           <div class="lead-row">
             <div>
               <strong><a href={`/deals/${link.dealId}`}>{link.title}</a></strong>
-              <div class="muted small">{link.status}{link.probability === null || link.probability === undefined ? '' : ` - ${link.probability}% chance`}</div>
+              <div class="muted small">{link.status}{link.probability === null || link.probability === undefined ? '' : ` - ${link.probability}% chance`}{#if link.workstream} - {link.workstream.name}{/if}</div>
               {#if link.label}<div class="small">{link.label}</div>{/if}
               {#if link.notes}<p class="preline small">{link.notes}</p>{/if}
             </div>
@@ -316,6 +375,22 @@
   </div>
 
   <section class="card panel">
+    <h2>Workstream board</h2>
+    <p class="muted small">A project-level view of the leads, tasks, deals and notes in each lane.</p>
+    <div class="workstream-board">
+      {#each data.workstreamSections as section}
+        <details class="workstream-section" open={section.id !== ''}>
+          <summary><strong>{section.name}</strong> <span class="muted small">{section.leads.length} leads - {section.tasks.length} tasks - {section.deals.length} deals - {section.notes.length} notes</span>{#if section.id}<a class="btn tiny" href={`/projects/${data.project.id}/workstreams/${section.id}`}>Open</a>{/if}</summary>
+          {#if section.leads.length}<div class="chip-list">{#each section.leads as lead}<a class="chip" href={`/leads/${lead.id}`}>{lead.title}</a>{/each}</div>{/if}
+          {#if section.deals.length}<div class="chip-list">{#each section.deals as deal}<a class="chip" href={`/deals/${deal.dealId}`}>Deal: {deal.title}</a>{/each}</div>{/if}
+          {#if section.tasks.length}<div class="chip-list">{#each section.tasks as task}<a class="chip" href={`/tasks/${task.id}/edit?returnTo=/projects/${data.project.id}`}>Task: {task.title}</a>{/each}</div>{/if}
+          {#if !section.leads.length && !section.tasks.length && !section.deals.length && !section.notes.length}<p class="muted small">No items yet.</p>{/if}
+        </details>
+      {/each}
+    </div>
+  </section>
+
+  <section class="card panel">
     <div class="section-head"><h2>Project tasks</h2><a class="btn" href="/tasks">Task inbox</a></div>
     {#if data.tasks.length === 0}
       <p class="muted">No tasks yet. Add a task to turn this project into an operating list.</p>
@@ -329,6 +404,7 @@
               {#if task.notes}<p class="preline small">{task.notes}</p>{/if}
               {#if task.summary}<div class="summary-box"><div class="muted small">AI summary</div><p>{task.summary}</p></div>{/if}
               <div class="context-row">
+                {#if task.workstream}<span class="chip">Workstream: {task.workstream.name}</span>{/if}
                 {#if task.marketLead}<a class="chip" href={`/leads/${task.marketLead.id}`}>Lead: {task.marketLead.title}</a>{/if}
                 {#if task.contact}<a class="chip" href={`/contacts/${task.contact.id}`}>Person: {task.contact.name}</a>{/if}
                 {#if task.deal}<a class="chip" href={`/deals/${task.deal.id}`}>Deal: {task.deal.title}</a>{/if}
@@ -379,7 +455,13 @@
   .main-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
   .span2 { grid-column: 1 / span 2; }
   .preline { white-space: pre-wrap; }
-  .task-list, .mini-list, .lead-list { display: grid; gap: 8px; }
+  .task-list, .mini-list, .lead-list, .workstream-board { display: grid; gap: 8px; }
+  .workstream-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; }
+  .workstream-card, .workstream-section { border: 1px solid var(--border); border-radius: 12px; padding: 12px; background: var(--panel); }
+  .workstream-card-main { display: grid; gap: 4px; color: var(--text); text-decoration: none; margin-bottom: 10px; }
+  .mini-stats { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+  .mini-stats span { border: 1px solid var(--border); border-radius: 999px; padding: 2px 8px; color: var(--muted); font-size: 0.85rem; }
+  .btn.tiny { padding: 3px 8px; font-size: 0.8rem; margin-left: 8px; }
   .lead-row { display: flex; justify-content: space-between; gap: 12px; border-top: 1px solid var(--border); padding: 12px 0; color: var(--text); text-decoration: none; }
   .mini-row { border-top: 1px solid var(--border); padding: 12px 0; display: flex; justify-content: space-between; gap: 12px; }
   .task-row { border-top: 1px solid var(--border); padding: 12px 0; display: flex; justify-content: space-between; gap: 12px; }

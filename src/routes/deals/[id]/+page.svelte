@@ -94,6 +94,14 @@
           </div>
           <div class="field"><label for="projectLinkLabel">Label</label><input id="projectLinkLabel" name="label" placeholder="e.g. main campaign, buyer mandate" /></div>
         </div>
+        <div class="field">
+          <label for="projectLinkWorkstreamId">Workstream</label>
+          <select id="projectLinkWorkstreamId" name="workstreamId">
+            <option value="">No workstream</option>
+            {#each data.workstreamOptions as ws}<option value={ws.id}>{ws.projectTitle} - {ws.name}</option>{/each}
+          </select>
+          <p class="hint">Choose a workstream from the selected project, if relevant.</p>
+        </div>
         <div class="field"><label for="projectLinkNotes">Notes</label><textarea id="projectLinkNotes" name="notes" rows="2" placeholder="Why this deal belongs in the project"></textarea></div>
         <button class="btn primary" type="submit">Link project</button>
       </form>
@@ -106,6 +114,7 @@
             <div>
               <div class="person-title"><a href={`/projects/${link.projectId}`}>{link.title}</a><span class="status-chip">{link.statusLabel}</span></div>
               {#if link.label}<div class="small">{link.label}</div>{/if}
+              {#if link.workstream}<div class="small">Workstream: {link.workstream.name}</div>{/if}
               {#if link.notes}<p class="preline small">{link.notes}</p>{/if}
             </div>
             <form method="post" action="?/removeProjectLink" on:submit={(event) => { if (!confirm('Remove this project link? The deal and project will not be deleted.')) event.preventDefault(); }}>

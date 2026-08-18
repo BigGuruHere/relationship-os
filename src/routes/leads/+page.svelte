@@ -7,6 +7,8 @@
   let q = data.q || '';
   let type = data.selectedType || '';
   let status = data.selectedStatus || '';
+  let sourceFilter = data.selectedSource || '';
+  let createSourceChoice = form?.values?.sourceChoice || (form?.values?.leadSourceId ? `custom:${form.values.leadSourceId}` : `builtin:${form?.values?.source || 'MANUAL'}`);
 </script>
 
 <div class="container">
@@ -38,13 +40,12 @@
         </div>
         <div class="grid three">
           <div class="field"><label for="statusCreate">Status</label><select id="statusCreate" name="status">{#each data.leadStatuses as opt}<option value={opt.value} selected={(form?.values?.status || 'NEW') === opt.value}>{opt.label}</option>{/each}</select></div>
-          <div class="field"><label for="sourceCreate">Source category</label><select id="sourceCreate" name="source">{#each data.leadSourceCategories as opt}<option value={opt.value} selected={(form?.values?.source || 'MANUAL') === opt.value}>{opt.label}</option>{/each}</select></div>
+          <div class="field"><label for="sourceChoiceCreate">Source</label><select id="sourceChoiceCreate" name="sourceChoice" bind:value={createSourceChoice}>{#each data.leadSourceOptions as opt}<option value={opt.value}>{opt.label}</option>{/each}</select></div>
           <div class="field"><label for="commCreate">Usual communication</label><select id="commCreate" name="usualCommunicationMethod">{#each data.communicationMethods as opt}<option value={opt.value} selected={(form?.values?.usualCommunicationMethod || '') === opt.value}>{opt.label}</option>{/each}</select></div>
         </div>
-        <div class="grid two">
-          <div class="field"><label for="leadSourceIdCreate">Custom source</label><select id="leadSourceIdCreate" name="leadSourceId"><option value="">No custom source</option>{#each data.leadSources as source}<option value={source.id} selected={(form?.values?.leadSourceId || '') === source.id}>{source.name}</option>{/each}</select></div>
-          <div class="field"><label for="newLeadSourceCreate">Or add new source</label><input id="newLeadSourceCreate" name="newLeadSource" placeholder="e.g. Sam, Sam spreadsheet, MFAA list" value={form?.values?.newLeadSource || ''} /></div>
-        </div>
+        {#if createSourceChoice === 'CUSTOM'}
+          <div class="field"><label for="newLeadSourceCreate">Custom source</label><input id="newLeadSourceCreate" name="newLeadSource" placeholder="e.g. Sam spreadsheet, MFAA list" value={form?.values?.newLeadSource || ''} /></div>
+        {/if}
         <div class="field"><label for="projectIdCreate">Project</label><select id="projectIdCreate" name="projectId"><option value="">Standalone lead</option>{#each data.projects as project}<option value={project.id} selected={(form?.values?.projectId || '') === project.id}>{project.title}</option>{/each}</select></div>
         <div class="grid two">
           <div class="field"><label for="name">Person name</label><input id="name" name="name" value={form?.values?.name || ''} /></div>
@@ -62,8 +63,7 @@
           <div class="field"><label for="roleTitle">Role/title</label><input id="roleTitle" name="roleTitle" value={form?.values?.roleTitle || ''} /></div>
           <div class="field"><label for="geography">Geography</label><input id="geography" name="geography" placeholder="e.g. Melbourne, Victoria" value={form?.values?.geography || ''} /></div>
         </div>
-        <div class="grid two"><div class="field"><label for="addressLine1">Address line 1</label><input id="addressLine1" name="addressLine1" value={form?.values?.addressLine1 || ''} /></div><div class="field"><label for="addressLine2">Address line 2</label><input id="addressLine2" name="addressLine2" value={form?.values?.addressLine2 || ''} /></div></div>
-        <div class="grid four"><div class="field"><label for="suburb">Suburb</label><input id="suburb" name="suburb" value={form?.values?.suburb || ''} /></div><div class="field"><label for="state">State</label><input id="state" name="state" value={form?.values?.state || ''} /></div><div class="field"><label for="postcode">Postcode</label><input id="postcode" name="postcode" value={form?.values?.postcode || ''} /></div><div class="field"><label for="country">Country</label><input id="country" name="country" value={form?.values?.country || ''} /></div></div>
+        <div class="field"><label for="address">Address</label><input id="address" name="address" value={form?.values?.address || ''} /></div>
         <div class="grid three">
           <div class="field"><label for="priority">Priority 1-5</label><input id="priority" name="priority" type="number" min="1" max="5" value={form?.values?.priority || 3} /></div>
           <div class="field"><label for="confidence">Confidence 0-100</label><input id="confidence" name="confidence" type="number" min="0" max="100" value={form?.values?.confidence || 50} /></div>
@@ -89,6 +89,7 @@
       <input name="q" bind:value={q} placeholder="Search leads, people, companies, phone, email, sector" />
       <select name="type" bind:value={type}><option value="">All types</option>{#each data.leadTypes as opt}<option value={opt.value}>{opt.label}</option>{/each}</select>
       <select name="status" bind:value={status}><option value="">All statuses</option>{#each data.leadStatuses as opt}<option value={opt.value}>{opt.label}</option>{/each}</select>
+      <select name="source" bind:value={sourceFilter}><option value="">All sources</option>{#each data.leadSourceOptions as opt}{#if opt.value !== 'CUSTOM'}<option value={opt.value}>{opt.label}</option>{/if}{/each}</select>
       <button class="btn primary" type="submit">Filter</button>
     </form>
   </section>

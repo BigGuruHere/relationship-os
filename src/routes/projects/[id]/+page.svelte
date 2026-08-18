@@ -17,6 +17,7 @@
   let taskSummary = '';
   let projectNoteText = '';
   let projectNoteSummary = '';
+  let projectLeadSourceChoice = 'builtin:MANUAL';
   $: leadTaskOptions = (data.options.marketLeads || []).filter((lead: any) => !lead.projectId || lead.projectId === data.project.id);
 
   function fmt(value: string | Date | null | undefined) {
@@ -99,13 +100,12 @@
         </div>
         <div class="grid three">
           <div class="field"><label for="leadStatus">Status</label><select id="leadStatus" name="status">{#each data.marketLeadStatuses as opt}<option value={opt.value}>{opt.label}</option>{/each}</select></div>
-          <div class="field"><label for="leadSource">Source category</label><select id="leadSource" name="source">{#each data.marketLeadSourceCategories as opt}<option value={opt.value}>{opt.label}</option>{/each}</select></div>
+          <div class="field"><label for="projectLeadSourceChoice">Source</label><select id="projectLeadSourceChoice" name="sourceChoice" bind:value={projectLeadSourceChoice}>{#each data.marketLeadSourceOptions as opt}<option value={opt.value}>{opt.label}</option>{/each}</select></div>
           <div class="field"><label for="leadPriority">Priority 1-5</label><input id="leadPriority" name="priority" type="number" min="1" max="5" value="3" /></div>
         </div>
-        <div class="grid two">
-          <div class="field"><label for="projectLeadSourceId">Custom source</label><select id="projectLeadSourceId" name="leadSourceId"><option value="">No custom source</option>{#each data.marketLeadSources as source}<option value={source.id}>{source.name}</option>{/each}</select></div>
-          <div class="field"><label for="projectNewLeadSource">Or add new source</label><input id="projectNewLeadSource" name="newLeadSource" placeholder="e.g. Sam spreadsheet, aged-care consultant list" /></div>
-        </div>
+        {#if projectLeadSourceChoice === 'CUSTOM'}
+          <div class="field"><label for="projectNewLeadSource">Custom source</label><input id="projectNewLeadSource" name="newLeadSource" placeholder="e.g. Sam spreadsheet, aged-care consultant list" /></div>
+        {/if}
         <div class="grid two">
           <div class="field"><label for="leadName">Person name</label><input id="leadName" name="name" /></div>
           <div class="field"><label for="leadCompanyName">Company name</label><input id="leadCompanyName" name="companyName" /></div>
@@ -114,10 +114,7 @@
           <div class="field"><label for="leadPhone">Phone</label><input id="leadPhone" name="phone" /></div>
           <div class="field"><label for="leadEmail">Email</label><input id="leadEmail" name="email" type="email" /></div>
         </div>
-        <div class="grid two">
-          <div class="field"><label for="projectLeadAddressLine1">Address</label><input id="projectLeadAddressLine1" name="addressLine1" /></div>
-          <div class="field"><label for="projectLeadPostcode">Postcode</label><input id="projectLeadPostcode" name="postcode" /></div>
-        </div>
+        <div class="field"><label for="projectLeadAddress">Address</label><input id="projectLeadAddress" name="address" /></div>
         <div class="field"><label for="leadDescription">Description</label><textarea id="leadDescription" name="description" rows="3" placeholder="Capture the rough signal, source, or hypothesis."></textarea></div>
         <div class="field"><label for="leadNextAction">Next action</label><input id="leadNextAction" name="nextAction" placeholder="e.g. Find principal and direct phone" /></div>
         <button class="btn primary" type="submit">Save lead</button>

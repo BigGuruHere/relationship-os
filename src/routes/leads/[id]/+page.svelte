@@ -12,6 +12,7 @@
   let leadNoteSummary = '';
   let taskNotes = '';
   let taskSummary = '';
+  let editSourceChoice = lead.sourceChoice || (lead.leadSourceId ? `custom:${lead.leadSourceId}` : `builtin:${lead.source || 'MANUAL'}`);
 
   function fmt(value: string | Date | null | undefined) {
     if (!value) return 'No date';
@@ -22,6 +23,11 @@
 
   function submitContainingForm(event: Event) {
     (event.currentTarget as HTMLSelectElement).form?.requestSubmit();
+  }
+
+  function closeContainingDetails(event: Event) {
+    const details = (event.currentTarget as HTMLElement).closest('details') as HTMLDetailsElement | null;
+    if (details) details.open = false;
   }
 
   function dueClass(value: string | Date | null | undefined, statusValue: string) {
@@ -106,20 +112,18 @@
         </div>
         <div class="grid three">
           <div class="field"><label for="statusEdit">Status</label><select id="statusEdit" name="status">{#each data.leadStatuses as opt}<option value={opt.value} selected={lead.status === opt.value}>{opt.label}</option>{/each}</select></div>
-          <div class="field"><label for="sourceEdit">Source category</label><select id="sourceEdit" name="source">{#each data.leadSourceCategories as opt}<option value={opt.value} selected={lead.source === opt.value}>{opt.label}</option>{/each}</select></div>
+          <div class="field"><label for="sourceChoiceEdit">Source</label><select id="sourceChoiceEdit" name="sourceChoice" bind:value={editSourceChoice}>{#each data.leadSourceOptions as opt}<option value={opt.value}>{opt.label}</option>{/each}</select></div>
           <div class="field"><label for="commEdit">Usual communication</label><select id="commEdit" name="usualCommunicationMethod">{#each data.communicationMethods as opt}<option value={opt.value} selected={(lead.usualCommunicationMethod || '') === opt.value}>{opt.label}</option>{/each}</select></div>
         </div>
-        <div class="grid two">
-          <div class="field"><label for="leadSourceIdEdit">Custom source</label><select id="leadSourceIdEdit" name="leadSourceId"><option value="">No custom source</option>{#each data.leadSources as source}<option value={source.id} selected={(lead.leadSourceId || '') === source.id}>{source.name}</option>{/each}</select></div>
-          <div class="field"><label for="newLeadSourceEdit">Or add new source</label><input id="newLeadSourceEdit" name="newLeadSource" placeholder="e.g. Sam spreadsheet, MFAA list" /></div>
-        </div>
+        {#if editSourceChoice === 'CUSTOM'}
+          <div class="field"><label for="newLeadSourceEdit">Custom source</label><input id="newLeadSourceEdit" name="newLeadSource" placeholder="e.g. Sam spreadsheet, MFAA list" /></div>
+        {/if}
         <div class="field"><label for="projectIdEdit">Project</label><select id="projectIdEdit" name="projectId"><option value="">Standalone lead</option>{#each data.projects as project}<option value={project.id} selected={(lead.projectId || '') === project.id}>{project.title}</option>{/each}</select></div>
         <div class="grid two"><div class="field"><label for="name">Person name</label><input id="name" name="name" value={lead.name} /></div><div class="field"><label for="companyName">Company name</label><input id="companyName" name="companyName" value={lead.companyName} /></div></div>
         <div class="grid two"><div class="field"><label for="email">Email</label><input id="email" name="email" type="email" value={lead.email} /></div><div class="field"><label for="phone">Phone</label><input id="phone" name="phone" value={lead.phone} /></div></div>
         <div class="grid two"><div class="field"><label for="website">Website</label><input id="website" name="website" value={lead.website} /></div><div class="field"><label for="linkedin">LinkedIn</label><input id="linkedin" name="linkedin" value={lead.linkedin} /></div></div>
         <div class="grid two"><div class="field"><label for="roleTitle">Role/title</label><input id="roleTitle" name="roleTitle" value={lead.roleTitle} /></div><div class="field"><label for="geography">Geography</label><input id="geography" name="geography" value={lead.geography} /></div></div>
-        <div class="grid two"><div class="field"><label for="addressLine1">Address line 1</label><input id="addressLine1" name="addressLine1" value={lead.addressLine1} /></div><div class="field"><label for="addressLine2">Address line 2</label><input id="addressLine2" name="addressLine2" value={lead.addressLine2} /></div></div>
-        <div class="grid four"><div class="field"><label for="suburb">Suburb</label><input id="suburb" name="suburb" value={lead.suburb} /></div><div class="field"><label for="state">State</label><input id="state" name="state" value={lead.state} /></div><div class="field"><label for="postcode">Postcode</label><input id="postcode" name="postcode" value={lead.postcode} /></div><div class="field"><label for="country">Country</label><input id="country" name="country" value={lead.country} /></div></div>
+        <div class="field"><label for="address">Address</label><input id="address" name="address" value={lead.address} /></div>
         <div class="grid three"><div class="field"><label for="priority">Priority</label><input id="priority" name="priority" type="number" min="1" max="5" value={lead.priority} /></div><div class="field"><label for="confidence">Confidence</label><input id="confidence" name="confidence" type="number" min="0" max="100" value={lead.confidence} /></div><div class="field"><label for="currency">Currency</label><input id="currency" name="currency" value={lead.currency} /></div></div>
         <div class="grid two"><div class="field"><label for="valueMin">Value min</label><input id="valueMin" name="valueMin" value={lead.valueMin} /></div><div class="field"><label for="valueMax">Value max</label><input id="valueMax" name="valueMax" value={lead.valueMax} /></div></div>
         <div class="field"><label for="description">Description</label><textarea id="description" name="description" rows="3">{lead.description}</textarea></div>
@@ -169,7 +173,7 @@
                     </div>
                     <div class="field"><label for={`noteBody-${note.id}`}>Note</label><textarea id={`noteBody-${note.id}`} name="body" rows="4">{note.body}</textarea></div>
                     <div class="field"><label for={`noteSummary-${note.id}`}>Summary</label><textarea id={`noteSummary-${note.id}`} name="summary" rows="2">{note.summary}</textarea></div>
-                    <button class="btn primary" type="submit">Save note changes</button>
+                    <div class="actions small-actions"><button class="btn primary" type="submit">Save note changes</button><button class="btn" type="button" on:click={closeContainingDetails}>Cancel</button></div>
                   </form>
                 </details>
               </div>

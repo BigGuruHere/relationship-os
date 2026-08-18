@@ -11,7 +11,7 @@ import {
   MARKET_LEAD_STATUSES,
   MARKET_LEAD_TYPES
 } from '$lib/marketLeads';
-import { leadFormValues, loadLeadSources, mapMarketLead, marketLeadCreateData, resolveLeadSourceId } from '$lib/server/marketLeads';
+import { buildLeadSourceOptions, leadFormValues, loadLeadSources, mapMarketLead, marketLeadCreateData, normaliseLeadSourceChoice, resolveLeadSourceId } from '$lib/server/marketLeads';
 import { safeDecryptTask } from '$lib/tasks';
 
 const LIMIT = 250;
@@ -23,12 +23,18 @@ export const load: PageServerLoad = async ({ locals, url }) => {
   const q = String(url.searchParams.get('q') || '').trim();
   const type = String(url.searchParams.get('type') || '').trim().toUpperCase();
   const status = String(url.searchParams.get('status') || '').trim().toUpperCase();
+  const selectedSource = String(url.searchParams.get('source') || '').trim();
+
+  const customLeadSources = await loadLeadSources(userId);
 
   const where: any = { userId };
   if (type && MARKET_LEAD_TYPES.some((o) => o.value === type)) where.type = type;
   if (status && MARKET_LEAD_STATUSES.some((o) => o.value === status)) where.status = status;
+  const sourceFilter = normaliseLeadSourceChoice(selectedSource);
+  if (sourceFilter.kind === 'builtin' && MARKET_LEAD_SOURCES.some((o) => o.value === sourceFilter.source)) where.source = sourceFilter.source;
+  if (sourceFilter.kind === 'custom' && customLeadSources.some((source) => source.id === sourceFilter.id)) where.leadSourceId = sourceFilter.id;
 
-  const [rows, projectsRaw, customLeadSources] = await Promise.all([
+  const [rows, projectsRaw] = await Promise.all([
     prisma.marketLead.findMany({
     where,
     select: {
@@ -42,12 +48,7 @@ export const load: PageServerLoad = async ({ locals, url }) => {
       linkedinEnc: true,
       roleTitleEnc: true,
       geographyEnc: true,
-      addressLine1Enc: true,
-      addressLine2Enc: true,
-      suburbEnc: true,
-      stateEnc: true,
-      postcodeEnc: true,
-      countryEnc: true,
+      addressEnc: true,
       descriptionEnc: true,
       notesEnc: true,
       sourceUrlEnc: true,
@@ -80,8 +81,7 @@ export const load: PageServerLoad = async ({ locals, url }) => {
       select: { id: true, titleEnc: true, status: true },
       orderBy: { updatedAt: 'desc' },
       take: 200
-    }),
-    loadLeadSources(userId)
+    })
   ]);
 
   const projects = projectsRaw.map((project: any) => ({ id: project.id, title: safeDecryptTask(project.titleEnc, 'project.title', 'Untitled project'), status: project.status }));
@@ -89,7 +89,7 @@ export const load: PageServerLoad = async ({ locals, url }) => {
   const qLower = q.toLowerCase();
   const leads = rows.map(mapMarketLead).filter((lead) => {
     if (!q) return true;
-    return [lead.title, lead.name, lead.companyName, lead.email, lead.phone, lead.website, lead.linkedin, lead.roleTitle, lead.geography, lead.address, lead.description, lead.notes, lead.typeLabel, lead.statusLabel]
+    return [lead.title, lead.name, lead.companyName, lead.email, lead.phone, lead.website, lead.linkedin, lead.roleTitle, lead.geography, lead.address, lead.description, lead.notes, lead.typeLabel, lead.statusLabel, lead.sourceLabel, lead.sourceCategoryLabel]
       .join(' ')
       .toLowerCase()
       .includes(qLower);
@@ -107,12 +107,12 @@ export const load: PageServerLoad = async ({ locals, url }) => {
     q,
     selectedType: type,
     selectedStatus: status,
+    selectedSource,
     leads,
     summary,
     leadTypes: MARKET_LEAD_TYPES,
     leadStatuses: MARKET_LEAD_STATUSES,
-    leadSourceCategories: MARKET_LEAD_SOURCES,
-    leadSources: customLeadSources,
+    leadSourceOptions: buildLeadSourceOptions(customLeadSources),
     communicationMethods: COMMUNICATION_METHODS,
     projects
   };

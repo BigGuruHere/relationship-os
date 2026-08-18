@@ -6,6 +6,7 @@ import { prisma } from '$lib/db';
 import { buildIndexToken, decrypt, encrypt } from '$lib/crypto';
 import { parseMoneyToCents } from '$lib/deals';
 import {
+  MARKET_LEAD_SOURCES,
   clampInt,
   communicationMethodLabel,
   marketLeadSourceLabel,
@@ -32,15 +33,11 @@ export type MarketLeadFormValues = {
   linkedin: string;
   roleTitle: string;
   geography: string;
-  addressLine1: string;
-  addressLine2: string;
-  suburb: string;
-  state: string;
-  postcode: string;
-  country: string;
+  address: string;
   description: string;
   notes: string;
   sourceUrl: string;
+  sourceChoice: string;
   leadSourceId: string;
   newLeadSource: string;
   usualCommunicationMethod: string;
@@ -70,11 +67,29 @@ export function normaliseUrl(input: string) {
 }
 
 export function leadFormValues(form: FormData, defaults: Partial<MarketLeadFormValues> = {}): MarketLeadFormValues {
+  const rawSourceChoice = String(form.get('sourceChoice') || defaults.sourceChoice || '').trim();
+  let source = String(form.get('source') || defaults.source || 'MANUAL').trim().toUpperCase();
+  let leadSourceId = String(form.get('leadSourceId') || defaults.leadSourceId || '').trim();
+  let newLeadSource = String(form.get('newLeadSource') || defaults.newLeadSource || '').trim();
+
+  if (rawSourceChoice.startsWith('builtin:')) {
+    source = rawSourceChoice.slice('builtin:'.length).trim().toUpperCase() || 'MANUAL';
+    leadSourceId = '';
+    newLeadSource = '';
+  } else if (rawSourceChoice.startsWith('custom:')) {
+    source = 'OTHER';
+    leadSourceId = rawSourceChoice.slice('custom:'.length).trim();
+    newLeadSource = '';
+  } else if (rawSourceChoice === 'CUSTOM') {
+    source = 'OTHER';
+    leadSourceId = '';
+  }
+
   return {
     title: String(form.get('title') || defaults.title || '').trim(),
     type: String(form.get('type') || defaults.type || 'OTHER').trim().toUpperCase(),
     status: String(form.get('status') || defaults.status || 'NEW').trim().toUpperCase(),
-    source: String(form.get('source') || defaults.source || 'MANUAL').trim().toUpperCase(),
+    source,
     name: String(form.get('name') || defaults.name || '').trim(),
     companyName: String(form.get('companyName') || defaults.companyName || '').trim(),
     email: String(form.get('email') || defaults.email || '').trim(),
@@ -83,17 +98,13 @@ export function leadFormValues(form: FormData, defaults: Partial<MarketLeadFormV
     linkedin: normaliseUrl(String(form.get('linkedin') || defaults.linkedin || '').trim()),
     roleTitle: String(form.get('roleTitle') || defaults.roleTitle || '').trim(),
     geography: String(form.get('geography') || defaults.geography || '').trim(),
-    addressLine1: String(form.get('addressLine1') || defaults.addressLine1 || '').trim(),
-    addressLine2: String(form.get('addressLine2') || defaults.addressLine2 || '').trim(),
-    suburb: String(form.get('suburb') || defaults.suburb || '').trim(),
-    state: String(form.get('state') || defaults.state || '').trim(),
-    postcode: String(form.get('postcode') || defaults.postcode || '').trim(),
-    country: String(form.get('country') || defaults.country || '').trim(),
+    address: String(form.get('address') || form.get('addressLine1') || defaults.address || '').trim(),
     description: String(form.get('description') || defaults.description || '').trim(),
     notes: String(form.get('notes') || defaults.notes || '').trim(),
     sourceUrl: normaliseUrl(String(form.get('sourceUrl') || defaults.sourceUrl || '').trim()),
-    leadSourceId: String(form.get('leadSourceId') || defaults.leadSourceId || '').trim(),
-    newLeadSource: String(form.get('newLeadSource') || defaults.newLeadSource || '').trim(),
+    sourceChoice: rawSourceChoice,
+    leadSourceId,
+    newLeadSource,
     usualCommunicationMethod: String(form.get('usualCommunicationMethod') || defaults.usualCommunicationMethod || '').trim().toUpperCase(),
     confidence: clampInt(form.get('confidence'), defaults.confidence ?? 50, 0, 100),
     priority: clampInt(form.get('priority'), defaults.priority ?? 3, 1, 5),
@@ -141,14 +152,8 @@ export function marketLeadCreateData(userId: string, values: MarketLeadFormValue
     linkedinIdx: optionalIdx(values.linkedin),
     roleTitleEnc: optionalEncrypted(values.roleTitle, 'market_lead.role_title'),
     geographyEnc: optionalEncrypted(values.geography, 'market_lead.geography'),
-    addressLine1Enc: optionalEncrypted(values.addressLine1, 'market_lead.address_line1'),
-    addressLine1Idx: optionalIdx(values.addressLine1),
-    addressLine2Enc: optionalEncrypted(values.addressLine2, 'market_lead.address_line2'),
-    suburbEnc: optionalEncrypted(values.suburb, 'market_lead.suburb'),
-    stateEnc: optionalEncrypted(values.state, 'market_lead.state'),
-    postcodeEnc: optionalEncrypted(values.postcode, 'market_lead.postcode'),
-    postcodeIdx: optionalIdx(values.postcode),
-    countryEnc: optionalEncrypted(values.country, 'market_lead.country'),
+    addressEnc: optionalEncrypted(values.address, 'market_lead.address'),
+    addressIdx: optionalIdx(values.address),
     descriptionEnc: optionalEncrypted(values.description, 'market_lead.description'),
     notesEnc: optionalEncrypted(values.notes, 'market_lead.notes'),
     sourceUrlEnc: optionalEncrypted(values.sourceUrl, 'market_lead.source_url'),
@@ -177,13 +182,7 @@ export function mapMarketLead(row: any) {
   const linkedin = safeDecryptLead(row.linkedinEnc, 'market_lead.linkedin', '');
   const roleTitle = safeDecryptLead(row.roleTitleEnc, 'market_lead.role_title', '');
   const geography = safeDecryptLead(row.geographyEnc, 'market_lead.geography', '');
-  const addressLine1 = safeDecryptLead(row.addressLine1Enc, 'market_lead.address_line1', '');
-  const addressLine2 = safeDecryptLead(row.addressLine2Enc, 'market_lead.address_line2', '');
-  const suburb = safeDecryptLead(row.suburbEnc, 'market_lead.suburb', '');
-  const state = safeDecryptLead(row.stateEnc, 'market_lead.state', '');
-  const postcode = safeDecryptLead(row.postcodeEnc, 'market_lead.postcode', '');
-  const country = safeDecryptLead(row.countryEnc, 'market_lead.country', '');
-  const address = [addressLine1, addressLine2, suburb, state, postcode, country].filter(Boolean).join(', ');
+  const address = safeDecryptLead(row.addressEnc, 'market_lead.address', '');
   const description = safeDecryptLead(row.descriptionEnc, 'market_lead.description', '');
   const notes = safeDecryptLead(row.notesEnc, 'market_lead.notes', '');
   const sourceUrl = safeDecryptLead(row.sourceUrlEnc, 'market_lead.source_url', '');
@@ -199,12 +198,6 @@ export function mapMarketLead(row: any) {
     linkedin,
     roleTitle,
     geography,
-    addressLine1,
-    addressLine2,
-    suburb,
-    state,
-    postcode,
-    country,
     address,
     description,
     descriptionPreview: description.length > 180 ? `${description.slice(0, 177)}...` : description,
@@ -219,6 +212,7 @@ export function mapMarketLead(row: any) {
     source: row.source,
     sourceLabel: row.leadSource ? safeDecryptLead(row.leadSource.nameEnc, 'lead_source.name', marketLeadSourceLabel(row.source)) : marketLeadSourceLabel(row.source),
     sourceCategoryLabel: marketLeadSourceLabel(row.source),
+    sourceChoice: row.leadSourceId ? `custom:${row.leadSourceId}` : `builtin:${row.source || 'MANUAL'}`,
     leadSourceId: row.leadSourceId,
     usualCommunicationMethod: row.usualCommunicationMethod,
     usualCommunicationMethodLabel: communicationMethodLabel(row.usualCommunicationMethod),
@@ -273,6 +267,31 @@ export async function loadLeadSources(userId: string) {
     name: safeDecryptLead(source.nameEnc, 'lead_source.name', 'Untitled source'),
     updatedAt: source.updatedAt
   })).sort((a: any, b: any) => a.name.localeCompare(b.name));
+}
+
+export function buildLeadSourceOptions(customSources: Array<{ id: string; name: string }>) {
+  const builtin = MARKET_LEAD_SOURCES.map((source) => ({
+    value: `builtin:${source.value}`,
+    label: source.label,
+    kind: 'builtin' as const,
+    source: source.value,
+    id: ''
+  }));
+  const custom = customSources.map((source) => ({
+    value: `custom:${source.id}`,
+    label: source.name,
+    kind: 'custom' as const,
+    source: 'OTHER',
+    id: source.id
+  }));
+  return [...builtin, ...custom, { value: 'CUSTOM', label: 'Custom...', kind: 'custom_new' as const, source: 'OTHER', id: '' }];
+}
+
+export function normaliseLeadSourceChoice(choice: string) {
+  const raw = String(choice || '').trim();
+  if (raw.startsWith('custom:')) return { kind: 'custom' as const, id: raw.slice('custom:'.length) };
+  if (raw.startsWith('builtin:')) return { kind: 'builtin' as const, source: raw.slice('builtin:'.length).trim().toUpperCase() || 'MANUAL' };
+  return { kind: 'none' as const };
 }
 
 export function decryptContactField(payload: string | null | undefined, aad: string) {

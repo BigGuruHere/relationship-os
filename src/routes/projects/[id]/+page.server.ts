@@ -8,8 +8,8 @@ import { prisma } from '$lib/db';
 import { buildIndexToken, encrypt } from '$lib/crypto';
 import { companyDisplay } from '$lib/companies';
 import { safeDecrypt } from '$lib/deals';
-import { MARKET_LEAD_SOURCES, MARKET_LEAD_STATUSES, MARKET_LEAD_TYPES, marketLeadStatusLabel } from '$lib/marketLeads';
-import { leadFormValues, loadLeadSources, mapMarketLead, marketLeadCreateData, resolveLeadSourceId } from '$lib/server/marketLeads';
+import { MARKET_LEAD_STATUSES, MARKET_LEAD_TYPES, marketLeadStatusLabel } from '$lib/marketLeads';
+import { buildLeadSourceOptions, leadFormValues, loadLeadSources, mapMarketLead, marketLeadCreateData, resolveLeadSourceId } from '$lib/server/marketLeads';
 import { contactDisplayName, contactOptionsForRows } from '$lib/server/contactDisplay';
 import { createExchangeItemFromForm, deleteExchangeItem, loadExchangeItems } from '$lib/server/exchange';
 import { loadAgentArtifacts } from '$lib/server/agents/artifacts';
@@ -115,12 +115,7 @@ function marketLeadSelect() {
     linkedinEnc: true,
     roleTitleEnc: true,
     geographyEnc: true,
-    addressLine1Enc: true,
-    addressLine2Enc: true,
-    suburbEnc: true,
-    stateEnc: true,
-    postcodeEnc: true,
-    countryEnc: true,
+    addressEnc: true,
     descriptionEnc: true,
     notesEnc: true,
     sourceUrlEnc: true,
@@ -335,8 +330,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
     dealOptionsForLinking: options.deals.filter((deal: any) => !linkedDealIds.has(deal.id)),
     marketLeadTypes: MARKET_LEAD_TYPES,
     marketLeadStatuses: MARKET_LEAD_STATUSES,
-    marketLeadSourceCategories: MARKET_LEAD_SOURCES,
-    marketLeadSources: customLeadSources,
+    marketLeadSourceOptions: buildLeadSourceOptions(customLeadSources),
     options,
     projectStatuses: PROJECT_STATUSES,
     taskStatuses: TASK_STATUSES,

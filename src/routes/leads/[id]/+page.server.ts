@@ -11,7 +11,6 @@ import { safeDecryptCompany } from '$lib/companies';
 import {
   COMMUNICATION_METHODS,
   NOTE_CHANNELS,
-  MARKET_LEAD_SOURCES,
   MARKET_LEAD_STATUSES,
   MARKET_LEAD_TYPES,
   dateToDatetimeLocal,
@@ -20,6 +19,7 @@ import {
   parseDateTime as parseLeadDateTime
 } from '$lib/marketLeads';
 import {
+  buildLeadSourceOptions,
   convertLeadToCompany,
   convertLeadToContact,
   convertLeadToDeal,
@@ -129,12 +129,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
       linkedinEnc: true,
       roleTitleEnc: true,
       geographyEnc: true,
-      addressLine1Enc: true,
-      addressLine2Enc: true,
-      suburbEnc: true,
-      stateEnc: true,
-      postcodeEnc: true,
-      countryEnc: true,
+      addressEnc: true,
       descriptionEnc: true,
       notesEnc: true,
       sourceUrlEnc: true,
@@ -222,8 +217,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
     projects,
     leadTypes: MARKET_LEAD_TYPES,
     leadStatuses: MARKET_LEAD_STATUSES,
-    leadSourceCategories: MARKET_LEAD_SOURCES,
-    leadSources: customLeadSources,
+    leadSourceOptions: buildLeadSourceOptions(customLeadSources),
     communicationMethods: COMMUNICATION_METHODS,
     noteChannels: NOTE_CHANNELS,
     taskStatuses: TASK_STATUSES,

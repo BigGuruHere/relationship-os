@@ -1203,14 +1203,8 @@ model MarketLead {
   linkedinIdx    String?
   roleTitleEnc   String?
   geographyEnc   String?
-  addressLine1Enc String?
-  addressLine1Idx String?
-  addressLine2Enc String?
-  suburbEnc       String?
-  stateEnc        String?
-  postcodeEnc     String?
-  postcodeIdx     String?
-  countryEnc      String?
+  addressEnc     String?
+  addressIdx     String?
   descriptionEnc String?
   notesEnc       String?
   sourceUrlEnc   String?
@@ -1266,8 +1260,7 @@ model MarketLead {
   @@index([phoneIdx])
   @@index([websiteIdx])
   @@index([linkedinIdx])
-  @@index([addressLine1Idx])
-  @@index([postcodeIdx])
+  @@index([addressIdx])
 }
 
 // IT: time-stamped notes attached directly to a market lead. These preserve early, messy

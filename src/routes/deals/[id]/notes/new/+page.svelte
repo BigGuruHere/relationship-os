@@ -241,7 +241,11 @@
             <option value="voice note">Voice note</option>
             <option value="call">Call</option>
             <option value="meeting">Meeting</option>
-            <option value="message">Message</option>
+            <option value="email">Email</option>
+            <option value="sms">SMS</option>
+            <option value="linkedin">LinkedIn</option>
+            <option value="whatsapp">WhatsApp</option>
+            <option value="other">Other</option>
           </select>
         </div>
 

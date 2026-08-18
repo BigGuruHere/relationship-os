@@ -55,6 +55,8 @@
       <button class="btn primary" type="button" on:click={() => (showNewLead = !showNewLead)}>{showNewLead ? 'Cancel lead' : '＋ New lead'}</button>
       <button class="btn primary" type="button" on:click={() => (showNewTask = !showNewTask)}>{showNewTask ? 'Cancel task' : '＋ New task'}</button>
       <a class="btn" href="/projects">All projects</a>
+      <form method="post" action="?/archiveProject" on:submit={(event) => { if (!confirm('Archive this project? It will be hidden from active lists but records remain linked.')) event.preventDefault(); }}><button class="btn" type="submit">Archive</button></form>
+      <form method="post" action="?/deleteProject" on:submit={(event) => { if (!confirm('Delete this project and its project notes/project-deal links? Contacts, companies, deals, leads and tasks will remain but lose the project link.')) event.preventDefault(); }}><button class="btn danger" type="submit">Delete</button></form>
     </div>
   </div>
 
@@ -97,8 +99,12 @@
         </div>
         <div class="grid three">
           <div class="field"><label for="leadStatus">Status</label><select id="leadStatus" name="status">{#each data.marketLeadStatuses as opt}<option value={opt.value}>{opt.label}</option>{/each}</select></div>
-          <div class="field"><label for="leadSource">Source</label><select id="leadSource" name="source">{#each data.marketLeadSources as opt}<option value={opt.value}>{opt.label}</option>{/each}</select></div>
+          <div class="field"><label for="leadSource">Source category</label><select id="leadSource" name="source">{#each data.marketLeadSourceCategories as opt}<option value={opt.value}>{opt.label}</option>{/each}</select></div>
           <div class="field"><label for="leadPriority">Priority 1-5</label><input id="leadPriority" name="priority" type="number" min="1" max="5" value="3" /></div>
+        </div>
+        <div class="grid two">
+          <div class="field"><label for="projectLeadSourceId">Custom source</label><select id="projectLeadSourceId" name="leadSourceId"><option value="">No custom source</option>{#each data.marketLeadSources as source}<option value={source.id}>{source.name}</option>{/each}</select></div>
+          <div class="field"><label for="projectNewLeadSource">Or add new source</label><input id="projectNewLeadSource" name="newLeadSource" placeholder="e.g. Sam spreadsheet, aged-care consultant list" /></div>
         </div>
         <div class="grid two">
           <div class="field"><label for="leadName">Person name</label><input id="leadName" name="name" /></div>
@@ -107,6 +113,10 @@
         <div class="grid two">
           <div class="field"><label for="leadPhone">Phone</label><input id="leadPhone" name="phone" /></div>
           <div class="field"><label for="leadEmail">Email</label><input id="leadEmail" name="email" type="email" /></div>
+        </div>
+        <div class="grid two">
+          <div class="field"><label for="projectLeadAddressLine1">Address</label><input id="projectLeadAddressLine1" name="addressLine1" /></div>
+          <div class="field"><label for="projectLeadPostcode">Postcode</label><input id="projectLeadPostcode" name="postcode" /></div>
         </div>
         <div class="field"><label for="leadDescription">Description</label><textarea id="leadDescription" name="description" rows="3" placeholder="Capture the rough signal, source, or hypothesis."></textarea></div>
         <div class="field"><label for="leadNextAction">Next action</label><input id="leadNextAction" name="nextAction" placeholder="e.g. Find principal and direct phone" /></div>
@@ -364,6 +374,7 @@
   .stat strong { font-size: 1.5rem; }
   .panel, .error-card { padding: 14px; margin-bottom: 12px; }
   .error-card { color: var(--danger); }
+  .btn.danger { background:#b00020; color:#fff; border-color:#b00020; }
   .grid.two { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
   .grid.three { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
   .grid.four { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }

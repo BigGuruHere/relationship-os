@@ -10,10 +10,14 @@ import { safeDecrypt } from '$lib/deals';
 import { safeDecryptCompany } from '$lib/companies';
 import {
   COMMUNICATION_METHODS,
+  NOTE_CHANNELS,
   MARKET_LEAD_SOURCES,
   MARKET_LEAD_STATUSES,
   MARKET_LEAD_TYPES,
-  dateToDatetimeLocal
+  dateToDatetimeLocal,
+  normaliseNoteChannel,
+  noteChannelLabel,
+  parseDateTime as parseLeadDateTime
 } from '$lib/marketLeads';
 import {
   convertLeadToCompany,
@@ -21,8 +25,10 @@ import {
   convertLeadToDeal,
   convertLeadToExchangeItem,
   leadFormValues,
+  loadLeadSources,
   mapMarketLead,
-  marketLeadCreateData
+  marketLeadCreateData,
+  resolveLeadSourceId
 } from '$lib/server/marketLeads';
 import {
   TASK_FOCUS_OPTIONS,
@@ -70,6 +76,10 @@ function mapLeadNote(note: any) {
     id: note.id,
     body: safeDecryptTask(note.bodyEnc, 'market_lead_note.body', ''),
     summary: safeDecryptTask(note.summaryEnc, 'market_lead_note.summary', ''),
+    channel: note.channel || 'note',
+    channelLabel: noteChannelLabel(note.channel),
+    occurredAt: note.occurredAt || note.createdAt,
+    occurredAtInput: dateToDatetimeLocal(note.occurredAt || note.createdAt),
     createdAt: note.createdAt,
     updatedAt: note.updatedAt
   };
@@ -119,6 +129,12 @@ export const load: PageServerLoad = async ({ params, locals }) => {
       linkedinEnc: true,
       roleTitleEnc: true,
       geographyEnc: true,
+      addressLine1Enc: true,
+      addressLine2Enc: true,
+      suburbEnc: true,
+      stateEnc: true,
+      postcodeEnc: true,
+      countryEnc: true,
       descriptionEnc: true,
       notesEnc: true,
       sourceUrlEnc: true,
@@ -127,6 +143,8 @@ export const load: PageServerLoad = async ({ params, locals }) => {
       type: true,
       status: true,
       source: true,
+      leadSourceId: true,
+      leadSource: { select: { id: true, nameEnc: true } },
       usualCommunicationMethod: true,
       confidence: true,
       priority: true,
@@ -152,11 +170,11 @@ export const load: PageServerLoad = async ({ params, locals }) => {
   if (!row) throw redirect(303, '/leads');
   const lead = mapMarketLead(row);
 
-  const [leadNotesRaw, leadTasksRaw, projects] = await Promise.all([
+  const [leadNotesRaw, leadTasksRaw, projects, customLeadSources] = await Promise.all([
     prisma.marketLeadNote.findMany({
       where: { userId, marketLeadId: row.id },
-      select: { id: true, bodyEnc: true, summaryEnc: true, createdAt: true, updatedAt: true },
-      orderBy: { createdAt: 'desc' },
+      select: { id: true, channel: true, occurredAt: true, bodyEnc: true, summaryEnc: true, createdAt: true, updatedAt: true },
+      orderBy: [{ occurredAt: 'desc' }, { createdAt: 'desc' }],
       take: 120
     }),
     prisma.task.findMany({
@@ -183,7 +201,8 @@ export const load: PageServerLoad = async ({ params, locals }) => {
       orderBy: [{ focus: 'asc' }, { status: 'asc' }, { dueAt: 'asc' }, { updatedAt: 'desc' }],
       take: 150
     }),
-    loadProjectOptions(userId)
+    loadProjectOptions(userId),
+    loadLeadSources(userId)
   ]);
 
   return {
@@ -203,8 +222,10 @@ export const load: PageServerLoad = async ({ params, locals }) => {
     projects,
     leadTypes: MARKET_LEAD_TYPES,
     leadStatuses: MARKET_LEAD_STATUSES,
-    leadSources: MARKET_LEAD_SOURCES,
+    leadSourceCategories: MARKET_LEAD_SOURCES,
+    leadSources: customLeadSources,
     communicationMethods: COMMUNICATION_METHODS,
+    noteChannels: NOTE_CHANNELS,
     taskStatuses: TASK_STATUSES,
     taskUrgencies: TASK_URGENCIES,
     taskImportances: TASK_IMPORTANCES,
@@ -228,6 +249,7 @@ export const actions: Actions = {
       if (!projectOk) return fail(404, { error: 'Selected project was not found.' });
     }
 
+    values.leadSourceId = (await resolveLeadSourceId(userId, values.leadSourceId, values.newLeadSource)) || '';
     const data: any = marketLeadCreateData(userId, values);
     delete data.userId;
     // IT: editing text/status/project fields should not unlink already converted records.
@@ -247,12 +269,40 @@ export const actions: Actions = {
     const form = await request.formData();
     const body = String(form.get('body') || form.get('note') || '').trim();
     const summary = String(form.get('summary') || '').trim();
+    const channel = normaliseNoteChannel(form.get('channel'));
+    const occurredAt = parseLeadDateTime(form.get('occurredAt')) || new Date();
     if (!body) return fail(400, { error: 'Lead note is required.' });
 
     await prisma.marketLeadNote.create({
       data: {
         userId,
         marketLeadId: params.id,
+        channel,
+        occurredAt,
+        bodyEnc: encrypt(body, 'market_lead_note.body'),
+        summaryEnc: summary ? encrypt(summary, 'market_lead_note.summary') : null
+      }
+    });
+    throw redirect(303, `/leads/${params.id}`);
+  },
+
+
+  updateLeadNote: async ({ request, params, locals }) => {
+    if (!locals.user) throw redirect(303, '/auth/login');
+    const userId = locals.user.id;
+    const form = await request.formData();
+    const noteId = String(form.get('noteId') || '').trim();
+    const body = String(form.get('body') || '').trim();
+    const summary = String(form.get('summary') || '').trim();
+    const channel = normaliseNoteChannel(form.get('channel'));
+    const occurredAt = parseLeadDateTime(form.get('occurredAt')) || new Date();
+    if (!noteId) return fail(400, { error: 'Missing lead note id.' });
+    if (!body) return fail(400, { error: 'Lead note is required.' });
+    await prisma.marketLeadNote.updateMany({
+      where: { id: noteId, userId, marketLeadId: params.id },
+      data: {
+        channel,
+        occurredAt,
         bodyEnc: encrypt(body, 'market_lead_note.body'),
         summaryEnc: summary ? encrypt(summary, 'market_lead_note.summary') : null
       }

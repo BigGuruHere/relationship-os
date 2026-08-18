@@ -11,7 +11,7 @@ import {
   MARKET_LEAD_STATUSES,
   MARKET_LEAD_TYPES
 } from '$lib/marketLeads';
-import { leadFormValues, mapMarketLead, marketLeadCreateData } from '$lib/server/marketLeads';
+import { leadFormValues, loadLeadSources, mapMarketLead, marketLeadCreateData, resolveLeadSourceId } from '$lib/server/marketLeads';
 import { safeDecryptTask } from '$lib/tasks';
 
 const LIMIT = 250;
@@ -28,7 +28,7 @@ export const load: PageServerLoad = async ({ locals, url }) => {
   if (type && MARKET_LEAD_TYPES.some((o) => o.value === type)) where.type = type;
   if (status && MARKET_LEAD_STATUSES.some((o) => o.value === status)) where.status = status;
 
-  const [rows, projectsRaw] = await Promise.all([
+  const [rows, projectsRaw, customLeadSources] = await Promise.all([
     prisma.marketLead.findMany({
     where,
     select: {
@@ -42,6 +42,12 @@ export const load: PageServerLoad = async ({ locals, url }) => {
       linkedinEnc: true,
       roleTitleEnc: true,
       geographyEnc: true,
+      addressLine1Enc: true,
+      addressLine2Enc: true,
+      suburbEnc: true,
+      stateEnc: true,
+      postcodeEnc: true,
+      countryEnc: true,
       descriptionEnc: true,
       notesEnc: true,
       sourceUrlEnc: true,
@@ -49,6 +55,8 @@ export const load: PageServerLoad = async ({ locals, url }) => {
       type: true,
       status: true,
       source: true,
+      leadSourceId: true,
+      leadSource: { select: { id: true, nameEnc: true } },
       usualCommunicationMethod: true,
       confidence: true,
       priority: true,
@@ -72,7 +80,8 @@ export const load: PageServerLoad = async ({ locals, url }) => {
       select: { id: true, titleEnc: true, status: true },
       orderBy: { updatedAt: 'desc' },
       take: 200
-    })
+    }),
+    loadLeadSources(userId)
   ]);
 
   const projects = projectsRaw.map((project: any) => ({ id: project.id, title: safeDecryptTask(project.titleEnc, 'project.title', 'Untitled project'), status: project.status }));
@@ -80,7 +89,7 @@ export const load: PageServerLoad = async ({ locals, url }) => {
   const qLower = q.toLowerCase();
   const leads = rows.map(mapMarketLead).filter((lead) => {
     if (!q) return true;
-    return [lead.title, lead.name, lead.companyName, lead.email, lead.phone, lead.website, lead.linkedin, lead.roleTitle, lead.geography, lead.description, lead.notes, lead.typeLabel, lead.statusLabel]
+    return [lead.title, lead.name, lead.companyName, lead.email, lead.phone, lead.website, lead.linkedin, lead.roleTitle, lead.geography, lead.address, lead.description, lead.notes, lead.typeLabel, lead.statusLabel]
       .join(' ')
       .toLowerCase()
       .includes(qLower);
@@ -102,7 +111,8 @@ export const load: PageServerLoad = async ({ locals, url }) => {
     summary,
     leadTypes: MARKET_LEAD_TYPES,
     leadStatuses: MARKET_LEAD_STATUSES,
-    leadSources: MARKET_LEAD_SOURCES,
+    leadSourceCategories: MARKET_LEAD_SOURCES,
+    leadSources: customLeadSources,
     communicationMethods: COMMUNICATION_METHODS,
     projects
   };
@@ -118,6 +128,7 @@ export const actions: Actions = {
     }
 
     try {
+      values.leadSourceId = (await resolveLeadSourceId(locals.user.id, values.leadSourceId, values.newLeadSource)) || '';
       if (values.projectId) {
         const projectOk = await prisma.project.findFirst({ where: { id: values.projectId, userId: locals.user.id }, select: { id: true } });
         if (!projectOk) return fail(404, { error: 'Selected project was not found.', values });

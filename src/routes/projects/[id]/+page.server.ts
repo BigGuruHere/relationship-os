@@ -9,7 +9,7 @@ import { buildIndexToken, encrypt } from '$lib/crypto';
 import { companyDisplay } from '$lib/companies';
 import { safeDecrypt } from '$lib/deals';
 import { MARKET_LEAD_SOURCES, MARKET_LEAD_STATUSES, MARKET_LEAD_TYPES, marketLeadStatusLabel } from '$lib/marketLeads';
-import { leadFormValues, mapMarketLead, marketLeadCreateData } from '$lib/server/marketLeads';
+import { leadFormValues, loadLeadSources, mapMarketLead, marketLeadCreateData, resolveLeadSourceId } from '$lib/server/marketLeads';
 import { contactDisplayName, contactOptionsForRows } from '$lib/server/contactDisplay';
 import { createExchangeItemFromForm, deleteExchangeItem, loadExchangeItems } from '$lib/server/exchange';
 import { loadAgentArtifacts } from '$lib/server/agents/artifacts';
@@ -115,6 +115,12 @@ function marketLeadSelect() {
     linkedinEnc: true,
     roleTitleEnc: true,
     geographyEnc: true,
+    addressLine1Enc: true,
+    addressLine2Enc: true,
+    suburbEnc: true,
+    stateEnc: true,
+    postcodeEnc: true,
+    countryEnc: true,
     descriptionEnc: true,
     notesEnc: true,
     sourceUrlEnc: true,
@@ -123,6 +129,8 @@ function marketLeadSelect() {
     type: true,
     status: true,
     source: true,
+    leadSourceId: true,
+    leadSource: { select: { id: true, nameEnc: true } },
     usualCommunicationMethod: true,
     confidence: true,
     priority: true,
@@ -302,7 +310,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
     if (task.dealCompany) companyMap.set(task.dealCompany.companyId, { id: task.dealCompany.companyId, name: task.dealCompany.companyName });
   }
 
-  const options = await loadOptions(userId);
+  const [options, customLeadSources] = await Promise.all([loadOptions(userId), loadLeadSources(userId)]);
 
   return {
     project: {
@@ -327,7 +335,8 @@ export const load: PageServerLoad = async ({ params, locals }) => {
     dealOptionsForLinking: options.deals.filter((deal: any) => !linkedDealIds.has(deal.id)),
     marketLeadTypes: MARKET_LEAD_TYPES,
     marketLeadStatuses: MARKET_LEAD_STATUSES,
-    marketLeadSources: MARKET_LEAD_SOURCES,
+    marketLeadSourceCategories: MARKET_LEAD_SOURCES,
+    marketLeadSources: customLeadSources,
     options,
     projectStatuses: PROJECT_STATUSES,
     taskStatuses: TASK_STATUSES,
@@ -339,6 +348,30 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 };
 
 export const actions: Actions = {
+
+  archiveProject: async ({ params, locals }) => {
+    if (!locals.user) throw redirect(303, '/auth/login');
+    await prisma.project.updateMany({
+      where: { id: params.id, userId: locals.user.id },
+      data: { status: 'ARCHIVED' as any }
+    });
+    throw redirect(303, '/projects');
+  },
+
+  deleteProject: async ({ params, locals }) => {
+    if (!locals.user) throw redirect(303, '/auth/login');
+    const userId = locals.user.id;
+    const project = await prisma.project.findFirst({ where: { id: params.id, userId }, select: { id: true } });
+    if (!project) return fail(404, { error: 'Project not found.' });
+    await prisma.$transaction(async (tx: any) => {
+      await tx.task.updateMany({ where: { userId, projectId: params.id }, data: { projectId: null } });
+      await tx.marketLead.updateMany({ where: { userId, projectId: params.id }, data: { projectId: null } });
+      await tx.exchangeItem.updateMany({ where: { userId, projectId: params.id }, data: { projectId: null } });
+      await tx.project.deleteMany({ where: { id: params.id, userId } });
+    });
+    throw redirect(303, '/projects');
+  },
+
   createProjectLead: async ({ request, params, locals }) => {
     if (!locals.user) throw redirect(303, '/auth/login');
     const userId = locals.user.id;
@@ -346,6 +379,7 @@ export const actions: Actions = {
     if (!project) return fail(404, { error: 'Project not found.' });
     const values = leadFormValues(await request.formData(), { projectId: params.id });
     values.projectId = params.id;
+    values.leadSourceId = (await resolveLeadSourceId(userId, values.leadSourceId, values.newLeadSource)) || '';
     if (!values.title && !values.name && !values.companyName) return fail(400, { error: 'Add at least a lead title, person name, or company name.' });
     const created = await prisma.marketLead.create({ data: marketLeadCreateData(userId, values) as any, select: { id: true } });
     throw redirect(303, `/leads/${created.id}`);

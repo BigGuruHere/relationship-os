@@ -38,8 +38,12 @@
         </div>
         <div class="grid three">
           <div class="field"><label for="statusCreate">Status</label><select id="statusCreate" name="status">{#each data.leadStatuses as opt}<option value={opt.value} selected={(form?.values?.status || 'NEW') === opt.value}>{opt.label}</option>{/each}</select></div>
-          <div class="field"><label for="sourceCreate">Source</label><select id="sourceCreate" name="source">{#each data.leadSources as opt}<option value={opt.value} selected={(form?.values?.source || 'MANUAL') === opt.value}>{opt.label}</option>{/each}</select></div>
+          <div class="field"><label for="sourceCreate">Source category</label><select id="sourceCreate" name="source">{#each data.leadSourceCategories as opt}<option value={opt.value} selected={(form?.values?.source || 'MANUAL') === opt.value}>{opt.label}</option>{/each}</select></div>
           <div class="field"><label for="commCreate">Usual communication</label><select id="commCreate" name="usualCommunicationMethod">{#each data.communicationMethods as opt}<option value={opt.value} selected={(form?.values?.usualCommunicationMethod || '') === opt.value}>{opt.label}</option>{/each}</select></div>
+        </div>
+        <div class="grid two">
+          <div class="field"><label for="leadSourceIdCreate">Custom source</label><select id="leadSourceIdCreate" name="leadSourceId"><option value="">No custom source</option>{#each data.leadSources as source}<option value={source.id} selected={(form?.values?.leadSourceId || '') === source.id}>{source.name}</option>{/each}</select></div>
+          <div class="field"><label for="newLeadSourceCreate">Or add new source</label><input id="newLeadSourceCreate" name="newLeadSource" placeholder="e.g. Sam, Sam spreadsheet, MFAA list" value={form?.values?.newLeadSource || ''} /></div>
         </div>
         <div class="field"><label for="projectIdCreate">Project</label><select id="projectIdCreate" name="projectId"><option value="">Standalone lead</option>{#each data.projects as project}<option value={project.id} selected={(form?.values?.projectId || '') === project.id}>{project.title}</option>{/each}</select></div>
         <div class="grid two">
@@ -58,6 +62,8 @@
           <div class="field"><label for="roleTitle">Role/title</label><input id="roleTitle" name="roleTitle" value={form?.values?.roleTitle || ''} /></div>
           <div class="field"><label for="geography">Geography</label><input id="geography" name="geography" placeholder="e.g. Melbourne, Victoria" value={form?.values?.geography || ''} /></div>
         </div>
+        <div class="grid two"><div class="field"><label for="addressLine1">Address line 1</label><input id="addressLine1" name="addressLine1" value={form?.values?.addressLine1 || ''} /></div><div class="field"><label for="addressLine2">Address line 2</label><input id="addressLine2" name="addressLine2" value={form?.values?.addressLine2 || ''} /></div></div>
+        <div class="grid four"><div class="field"><label for="suburb">Suburb</label><input id="suburb" name="suburb" value={form?.values?.suburb || ''} /></div><div class="field"><label for="state">State</label><input id="state" name="state" value={form?.values?.state || ''} /></div><div class="field"><label for="postcode">Postcode</label><input id="postcode" name="postcode" value={form?.values?.postcode || ''} /></div><div class="field"><label for="country">Country</label><input id="country" name="country" value={form?.values?.country || ''} /></div></div>
         <div class="grid three">
           <div class="field"><label for="priority">Priority 1-5</label><input id="priority" name="priority" type="number" min="1" max="5" value={form?.values?.priority || 3} /></div>
           <div class="field"><label for="confidence">Confidence 0-100</label><input id="confidence" name="confidence" type="number" min="0" max="100" value={form?.values?.confidence || 50} /></div>
@@ -119,11 +125,12 @@
   .stat { padding: 12px; display: grid; gap: 4px; } .stat span { color: var(--muted); font-size: 0.9rem; } .stat strong { font-size: 1.5rem; }
   .grid.two { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
   .grid.three { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+  .grid.four { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
   .field { display:flex; flex-direction:column; gap:6px; margin-bottom:12px; }
   .lead-list { display: grid; gap: 10px; }
   .lead-card { display: block; padding: 14px; color: var(--text); text-decoration: none; }
   .lead-card:hover { border-color: var(--accent); text-decoration: none; }
   .chip-row { display:flex; gap:6px; flex-wrap:wrap; }
   .status-chip { border: 1px solid var(--border); background: var(--panel); border-radius: 999px; padding: 3px 8px; font-size: 0.82rem; color: var(--muted); }
-  @media (max-width: 860px) { .page-head, .topline, .filter-row { flex-direction: column; align-items: stretch; } .grid.two, .grid.three, .summary-grid { grid-template-columns: 1fr; } }
+  @media (max-width: 860px) { .page-head, .topline, .filter-row { flex-direction: column; align-items: stretch; } .grid.two, .grid.three, .grid.four, .summary-grid { grid-template-columns: 1fr; } }
 </style>

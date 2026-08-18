@@ -16,6 +16,11 @@
   let showLinkProject = false;
   let newTaskNotes = '';
   let newTaskSummary = '';
+  let contactQuery = '';
+  $: filteredContactOptions = (data.contactOptions || [])
+    .filter((contact: any) => !contactQuery || String(contact.name || '').toLowerCase().includes(contactQuery.toLowerCase()))
+    .sort((a: any, b: any) => String(a.name || '').localeCompare(String(b.name || '')))
+    .slice(0, 80);
 
   function submitContainingForm(event: Event) {
     // IT: Status changes are small enough to submit immediately from the dropdown.
@@ -239,11 +244,16 @@
       {#if showAddPerson}
         <form method="post" action="?/addContact" class="add-person">
           <div class="field">
+            <label for="contactSearch">Find contact</label>
+            <input id="contactSearch" bind:value={contactQuery} placeholder="Type part of a name to filter contacts" />
+          </div>
+          <div class="field">
             <label for="contactId">Contact</label>
-            <select id="contactId" name="contactId" required>
+            <select id="contactId" name="contactId" required size="6">
               <option value="">Select contact</option>
-              {#each data.contactOptions as contact}<option value={contact.id}>{contact.name}</option>{/each}
+              {#each filteredContactOptions as contact}<option value={contact.id}>{contact.name}</option>{/each}
             </select>
+            <div class="muted small">Showing {filteredContactOptions.length} matching contact{filteredContactOptions.length === 1 ? '' : 's'}.</div>
           </div>
           <div class="grid two">
             <div class="field"><label for="relationshipType">Role</label><select id="relationshipType" name="relationshipType">{#each data.relationshipOptions as opt}<option value={opt.value}>{opt.label}</option>{/each}</select></div>
@@ -417,7 +427,12 @@
               <span class="muted">{fmtDate(note.occurredAt)}</span>
               {#if note.contactId}<span class="muted">with <a href={`/contacts/${note.contactId}`}>{note.contactName}</a></span>{/if}
             </div>
-            <a class="preline note-preview note-link" href={`/deals/${data.deal.id}/notes/${note.id}`}>{note.preview || '(empty)'}</a>
+            <details class="note-details">
+              <summary class="preline note-preview">{note.preview || '(empty)'}</summary>
+              {#if note.summary}<div class="summary-box"><div class="muted small">AI summary</div><p>{note.summary}</p></div>{/if}
+              <p class="preline small">{note.rawText || '(empty)'}</p>
+              <a class="btn tiny" href={`/deals/${data.deal.id}/notes/${note.id}`}>Open full note</a>
+            </details>
           </li>
         {/each}
       </ul>
@@ -438,7 +453,11 @@
               <span class="muted">{fmtDate(note.occurredAt)}</span>
               <span class="muted">with <a href={`/deals/${data.deal.id}/relationships/${note.dealContactId}`}>{note.contactName}</a></span>
             </div>
-            <p class="preline note-preview">{note.preview || '(empty)'}</p>
+            <details class="note-details">
+              <summary class="preline note-preview">{note.preview || '(empty)'}</summary>
+              {#if note.summary}<div class="summary-box"><div class="muted small">AI summary</div><p>{note.summary}</p></div>{/if}
+              <p class="preline small">{note.rawText || '(empty)'}</p>
+            </details>
           </li>
         {/each}
       </ul>
@@ -477,6 +496,7 @@
   .note-meta { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 6px; }
   .note-preview { margin: 0; display: block; color: inherit; text-decoration: none; }
   .note-link:hover { text-decoration: underline; }
+  .note-details summary { cursor: pointer; }
   .person-card, .task-row { border-top: 1px solid var(--border); padding: 12px 0; display: flex; justify-content: space-between; gap: 12px; }
   .person-title { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-weight: 700; }
   .person-actions { display: flex; align-items: flex-start; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }

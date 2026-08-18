@@ -32,9 +32,17 @@ export type MarketLeadFormValues = {
   linkedin: string;
   roleTitle: string;
   geography: string;
+  addressLine1: string;
+  addressLine2: string;
+  suburb: string;
+  state: string;
+  postcode: string;
+  country: string;
   description: string;
   notes: string;
   sourceUrl: string;
+  leadSourceId: string;
+  newLeadSource: string;
   usualCommunicationMethod: string;
   confidence: number;
   priority: number;
@@ -75,9 +83,17 @@ export function leadFormValues(form: FormData, defaults: Partial<MarketLeadFormV
     linkedin: normaliseUrl(String(form.get('linkedin') || defaults.linkedin || '').trim()),
     roleTitle: String(form.get('roleTitle') || defaults.roleTitle || '').trim(),
     geography: String(form.get('geography') || defaults.geography || '').trim(),
+    addressLine1: String(form.get('addressLine1') || defaults.addressLine1 || '').trim(),
+    addressLine2: String(form.get('addressLine2') || defaults.addressLine2 || '').trim(),
+    suburb: String(form.get('suburb') || defaults.suburb || '').trim(),
+    state: String(form.get('state') || defaults.state || '').trim(),
+    postcode: String(form.get('postcode') || defaults.postcode || '').trim(),
+    country: String(form.get('country') || defaults.country || '').trim(),
     description: String(form.get('description') || defaults.description || '').trim(),
     notes: String(form.get('notes') || defaults.notes || '').trim(),
     sourceUrl: normaliseUrl(String(form.get('sourceUrl') || defaults.sourceUrl || '').trim()),
+    leadSourceId: String(form.get('leadSourceId') || defaults.leadSourceId || '').trim(),
+    newLeadSource: String(form.get('newLeadSource') || defaults.newLeadSource || '').trim(),
     usualCommunicationMethod: String(form.get('usualCommunicationMethod') || defaults.usualCommunicationMethod || '').trim().toUpperCase(),
     confidence: clampInt(form.get('confidence'), defaults.confidence ?? 50, 0, 100),
     priority: clampInt(form.get('priority'), defaults.priority ?? 3, 1, 5),
@@ -108,6 +124,7 @@ export function marketLeadCreateData(userId: string, values: MarketLeadFormValue
     type: normaliseMarketLeadType(values.type) as any,
     status: normaliseMarketLeadStatus(values.status) as any,
     source: normaliseMarketLeadSource(values.source) as any,
+    leadSourceId: values.leadSourceId || null,
     titleEnc: encrypt(title, 'market_lead.title'),
     titleIdx: buildIndexToken(title),
     nameEnc: optionalEncrypted(values.name, 'market_lead.name'),
@@ -124,6 +141,14 @@ export function marketLeadCreateData(userId: string, values: MarketLeadFormValue
     linkedinIdx: optionalIdx(values.linkedin),
     roleTitleEnc: optionalEncrypted(values.roleTitle, 'market_lead.role_title'),
     geographyEnc: optionalEncrypted(values.geography, 'market_lead.geography'),
+    addressLine1Enc: optionalEncrypted(values.addressLine1, 'market_lead.address_line1'),
+    addressLine1Idx: optionalIdx(values.addressLine1),
+    addressLine2Enc: optionalEncrypted(values.addressLine2, 'market_lead.address_line2'),
+    suburbEnc: optionalEncrypted(values.suburb, 'market_lead.suburb'),
+    stateEnc: optionalEncrypted(values.state, 'market_lead.state'),
+    postcodeEnc: optionalEncrypted(values.postcode, 'market_lead.postcode'),
+    postcodeIdx: optionalIdx(values.postcode),
+    countryEnc: optionalEncrypted(values.country, 'market_lead.country'),
     descriptionEnc: optionalEncrypted(values.description, 'market_lead.description'),
     notesEnc: optionalEncrypted(values.notes, 'market_lead.notes'),
     sourceUrlEnc: optionalEncrypted(values.sourceUrl, 'market_lead.source_url'),
@@ -152,6 +177,13 @@ export function mapMarketLead(row: any) {
   const linkedin = safeDecryptLead(row.linkedinEnc, 'market_lead.linkedin', '');
   const roleTitle = safeDecryptLead(row.roleTitleEnc, 'market_lead.role_title', '');
   const geography = safeDecryptLead(row.geographyEnc, 'market_lead.geography', '');
+  const addressLine1 = safeDecryptLead(row.addressLine1Enc, 'market_lead.address_line1', '');
+  const addressLine2 = safeDecryptLead(row.addressLine2Enc, 'market_lead.address_line2', '');
+  const suburb = safeDecryptLead(row.suburbEnc, 'market_lead.suburb', '');
+  const state = safeDecryptLead(row.stateEnc, 'market_lead.state', '');
+  const postcode = safeDecryptLead(row.postcodeEnc, 'market_lead.postcode', '');
+  const country = safeDecryptLead(row.countryEnc, 'market_lead.country', '');
+  const address = [addressLine1, addressLine2, suburb, state, postcode, country].filter(Boolean).join(', ');
   const description = safeDecryptLead(row.descriptionEnc, 'market_lead.description', '');
   const notes = safeDecryptLead(row.notesEnc, 'market_lead.notes', '');
   const sourceUrl = safeDecryptLead(row.sourceUrlEnc, 'market_lead.source_url', '');
@@ -167,6 +199,13 @@ export function mapMarketLead(row: any) {
     linkedin,
     roleTitle,
     geography,
+    addressLine1,
+    addressLine2,
+    suburb,
+    state,
+    postcode,
+    country,
+    address,
     description,
     descriptionPreview: description.length > 180 ? `${description.slice(0, 177)}...` : description,
     notes,
@@ -178,7 +217,9 @@ export function mapMarketLead(row: any) {
     status: row.status,
     statusLabel: marketLeadStatusLabel(row.status),
     source: row.source,
-    sourceLabel: marketLeadSourceLabel(row.source),
+    sourceLabel: row.leadSource ? safeDecryptLead(row.leadSource.nameEnc, 'lead_source.name', marketLeadSourceLabel(row.source)) : marketLeadSourceLabel(row.source),
+    sourceCategoryLabel: marketLeadSourceLabel(row.source),
+    leadSourceId: row.leadSourceId,
     usualCommunicationMethod: row.usualCommunicationMethod,
     usualCommunicationMethodLabel: communicationMethodLabel(row.usualCommunicationMethod),
     confidence: row.confidence,
@@ -200,6 +241,38 @@ export function mapMarketLead(row: any) {
     project: row.project,
     exchangeItem: row.exchangeItem
   };
+}
+
+export async function resolveLeadSourceId(userId: string, leadSourceId: string, newLeadSource: string) {
+  const id = String(leadSourceId || '').trim();
+  if (id) {
+    const existing = await prisma.leadSource.findFirst({ where: { id, userId }, select: { id: true } });
+    return existing?.id || null;
+  }
+  const name = String(newLeadSource || '').trim();
+  if (!name) return null;
+  const nameIdx = buildIndexToken(name);
+  const row = await prisma.leadSource.upsert({
+    where: { userId_nameIdx: { userId, nameIdx } },
+    update: { nameEnc: encrypt(name, 'lead_source.name') },
+    create: { userId, nameEnc: encrypt(name, 'lead_source.name'), nameIdx },
+    select: { id: true }
+  });
+  return row.id;
+}
+
+export async function loadLeadSources(userId: string) {
+  const rows = await prisma.leadSource.findMany({
+    where: { userId },
+    select: { id: true, nameEnc: true, updatedAt: true },
+    orderBy: { updatedAt: 'desc' },
+    take: 200
+  });
+  return rows.map((source: any) => ({
+    id: source.id,
+    name: safeDecryptLead(source.nameEnc, 'lead_source.name', 'Untitled source'),
+    updatedAt: source.updatedAt
+  })).sort((a: any, b: any) => a.name.localeCompare(b.name));
 }
 
 export function decryptContactField(payload: string | null | undefined, aad: string) {
@@ -298,7 +371,7 @@ export async function convertLeadToCompany(userId: string, leadId: string) {
       websiteIdx: display.website ? buildIndexToken(display.website) : null,
       phoneEnc: display.phone ? encrypt(display.phone, 'company.phone') : null,
       phoneIdx: display.phone ? buildIndexToken(display.phone) : null,
-      locationEnc: display.geography ? encrypt(display.geography, 'company.location') : null,
+      locationEnc: (display.geography || display.address) ? encrypt(display.geography || display.address, 'company.location') : null,
       descriptionEnc: display.description ? encrypt(display.description, 'company.description') : null,
       notesEnc: display.notes ? encrypt(display.notes, 'company.notes') : null,
       kind: (display.type === 'BUYER' ? 'STRATEGIC_ACQUIRER' : 'OPERATING_BUSINESS') as any

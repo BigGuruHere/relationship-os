@@ -19,6 +19,8 @@ export const COMMUNICATION_METHODS = [
 export const MARKET_LEAD_TYPES = [
   { value: 'BUYER', label: 'Buyer' },
   { value: 'SELLER', label: 'Seller' },
+  { value: 'POTENTIAL_BUYER', label: 'Potential buyer' },
+  { value: 'POTENTIAL_SELLER', label: 'Potential seller' },
   { value: 'COMPANY', label: 'Company' },
   { value: 'CONTACT', label: 'Contact' },
   { value: 'MANDATE', label: 'Mandate' },
@@ -29,8 +31,15 @@ export const MARKET_LEAD_TYPES = [
 
 export const MARKET_LEAD_STATUSES = [
   { value: 'NEW', label: 'New' },
+  { value: 'NOT_CONTACTED', label: 'Not contacted' },
   { value: 'RESEARCHING', label: 'Researching' },
+  { value: 'TRIED_NO_CONTACT', label: 'Tried - no contact' },
+  { value: 'LEFT_VOICEMAIL', label: 'Left voicemail' },
+  { value: 'FOLLOW_UP_NEEDED', label: 'Follow-up needed' },
+  { value: 'CONTACTED', label: 'Contacted' },
+  { value: 'RESPONDED', label: 'Responded' },
   { value: 'QUALIFIED', label: 'Qualified' },
+  { value: 'NURTURE', label: 'Nurture' },
   { value: 'CONVERTED', label: 'Converted' },
   { value: 'NOT_RELEVANT', label: 'Not relevant' },
   { value: 'ARCHIVED', label: 'Archived' }
@@ -45,6 +54,19 @@ export const MARKET_LEAD_SOURCES = [
   { value: 'IMPORTED', label: 'Imported' },
   { value: 'AI', label: 'AI' },
   { value: 'OTHER', label: 'Other' }
+] as const;
+
+
+export const NOTE_CHANNELS = [
+  { value: 'note', label: 'Note' },
+  { value: 'call', label: 'Call' },
+  { value: 'voice note', label: 'Voice note' },
+  { value: 'meeting', label: 'Meeting' },
+  { value: 'email', label: 'Email' },
+  { value: 'sms', label: 'SMS' },
+  { value: 'linkedin', label: 'LinkedIn' },
+  { value: 'whatsapp', label: 'WhatsApp' },
+  { value: 'other', label: 'Other' }
 ] as const;
 
 type Opt = { readonly value: string; readonly label: string };
@@ -62,6 +84,12 @@ export const communicationMethodLabel = (v: string | null | undefined) => labelF
 export const marketLeadTypeLabel = (v: string | null | undefined) => labelFrom(MARKET_LEAD_TYPES, v, 'Other');
 export const marketLeadStatusLabel = (v: string | null | undefined) => labelFrom(MARKET_LEAD_STATUSES, v, 'New');
 export const marketLeadSourceLabel = (v: string | null | undefined) => labelFrom(MARKET_LEAD_SOURCES, v, 'Manual');
+export const noteChannelLabel = (v: string | null | undefined) => labelFrom(NOTE_CHANNELS, v, String(v || 'Note'));
+export const normaliseNoteChannel = (v: FormDataEntryValue | null) => {
+  const raw = String(v || '').trim().toLowerCase();
+  if (!raw) return 'note';
+  return NOTE_CHANNELS.some((o) => o.value === raw) ? raw : 'other';
+};
 
 export const normaliseCommunicationMethod = (v: FormDataEntryValue | null) => {
   const raw = String(v || '').trim().toUpperCase();

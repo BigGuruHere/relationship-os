@@ -61,6 +61,7 @@
         <strong>Website</strong><span>{lead.website || ' - '}</span>
         <strong>LinkedIn</strong><span>{lead.linkedin || ' - '}</span>
         <strong>Geography</strong><span>{lead.geography || ' - '}</span>
+        <strong>Address</strong><span>{lead.address || ' - '}</span>
         <strong>Usual communication</strong><span>{lead.usualCommunicationMethodLabel}</span>
         <strong>Priority</strong><span>{lead.priority}/5</span>
         <strong>Confidence</strong><span>{lead.confidence}/100</span>
@@ -105,14 +106,20 @@
         </div>
         <div class="grid three">
           <div class="field"><label for="statusEdit">Status</label><select id="statusEdit" name="status">{#each data.leadStatuses as opt}<option value={opt.value} selected={lead.status === opt.value}>{opt.label}</option>{/each}</select></div>
-          <div class="field"><label for="sourceEdit">Source</label><select id="sourceEdit" name="source">{#each data.leadSources as opt}<option value={opt.value} selected={lead.source === opt.value}>{opt.label}</option>{/each}</select></div>
+          <div class="field"><label for="sourceEdit">Source category</label><select id="sourceEdit" name="source">{#each data.leadSourceCategories as opt}<option value={opt.value} selected={lead.source === opt.value}>{opt.label}</option>{/each}</select></div>
           <div class="field"><label for="commEdit">Usual communication</label><select id="commEdit" name="usualCommunicationMethod">{#each data.communicationMethods as opt}<option value={opt.value} selected={(lead.usualCommunicationMethod || '') === opt.value}>{opt.label}</option>{/each}</select></div>
+        </div>
+        <div class="grid two">
+          <div class="field"><label for="leadSourceIdEdit">Custom source</label><select id="leadSourceIdEdit" name="leadSourceId"><option value="">No custom source</option>{#each data.leadSources as source}<option value={source.id} selected={(lead.leadSourceId || '') === source.id}>{source.name}</option>{/each}</select></div>
+          <div class="field"><label for="newLeadSourceEdit">Or add new source</label><input id="newLeadSourceEdit" name="newLeadSource" placeholder="e.g. Sam spreadsheet, MFAA list" /></div>
         </div>
         <div class="field"><label for="projectIdEdit">Project</label><select id="projectIdEdit" name="projectId"><option value="">Standalone lead</option>{#each data.projects as project}<option value={project.id} selected={(lead.projectId || '') === project.id}>{project.title}</option>{/each}</select></div>
         <div class="grid two"><div class="field"><label for="name">Person name</label><input id="name" name="name" value={lead.name} /></div><div class="field"><label for="companyName">Company name</label><input id="companyName" name="companyName" value={lead.companyName} /></div></div>
         <div class="grid two"><div class="field"><label for="email">Email</label><input id="email" name="email" type="email" value={lead.email} /></div><div class="field"><label for="phone">Phone</label><input id="phone" name="phone" value={lead.phone} /></div></div>
         <div class="grid two"><div class="field"><label for="website">Website</label><input id="website" name="website" value={lead.website} /></div><div class="field"><label for="linkedin">LinkedIn</label><input id="linkedin" name="linkedin" value={lead.linkedin} /></div></div>
         <div class="grid two"><div class="field"><label for="roleTitle">Role/title</label><input id="roleTitle" name="roleTitle" value={lead.roleTitle} /></div><div class="field"><label for="geography">Geography</label><input id="geography" name="geography" value={lead.geography} /></div></div>
+        <div class="grid two"><div class="field"><label for="addressLine1">Address line 1</label><input id="addressLine1" name="addressLine1" value={lead.addressLine1} /></div><div class="field"><label for="addressLine2">Address line 2</label><input id="addressLine2" name="addressLine2" value={lead.addressLine2} /></div></div>
+        <div class="grid four"><div class="field"><label for="suburb">Suburb</label><input id="suburb" name="suburb" value={lead.suburb} /></div><div class="field"><label for="state">State</label><input id="state" name="state" value={lead.state} /></div><div class="field"><label for="postcode">Postcode</label><input id="postcode" name="postcode" value={lead.postcode} /></div><div class="field"><label for="country">Country</label><input id="country" name="country" value={lead.country} /></div></div>
         <div class="grid three"><div class="field"><label for="priority">Priority</label><input id="priority" name="priority" type="number" min="1" max="5" value={lead.priority} /></div><div class="field"><label for="confidence">Confidence</label><input id="confidence" name="confidence" type="number" min="0" max="100" value={lead.confidence} /></div><div class="field"><label for="currency">Currency</label><input id="currency" name="currency" value={lead.currency} /></div></div>
         <div class="grid two"><div class="field"><label for="valueMin">Value min</label><input id="valueMin" name="valueMin" value={lead.valueMin} /></div><div class="field"><label for="valueMax">Value max</label><input id="valueMax" name="valueMax" value={lead.valueMax} /></div></div>
         <div class="field"><label for="description">Description</label><textarea id="description" name="description" rows="3">{lead.description}</textarea></div>
@@ -127,6 +134,10 @@
     <details open>
       <summary><strong>Lead notes</strong></summary>
       <form method="post" action="?/createLeadNote" class="nested-form">
+        <div class="grid two">
+          <div class="field"><label for="leadNoteChannel">Channel</label><select id="leadNoteChannel" name="channel">{#each data.noteChannels as opt}<option value={opt.value}>{opt.label}</option>{/each}</select></div>
+          <div class="field"><label for="leadNoteOccurredAt">Note date</label><input id="leadNoteOccurredAt" name="occurredAt" type="datetime-local" /></div>
+        </div>
         <VoiceTextField
           id="leadNote"
           textName="body"
@@ -145,9 +156,22 @@
           {#each data.leadNotes as note}
             <div class="mini-row">
               <div>
-                <div class="muted small">{fmt(note.createdAt)}</div>
+                <div class="muted small"><span class="status-chip">{note.channelLabel}</span> {fmt(note.occurredAt)}</div>
                 <p class="preline small">{note.body}</p>
                 {#if note.summary}<div class="summary-box"><div class="muted small">AI summary</div><p>{note.summary}</p></div>{/if}
+                <details class="edit-note">
+                  <summary>Edit note</summary>
+                  <form method="post" action="?/updateLeadNote" class="nested-form">
+                    <input type="hidden" name="noteId" value={note.id} />
+                    <div class="grid two">
+                      <div class="field"><label for={`noteChannel-${note.id}`}>Channel</label><select id={`noteChannel-${note.id}`} name="channel">{#each data.noteChannels as opt}<option value={opt.value} selected={note.channel === opt.value}>{opt.label}</option>{/each}</select></div>
+                      <div class="field"><label for={`noteOccurred-${note.id}`}>Note date</label><input id={`noteOccurred-${note.id}`} name="occurredAt" type="datetime-local" value={note.occurredAtInput} /></div>
+                    </div>
+                    <div class="field"><label for={`noteBody-${note.id}`}>Note</label><textarea id={`noteBody-${note.id}`} name="body" rows="4">{note.body}</textarea></div>
+                    <div class="field"><label for={`noteSummary-${note.id}`}>Summary</label><textarea id={`noteSummary-${note.id}`} name="summary" rows="2">{note.summary}</textarea></div>
+                    <button class="btn primary" type="submit">Save note changes</button>
+                  </form>
+                </details>
               </div>
               <form method="post" action="?/deleteLeadNote" on:submit={(event) => { if (!confirm('Delete this lead note?')) event.preventDefault(); }}>
                 <input type="hidden" name="noteId" value={note.id} />

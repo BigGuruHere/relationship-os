@@ -95,6 +95,7 @@ model User {
   contactEnrichments   ContactEnrichment[]
   marketLeads          MarketLead[]
   marketLeadNotes      MarketLeadNote[]
+  leadSources          LeadSource[]
   opportunityScoreFactors OpportunityScoreFactor[]
 
   role       UserRole @default(member)
@@ -1118,6 +1119,8 @@ enum MarketLeadType {
   ASSET
   REFERRER
   OTHER
+  POTENTIAL_BUYER
+  POTENTIAL_SELLER
 }
 
 // IT: Review lifecycle for market leads.
@@ -1128,6 +1131,13 @@ enum MarketLeadStatus {
   CONVERTED
   NOT_RELEVANT
   ARCHIVED
+  NOT_CONTACTED
+  TRIED_NO_CONTACT
+  LEFT_VOICEMAIL
+  FOLLOW_UP_NEEDED
+  CONTACTED
+  RESPONDED
+  NURTURE
 }
 
 // IT: Where this lead came from. Keep it high-level for filtering.
@@ -1142,6 +1152,27 @@ enum MarketLeadSource {
   OTHER
 }
 
+
+// IT: Custom user-owned lead sources. This lets you reuse sources like Sam,
+// Sam spreadsheet, MFAA list, LinkedIn, or referral partner names in dropdowns.
+model LeadSource {
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  nameEnc String
+  nameIdx String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  marketLeads MarketLead[]
+
+  @@unique([userId, nameIdx])
+  @@index([userId, updatedAt])
+  @@index([nameIdx])
+}
+
 // IT: A market-making lead: an unconfirmed person, company, mandate, asset,
 // referrer, buyer, or seller signal that may later become CRM truth.
 model MarketLead {
@@ -1152,6 +1183,9 @@ model MarketLead {
   type   MarketLeadType   @default(OTHER)
   status MarketLeadStatus @default(NEW)
   source MarketLeadSource @default(MANUAL)
+
+  leadSourceId String?
+  leadSource   LeadSource? @relation(fields: [leadSourceId], references: [id], onDelete: SetNull)
 
   titleEnc       String
   titleIdx       String
@@ -1169,6 +1203,14 @@ model MarketLead {
   linkedinIdx    String?
   roleTitleEnc   String?
   geographyEnc   String?
+  addressLine1Enc String?
+  addressLine1Idx String?
+  addressLine2Enc String?
+  suburbEnc       String?
+  stateEnc        String?
+  postcodeEnc     String?
+  postcodeIdx     String?
+  countryEnc      String?
   descriptionEnc String?
   notesEnc       String?
   sourceUrlEnc   String?
@@ -1208,6 +1250,7 @@ model MarketLead {
   @@index([userId, type])
   @@index([userId, status])
   @@index([userId, source])
+  @@index([userId, leadSourceId])
   @@index([userId, priority])
   @@index([userId, confidence])
   @@index([userId, usualCommunicationMethod])
@@ -1223,6 +1266,8 @@ model MarketLead {
   @@index([phoneIdx])
   @@index([websiteIdx])
   @@index([linkedinIdx])
+  @@index([addressLine1Idx])
+  @@index([postcodeIdx])
 }
 
 // IT: time-stamped notes attached directly to a market lead. These preserve early, messy
@@ -1235,12 +1280,15 @@ model MarketLeadNote {
   marketLeadId String
   marketLead   MarketLead @relation(fields: [marketLeadId], references: [id], onDelete: Cascade)
 
+  occurredAt DateTime @default(now())
+  channel    String   @default("note")
   bodyEnc    String
   summaryEnc String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  @@index([userId, marketLeadId, occurredAt])
   @@index([userId, marketLeadId, createdAt])
 }
 
@@ -1358,6 +1406,8 @@ model ProjectNote {
   projectId String
   project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
+  occurredAt DateTime @default(now())
+  channel    String   @default("note")
   bodyEnc    String
   summaryEnc String?
 

@@ -258,6 +258,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
         channel: note.channel,
         occurredAt: note.occurredAt,
         preview,
+        rawText,
         summary,
         contactId: note.contact?.id || null,
         contactName: note.contact ? await contactDisplayName(note.contact) : ''
@@ -294,6 +295,8 @@ export const load: PageServerLoad = async ({ params, locals }) => {
       channel: note.channel,
       occurredAt: note.occurredAt,
       preview: previewSource.length > 260 ? `${previewSource.slice(0, 257)}...` : previewSource,
+      rawText,
+      summary,
       dealContactId: note.dealContact.id,
       contactId: note.dealContact.contact.id,
       contactName: await contactDisplayName(note.dealContact.contact)

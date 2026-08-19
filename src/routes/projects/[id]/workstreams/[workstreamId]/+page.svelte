@@ -12,6 +12,7 @@
   let showNewNote = false;
   let showLinkDeal = false;
   let leadSourceChoice = 'builtin:MANUAL';
+  let attachLeadSearch = '';
   let taskNotes = '';
   let taskSummary = '';
   let noteBody = '';
@@ -39,6 +40,23 @@
   function submitContainingForm(event: Event) {
     (event.currentTarget as HTMLSelectElement).form?.requestSubmit();
   }
+
+  $: filteredAttachableLeads = (data.options.attachableLeads || []).filter((lead: any) => {
+    const term = attachLeadSearch.trim().toLowerCase();
+    if (!term) return true;
+    return [lead.title, lead.typeLabel, lead.statusLabel, lead.projectTitle, lead.workstreamName]
+      .filter(Boolean)
+      .join(' ')
+      .toLowerCase()
+      .includes(term);
+  });
+
+  function leadSourceValue(values: any) {
+    if (values?.leadSourceId) return `custom:${values.leadSourceId}`;
+    if (values?.sourceChoice && values.sourceChoice !== 'CUSTOM') return values.sourceChoice;
+    return `builtin:${values?.source || 'MANUAL'}`;
+  }
+
 </script>
 
 <div class="container">
@@ -63,7 +81,61 @@
     </div>
   </div>
 
-  {#if form?.error}<div class="card error-card">{form.error}</div>{/if}
+  {#if form?.error && !form?.duplicateLeadWarning}<div class="card error-card">{form.error}</div>{/if}
+
+  {#if form?.duplicateLeadWarning}
+    <section class="card warning-card">
+      <h2>Possible existing lead</h2>
+      <p>{form.error}</p>
+      <div class="lead-list">
+        {#each form.duplicateLeads as lead}
+          <div class="lead-row">
+            <div>
+              <strong>{lead.title}</strong>
+              <div class="muted small">{lead.typeLabel} - {lead.statusLabel}{#if lead.project} - Project: {lead.project.title}{/if}{#if lead.workstream} - Workstream: {lead.workstream.name}{/if}</div>
+              {#if lead.name || lead.companyName}<div class="small">{lead.name}{lead.name && lead.companyName ? ' - ' : ''}{lead.companyName}</div>{/if}
+              {#if lead.email || lead.phone}<div class="muted small">{lead.email}{lead.email && lead.phone ? ' - ' : ''}{lead.phone}</div>{/if}
+            </div>
+            <a class="btn" href={`/leads/${lead.id}`} target="_blank" rel="noreferrer">Open lead</a>
+          </div>
+        {/each}
+      </div>
+      <form method="post" action="?/createLead" class="duplicate-confirm-form">
+        <input type="hidden" name="forceCreate" value="1" />
+        <input type="hidden" name="title" value={form.leadValues.title} />
+        <input type="hidden" name="type" value={form.leadValues.type} />
+        <input type="hidden" name="status" value={form.leadValues.status} />
+        <input type="hidden" name="sourceChoice" value={leadSourceValue(form.leadValues)} />
+        <input type="hidden" name="leadSourceId" value={form.leadValues.leadSourceId} />
+        <input type="hidden" name="newLeadSource" value={form.leadValues.newLeadSource} />
+        <input type="hidden" name="name" value={form.leadValues.name} />
+        <input type="hidden" name="companyName" value={form.leadValues.companyName} />
+        <input type="hidden" name="email" value={form.leadValues.email} />
+        <input type="hidden" name="phone" value={form.leadValues.phone} />
+        <input type="hidden" name="website" value={form.leadValues.website} />
+        <input type="hidden" name="linkedin" value={form.leadValues.linkedin} />
+        <input type="hidden" name="roleTitle" value={form.leadValues.roleTitle} />
+        <input type="hidden" name="geography" value={form.leadValues.geography} />
+        <input type="hidden" name="address" value={form.leadValues.address} />
+        <input type="hidden" name="description" value={form.leadValues.description} />
+        <input type="hidden" name="notes" value={form.leadValues.notes} />
+        <input type="hidden" name="sourceUrl" value={form.leadValues.sourceUrl} />
+        <input type="hidden" name="usualCommunicationMethod" value={form.leadValues.usualCommunicationMethod} />
+        <input type="hidden" name="contactAttemptStatus" value={form.leadValues.contactAttemptStatus} />
+        <input type="hidden" name="lastContactedAt" value={form.leadValues.lastContactedAt} />
+        <input type="hidden" name="buyerStatus" value={form.leadValues.buyerStatus} />
+        <input type="hidden" name="sellerStatus" value={form.leadValues.sellerStatus} />
+        <input type="hidden" name="confidence" value={form.leadValues.confidence} />
+        <input type="hidden" name="priority" value={form.leadValues.priority} />
+        <input type="hidden" name="valueMin" value={form.leadValues.valueMin} />
+        <input type="hidden" name="valueMax" value={form.leadValues.valueMax} />
+        <input type="hidden" name="currency" value={form.leadValues.currency} />
+        <input type="hidden" name="nextAction" value={form.leadValues.nextAction} />
+        <input type="hidden" name="nextActionAt" value={form.leadValues.nextActionAt} />
+        <button class="btn primary" type="submit">Create anyway</button>
+      </form>
+    </section>
+  {/if}
 
   <div class="summary-grid">
     <div class="card stat"><span>Leads</span><strong>{data.summary.leads}</strong></div>
@@ -121,10 +193,34 @@
   {#if showAttachLead}
     <section class="card panel">
       <h2>Attach existing lead</h2>
+      <div class="field">
+        <label for="attachLeadSearch">Search leads</label>
+        <input id="attachLeadSearch" bind:value={attachLeadSearch} placeholder="Type a name, company, type, or status" />
+        <p class="hint">Search filters the dropdown below. Opening a match in a new tab lets you check it before attaching.</p>
+      </div>
       <form method="post" action="?/attachLead" class="grid two">
-        <div class="field"><label for="attachLeadId">Lead</label><select id="attachLeadId" name="leadId" required><option value="">Choose lead</option>{#each data.options.attachableLeads as lead}<option value={lead.id}>{lead.title} - {lead.typeLabel} - {lead.statusLabel}</option>{/each}</select></div>
+        <div class="field">
+          <label for="attachLeadId">Lead</label>
+          <select id="attachLeadId" name="leadId" required>
+            <option value="">Choose lead</option>
+            {#each filteredAttachableLeads as lead}
+              <option value={lead.id}>{lead.title} - {lead.typeLabel} - {lead.statusLabel}</option>
+            {/each}
+          </select>
+        </div>
         <div class="field align-end"><button class="btn primary" type="submit">Attach lead</button></div>
       </form>
+      {#if attachLeadSearch && filteredAttachableLeads.length === 0}<p class="muted">No attachable leads matched that search.</p>{/if}
+      {#if filteredAttachableLeads.length > 0}
+        <div class="search-results">
+          {#each filteredAttachableLeads.slice(0, 8) as lead}
+            <div class="result-row">
+              <div><strong>{lead.title}</strong><div class="muted small">{lead.typeLabel} - {lead.statusLabel}</div></div>
+              <a class="btn" href={`/leads/${lead.id}`} target="_blank" rel="noreferrer">Open</a>
+            </div>
+          {/each}
+        </div>
+      {/if}
     </section>
   {/if}
 
@@ -268,8 +364,12 @@
   .summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; margin-bottom: 12px; }
   .stat { padding: 12px; display: grid; gap: 4px; }
   .stat strong { font-size: 1.5rem; }
-  .panel, .error-card { padding: 14px; margin-bottom: 12px; }
+  .panel, .error-card, .warning-card { padding: 14px; margin-bottom: 12px; }
   .error-card { color: var(--danger); }
+  .warning-card { border-color: #b7791f; }
+  .duplicate-confirm-form { margin-top: 12px; }
+  .search-results { display: grid; gap: 6px; margin-top: 8px; }
+  .result-row { display: flex; justify-content: space-between; gap: 10px; align-items: center; border-top: 1px solid var(--border); padding: 8px 0; }
   .grid.two { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
   .grid.three { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
   .grid.four { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }

@@ -134,7 +134,7 @@ async function loadOptions(userId: string, projectId: string, workstreamId: stri
     prisma.company.findMany({ where: { userId, status: { not: 'ARCHIVED' as any } }, select: { id: true, nameEnc: true, kind: true, status: true }, orderBy: { updatedAt: 'desc' }, take: 300 }),
     prisma.deal.findMany({ where: { userId }, select: { id: true, titleEnc: true, status: true }, orderBy: { updatedAt: 'desc' }, take: 300 }),
     prisma.marketLead.findMany({ where: { userId, projectId, workstreamId, status: { notIn: ['ARCHIVED', 'CONVERTED'] as any } }, select: { id: true, titleEnc: true, type: true, status: true }, orderBy: { updatedAt: 'desc' }, take: 300 }),
-    prisma.marketLead.findMany({ where: { userId, status: { notIn: ['ARCHIVED', 'CONVERTED'] as any }, OR: [{ projectId: null }, { projectId }] }, select: { id: true, titleEnc: true, type: true, status: true, projectId: true, workstreamId: true }, orderBy: { updatedAt: 'desc' }, take: 300 }),
+    prisma.marketLead.findMany({ where: { userId, status: { notIn: ['ARCHIVED', 'CONVERTED'] as any }, OR: [{ projectId: null }, { projectId }] }, select: { id: true, titleEnc: true, type: true, status: true, projectId: true, workstreamId: true, project: { select: { id: true, titleEnc: true } }, workstream: { select: { id: true, nameEnc: true } } }, orderBy: { updatedAt: 'desc' }, take: 300 }),
     prisma.projectDeal.findMany({ where: { userId, projectId }, select: { dealId: true }, take: 500 }),
     loadLeadSources(userId)
   ]);
@@ -147,7 +147,7 @@ async function loadOptions(userId: string, projectId: string, workstreamId: stri
   const workstreamLeads = workstreamLeadsRaw.map((lead: any) => ({ id: lead.id, title: safeDecryptTask(lead.titleEnc, 'market_lead.title', 'Untitled lead'), type: lead.type, typeLabel: marketLeadTypeLabel(lead.type), status: lead.status, statusLabel: marketLeadStatusLabel(lead.status) }));
   const attachableLeads = attachableLeadsRaw
     .filter((lead: any) => lead.workstreamId !== workstreamId)
-    .map((lead: any) => ({ id: lead.id, title: safeDecryptTask(lead.titleEnc, 'market_lead.title', 'Untitled lead'), type: lead.type, typeLabel: marketLeadTypeLabel(lead.type), status: lead.status, statusLabel: marketLeadStatusLabel(lead.status), projectId: lead.projectId, workstreamId: lead.workstreamId }));
+    .map((lead: any) => ({ id: lead.id, title: safeDecryptTask(lead.titleEnc, 'market_lead.title', 'Untitled lead'), type: lead.type, typeLabel: marketLeadTypeLabel(lead.type), status: lead.status, statusLabel: marketLeadStatusLabel(lead.status), projectId: lead.projectId, workstreamId: lead.workstreamId, projectTitle: lead.project ? safeDecryptTask(lead.project.titleEnc, 'project.title', 'Untitled project') : '', workstreamName: lead.workstream ? safeDecryptTask(lead.workstream.nameEnc, 'project_workstream.name', 'Untitled workstream') : '' }));
 
   return {
     contacts,
@@ -157,6 +157,92 @@ async function loadOptions(userId: string, projectId: string, workstreamId: stri
     workstreamLeads,
     attachableLeads,
     leadSources: buildLeadSourceOptions(leadSourcesRaw)
+  };
+}
+
+async function findPossibleLeadDuplicates(userId: string, values: any) {
+  const or: any[] = [];
+  const title = values.title || values.name || values.companyName || '';
+  const candidates = [
+    { field: 'titleIdx', value: title },
+    { field: 'nameIdx', value: values.name },
+    { field: 'companyNameIdx', value: values.companyName },
+    { field: 'emailIdx', value: values.email },
+    { field: 'phoneIdx', value: values.phone }
+  ];
+  for (const item of candidates) {
+    const value = String(item.value || '').trim();
+    if (value) or.push({ [item.field]: buildIndexToken(value) });
+  }
+  if (or.length === 0) return [];
+  const rows = await prisma.marketLead.findMany({
+    where: { userId, status: { notIn: ['ARCHIVED'] as any }, OR: or },
+    select: {
+      id: true,
+      titleEnc: true,
+      nameEnc: true,
+      companyNameEnc: true,
+      emailEnc: true,
+      phoneEnc: true,
+      type: true,
+      status: true,
+      project: { select: { id: true, titleEnc: true } },
+      workstream: { select: { id: true, nameEnc: true } },
+      updatedAt: true
+    },
+    orderBy: { updatedAt: 'desc' },
+    take: 8
+  });
+  return rows.map((row: any) => ({
+    id: row.id,
+    title: safeDecryptTask(row.titleEnc, 'market_lead.title', 'Untitled lead'),
+    name: safeDecryptTask(row.nameEnc, 'market_lead.name', ''),
+    companyName: safeDecryptTask(row.companyNameEnc, 'market_lead.company_name', ''),
+    email: safeDecryptTask(row.emailEnc, 'market_lead.email', ''),
+    phone: safeDecryptTask(row.phoneEnc, 'market_lead.phone', ''),
+    type: row.type,
+    typeLabel: marketLeadTypeLabel(row.type),
+    status: row.status,
+    statusLabel: marketLeadStatusLabel(row.status),
+    project: row.project ? { id: row.project.id, title: safeDecryptTask(row.project.titleEnc, 'project.title', 'Untitled project') } : null,
+    workstream: row.workstream ? { id: row.workstream.id, name: safeDecryptTask(row.workstream.nameEnc, 'project_workstream.name', 'Untitled workstream') } : null,
+    updatedAt: row.updatedAt
+  }));
+}
+
+function serialiseLeadValues(values: any) {
+  return {
+    title: values.title || '',
+    type: values.type || 'OTHER',
+    status: values.status || 'NEW',
+    sourceChoice: values.sourceChoice || '',
+    source: values.source || 'MANUAL',
+    leadSourceId: values.leadSourceId || '',
+    newLeadSource: values.newLeadSource || '',
+    name: values.name || '',
+    companyName: values.companyName || '',
+    email: values.email || '',
+    phone: values.phone || '',
+    website: values.website || '',
+    linkedin: values.linkedin || '',
+    roleTitle: values.roleTitle || '',
+    geography: values.geography || '',
+    address: values.address || '',
+    description: values.description || '',
+    notes: values.notes || '',
+    sourceUrl: values.sourceUrl || '',
+    usualCommunicationMethod: values.usualCommunicationMethod || '',
+    contactAttemptStatus: values.contactAttemptStatus || 'NOT_CONTACTED',
+    lastContactedAt: values.lastContactedAt || '',
+    buyerStatus: values.buyerStatus || 'NOT_ASKED',
+    sellerStatus: values.sellerStatus || 'NOT_ASKED',
+    confidence: values.confidence ?? 50,
+    priority: values.priority ?? 3,
+    valueMin: values.valueMin || '',
+    valueMax: values.valueMax || '',
+    currency: values.currency || 'AUD',
+    nextAction: values.nextAction || '',
+    nextActionAt: values.nextActionAt || ''
   };
 }
 
@@ -315,11 +401,26 @@ export const actions: Actions = {
     if (!locals.user) throw redirect(303, '/auth/login');
     const userId = locals.user.id;
     await assertProjectAndWorkstream(userId, params.id, params.workstreamId);
-    const values = leadFormValues(await request.formData(), { projectId: params.id, workstreamId: params.workstreamId });
+    const form = await request.formData();
+    const values = leadFormValues(form, { projectId: params.id, workstreamId: params.workstreamId });
     values.projectId = params.id;
     values.workstreamId = params.workstreamId;
     values.leadSourceId = (await resolveLeadSourceId(userId, values.leadSourceId, values.newLeadSource)) || '';
     if (!values.title && !values.name && !values.companyName) return fail(400, { error: 'Add at least a lead title, person name, or company name.' });
+
+    const forceCreate = String(form.get('forceCreate') || '') === '1';
+    if (!forceCreate) {
+      const duplicates = await findPossibleLeadDuplicates(userId, values);
+      if (duplicates.length > 0) {
+        return fail(409, {
+          error: 'Possible existing lead found. Open the existing lead to check it, or create anyway if this is a different lead.',
+          duplicateLeadWarning: true,
+          duplicateLeads: duplicates,
+          leadValues: serialiseLeadValues(values)
+        });
+      }
+    }
+
     await prisma.marketLead.create({ data: marketLeadCreateData(userId, values) as any });
     throw redirect(303, returnTo(params.id, params.workstreamId));
   },

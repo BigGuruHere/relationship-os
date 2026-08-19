@@ -334,7 +334,7 @@
         <article class="card task-card {dueClass(task.dueAt, task.status)}">
           <div class="task-main">
             <div class="task-title-row">
-              <h2>{task.title}</h2>
+              <h2><a href={`/tasks/${task.id}/edit`}>{task.title}</a></h2>
               <span class="status-chip">{task.statusLabel}</span>
               <span class="status-chip">{task.urgencyLabel}</span>
               <span class="status-chip">{task.focusLabel}</span>
@@ -396,6 +396,8 @@
   .filter-actions { display: flex; gap: 8px; align-items: center; }
   h1 { margin: 0; }
   h2 { margin: 0; font-size: 1.1rem; }
+  h2 a { color: inherit; text-decoration: none; }
+  h2 a:hover { text-decoration: underline; }
   .eyebrow { color: var(--accent); font-weight: 700; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.04em; }
   .muted { color: var(--muted); }
   .hint { color: var(--muted); font-size: 0.82rem; margin: 4px 0 0; }

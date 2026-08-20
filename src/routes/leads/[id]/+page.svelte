@@ -13,6 +13,13 @@
   let taskNotes = '';
   let taskSummary = '';
   let editSourceChoice = lead.sourceChoice || (lead.leadSourceId ? `custom:${lead.leadSourceId}` : `builtin:${lead.source || 'MANUAL'}`);
+  let companySearch = '';
+
+  $: filteredCompanies = (data.companies || []).filter((company: any) => {
+    const q = companySearch.trim().toLowerCase();
+    if (!q) return true;
+    return `${company.name || ''} ${company.phone || ''} ${company.website || ''}`.toLowerCase().includes(q);
+  });
 
   function fmt(value: string | Date | null | undefined) {
     if (!value) return 'No date';
@@ -104,6 +111,25 @@
         <strong>Workstream</strong><span>{lead.linkedWorkstreamTitle || ' - '}</span>
         <strong>Want/offer</strong><span>{#if lead.exchangeItemId}{lead.linkedExchangeTitle || 'Created'}{:else} - {/if}</span>
       </div>
+      {#if lead.companyId}
+        <form method="post" action="?/unlinkCompany" on:submit={(e) => { if (!confirm('Unlink this lead from the company?')) e.preventDefault(); }}><button class="btn" type="submit">Unlink company</button></form>
+      {:else}
+        <details class="nested-form">
+          <summary>Link to existing company</summary>
+          <form method="post" action="?/linkCompany">
+            <div class="field"><label for="companySearch">Search companies</label><input id="companySearch" bind:value={companySearch} placeholder="Type company, phone or website" /></div>
+            <div class="field"><label for="companyId">Company</label><select id="companyId" name="companyId" required size={Math.min(8, Math.max(3, filteredCompanies.length || 3))}><option value="">Select company</option>{#each filteredCompanies as company}<option value={company.id}>{company.name}{company.website ? ` - ${company.website}` : ''}</option>{/each}</select></div>
+            {#if filteredCompanies.length}
+              <div class="mini-list compact-list">
+                {#each filteredCompanies.slice(0, 8) as company}
+                  <div class="mini-row compact-row"><div><strong>{company.name}</strong><div class="muted small">{company.phone || ''}{company.phone && company.website ? ' - ' : ''}{company.website || ''}</div></div><a class="btn" href={`/companies/${company.id}`} target="_blank" rel="noreferrer">Open</a></div>
+                {/each}
+              </div>
+            {/if}
+            <button class="btn primary" type="submit">Link company</button>
+          </form>
+        </details>
+      {/if}
       {#if lead.convertedAt}<p class="muted small">Converted on {fmt(lead.convertedAt)}</p>{/if}
       <form method="post" action="?/archive" on:submit={(e) => { if (!confirm('Archive this lead?')) e.preventDefault(); }}><button class="btn danger" type="submit">Archive lead</button></form>
     </section>
@@ -305,4 +331,6 @@
   .summary-box p { margin: 4px 0 0; white-space: pre-wrap; }
   textarea { resize: vertical; }
   @media (max-width: 860px) { .page-head, .mini-row, .task-row, .section-head { flex-direction: column; } .grid.two, .grid.three, .grid.four, .details-grid { grid-template-columns: 1fr; } .task-actions { min-width: 0; } }
+  .compact-list { margin: 8px 0; }
+  .compact-row { padding: 8px 0; }
 </style>

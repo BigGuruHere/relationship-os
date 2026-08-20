@@ -5,7 +5,7 @@
 import type { Actions, PageServerLoad } from './$types';
 import { fail, redirect } from '@sveltejs/kit';
 import { prisma } from '$lib/db';
-import { decrypt, encrypt } from '$lib/crypto';
+import { buildIndexToken, decrypt, encrypt } from '$lib/crypto';
 import { safeDecrypt } from '$lib/deals';
 import { safeDecryptCompany } from '$lib/companies';
 import {
@@ -88,6 +88,22 @@ async function loadWorkstreamOptions(userId: string) {
     projectTitle: safeDecryptTask(ws.project?.titleEnc, 'project.title', 'Untitled project'),
     status: ws.status
   }));
+}
+
+async function loadCompanyOptions(userId: string) {
+  const rows = await prisma.company.findMany({
+    where: { userId, status: { not: 'ARCHIVED' as any } },
+    select: { id: true, nameEnc: true, phoneEnc: true, websiteEnc: true, kind: true },
+    orderBy: { updatedAt: 'desc' },
+    take: 500
+  });
+  return rows.map((company: any) => ({
+    id: company.id,
+    name: safeDecryptCompany(company.nameEnc, 'company.name', 'Untitled company'),
+    phone: safeDecryptCompany(company.phoneEnc, 'company.phone', ''),
+    website: safeDecryptCompany(company.websiteEnc, 'company.website', ''),
+    kind: company.kind
+  })).sort((a: any, b: any) => a.name.localeCompare(b.name));
 }
 
 function mapLeadNote(note: any) {
@@ -191,7 +207,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
   if (!row) throw redirect(303, '/leads');
   const lead = mapMarketLead(row);
 
-  const [leadNotesRaw, leadTasksRaw, projects, workstreams, customLeadSources] = await Promise.all([
+  const [leadNotesRaw, leadTasksRaw, projects, workstreams, companies, customLeadSources] = await Promise.all([
     prisma.marketLeadNote.findMany({
       where: { userId, marketLeadId: row.id },
       select: { id: true, channel: true, occurredAt: true, bodyEnc: true, summaryEnc: true, createdAt: true, updatedAt: true },
@@ -225,6 +241,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
     }),
     loadProjectOptions(userId),
     loadWorkstreamOptions(userId),
+    loadCompanyOptions(userId),
     loadLeadSources(userId)
   ]);
 
@@ -246,6 +263,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
     leadTasks: leadTasksRaw.map(mapLeadTask),
     projects,
     workstreams,
+    companies,
     leadTypes: MARKET_LEAD_TYPES,
     leadStatuses: MARKET_LEAD_STATUSES,
     leadSourceOptions: buildLeadSourceOptions(customLeadSources),
@@ -411,6 +429,34 @@ export const actions: Actions = {
     const taskId = String((await request.formData()).get('taskId') || '').trim();
     if (!taskId) return fail(400, { error: 'Missing task id.' });
     await prisma.task.deleteMany({ where: { id: taskId, userId: locals.user.id, marketLeadId: params.id } });
+    throw redirect(303, `/leads/${params.id}`);
+  },
+
+  linkCompany: async ({ request, params, locals }) => {
+    if (!locals.user) throw redirect(303, '/auth/login');
+    const userId = locals.user.id;
+    const form = await request.formData();
+    const companyId = String(form.get('companyId') || '').trim();
+    if (!companyId) return fail(400, { error: 'Please select a company.' });
+    const [lead, company] = await Promise.all([
+      prisma.marketLead.findFirst({ where: { id: params.id, userId }, select: { id: true, companyNameEnc: true } }),
+      prisma.company.findFirst({ where: { id: companyId, userId }, select: { id: true, nameEnc: true } })
+    ]);
+    if (!lead || !company) return fail(404, { error: 'Lead or company not found.' });
+    const companyName = safeDecryptCompany(company.nameEnc, 'company.name', 'Untitled company');
+    const data: any = { companyId };
+    if (!lead.companyNameEnc) {
+      data.companyNameEnc = encrypt(companyName, 'market_lead.company_name');
+      data.companyNameIdx = buildIndexToken(companyName);
+    }
+    await prisma.marketLead.updateMany({ where: { id: params.id, userId }, data });
+    await prisma.task.updateMany({ where: { userId, marketLeadId: params.id, companyId: null }, data: { companyId } }).catch(() => null);
+    throw redirect(303, `/leads/${params.id}`);
+  },
+
+  unlinkCompany: async ({ params, locals }) => {
+    if (!locals.user) throw redirect(303, '/auth/login');
+    await prisma.marketLead.updateMany({ where: { id: params.id, userId: locals.user.id }, data: { companyId: null } });
     throw redirect(303, `/leads/${params.id}`);
   },
 

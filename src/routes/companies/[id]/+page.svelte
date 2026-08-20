@@ -13,8 +13,28 @@
   let showAddDeal = false;
   let showAddRelationship = false;
   let showAddTask = false;
+  let showAddCompanyNote = false;
+  let showCreateLead = false;
+  let showAttachLead = false;
   let taskNotes = '';
   let taskSummary = '';
+  let companyNoteText = '';
+  let companyNoteSummary = '';
+  let contactSearch = '';
+  let leadSearch = '';
+  let newCompanyLeadSourceChoice = 'builtin:MANUAL';
+
+  $: filteredContactOptions = (data.contactOptions || []).filter((contact: any) => {
+    const q = contactSearch.trim().toLowerCase();
+    if (!q) return true;
+    return `${contact.name || ''} ${contact.email || ''} ${contact.phone || ''}`.toLowerCase().includes(q);
+  });
+
+  $: filteredLeadOptions = (data.leadOptions || []).filter((lead: any) => {
+    const q = leadSearch.trim().toLowerCase();
+    if (!q) return true;
+    return `${lead.title || ''} ${lead.name || ''} ${lead.companyName || ''} ${lead.email || ''} ${lead.phone || ''} ${lead.sourceLabel || ''}`.toLowerCase().includes(q);
+  });
 
   const fmt = (value: any) => value ? new Date(value).toLocaleString() : '';
   const fmtDate = (value: any) => value ? new Date(value).toLocaleDateString() : '';
@@ -22,6 +42,11 @@
   function submitContainingForm(event: Event) {
     const formEl = (event.currentTarget as HTMLSelectElement).closest('form');
     if (formEl) formEl.requestSubmit();
+  }
+
+  function closeContainingDetails(event: Event) {
+    const details = (event.currentTarget as HTMLElement).closest('details') as HTMLDetailsElement | null;
+    if (details) details.open = false;
   }
 </script>
 
@@ -129,6 +154,53 @@
 
   <AgentBriefingsPanel entityType="company" entityId={data.company.id} entityLabel={data.company.name} artifacts={data.agentArtifacts ?? []} />
 
+  <section class="card panel">
+    <div class="section-head"><h2>Company notes</h2><button class="btn" type="button" on:click={() => (showAddCompanyNote = !showAddCompanyNote)}>{showAddCompanyNote ? 'Cancel note' : 'Add note'}</button></div>
+    {#if showAddCompanyNote}
+      <form method="post" action="?/createCompanyNote" class="nested-form">
+        <div class="grid two">
+          <div class="field"><label for="companyNoteChannel">Channel</label><select id="companyNoteChannel" name="channel">{#each data.noteChannels as opt}<option value={opt.value}>{opt.label}</option>{/each}</select></div>
+          <div class="field"><label for="companyNoteOccurredAt">Note date</label><input id="companyNoteOccurredAt" name="occurredAt" type="datetime-local" /></div>
+        </div>
+        <VoiceTextField id="companyNote" textName="body" summaryName="summary" label="Add company note" placeholder="Record company-level research, calls, emails, source context, or next steps." rows={4} bind:value={companyNoteText} bind:summary={companyNoteSummary} contextLabel="company note" />
+        <button class="btn primary" type="submit">Save note</button>
+      </form>
+    {/if}
+
+    {#if data.companyNotes?.length}
+      <div class="mini-list">
+        {#each data.companyNotes as note}
+          <div class="mini-row">
+            <div>
+              <div class="muted small"><span class="status-chip">{note.channelLabel}</span> {fmt(note.occurredAt)}</div>
+              <p class="preline small">{note.body}</p>
+              {#if note.summary}<div class="summary-box"><div class="muted small">AI summary</div><p>{note.summary}</p></div>{/if}
+              <details class="edit-note">
+                <summary>Edit note</summary>
+                <form method="post" action="?/updateCompanyNote" class="nested-form">
+                  <input type="hidden" name="noteId" value={note.id} />
+                  <div class="grid two">
+                    <div class="field"><label for={`companyNoteChannel-${note.id}`}>Channel</label><select id={`companyNoteChannel-${note.id}`} name="channel">{#each data.noteChannels as opt}<option value={opt.value} selected={note.channel === opt.value}>{opt.label}</option>{/each}</select></div>
+                    <div class="field"><label for={`companyNoteOccurred-${note.id}`}>Note date</label><input id={`companyNoteOccurred-${note.id}`} name="occurredAt" type="datetime-local" value={note.occurredAtInput} /></div>
+                  </div>
+                  <div class="field"><label for={`companyNoteBody-${note.id}`}>Note</label><textarea id={`companyNoteBody-${note.id}`} name="body" rows="4">{note.body}</textarea></div>
+                  <div class="field"><label for={`companyNoteSummary-${note.id}`}>Summary</label><textarea id={`companyNoteSummary-${note.id}`} name="summary" rows="2">{note.summary}</textarea></div>
+                  <div class="actions small-actions"><button class="btn primary" type="submit">Save note changes</button><button class="btn" type="button" on:click={closeContainingDetails}>Cancel</button></div>
+                </form>
+              </details>
+            </div>
+            <form method="post" action="?/deleteCompanyNote" on:submit={(event) => { if (!confirm('Delete this company note?')) event.preventDefault(); }}>
+              <input type="hidden" name="noteId" value={note.id} />
+              <button class="btn" type="submit">Delete</button>
+            </form>
+          </div>
+        {/each}
+      </div>
+    {:else}
+      <p class="muted">No company notes yet.</p>
+    {/if}
+  </section>
+
   <div class="grid main-grid">
     <section class="card panel">
       <h2>Company profile</h2>
@@ -141,7 +213,8 @@
       <div class="section-head"><h2>Employees / contacts</h2><button class="btn" type="button" on:click={() => (showAddContact = !showAddContact)}>{showAddContact ? 'Cancel' : 'Add contact'}</button></div>
       {#if showAddContact}
         <form method="post" action="?/addContact" class="nested-form">
-          <div class="field"><label for="contactId">Contact</label><select id="contactId" name="contactId" required><option value="">Select contact</option>{#each data.contactOptions as c}<option value={c.id}>{c.name}</option>{/each}</select></div>
+          <div class="field"><label for="contactSearch">Search contacts</label><input id="contactSearch" bind:value={contactSearch} placeholder="Type a name, email or phone" /></div>
+          <div class="field"><label for="contactId">Contact</label><select id="contactId" name="contactId" required size={Math.min(8, Math.max(3, filteredContactOptions.length || 3))}><option value="">Select contact</option>{#each filteredContactOptions as c}<option value={c.id}>{c.name}{c.email ? ` - ${c.email}` : ''}{c.phone ? ` - ${c.phone}` : ''}</option>{/each}</select></div>
           <div class="grid three">
             <div class="field"><label for="contactTitle">Title</label><input id="contactTitle" name="title" placeholder="e.g. CEO, CFO, M&A" /></div>
             <div class="field"><label for="department">Department</label><input id="department" name="department" /></div>
@@ -172,6 +245,76 @@
       {/if}
     </section>
   </div>
+
+  <section class="card panel">
+    <div class="section-head">
+      <h2>Leads linked to this company</h2>
+      <div class="row-actions">
+        <button class="btn" type="button" on:click={() => (showCreateLead = !showCreateLead)}>{showCreateLead ? 'Cancel new lead' : 'Create lead from company'}</button>
+        <button class="btn" type="button" on:click={() => (showAttachLead = !showAttachLead)}>{showAttachLead ? 'Cancel attach' : 'Attach existing lead'}</button>
+      </div>
+    </div>
+
+    {#if showCreateLead}
+      <form method="post" action="?/createCompanyLead" class="nested-form">
+        <div class="grid two">
+          <div class="field"><label for="leadTitle">Lead title</label><input id="leadTitle" name="title" value={data.company.name} /></div>
+          <div class="field"><label for="leadType">Lead type</label><select id="leadType" name="type">{#each data.leadTypes as opt}<option value={opt.value} selected={opt.value === 'COMPANY'}>{opt.label}</option>{/each}</select></div>
+        </div>
+        <div class="grid three">
+          <div class="field"><label for="leadStatus">Status</label><select id="leadStatus" name="status">{#each data.leadStatuses as opt}<option value={opt.value} selected={opt.value === 'NEW'}>{opt.label}</option>{/each}</select></div>
+          <div class="field"><label for="leadSourceChoice">Source</label><select id="leadSourceChoice" name="sourceChoice" bind:value={newCompanyLeadSourceChoice}>{#each data.leadSourceOptions as opt}<option value={opt.value}>{opt.label}</option>{/each}</select></div>
+          <div class="field"><label for="leadNextActionAt">Next action date</label><input id="leadNextActionAt" name="nextActionAt" type="datetime-local" /></div>
+        </div>
+        {#if newCompanyLeadSourceChoice === 'CUSTOM'}
+          <div class="field"><label for="newLeadSource">Custom source</label><input id="newLeadSource" name="newLeadSource" placeholder="e.g. Sam spreadsheet, LinkedIn search" /></div>
+        {/if}
+        <div class="field"><label for="leadNextAction">Next action</label><input id="leadNextAction" name="nextAction" placeholder="e.g. research decision-maker, call office, qualify buyer/seller angle" /></div>
+        <div class="field"><label for="leadNotes">Lead notes</label><textarea id="leadNotes" name="notes" rows="3"></textarea></div>
+        <button class="btn primary" type="submit">Create linked lead</button>
+      </form>
+    {/if}
+
+    {#if showAttachLead}
+      <form method="post" action="?/attachLead" class="nested-form">
+        <div class="field"><label for="leadSearch">Search leads</label><input id="leadSearch" bind:value={leadSearch} placeholder="Type lead name, company, email, phone or source" /></div>
+        <div class="field"><label for="leadId">Lead</label><select id="leadId" name="leadId" required size={Math.min(8, Math.max(3, filteredLeadOptions.length || 3))}><option value="">Select lead</option>{#each filteredLeadOptions as lead}<option value={lead.id}>{lead.title}{lead.name ? ` - ${lead.name}` : ''}{lead.sourceLabel ? ` - ${lead.sourceLabel}` : ''}</option>{/each}</select></div>
+        {#if filteredLeadOptions.length}
+          <div class="mini-list compact-list">
+            {#each filteredLeadOptions.slice(0, 8) as lead}
+              <div class="mini-row compact-row"><div><strong>{lead.title}</strong><div class="muted small">{lead.typeLabel} - {lead.statusLabel} - {lead.sourceLabel}</div></div><a class="btn" href={`/leads/${lead.id}`} target="_blank" rel="noreferrer">Open</a></div>
+            {/each}
+          </div>
+        {/if}
+        <button class="btn primary" type="submit">Attach lead</button>
+      </form>
+    {/if}
+
+    {#if data.linkedLeads?.length}
+      <div class="mini-list">
+        {#each data.linkedLeads as lead}
+          <div class="mini-row">
+            <div>
+              <div class="title-line"><a href={`/leads/${lead.id}`}>{lead.title}</a><span class="status-chip">{lead.typeLabel}</span><span class="status-chip">{lead.statusLabel}</span>{#if lead.convertedAt}<span class="status-chip">Converted</span>{/if}</div>
+              <div class="muted small">Source: {lead.sourceLabel} - Contact: {lead.contactAttemptStatusLabel} - Buyer: {lead.buyerStatusLabel} - Seller: {lead.sellerStatusLabel}</div>
+              {#if lead.nextAction}<p class="preline small"><strong>Next:</strong> {lead.nextAction}{lead.nextActionAt ? ` - ${fmt(lead.nextActionAt)}` : ''}</p>{/if}
+              <div class="context-row">
+                {#if lead.contactId}<a class="chip" href={`/contacts/${lead.contactId}`}>Linked contact</a>{/if}
+                {#if lead.projectId}<a class="chip" href={`/projects/${lead.projectId}`}>Project</a>{/if}
+                {#if lead.workstream}<span class="chip">Workstream: {lead.workstream.name}</span>{/if}
+              </div>
+            </div>
+            <form method="post" action="?/detachLead" on:submit={(event) => { if (!confirm('Detach this lead from the company?')) event.preventDefault(); }}>
+              <input type="hidden" name="leadId" value={lead.id} />
+              <button class="btn" type="submit">Detach</button>
+            </form>
+          </div>
+        {/each}
+      </div>
+    {:else}
+      <p class="muted">No leads linked to this company yet.</p>
+    {/if}
+  </section>
 
   <section class="card panel">
     <div class="section-head"><h2>Deals involving this company</h2><button class="btn" type="button" on:click={() => (showAddDeal = !showAddDeal)}>{showAddDeal ? 'Cancel' : 'Add to deal'}</button></div>
@@ -297,6 +440,10 @@
   .summary-box { border: 1px solid var(--border); background: var(--panel); border-radius: 10px; padding: 10px; margin-top: 10px; }
   .summary-box p { margin: 4px 0 0; white-space: pre-wrap; }
   .preline { white-space: pre-wrap; }
+  .context-row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-top: 6px; }
+  .chip { border: 1px solid var(--border); border-radius: 999px; padding: 2px 8px; font-size: 0.8rem; color: var(--muted); text-decoration: none; background: var(--panel); }
+  .compact-list { margin: 8px 0; }
+  .compact-row { padding: 8px 0; }
   .check-row { display: flex; gap: 8px; align-items: center; margin-bottom: 12px; }
   .check-row input { width: auto; }
   .inline-form { display: inline; }

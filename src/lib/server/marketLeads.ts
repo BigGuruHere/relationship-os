@@ -417,10 +417,31 @@ export async function createLeadFromContact(userId: string, contactId: string, f
   return row.id;
 }
 
+async function attachContactToLeadCompany(userId: string, companyId: string | null | undefined, contactId: string, roleTitle = '') {
+  if (!companyId || !contactId) return;
+  const company = await prisma.company.findFirst({ where: { id: companyId, userId }, select: { id: true } });
+  if (!company) return;
+  const updateData: any = {};
+  if (roleTitle) updateData.titleEnc = encrypt(roleTitle, 'company_contact.title');
+  await prisma.companyContact.upsert({
+    where: { companyId_contactId: { companyId, contactId } },
+    update: updateData,
+    create: {
+      userId,
+      companyId,
+      contactId,
+      titleEnc: roleTitle ? encrypt(roleTitle, 'company_contact.title') : null,
+      status: 'CURRENT' as any,
+      isPrimary: false
+    }
+  }).catch(() => null);
+}
+
 export async function convertLeadToContact(userId: string, leadId: string) {
-  const lead = await prisma.marketLead.findFirst({ where: { id: leadId, userId } });
+  const lead = await prisma.marketLead.findFirst({ where: { id: leadId, userId }, include: { company: { select: { id: true, nameEnc: true } } } });
   if (!lead) throw new Error('Lead not found.');
   const display = mapMarketLead(lead);
+  const linkedCompanyName = lead.company ? decryptContactField(lead.company.nameEnc, 'company.name') : '';
   const fullName = display.name || display.title;
   if (!fullName) throw new Error('Lead needs a person name or title before it can become a contact.');
 
@@ -443,11 +464,16 @@ export async function convertLeadToContact(userId: string, leadId: string) {
     if (Object.keys(updateData).length) {
       await prisma.contact.updateMany({ where: { id: lead.contactId, userId }, data: updateData }).catch(() => null);
     }
+    await attachContactToLeadCompany(userId, lead.companyId, lead.contactId, display.roleTitle);
     await prisma.marketLead.updateMany({ where: { id: leadId, userId }, data: { status: 'CONVERTED' as any, convertedAt: new Date() } });
     await prisma.task.updateMany({ where: { userId, marketLeadId: leadId, contactId: null }, data: { contactId: lead.contactId } }).catch(() => null);
+    if (lead.companyId) {
+      await prisma.task.updateMany({ where: { userId, marketLeadId: leadId, companyId: null }, data: { companyId: lead.companyId } }).catch(() => null);
+    }
     return lead.contactId;
   }
 
+  const companyNameForContact = display.companyName || linkedCompanyName;
   const contact = await prisma.contact.create({
     data: {
       userId,
@@ -457,8 +483,8 @@ export async function convertLeadToContact(userId: string, leadId: string) {
       emailIdx: display.email ? buildIndexToken(display.email) : null,
       phoneEnc: display.phone ? encrypt(display.phone, 'contact.phone') : null,
       phoneIdx: display.phone ? buildIndexToken(display.phone) : null,
-      companyEnc: display.companyName ? encrypt(display.companyName, 'contact.company') : null,
-      companyIdx: display.companyName ? buildIndexToken(display.companyName) : null,
+      companyEnc: companyNameForContact ? encrypt(companyNameForContact, 'contact.company') : null,
+      companyIdx: companyNameForContact ? buildIndexToken(companyNameForContact) : null,
       positionEnc: display.roleTitle ? encrypt(display.roleTitle, 'contact.position') : null,
       positionIdx: display.roleTitle ? buildIndexToken(display.roleTitle) : null,
       linkedinEnc: display.linkedin ? encrypt(display.linkedin, 'contact.linkedin') : null,
@@ -476,8 +502,12 @@ export async function convertLeadToContact(userId: string, leadId: string) {
     select: { id: true }
   });
 
+  await attachContactToLeadCompany(userId, lead.companyId, contact.id, display.roleTitle);
   await prisma.marketLead.updateMany({ where: { id: leadId, userId }, data: { contactId: contact.id, status: 'CONVERTED' as any, convertedAt: new Date() } });
   await prisma.task.updateMany({ where: { userId, marketLeadId: leadId, contactId: null }, data: { contactId: contact.id } }).catch(() => null);
+  if (lead.companyId) {
+    await prisma.task.updateMany({ where: { userId, marketLeadId: leadId, companyId: null }, data: { companyId: lead.companyId } }).catch(() => null);
+  }
   return contact.id;
 }
 

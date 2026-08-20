@@ -76,6 +76,7 @@ model User {
   // IT: company records and relationship graph for business broker use.
   companies             Company[]
   companyContacts       CompanyContact[]
+  companyNotes          CompanyNote[]
   dealCompanies         DealCompany[]
   companyRelationships  CompanyRelationship[]
   exchangeItems         ExchangeItem[]
@@ -879,6 +880,7 @@ model Company {
   updatedAt DateTime @updatedAt
 
   contacts         CompanyContact[]
+  companyNotes      CompanyNote[]
   tags             CompanyTag[]
   dealLinks        DealCompany[]
   tasks            Task[]
@@ -897,6 +899,27 @@ model Company {
   @@index([nameIdx])
   @@index([websiteIdx])
   @@index([phoneIdx])
+}
+
+// IT: time-stamped notes attached directly to a company. These capture company-level research, calls, emails, and context separate from one-off profile fields.
+model CompanyNote {
+  id String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  companyId String
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  occurredAt DateTime @default(now())
+  channel    String   @default("note")
+  bodyEnc    String
+  summaryEnc String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, companyId, occurredAt])
+  @@index([userId, companyId, createdAt])
 }
 
 // IT: links people to companies. This is employment/membership history rather than a single company field on Contact.

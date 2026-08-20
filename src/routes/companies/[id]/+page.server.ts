@@ -66,12 +66,92 @@ import {
   taskTypeLabel,
   taskUrgencyLabel
 } from '$lib/tasks';
+import {
+  MARKET_LEAD_STATUSES,
+  MARKET_LEAD_TYPES,
+  NOTE_CHANNELS,
+  dateToDatetimeLocal,
+  normaliseNoteChannel,
+  noteChannelLabel,
+  parseDateTime as parseLeadDateTime
+} from '$lib/marketLeads';
+import {
+  buildLeadSourceOptions,
+  leadFormValues,
+  loadLeadSources,
+  mapMarketLead,
+  marketLeadCreateData,
+  resolveLeadSourceId
+} from '$lib/server/marketLeads';
 
 const ACTIVE_TASK_STATUSES = ['OPEN', 'IN_PROGRESS', 'WAITING', 'SNOOZED'];
 
 async function ensureCompany(userId: string, companyId: string) {
-  return prisma.company.findFirst({ where: { id: companyId, userId }, select: { id: true } });
+  return prisma.company.findFirst({ where: { id: companyId, userId }, select: { id: true, nameEnc: true, websiteEnc: true, phoneEnc: true } });
 }
+
+function mapCompanyNote(note: any) {
+  return {
+    id: note.id,
+    body: safeDecryptTask(note.bodyEnc, 'company_note.body', ''),
+    summary: safeDecryptTask(note.summaryEnc, 'company_note.summary', ''),
+    channel: note.channel || 'note',
+    channelLabel: noteChannelLabel(note.channel),
+    occurredAt: note.occurredAt || note.createdAt,
+    occurredAtInput: dateToDatetimeLocal(note.occurredAt || note.createdAt),
+    createdAt: note.createdAt,
+    updatedAt: note.updatedAt
+  };
+}
+
+const marketLeadSelect = {
+  id: true,
+  titleEnc: true,
+  nameEnc: true,
+  companyNameEnc: true,
+  emailEnc: true,
+  phoneEnc: true,
+  websiteEnc: true,
+  linkedinEnc: true,
+  roleTitleEnc: true,
+  geographyEnc: true,
+  addressEnc: true,
+  descriptionEnc: true,
+  notesEnc: true,
+  sourceUrlEnc: true,
+  nextActionEnc: true,
+  nextActionAt: true,
+  type: true,
+  status: true,
+  source: true,
+  leadSourceId: true,
+  leadSource: { select: { id: true, nameEnc: true } },
+  usualCommunicationMethod: true,
+  contactAttemptStatus: true,
+  lastContactedAt: true,
+  buyerStatus: true,
+  sellerStatus: true,
+  confidence: true,
+  priority: true,
+  valueMinCents: true,
+  valueMaxCents: true,
+  currency: true,
+  contactId: true,
+  companyId: true,
+  dealId: true,
+  projectId: true,
+  workstreamId: true,
+  workstream: { select: { id: true, nameEnc: true, projectId: true, status: true } },
+  exchangeItemId: true,
+  convertedAt: true,
+  createdAt: true,
+  updatedAt: true,
+  contact: { select: { id: true, fullNameEnc: true } },
+  company: { select: { id: true, nameEnc: true } },
+  deal: { select: { id: true, titleEnc: true } },
+  project: { select: { id: true, titleEnc: true } },
+  exchangeItem: { select: { id: true, titleEnc: true, type: true } }
+};
 
 export const load: PageServerLoad = async ({ params, locals }) => {
   if (!locals.user) throw redirect(303, '/auth/login');
@@ -257,20 +337,38 @@ export const load: PageServerLoad = async ({ params, locals }) => {
     waitingOnContact: task.waitingOnContact ? { id: task.waitingOnContact.id, name: await contactDisplayName(task.waitingOnContact) } : null
   })));
 
+  const companyNotesRaw = await prisma.companyNote.findMany({
+    where: { userId, companyId: row.id },
+    select: { id: true, channel: true, occurredAt: true, bodyEnc: true, summaryEnc: true, createdAt: true, updatedAt: true },
+    orderBy: [{ occurredAt: 'desc' }, { createdAt: 'desc' }],
+    take: 120
+  });
+  const companyNotes = companyNotesRaw.map(mapCompanyNote);
+
   const exchangeItems = await loadExchangeItems({ userId, links: { companyId: row.id } });
   const agentArtifacts = await loadAgentArtifacts({ userId, entityType: 'company', entityId: row.id });
 
-  const [contactsRaw, dealsRaw, companiesRaw] = await Promise.all([
-    prisma.contact.findMany({ where: { userId }, select: { id: true, fullNameEnc: true, linkedUserId: true }, orderBy: { createdAt: 'desc' }, take: 400 }),
+  const [contactsRaw, dealsRaw, companiesRaw, linkedLeadsRaw, leadOptionsRaw, customLeadSources] = await Promise.all([
+    prisma.contact.findMany({ where: { userId }, select: { id: true, fullNameEnc: true, emailEnc: true, phoneEnc: true, linkedUserId: true }, orderBy: { createdAt: 'desc' }, take: 500 }),
     prisma.deal.findMany({ where: { userId }, select: { id: true, titleEnc: true, status: true }, orderBy: { updatedAt: 'desc' }, take: 300 }),
-    prisma.company.findMany({ where: { userId, id: { not: row.id } }, select: { id: true, nameEnc: true, kind: true }, orderBy: { updatedAt: 'desc' }, take: 300 })
+    prisma.company.findMany({ where: { userId, id: { not: row.id } }, select: { id: true, nameEnc: true, kind: true }, orderBy: { updatedAt: 'desc' }, take: 300 }),
+    prisma.marketLead.findMany({ where: { userId, companyId: row.id, status: { not: 'ARCHIVED' as any } }, select: marketLeadSelect as any, orderBy: [{ status: 'asc' }, { updatedAt: 'desc' }], take: 150 }),
+    prisma.marketLead.findMany({ where: { userId, companyId: null, status: { notIn: ['ARCHIVED', 'CONVERTED'] as any } }, select: marketLeadSelect as any, orderBy: [{ updatedAt: 'desc' }], take: 500 }),
+    loadLeadSources(userId)
   ]);
 
-  const contactOptions = await contactOptionsForRows(contactsRaw as any);
+  const contactOptionNames = await contactOptionsForRows(contactsRaw as any);
+  const contactOptions = contactOptionNames.map((contact: any, index: number) => ({
+    ...contact,
+    email: safeDecrypt(contactsRaw[index]?.emailEnc, 'contact.email', ''),
+    phone: safeDecrypt(contactsRaw[index]?.phoneEnc, 'contact.phone', '')
+  }));
   const attachedContactIds = new Set(row.contacts.map((link: any) => link.contact.id));
   const dealOptions = dealsRaw.map((deal: any) => ({ id: deal.id, title: safeDecrypt(deal.titleEnc, 'deal.title', 'Untitled deal'), statusLabel: dealStatusLabel(deal.status) }));
   const attachedDealIds = new Set(row.dealLinks.map((link: any) => link.deal.id));
   const companyOptions = companiesRaw.map((company: any) => ({ id: company.id, name: safeDecryptCompany(company.nameEnc, 'company.name', 'Untitled company'), kindLabel: companyKindLabel(company.kind) }));
+  const linkedLeads = linkedLeadsRaw.map(mapMarketLead);
+  const leadOptions = leadOptionsRaw.map(mapMarketLead);
 
   return {
     company: {
@@ -295,6 +393,9 @@ export const load: PageServerLoad = async ({ params, locals }) => {
     dealLinks,
     relationships,
     tasks,
+    companyNotes,
+    linkedLeads,
+    leadOptions,
     exchangeItems,
     agentArtifacts,
     contactOptions: contactOptions.filter((contact: any) => !attachedContactIds.has(contact.id)),
@@ -314,11 +415,125 @@ export const load: PageServerLoad = async ({ params, locals }) => {
     taskUrgencies: TASK_URGENCIES,
     taskImportances: TASK_IMPORTANCES,
     taskFocusOptions: TASK_FOCUS_OPTIONS,
-    taskTypes: TASK_TYPES
+    taskTypes: TASK_TYPES,
+    noteChannels: NOTE_CHANNELS,
+    leadTypes: MARKET_LEAD_TYPES,
+    leadStatuses: MARKET_LEAD_STATUSES,
+    leadSourceOptions: buildLeadSourceOptions(customLeadSources)
   };
 };
 
 export const actions: Actions = {
+  createCompanyNote: async ({ request, params, locals }) => {
+    if (!locals.user) throw redirect(303, '/auth/login');
+    const userId = locals.user.id;
+    if (!(await ensureCompany(userId, params.id))) return fail(404, { error: 'Company not found.' });
+    const form = await request.formData();
+    const body = String(form.get('body') || form.get('note') || '').trim();
+    const summary = String(form.get('summary') || '').trim();
+    const channel = normaliseNoteChannel(form.get('channel'));
+    const occurredAt = parseLeadDateTime(form.get('occurredAt')) || new Date();
+    if (!body) return fail(400, { error: 'Company note is required.' });
+    await prisma.companyNote.create({
+      data: {
+        userId,
+        companyId: params.id,
+        channel,
+        occurredAt,
+        bodyEnc: encrypt(body, 'company_note.body'),
+        summaryEnc: summary ? encrypt(summary, 'company_note.summary') : null
+      }
+    });
+    throw redirect(303, `/companies/${params.id}`);
+  },
+
+  updateCompanyNote: async ({ request, params, locals }) => {
+    if (!locals.user) throw redirect(303, '/auth/login');
+    const userId = locals.user.id;
+    const form = await request.formData();
+    const noteId = String(form.get('noteId') || '').trim();
+    const body = String(form.get('body') || '').trim();
+    const summary = String(form.get('summary') || '').trim();
+    const channel = normaliseNoteChannel(form.get('channel'));
+    const occurredAt = parseLeadDateTime(form.get('occurredAt')) || new Date();
+    if (!noteId) return fail(400, { error: 'Missing company note id.' });
+    if (!body) return fail(400, { error: 'Company note is required.' });
+    await prisma.companyNote.updateMany({
+      where: { id: noteId, userId, companyId: params.id },
+      data: {
+        channel,
+        occurredAt,
+        bodyEnc: encrypt(body, 'company_note.body'),
+        summaryEnc: summary ? encrypt(summary, 'company_note.summary') : null
+      }
+    });
+    throw redirect(303, `/companies/${params.id}`);
+  },
+
+  deleteCompanyNote: async ({ request, params, locals }) => {
+    if (!locals.user) throw redirect(303, '/auth/login');
+    const noteId = String((await request.formData()).get('noteId') || '').trim();
+    if (!noteId) return fail(400, { error: 'Missing company note id.' });
+    await prisma.companyNote.deleteMany({ where: { id: noteId, userId: locals.user.id, companyId: params.id } });
+    throw redirect(303, `/companies/${params.id}`);
+  },
+
+  createCompanyLead: async ({ request, params, locals }) => {
+    if (!locals.user) throw redirect(303, '/auth/login');
+    const userId = locals.user.id;
+    const company = await ensureCompany(userId, params.id);
+    if (!company) return fail(404, { error: 'Company not found.' });
+    const companyName = safeDecryptCompany(company.nameEnc, 'company.name', 'Untitled company');
+    const website = safeDecryptCompany(company.websiteEnc, 'company.website', '');
+    const phone = safeDecryptCompany(company.phoneEnc, 'company.phone', '');
+    const values = leadFormValues(await request.formData(), {
+      title: companyName,
+      companyName,
+      website,
+      phone,
+      type: 'COMPANY',
+      status: 'NEW',
+      source: 'MANUAL'
+    });
+    values.title = values.title || companyName;
+    values.companyName = values.companyName || companyName;
+    values.website = values.website || website;
+    values.phone = values.phone || phone;
+    values.leadSourceId = (await resolveLeadSourceId(userId, values.leadSourceId, values.newLeadSource)) || '';
+    await prisma.marketLead.create({ data: { ...marketLeadCreateData(userId, values), companyId: params.id } as any });
+    throw redirect(303, `/companies/${params.id}`);
+  },
+
+  attachLead: async ({ request, params, locals }) => {
+    if (!locals.user) throw redirect(303, '/auth/login');
+    const userId = locals.user.id;
+    const form = await request.formData();
+    const leadId = String(form.get('leadId') || '').trim();
+    if (!leadId) return fail(400, { error: 'Please select a lead.' });
+    const [company, lead] = await Promise.all([
+      ensureCompany(userId, params.id),
+      prisma.marketLead.findFirst({ where: { id: leadId, userId }, select: { id: true, companyNameEnc: true, status: true } })
+    ]);
+    if (!company || !lead) return fail(404, { error: 'Company or lead not found.' });
+    const companyName = safeDecryptCompany(company.nameEnc, 'company.name', 'Untitled company');
+    const data: any = { companyId: params.id };
+    if (!lead.companyNameEnc) {
+      data.companyNameEnc = encrypt(companyName, 'market_lead.company_name');
+      data.companyNameIdx = buildIndexToken(companyName);
+    }
+    await prisma.marketLead.updateMany({ where: { id: leadId, userId }, data });
+    await prisma.task.updateMany({ where: { userId, marketLeadId: leadId, companyId: null }, data: { companyId: params.id } }).catch(() => null);
+    throw redirect(303, `/companies/${params.id}`);
+  },
+
+  detachLead: async ({ request, params, locals }) => {
+    if (!locals.user) throw redirect(303, '/auth/login');
+    const leadId = String((await request.formData()).get('leadId') || '').trim();
+    if (!leadId) return fail(400, { error: 'Missing lead id.' });
+    await prisma.marketLead.updateMany({ where: { id: leadId, userId: locals.user.id, companyId: params.id }, data: { companyId: null } });
+    throw redirect(303, `/companies/${params.id}`);
+  },
+
   enrichCompany: async ({ params, locals }) => {
     if (!locals.user) throw redirect(303, '/auth/login');
     const company = await ensureCompany(locals.user.id, params.id);

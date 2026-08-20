@@ -235,10 +235,13 @@
                 <div class="muted small">{employee.title}{employee.title && employee.department ? ' - ' : ''}{employee.department}</div>
                 {#if employee.notes}<p class="preline small">{employee.notes}</p>{/if}
               </div>
-              <form method="post" action="?/removeContact" on:submit={(event) => { if (!confirm('Remove this contact from the company?')) event.preventDefault(); }}>
-                <input type="hidden" name="linkId" value={employee.id} />
-                <button class="btn" type="submit">Remove</button>
-              </form>
+              <div class="row-actions">
+                <a class="btn" href={`/companies/${data.company.id}/contacts/${employee.id}`}>Open relationship</a>
+                <form method="post" action="?/removeContact" on:submit={(event) => { if (!confirm('Remove this contact from the company?')) event.preventDefault(); }}>
+                  <input type="hidden" name="linkId" value={employee.id} />
+                  <button class="btn" type="submit">Remove</button>
+                </form>
+              </div>
             </div>
           {/each}
         </div>

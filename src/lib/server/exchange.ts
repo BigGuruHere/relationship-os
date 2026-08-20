@@ -27,6 +27,7 @@ export type ExchangeEntityLink = {
   companyId?: string | null;
   dealId?: string | null;
   projectId?: string | null;
+  companyContactId?: string | null;
 };
 
 function safeDecryptExchange(payload: string | null | undefined, aad: string, fallback = '') {
@@ -156,7 +157,8 @@ export async function createExchangeItemFromForm(params: {
       contactId: links.contactId || null,
       companyId: links.companyId || null,
       dealId: links.dealId || null,
-      projectId: links.projectId || null
+      projectId: links.projectId || null,
+      companyContactId: links.companyContactId || null
     },
     select: { id: true }
   });
@@ -192,6 +194,7 @@ export async function loadExchangeItems(params: {
   if (params.links.companyId) where.companyId = params.links.companyId;
   if (params.links.dealId) where.dealId = params.links.dealId;
   if (params.links.projectId) where.projectId = params.links.projectId;
+  if (params.links.companyContactId) where.companyContactId = params.links.companyContactId;
 
   const rows = await prisma.exchangeItem.findMany({
     where,
@@ -258,5 +261,6 @@ export async function deleteExchangeItem(params: { userId: string; id: string; l
   if (params.links.companyId) where.companyId = params.links.companyId;
   if (params.links.dealId) where.dealId = params.links.dealId;
   if (params.links.projectId) where.projectId = params.links.projectId;
+  if (params.links.companyContactId) where.companyContactId = params.links.companyContactId;
   return prisma.exchangeItem.deleteMany({ where });
 }

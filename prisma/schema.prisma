@@ -76,6 +76,7 @@ model User {
   // IT: company records and relationship graph for business broker use.
   companies             Company[]
   companyContacts       CompanyContact[]
+  companyContactNotes   CompanyContactNote[]
   companyNotes          CompanyNote[]
   dealCompanies         DealCompany[]
   companyRelationships  CompanyRelationship[]
@@ -369,6 +370,7 @@ model Contact {
 
   // IT: notes/tasks where this contact is the commercial party or external person being waited on.
   dealContactNotes DealContactNote[] @relation("DealContactNoteContact")
+  companyContactNotes CompanyContactNote[]
   tasks             Task[]            @relation("TaskContact")
   assignedTasks     Task[]            @relation("TaskAssignedContact")
   waitingTasks      Task[]            @relation("TaskWaitingContact")
@@ -743,6 +745,9 @@ model DealContact {
   contactId String
   contact   Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
 
+  companyContactId String?
+  companyContact   CompanyContact? @relation(fields: [companyContactId], references: [id], onDelete: SetNull)
+
   relationshipType DealRelationshipType?
   label            String? @default("connected")
   notesEnc         String?
@@ -769,6 +774,7 @@ model DealContact {
   @@unique([dealId, contactId, label])
   @@index([userId, dealId])
   @@index([userId, contactId])
+  @@index([userId, companyContactId])
   @@index([userId, relationshipType])
   @@index([userId, stage])
   @@index([userId, interestLevel])
@@ -881,6 +887,7 @@ model Company {
 
   contacts         CompanyContact[]
   companyNotes      CompanyNote[]
+  companyContactNotes CompanyContactNote[]
   tags             CompanyTag[]
   dealLinks        DealCompany[]
   tasks            Task[]
@@ -943,6 +950,11 @@ model CompanyContact {
   startDate DateTime?
   endDate   DateTime?
 
+  dealContacts  DealContact[]
+  exchangeItems ExchangeItem[]
+  notes         CompanyContactNote[]
+  tasks         Task[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -950,6 +962,34 @@ model CompanyContact {
   @@index([userId, companyId])
   @@index([userId, contactId])
   @@index([userId, status])
+}
+
+// IT: notes attached to the relationship between one contact and one company.
+model CompanyContactNote {
+  id String @id @default(uuid())
+  userId String
+  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  companyContactId String
+  companyContact   CompanyContact @relation(fields: [companyContactId], references: [id], onDelete: Cascade)
+
+  companyId String
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  contactId String
+  contact   Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  occurredAt DateTime @default(now())
+  channel    String   @default("note")
+  bodyEnc    String
+  summaryEnc String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, companyContactId, occurredAt])
+  @@index([userId, companyId, occurredAt])
+  @@index([userId, contactId, occurredAt])
 }
 
 // IT: a company inside a deal. Useful for potential acquirers where you do not yet have a human contact.
@@ -1113,6 +1153,9 @@ model ExchangeItem {
   projectId String?
   project   Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
+  companyContactId String?
+  companyContact   CompanyContact? @relation(fields: [companyContactId], references: [id], onDelete: SetNull)
+
   embeddingVec Unsupported("vector")? @map("embedding_vec")
 
   marketLeads MarketLead[]
@@ -1131,6 +1174,7 @@ model ExchangeItem {
   @@index([userId, companyId])
   @@index([userId, dealId])
   @@index([userId, projectId])
+  @@index([userId, companyContactId])
 }
 
 
@@ -1565,6 +1609,9 @@ model Task {
   companyId String?
   company   Company? @relation(fields: [companyId], references: [id], onDelete: SetNull)
 
+  companyContactId String?
+  companyContact   CompanyContact? @relation(fields: [companyContactId], references: [id], onDelete: SetNull)
+
   dealCompanyId String?
   dealCompany   DealCompany? @relation(fields: [dealCompanyId], references: [id], onDelete: SetNull)
 
@@ -1584,6 +1631,7 @@ model Task {
   @@index([userId, workstreamId])
   @@index([userId, marketLeadId])
   @@index([userId, companyId])
+  @@index([userId, companyContactId])
   @@index([userId, dealCompanyId])
   @@index([userId, waitingOnContactId])
 }

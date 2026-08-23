@@ -83,8 +83,16 @@
       <h2>Convert or link</h2>
       <p class="muted small">Conversions create stronger CRM records while keeping this lead, notes, and tasks as history.</p>
       <div class="button-grid">
-        <form method="post" action="?/convertToContact"><button class="btn primary" type="submit">Convert to contact</button></form>
-        <form method="post" action="?/convertToCompany"><button class="btn primary" type="submit">Convert to company</button></form>
+        {#if lead.contactId}
+          <a class="chip" href={`/contacts/${lead.contactId}`}>Contact exists</a>
+        {:else}
+          <form method="post" action="?/convertToContact"><button class="btn primary" type="submit">Convert to contact</button></form>
+        {/if}
+        {#if lead.companyId}
+          <a class="chip" href={`/companies/${lead.companyId}`}>Company exists</a>
+        {:else}
+          <form method="post" action="?/convertToCompany"><button class="btn primary" type="submit">Convert to company</button></form>
+        {/if}
         <form method="post" action="?/convertToDeal"><button class="btn" type="submit">Convert to deal</button></form>
         <form method="post" action="?/convertToWant"><button class="btn" type="submit">Convert to want</button></form>
         <form method="post" action="?/convertToOffer"><button class="btn" type="submit">Convert to offer</button></form>
@@ -259,7 +267,8 @@
   .nested-form { border: 1px solid var(--border); border-radius: 12px; padding: 12px; margin: 10px 0; background: var(--panel); }
   .mini-list { display: grid; gap: 8px; }
   .mini-row { border-top: 1px solid var(--border); padding: 12px 0; display: flex; justify-content: space-between; gap: 12px; }
-  .status-chip { border: 1px solid var(--border); background: var(--panel); border-radius: 999px; padding: 3px 9px; font-size: 0.85rem; color: var(--muted); }
+  .status-chip, .chip { border: 1px solid var(--border); background: var(--panel); border-radius: 999px; padding: 3px 9px; font-size: 0.85rem; color: var(--muted); }
+  .chip { display: inline-flex; align-items: center; color: var(--text); text-decoration: none; padding: 10px 14px; }
   .summary-box { border: 1px solid var(--border); background: var(--panel); border-radius: 10px; padding: 10px; margin: 8px 0; }
   .summary-box p { margin: 4px 0 0; white-space: pre-wrap; }
   textarea { resize: vertical; }

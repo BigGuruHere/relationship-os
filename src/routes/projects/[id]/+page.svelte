@@ -7,6 +7,7 @@
   import ExchangeItemsPanel from '$lib/ExchangeItemsPanel.svelte';
   import AgentBriefingsPanel from '$lib/AgentBriefingsPanel.svelte';
   import NotesPanel from '$lib/NotesPanel.svelte';
+  import TasksPanel from '$lib/TasksPanel.svelte';
 
   export let data: any;
   export let form: any;
@@ -17,11 +18,8 @@
   }));
 
   let showEdit = false;
-  let showNewTask = false;
   let showNewLead = false;
   let showNewWorkstream = false;
-  let taskNotes = '';
-  let taskSummary = '';
   let projectNoteText = '';
   let projectNoteSummary = '';
   let projectLeadSourceChoice = 'builtin:MANUAL';
@@ -32,18 +30,6 @@
     const d = typeof value === 'string' ? new Date(value) : value;
     if (Number.isNaN(d.getTime())) return 'No date';
     return d.toLocaleString();
-  }
-
-  function dueClass(value: string | Date | null | undefined, statusValue: string) {
-    if (!value || statusValue === 'DONE' || statusValue === 'CANCELLED') return '';
-    const d = typeof value === 'string' ? new Date(value) : value;
-    if (Number.isNaN(d.getTime())) return '';
-    return d.getTime() < Date.now() ? 'overdue' : '';
-  }
-
-  function submitContainingForm(event: Event) {
-    // IT: Status dropdowns submit immediately so there is no separate Update button.
-    (event.currentTarget as HTMLSelectElement).form?.requestSubmit();
   }
 
   function sectionFor(workstreamId: string) {
@@ -66,7 +52,6 @@
       <button class="btn" type="button" on:click={() => (showEdit = !showEdit)}>{showEdit ? 'Close edit' : 'Edit project'}</button>
       <button class="btn" type="button" on:click={() => (showNewWorkstream = !showNewWorkstream)}>{showNewWorkstream ? 'Cancel workstream' : '＋ Workstream'}</button>
       <button class="btn primary" type="button" on:click={() => (showNewLead = !showNewLead)}>{showNewLead ? 'Cancel lead' : '＋ New lead'}</button>
-      <button class="btn primary" type="button" on:click={() => (showNewTask = !showNewTask)}>{showNewTask ? 'Cancel task' : '＋ New task'}</button>
       <a class="btn" href="/projects">All projects</a>
       <form method="post" action="?/archiveProject" on:submit={(event) => { if (!confirm('Archive this project? It will be hidden from active lists but records remain linked.')) event.preventDefault(); }}><button class="btn" type="submit">Archive</button></form>
       <form method="post" action="?/deleteProject" on:submit={(event) => { if (!confirm('Delete this project and its project notes/project-deal links? Contacts, companies, deals, leads and tasks will remain but lose the project link.')) event.preventDefault(); }}><button class="btn danger" type="submit">Delete</button></form>
@@ -180,66 +165,6 @@
         <div class="field"><label for="leadDescription">Description</label><textarea id="leadDescription" name="description" rows="3" placeholder="Capture the rough signal, source, or hypothesis."></textarea></div>
         <div class="field"><label for="leadNextAction">Next action</label><input id="leadNextAction" name="nextAction" placeholder="e.g. Find principal and direct phone" /></div>
         <button class="btn primary" type="submit">Save lead</button>
-      </form>
-    </section>
-  {/if}
-
-  {#if showNewTask}
-    <section class="card panel">
-      <h2>New project task</h2>
-      <form method="post" action="?/createTask">
-        <div class="field"><label for="taskTitle">Task</label><input id="taskTitle" name="title" placeholder="e.g. Follow up Sam about buyer list" required /></div>
-
-        <div class="grid four">
-          <div class="field"><label for="taskType">Type</label><select id="taskType" name="taskType">{#each data.taskTypes as opt}<option value={opt.value}>{opt.label}</option>{/each}</select></div>
-          <div class="field"><label for="urgency">Urgency</label><select id="urgency" name="urgency">{#each data.taskUrgencies as opt}<option value={opt.value} selected={opt.value === 'NORMAL'}>{opt.label}</option>{/each}</select></div>
-          <div class="field"><label for="importance">Importance</label><select id="importance" name="importance">{#each data.taskImportances as opt}<option value={opt.value} selected={opt.value === 'NORMAL'}>{opt.label}</option>{/each}</select></div>
-          <div class="field"><label for="taskStatus">Status</label><select id="taskStatus" name="status">{#each data.taskStatuses as opt}<option value={opt.value}>{opt.label}</option>{/each}</select></div>
-        </div>
-        <div class="grid two"><div class="field"><label for="taskFocus">Focus</label><select id="taskFocus" name="focus">{#each data.taskFocusOptions as opt}<option value={opt.value} selected={opt.value === 'NEW'}>{opt.label}</option>{/each}</select></div><div class="field"><label for="taskWorkstreamId">Workstream</label><select id="taskWorkstreamId" name="workstreamId"><option value="">No workstream</option>{#each data.workstreams as ws}<option value={ws.id}>{ws.name}</option>{/each}</select></div></div>
-
-        <div class="grid two">
-          <div class="field"><label for="dueAt">Due</label><input id="dueAt" name="dueAt" type="datetime-local" /></div>
-          <div class="field"><label for="snoozedUntil">Snooze until</label><input id="snoozedUntil" name="snoozedUntil" type="datetime-local" /></div>
-        </div>
-
-        <div class="grid two">
-          <div class="field"><label for="contactId">Attach person</label><select id="contactId" name="contactId"><option value="">No person</option>{#each data.options.contacts as c}<option value={c.id}>{c.name}</option>{/each}</select></div>
-          <div class="field"><label for="dealId">Attach deal</label><select id="dealId" name="dealId"><option value="">No deal</option>{#each data.options.deals as d}<option value={d.id}>{d.title}</option>{/each}</select></div>
-        </div>
-
-        <div class="grid two">
-          <div class="field"><label for="companyId">Attach company</label><select id="companyId" name="companyId"><option value="">No company</option>{#each data.options.companies as c}<option value={c.id}>{c.name}</option>{/each}</select></div>
-          <div class="field"><label for="marketLeadId">Attach lead</label><select id="marketLeadId" name="marketLeadId"><option value="">No lead</option>{#each leadTaskOptions as lead}<option value={lead.id}>{lead.title} - {lead.statusLabel}</option>{/each}</select></div>
-        </div>
-
-        <div class="field"><label for="assignedToText">Assigned to text</label><input id="assignedToText" name="assignedToText" placeholder="e.g. me, Sam, accountant" /></div>
-
-        <div class="grid two">
-          <div class="field"><label for="dealContactId">Attach deal-person thread</label><select id="dealContactId" name="dealContactId"><option value="">No specific person thread</option>{#each data.options.dealContacts as dc}<option value={dc.id}>{dc.title}</option>{/each}</select></div>
-          <div class="field"><label for="dealCompanyId">Attach deal-company thread</label><select id="dealCompanyId" name="dealCompanyId"><option value="">No specific company thread</option>{#each data.options.dealCompanies as dc}<option value={dc.id}>{dc.title}</option>{/each}</select></div>
-        </div>
-
-        <div class="grid two">
-          <div class="field"><label for="assignedToContactId">Assigned to contact</label><select id="assignedToContactId" name="assignedToContactId"><option value="">No assigned contact</option>{#each data.options.contacts as c}<option value={c.id}>{c.name}</option>{/each}</select></div>
-          <div class="field"><label for="waitingOnContactId">Waiting on</label><select id="waitingOnContactId" name="waitingOnContactId"><option value="">Nobody external</option>{#each data.options.contacts as c}<option value={c.id}>{c.name}</option>{/each}</select></div>
-        </div>
-
-        <div class="field">
-          <VoiceTextField
-            id="taskNotes"
-            textName="notes"
-            summaryName="summary"
-            label="Task notes"
-            placeholder="Record or type the context, outcome, or next step."
-            rows={4}
-            bind:value={taskNotes}
-            bind:summary={taskSummary}
-            contextLabel="task note"
-          />
-        </div>
-
-        <button class="btn primary" type="submit">Save task</button>
       </form>
     </section>
   {/if}
@@ -385,52 +310,33 @@
     </div>
   </section>
 
-  <section class="card panel">
-    <div class="section-head"><h2>Project tasks</h2><a class="btn" href="/tasks">Task inbox</a></div>
-    {#if data.tasks.length === 0}
-      <p class="muted">No tasks yet. Add a task to turn this project into an operating list.</p>
-    {:else}
-      <div class="task-list">
-        {#each data.tasks as task}
-          <article class="task-row {dueClass(task.dueAt, task.status)}">
-            <div class="task-main">
-              <div class="task-title-row"><a href={`/tasks/${task.id}/edit?returnTo=/projects/${data.project.id}`}><strong>{task.title}</strong></a><span class="status-chip">{task.statusLabel}</span><span class="status-chip">{task.urgencyLabel}</span><span class="status-chip">{task.focusLabel}</span></div>
-              <div class="muted small">{task.taskTypeLabel} - {task.importanceLabel} importance - due {fmt(task.dueAt)}</div>
-              {#if task.notes}<p class="preline small">{task.notes}</p>{/if}
-              {#if task.summary}<div class="summary-box"><div class="muted small">AI summary</div><p>{task.summary}</p></div>{/if}
-              <div class="context-row">
-                {#if task.workstream}<span class="chip">Workstream: {task.workstream.name}</span>{/if}
-                {#if task.marketLead}<a class="chip" href={`/leads/${task.marketLead.id}`}>Lead: {task.marketLead.title}</a>{/if}
-                {#if task.contact}<a class="chip" href={`/contacts/${task.contact.id}`}>Person: {task.contact.name}</a>{/if}
-                {#if task.deal}<a class="chip" href={`/deals/${task.deal.id}`}>Deal: {task.deal.title}</a>{/if}
-                {#if task.company}<a class="chip" href={`/companies/${task.company.id}`}>Company: {task.company.name}</a>{/if}
-                {#if task.dealContact}<a class="chip" href={`/deals/${task.dealContact.dealId}/relationships/${task.dealContact.id}`}>Person thread: {task.dealContact.contactName}</a>{/if}
-                {#if task.dealCompany}<a class="chip" href={`/companies/${task.dealCompany.companyId}`}>Company thread: {task.dealCompany.companyName}</a>{/if}
-                {#if task.waitingOnContact}<a class="chip" href={`/contacts/${task.waitingOnContact.id}`}>Waiting on: {task.waitingOnContact.name}</a>{/if}
-                {#if task.assignedToContact}<a class="chip" href={`/contacts/${task.assignedToContact.id}`}>Assigned: {task.assignedToContact.name}</a>{/if}
-              </div>
-            </div>
-            <div class="task-actions">
-              <form method="post" action="?/updateTaskStatus">
-                <input type="hidden" name="taskId" value={task.id} />
-                <select name="status" on:change={submitContainingForm} aria-label="Update task status">{#each data.taskStatuses as opt}<option value={opt.value} selected={task.status === opt.value}>{opt.label}</option>{/each}</select>
-              </form>
-              <a class="btn" href={`/tasks/${task.id}/edit?returnTo=/projects/${data.project.id}`}>Edit</a>
-              <form method="post" action="?/deleteTask" on:submit={(event) => { if (!confirm('Delete this task?')) event.preventDefault(); }}>
-                <input type="hidden" name="taskId" value={task.id} />
-                <button class="btn" type="submit">Delete</button>
-              </form>
-            </div>
-          </article>
-        {/each}
-      </div>
-    {/if}
-  </section>
+  <TasksPanel
+    tasks={data.tasks}
+    heading="Project tasks"
+    emptyMessage="No tasks yet. Add a task to turn this project into an operating list."
+    taskTypeOptions={data.taskTypes}
+    taskStatusOptions={data.taskStatuses}
+    taskUrgencyOptions={data.taskUrgencies}
+    taskImportanceOptions={data.taskImportances}
+    taskFocusOptions={data.taskFocusOptions}
+    editReturnTo={`/projects/${data.project.id}`}
+    showDelete
+    inboxHref="/tasks"
+    inboxLabel="Task inbox"
+    lockedProjectId={data.project.id}
+    contactOptions={data.options.contacts}
+    dealOptions={data.options.deals}
+    companyOptions={data.options.companies}
+    workstreamOptions={data.taskWorkstreamOptions}
+    marketLeadOptions={leadTaskOptions}
+    dealContactOptions={data.options.dealContacts}
+    dealCompanyOptions={data.options.dealCompanies}
+  />
 </div>
 
 <style>
   .project-header { padding: 18px; display: flex; justify-content: space-between; gap: 16px; align-items: flex-start; margin-bottom: 12px; }
-  .actions, .meta-row, .section-head, .context-row, .task-title-row, .chip-list { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .actions, .meta-row, .section-head, .chip-list { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
   h1 { margin: 0; }
   h2 { margin: 0 0 10px; font-size: 1.1rem; }
   .eyebrow { color: var(--accent); font-weight: 700; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.04em; }
@@ -446,11 +352,10 @@
   .btn.danger { background:#b00020; color:#fff; border-color:#b00020; }
   .grid.two { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
   .grid.three { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
-  .grid.four { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
   .main-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
   .span2 { grid-column: 1 / span 2; }
   .preline { white-space: pre-wrap; }
-  .task-list, .mini-list, .lead-list, .workstream-board { display: grid; gap: 8px; }
+  .mini-list, .lead-list, .workstream-board { display: grid; gap: 8px; }
   .workstream-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; }
   .workstream-card, .workstream-section { border: 1px solid var(--border); border-radius: 12px; padding: 12px; background: var(--panel); }
   .workstream-card-main { display: grid; gap: 4px; color: var(--text); text-decoration: none; margin-bottom: 10px; }
@@ -459,19 +364,12 @@
   .btn.tiny { padding: 3px 8px; font-size: 0.8rem; margin-left: 8px; }
   .lead-row { display: flex; justify-content: space-between; gap: 12px; border-top: 1px solid var(--border); padding: 12px 0; color: var(--text); text-decoration: none; }
   .mini-row { border-top: 1px solid var(--border); padding: 12px 0; display: flex; justify-content: space-between; gap: 12px; }
-  .task-row { border-top: 1px solid var(--border); padding: 12px 0; display: flex; justify-content: space-between; gap: 12px; }
-  .task-row.overdue { border-color: var(--danger); }
-  .task-main { min-width: 0; }
-  .task-actions { display: grid; gap: 8px; align-content: start; min-width: 210px; }
   .status-chip, .chip { border: 1px solid var(--border); background: var(--panel); border-radius: 999px; padding: 3px 9px; font-size: 0.85rem; color: var(--muted); }
   .chip { color: var(--text); text-decoration: none; }
-  .summary-box { border: 1px solid var(--border); background: var(--panel); border-radius: 10px; padding: 10px; margin: 8px 0; }
-  .summary-box p { margin: 4px 0 0; white-space: pre-wrap; }
   textarea { resize: vertical; }
   @media (max-width: 860px) {
-    .project-header, .task-row, .section-head, .mini-row { flex-direction: column; }
-    .summary-grid, .grid.two, .grid.three, .grid.four, .main-grid { grid-template-columns: 1fr; }
+    .project-header, .section-head, .mini-row { flex-direction: column; }
+    .summary-grid, .grid.two, .grid.three, .main-grid { grid-template-columns: 1fr; }
     .span2 { grid-column: auto; }
-    .task-actions { min-width: 0; }
   }
 </style>

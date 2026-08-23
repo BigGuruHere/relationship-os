@@ -2,9 +2,9 @@
 <script lang="ts">
   // PURPOSE: Show a contact with tags, relationships, deals, reminders, and notes.
   // SECURITY: Data has already been decrypted server side where needed.
-  import VoiceTextField from '$lib/recording/VoiceTextField.svelte';
   import ExchangeItemsPanel from '$lib/ExchangeItemsPanel.svelte';
   import AgentBriefingsPanel from '$lib/AgentBriefingsPanel.svelte';
+  import TasksPanel from '$lib/TasksPanel.svelte';
 
   export let data: any;
   export let form: any;
@@ -22,6 +22,7 @@
   const taskUrgencyOptions = data?.taskUrgencyOptions ?? [];
   const taskImportanceOptions = data?.taskImportanceOptions ?? [];
   const taskTypeOptions = data?.taskTypeOptions ?? [];
+  const taskFocusOptions = data?.taskFocusOptions ?? [];
   const relationships = data?.relationships ?? [];
   const companies = data?.companies ?? [];
   const contactOptions = data?.contactOptions ?? [];
@@ -34,14 +35,6 @@
   let showReminderPanel = false;
   let showAddRelationship = false;
   let showAddDeal = false;
-  let showAddTask = false;
-  let newTaskNotes = '';
-  let newTaskSummary = '';
-
-  function submitContainingForm(event: Event) {
-    // IT: Task status changes are intentionally saved immediately from the dropdown.
-    (event.currentTarget as HTMLSelectElement).form?.requestSubmit();
-  }
 
   function fmt(d: string | Date | null | undefined) {
     if (!d) return '';
@@ -88,7 +81,6 @@
         </div>
         <div class="action-row">
           <a class="btn primary" href={`/contacts/${contact.id}/interactions/new`}>Add voice/note</a>
-          <button class="btn" type="button" on:click={() => (showAddTask = !showAddTask)}>{showAddTask ? 'Cancel task' : 'Add task'}</button>
           <a class="btn" href={getVcardUrl()} download aria-label="Download vCard" title="Download vCard">vCard</a>
           <form method="post" action="?/scoreContact"><button class="btn" type="submit">Score opportunity</button></form>
           <form method="post" action="?/enrichContact"><button class="btn" type="submit">Enrich contact</button></form>
@@ -191,46 +183,6 @@
     <ExchangeItemsPanel items={data.exchangeItems ?? []} entityLabel={contact.name} />
 
     <AgentBriefingsPanel entityType="contact" entityId={contact.id} entityLabel={contact.name} artifacts={data.agentArtifacts ?? []} />
-
-    {#if showAddTask}
-      <div class="inline-panel">
-        <h2>Add task for {contact.name}</h2>
-        <form method="post" action="?/createTask" class="nested-form">
-          <div class="field"><label for="taskTitle">Task</label><input id="taskTitle" name="title" placeholder="e.g. Follow up about Auspath" required /></div>
-          <div class="grid two">
-            <div class="field"><label for="taskType">Type</label><select id="taskType" name="taskType">{#each taskTypeOptions as opt}<option value={opt.value}>{opt.label}</option>{/each}</select></div>
-            <div class="field"><label for="taskDueAt">Due</label><input id="taskDueAt" name="dueAt" type="datetime-local" /></div>
-          </div>
-          <div class="grid two">
-            <div class="field"><label for="taskUrgency">Urgency</label><select id="taskUrgency" name="urgency">{#each taskUrgencyOptions as opt}<option value={opt.value} selected={opt.value === 'NORMAL'}>{opt.label}</option>{/each}</select></div>
-            <div class="field"><label for="taskImportance">Importance</label><select id="taskImportance" name="importance">{#each taskImportanceOptions as opt}<option value={opt.value} selected={opt.value === 'NORMAL'}>{opt.label}</option>{/each}</select></div>
-          </div>
-          <div class="grid two">
-            <div class="field"><label for="taskStatus">Status</label><select id="taskStatus" name="status">{#each taskStatusOptions as opt}<option value={opt.value}>{opt.label}</option>{/each}</select></div>
-            <div class="field"><label for="taskDealId">Deal context</label><select id="taskDealId" name="dealId"><option value="">No deal</option>{#each deals as deal}<option value={deal.id}>{deal.title}</option>{/each}</select></div>
-          </div>
-          <div class="grid two">
-            <div class="field"><label for="taskDealContactId">Specific deal thread</label><select id="taskDealContactId" name="dealContactId"><option value="">No specific thread</option>{#each deals as deal}<option value={deal.linkId}>{deal.title} - {deal.relationshipLabel}</option>{/each}</select></div>
-            <div class="field"><label for="taskProjectId">Project</label><select id="taskProjectId" name="projectId"><option value="">No project</option>{#each projectOptions as project}<option value={project.id}>{project.title}</option>{/each}</select></div>
-          </div>
-          <label class="check-row"><input type="checkbox" name="waitingOnThisPerson" /><span>This task is waiting on {contact.name}</span></label>
-          <div class="field">
-            <VoiceTextField
-              id="taskNotes"
-              textName="notes"
-              summaryName="summary"
-              label="Task notes"
-              placeholder="Record or type the context, outcome, or next step."
-              rows={3}
-              bind:value={newTaskNotes}
-              bind:summary={newTaskSummary}
-              contextLabel="task note"
-            />
-          </div>
-          <button class="btn primary" type="submit">Save task</button>
-        </form>
-      </div>
-    {/if}
 
     <div class="content-grid">
       <section class="card panel">
@@ -485,33 +437,28 @@
       {/if}
     </section>
 
-    <section class="card panel">
-      <div class="section-head">
-        <h2>Open tasks</h2>
-        <a class="btn" href="/tasks">Add task</a>
-      </div>
-      {#if tasks.length === 0}
-        <p class="muted">No open tasks for this person.</p>
-      {:else}
-        <div class="mini-list">
-          {#each tasks as task}
-            <div class="mini-row task-mini-row">
-              <div>
-                <div class="strong-link"><a href={`/tasks/${task.id}`}>{task.title}</a> <span class="status-chip">{task.statusLabel}</span> <span class="status-chip">{task.urgencyLabel}</span></div>
-                <div class="muted small">{task.taskTypeLabel} - due {fmt(task.dueAt) || 'not set'}{task.deal ? ` - ${task.deal.title}` : ''}</div>
-                {#if task.notes}<p class="preline muted small">{task.notes}</p>{/if}
-                {#if task.summary}<div class="summary-box"><div class="muted small">AI summary</div><p>{task.summary}</p></div>{/if}
-              </div>
-              <form method="post" action="?/updateTaskStatus">
-                <input type="hidden" name="taskId" value={task.id} />
-                <select name="status" on:change={submitContainingForm}>{#each taskStatusOptions as opt}<option value={opt.value} selected={task.status === opt.value}>{opt.label}</option>{/each}</select>
-              </form>
-              <a class="btn" href={`/tasks/${task.id}/edit?returnTo=/contacts/${contact.id}`}>Edit</a>
-            </div>
-          {/each}
-        </div>
-      {/if}
-    </section>
+    <TasksPanel
+      tasks={tasks}
+      heading="Open tasks"
+      emptyMessage="No open tasks for this person."
+      taskTypeOptions={taskTypeOptions}
+      taskStatusOptions={taskStatusOptions}
+      taskUrgencyOptions={taskUrgencyOptions}
+      taskImportanceOptions={taskImportanceOptions}
+      taskFocusOptions={taskFocusOptions}
+      editReturnTo={`/contacts/${contact.id}`}
+      inboxHref="/tasks"
+      inboxLabel="Task inbox"
+      lockedContactId={contact.id}
+      contactOptions={data.taskContactOptions}
+      dealOptions={dealOptions}
+      companyOptions={data.companyOptions}
+      projectOptions={projectOptions}
+      workstreamOptions={data.workstreamOptions}
+      marketLeadOptions={data.marketLeadOptions}
+      dealContactOptions={data.dealContactOptions}
+      dealCompanyOptions={data.dealCompanyOptions}
+    />
 
     <section class="card panel">
       <div class="section-head">
@@ -610,8 +557,6 @@
   .compact-head { margin-bottom: 8px; }
   .deal-title-line { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; font-weight: 700; }
   .deal-icon { color: var(--accent-2); line-height: 1; }
-  .summary-box { border: 1px solid var(--border); background: var(--panel); border-radius: 10px; padding: 8px; margin: 8px 0; }
-  .summary-box p { margin: 4px 0 0; white-space: pre-wrap; }
   .status-chip { border: 1px solid var(--border); background: var(--panel); border-radius: 999px; padding: 2px 8px; font-size: 0.8rem; color: var(--muted); }
   .check-row { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; color: var(--text); }
   .check-row input { width: auto; }

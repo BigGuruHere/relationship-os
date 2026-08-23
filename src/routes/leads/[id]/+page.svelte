@@ -1,17 +1,15 @@
 <!-- src/routes/leads/[id]/+page.svelte -->
 <script lang="ts">
   import VoiceTextField from '$lib/recording/VoiceTextField.svelte';
+  import TasksPanel from '$lib/TasksPanel.svelte';
 
   export let data: any;
   export let form: any;
 
   const lead = data.lead;
   let showEdit = false;
-  let showNewTask = false;
   let leadNoteText = '';
   let leadNoteSummary = '';
-  let taskNotes = '';
-  let taskSummary = '';
   let editSourceChoice = lead.sourceChoice || (lead.leadSourceId ? `custom:${lead.leadSourceId}` : `builtin:${lead.source || 'MANUAL'}`);
   let companySearch = '';
 
@@ -28,21 +26,12 @@
     return d.toLocaleString();
   }
 
-  function submitContainingForm(event: Event) {
-    (event.currentTarget as HTMLSelectElement).form?.requestSubmit();
-  }
-
   function closeContainingDetails(event: Event) {
     const details = (event.currentTarget as HTMLElement).closest('details') as HTMLDetailsElement | null;
     if (details) details.open = false;
   }
 
-  function dueClass(value: string | Date | null | undefined, statusValue: string) {
-    if (!value || statusValue === 'DONE' || statusValue === 'CANCELLED') return '';
-    const d = typeof value === 'string' ? new Date(value) : value;
-    if (Number.isNaN(d.getTime())) return '';
-    return d.getTime() < Date.now() ? 'overdue' : '';
-  }
+
 </script>
 
 <div class="container">
@@ -57,7 +46,6 @@
       <a class="btn" href="/leads">All leads</a>
       {#if lead.projectId}<a class="btn" href={`/projects/${lead.projectId}`}>Open project</a>{/if}
       <button class="btn" type="button" on:click={() => (showEdit = !showEdit)}>{showEdit ? 'Close edit' : 'Edit lead'}</button>
-      <button class="btn primary" type="button" on:click={() => (showNewTask = !showNewTask)}>{showNewTask ? 'Cancel task' : '＋ Lead task'}</button>
     </div>
   </div>
 
@@ -229,88 +217,37 @@
     </details>
   </section>
 
-  {#if showNewTask}
-    <section class="card panel">
-      <h2>New lead task</h2>
-      <form method="post" action="?/createTask">
-        <div class="field"><label for="taskTitle">Task</label><input id="taskTitle" name="title" placeholder="e.g. Research principal and phone number" required /></div>
-        <div class="grid four">
-          <div class="field"><label for="taskType">Type</label><select id="taskType" name="taskType">{#each data.taskTypes as opt}<option value={opt.value}>{opt.label}</option>{/each}</select></div>
-          <div class="field"><label for="urgency">Urgency</label><select id="urgency" name="urgency">{#each data.taskUrgencies as opt}<option value={opt.value} selected={opt.value === 'NORMAL'}>{opt.label}</option>{/each}</select></div>
-          <div class="field"><label for="importance">Importance</label><select id="importance" name="importance">{#each data.taskImportances as opt}<option value={opt.value} selected={opt.value === 'NORMAL'}>{opt.label}</option>{/each}</select></div>
-          <div class="field"><label for="taskStatus">Status</label><select id="taskStatus" name="status">{#each data.taskStatuses as opt}<option value={opt.value}>{opt.label}</option>{/each}</select></div>
-        </div>
-        <div class="grid three">
-          <div class="field"><label for="taskFocus">Focus</label><select id="taskFocus" name="focus">{#each data.taskFocusOptions as opt}<option value={opt.value} selected={opt.value === 'NEW'}>{opt.label}</option>{/each}</select></div>
-          <div class="field"><label for="dueAt">Due</label><input id="dueAt" name="dueAt" type="datetime-local" /></div>
-          <div class="field"><label for="snoozedUntil">Snooze until</label><input id="snoozedUntil" name="snoozedUntil" type="datetime-local" /></div>
-        </div>
-        <div class="field"><label for="assignedToText">Assigned to text</label><input id="assignedToText" name="assignedToText" placeholder="e.g. me, Sam, accountant" /></div>
-        <VoiceTextField
-          id="taskNotes"
-          textName="notes"
-          summaryName="summary"
-          label="Task notes"
-          placeholder="Record or type the context, outcome, or next step."
-          rows={4}
-          bind:value={taskNotes}
-          bind:summary={taskSummary}
-          contextLabel="task note"
-        />
-        <button class="btn primary" type="submit">Save task</button>
-      </form>
-    </section>
-  {/if}
-
-  <section class="card panel">
-    <div class="section-head"><h2>Lead tasks</h2><button class="btn" type="button" on:click={() => (showNewTask = !showNewTask)}>{showNewTask ? 'Cancel task' : '＋ Add task'}</button></div>
-    {#if data.leadTasks?.length}
-      <div class="task-list">
-        {#each data.leadTasks as task}
-          <article class="task-row {dueClass(task.dueAt, task.status)}">
-            <div class="task-main">
-              <div class="task-title-row"><a href={`/tasks/${task.id}/edit?returnTo=/leads/${lead.id}`}><strong>{task.title}</strong></a><span class="status-chip">{task.statusLabel}</span><span class="status-chip">{task.urgencyLabel}</span><span class="status-chip">{task.focusLabel}</span></div>
-              <div class="muted small">{task.taskTypeLabel} - {task.importanceLabel} importance - due {fmt(task.dueAt)}</div>
-              {#if task.notes}<p class="preline small">{task.notes}</p>{/if}
-              {#if task.summary}<div class="summary-box"><div class="muted small">AI summary</div><p>{task.summary}</p></div>{/if}
-              <div class="context-row">
-                {#if task.project}<a class="chip" href={`/projects/${task.project.id}`}>Project: {task.project.title}</a>{/if}
-                {#if task.workstream}<span class="chip">Workstream: {task.workstream.name}</span>{/if}
-                {#if task.contact}<a class="chip" href={`/contacts/${task.contact.id}`}>Contact: {task.contact.name}</a>{/if}
-                {#if task.company}<a class="chip" href={`/companies/${task.company.id}`}>Company: {task.company.name}</a>{/if}
-                {#if task.deal}<a class="chip" href={`/deals/${task.deal.id}`}>Deal: {task.deal.title}</a>{/if}
-              </div>
-            </div>
-            <div class="task-actions">
-              <form method="post" action="?/updateTaskStatus">
-                <input type="hidden" name="taskId" value={task.id} />
-                <select name="status" on:change={submitContainingForm} aria-label="Update task status">{#each data.taskStatuses as opt}<option value={opt.value} selected={task.status === opt.value}>{opt.label}</option>{/each}</select>
-              </form>
-              <a class="btn" href={`/tasks/${task.id}/edit?returnTo=/leads/${lead.id}`}>Edit</a>
-              <form method="post" action="?/deleteTask" on:submit={(event) => { if (!confirm('Delete this task?')) event.preventDefault(); }}>
-                <input type="hidden" name="taskId" value={task.id} />
-                <button class="btn" type="submit">Delete</button>
-              </form>
-            </div>
-          </article>
-        {/each}
-      </div>
-    {:else}
-      <p class="muted">No lead tasks yet.</p>
-    {/if}
-  </section>
+  <TasksPanel
+    tasks={data.leadTasks}
+    heading="Lead tasks"
+    emptyMessage="No lead tasks yet."
+    taskTypeOptions={data.taskTypes}
+    taskStatusOptions={data.taskStatuses}
+    taskUrgencyOptions={data.taskUrgencies}
+    taskImportanceOptions={data.taskImportances}
+    taskFocusOptions={data.taskFocusOptions}
+    editReturnTo={`/leads/${lead.id}`}
+    showDelete
+    inboxHref="/tasks"
+    inboxLabel="Task inbox"
+    lockedMarketLeadId={lead.id}
+    lockedWorkstreamId={lead.workstreamId || ''}
+    contactOptions={data.taskContactOptions}
+    workstreamOptions={data.workstreams}
+    dealContactOptions={data.taskDealContactOptions}
+    dealCompanyOptions={data.taskDealCompanyOptions}
+  />
 </div>
 
 <style>
   .container { padding: 12px; }
-  .page-head, .actions, .section-head, .context-row, .task-title-row { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; flex-wrap: wrap; }
-  .actions, .context-row, .task-title-row { justify-content: flex-start; align-items: center; }
+  .page-head, .actions { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; flex-wrap: wrap; }
+  .actions { justify-content: flex-start; align-items: center; }
   h1, h2, h3 { margin-top: 0; } h2 { font-size: 1.15rem; } h3 { font-size: 1rem; margin-bottom: 6px; }
   .eyebrow { color: var(--accent); font-weight: 700; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.04em; }
   .muted { color: var(--muted); } .small { font-size: 0.9rem; }
   .grid.two { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
   .grid.three { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
-  .grid.four { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
   .panel, .error-card { padding: 14px; margin-bottom: 12px; }
   .error-card { color: var(--danger); }
   .details-grid { display: grid; grid-template-columns: 150px 1fr; gap: 8px 12px; margin: 10px 0; }
@@ -320,17 +257,13 @@
   .btn.danger { background:#b00020; color:#fff; border-color:#b00020; }
   details summary { cursor: pointer; margin-bottom: 10px; }
   .nested-form { border: 1px solid var(--border); border-radius: 12px; padding: 12px; margin: 10px 0; background: var(--panel); }
-  .mini-list, .task-list { display: grid; gap: 8px; }
-  .mini-row, .task-row { border-top: 1px solid var(--border); padding: 12px 0; display: flex; justify-content: space-between; gap: 12px; }
-  .task-row.overdue { border-color: var(--danger); }
-  .task-main { min-width: 0; }
-  .task-actions { display: grid; gap: 8px; align-content: start; min-width: 210px; }
-  .status-chip, .chip { border: 1px solid var(--border); background: var(--panel); border-radius: 999px; padding: 3px 9px; font-size: 0.85rem; color: var(--muted); }
-  .chip { color: var(--text); text-decoration: none; }
+  .mini-list { display: grid; gap: 8px; }
+  .mini-row { border-top: 1px solid var(--border); padding: 12px 0; display: flex; justify-content: space-between; gap: 12px; }
+  .status-chip { border: 1px solid var(--border); background: var(--panel); border-radius: 999px; padding: 3px 9px; font-size: 0.85rem; color: var(--muted); }
   .summary-box { border: 1px solid var(--border); background: var(--panel); border-radius: 10px; padding: 10px; margin: 8px 0; }
   .summary-box p { margin: 4px 0 0; white-space: pre-wrap; }
   textarea { resize: vertical; }
-  @media (max-width: 860px) { .page-head, .mini-row, .task-row, .section-head { flex-direction: column; } .grid.two, .grid.three, .grid.four, .details-grid { grid-template-columns: 1fr; } .task-actions { min-width: 0; } }
+  @media (max-width: 860px) { .page-head, .mini-row { flex-direction: column; } .grid.two, .grid.three, .details-grid { grid-template-columns: 1fr; } }
   .compact-list { margin: 8px 0; }
   .compact-row { padding: 8px 0; }
 </style>

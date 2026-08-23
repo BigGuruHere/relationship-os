@@ -3,6 +3,7 @@
   import ExchangeItemsPanel from '$lib/ExchangeItemsPanel.svelte';
   import AgentBriefingsPanel from '$lib/AgentBriefingsPanel.svelte';
   import NotesPanel from '$lib/NotesPanel.svelte';
+  import TasksPanel from '$lib/TasksPanel.svelte';
   // PURPOSE: Company command centre for employees, deal links, company relationships, and tasks.
   import VoiceTextField from '$lib/recording/VoiceTextField.svelte';
 
@@ -13,12 +14,9 @@
   let showAddContact = false;
   let showAddDeal = false;
   let showAddRelationship = false;
-  let showAddTask = false;
   let showAddCompanyNote = false;
   let showCreateLead = false;
   let showAttachLead = false;
-  let taskNotes = '';
-  let taskSummary = '';
   let companyNoteText = '';
   let companyNoteSummary = '';
   let contactSearch = '';
@@ -39,11 +37,6 @@
 
   const fmt = (value: any) => value ? new Date(value).toLocaleString() : '';
   const fmtDate = (value: any) => value ? new Date(value).toLocaleDateString() : '';
-
-  function submitContainingForm(event: Event) {
-    const formEl = (event.currentTarget as HTMLSelectElement).closest('form');
-    if (formEl) formEl.requestSubmit();
-  }
 
   function closeContainingDetails(event: Event) {
     const details = (event.currentTarget as HTMLElement).closest('details') as HTMLDetailsElement | null;
@@ -68,7 +61,6 @@
     </div>
     <div class="header-actions">
       <button class="btn" type="button" on:click={() => (showEdit = !showEdit)}>{showEdit ? 'Cancel' : 'Edit company'}</button>
-      <button class="btn primary" type="button" on:click={() => (showAddTask = !showAddTask)}>{showAddTask ? 'Cancel task' : 'Add task'}</button>
       <form method="post" action="?/scoreCompany"><button class="btn" type="submit">Score opportunity</button></form>
       <form method="post" action="?/enrichCompany"><button class="btn" type="submit">Enrich company</button></form>
       <a class="btn" href={`/agents/enrichment/new?mode=company&entityType=company&entityId=${data.company.id}&enableWebResearch=true&returnTo=/companies/${data.company.id}`}>Company options</a>
@@ -103,30 +95,6 @@
         <div class="field"><label for="criteria">Acquisition / buyer criteria</label><textarea id="criteria" name="criteria" rows="3">{data.company.criteria}</textarea></div>
         <div class="field"><label for="notes">Internal notes</label><textarea id="notes" name="notes" rows="3">{data.company.notes}</textarea></div>
         <button class="btn primary" type="submit">Save company</button>
-      </form>
-    </section>
-  {/if}
-
-  {#if showAddTask}
-    <section class="card panel">
-      <h2>Add task for this company</h2>
-      <form method="post" action="?/createTask">
-        <div class="field"><label for="taskTitle">Task</label><input id="taskTitle" name="title" required placeholder="e.g. Find M&A contact inside this acquirer" /></div>
-        <div class="grid four">
-          <div class="field"><label for="taskType">Type</label><select id="taskType" name="taskType">{#each data.taskTypes as opt}<option value={opt.value}>{opt.label}</option>{/each}</select></div>
-          <div class="field"><label for="taskUrgency">Urgency</label><select id="taskUrgency" name="urgency">{#each data.taskUrgencies as opt}<option value={opt.value} selected={opt.value === 'NORMAL'}>{opt.label}</option>{/each}</select></div>
-          <div class="field"><label for="taskImportance">Importance</label><select id="taskImportance" name="importance">{#each data.taskImportances as opt}<option value={opt.value} selected={opt.value === 'NORMAL'}>{opt.label}</option>{/each}</select></div>
-          <div class="field"><label for="taskStatus">Status</label><select id="taskStatus" name="status">{#each data.taskStatuses as opt}<option value={opt.value}>{opt.label}</option>{/each}</select></div>
-        </div>
-        <div class="field"><label for="taskFocus">Focus</label><select id="taskFocus" name="focus">{#each data.taskFocusOptions as opt}<option value={opt.value} selected={opt.value === 'NEW'}>{opt.label}</option>{/each}</select></div>
-        <div class="grid three">
-          <div class="field"><label for="taskDueAt">Due</label><input id="taskDueAt" name="dueAt" type="datetime-local" /></div>
-          <div class="field"><label for="taskDealId">Related deal</label><select id="taskDealId" name="dealId"><option value="">No deal</option>{#each data.allDealOptions as d}<option value={d.id}>{d.title}</option>{/each}</select></div>
-          <div class="field"><label for="taskContactId">Related person</label><select id="taskContactId" name="contactId"><option value="">No person</option>{#each data.allContactOptions as c}<option value={c.id}>{c.name}</option>{/each}</select></div>
-        </div>
-        <div class="field"><label for="waitingOnContactId">Waiting on</label><select id="waitingOnContactId" name="waitingOnContactId"><option value="">Nobody external</option>{#each data.allContactOptions as c}<option value={c.id}>{c.name}</option>{/each}</select></div>
-        <VoiceTextField id="taskNotes" textName="notes" summaryName="summary" label="Task notes" rows={3} placeholder="Record or type task context." bind:value={taskNotes} bind:summary={taskSummary} contextLabel="company task" />
-        <button class="btn primary" type="submit">Save task</button>
       </form>
     </section>
   {/if}
@@ -387,27 +355,27 @@
     {/if}
   </section>
 
-  <section class="card panel">
-    <div class="section-head"><h2>Open tasks</h2><a class="btn" href="/tasks">Task inbox</a></div>
-    {#if data.tasks.length === 0}<p class="muted">No open tasks for this company.</p>{:else}
-      <div class="mini-list">
-        {#each data.tasks as task}
-          <div class="mini-row">
-            <div>
-              <div class="title-line"><a href={`/tasks/${task.id}/edit?returnTo=/companies/${data.company.id}`}>{task.title}</a><span class="status-chip">{task.statusLabel}</span><span class="status-chip">{task.urgencyLabel}</span><span class="status-chip">{task.focusLabel}</span></div>
-              <div class="muted small">{task.taskTypeLabel} - due {fmt(task.dueAt) || 'not set'}{task.deal ? ` - ${task.deal.title}` : ''}</div>
-              {#if task.notes}<p class="preline small">{task.notes}</p>{/if}
-              {#if task.summary}<div class="summary-box"><div class="muted small">AI summary</div><p>{task.summary}</p></div>{/if}
-            </div>
-            <div class="row-actions">
-              <form method="post" action="?/updateTaskStatus"><input type="hidden" name="taskId" value={task.id} /><select name="status" on:change={submitContainingForm}>{#each data.taskStatuses as opt}<option value={opt.value} selected={task.status === opt.value}>{opt.label}</option>{/each}</select></form>
-              <a class="btn" href={`/tasks/${task.id}/edit?returnTo=/companies/${data.company.id}`}>Edit</a>
-            </div>
-          </div>
-        {/each}
-      </div>
-    {/if}
-  </section>
+  <TasksPanel
+    tasks={data.tasks}
+    heading="Open tasks"
+    emptyMessage="No open tasks for this company."
+    taskTypeOptions={data.taskTypes}
+    taskStatusOptions={data.taskStatuses}
+    taskUrgencyOptions={data.taskUrgencies}
+    taskImportanceOptions={data.taskImportances}
+    taskFocusOptions={data.taskFocusOptions}
+    editReturnTo={`/companies/${data.company.id}`}
+    inboxHref="/tasks"
+    inboxLabel="Task inbox"
+    lockedCompanyId={data.company.id}
+    contactOptions={data.allContactOptions}
+    dealOptions={data.allDealOptions}
+    projectOptions={data.taskProjectOptions}
+    workstreamOptions={data.taskWorkstreamOptions}
+    marketLeadOptions={data.taskMarketLeadOptions}
+    dealContactOptions={data.dealContactOptions}
+    dealCompanyOptions={data.dealCompanyOptions}
+  />
 </div>
 
 <style>
@@ -425,7 +393,6 @@
   .main-grid { display: grid; grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr); gap: 12px; }
   .grid.two { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
   .grid.three { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
-  .grid.four { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
   .nested-form { border: 1px solid var(--border); border-radius: 12px; padding: 12px; margin: 10px 0; background: var(--panel); }
   .mini-list, .deal-list { display: grid; gap: 8px; }
   .mini-row, .deal-row { border-top: 1px solid var(--border); padding: 12px 0; }
@@ -445,6 +412,6 @@
   textarea { resize: vertical; }
   @media (max-width: 860px) {
     .company-header, .section-head, .mini-row, .deal-row { flex-direction: column; align-items: stretch; }
-    .main-grid, .grid.two, .grid.three, .grid.four { grid-template-columns: 1fr; }
+    .main-grid, .grid.two, .grid.three { grid-template-columns: 1fr; }
   }
 </style>

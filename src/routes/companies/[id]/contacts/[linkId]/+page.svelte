@@ -2,13 +2,13 @@
 <script lang="ts">
   import ExchangeItemsPanel from '$lib/ExchangeItemsPanel.svelte';
   import NotesPanel from '$lib/NotesPanel.svelte';
+  import TasksPanel from '$lib/TasksPanel.svelte';
 
   export let data: any;
   export let form: any;
 
   let showEdit = false;
   let showAddNote = false;
-  let showAddTask = false;
   let showLinkDeal = false;
   let dealSearch = '';
 
@@ -17,8 +17,6 @@
     if (!q) return true;
     return `${deal.title || ''} ${deal.statusLabel || ''}`.toLowerCase().includes(q);
   });
-
-  const fmtDate = (value: any) => value ? new Date(value).toLocaleDateString() : '';
 
   function closeContainingDetails(event: Event) {
     const details = (event.currentTarget as HTMLElement).closest('details') as HTMLDetailsElement | null;
@@ -44,7 +42,6 @@
     </div>
     <div class="header-actions">
       <button class="btn" type="button" on:click={() => (showEdit = !showEdit)}>{showEdit ? 'Cancel edit' : 'Edit relationship'}</button>
-      <button class="btn primary" type="button" on:click={() => (showAddTask = !showAddTask)}>{showAddTask ? 'Cancel task' : 'Add task'}</button>
       <button class="btn" type="button" on:click={() => (showAddNote = !showAddNote)}>{showAddNote ? 'Cancel note' : 'Add note'}</button>
       <a class="btn" href={`/contacts/${data.relationship.contactId}`}>Open contact</a>
       <a class="btn" href={`/companies/${data.relationship.companyId}`}>Back to company</a>
@@ -93,30 +90,6 @@
     </section>
   </div>
 
-  {#if showAddTask}
-    <section class="card panel">
-      <h2>Add task for this relationship</h2>
-      <form method="post" action="?/createTask" class="nested-form">
-        <div class="field"><label for="taskTitle">Task</label><input id="taskTitle" name="title" required placeholder="e.g. Ask John to clarify acquisition criteria" /></div>
-        <div class="grid four">
-          <div class="field"><label for="taskType">Type</label><select id="taskType" name="taskType">{#each data.taskTypes as opt}<option value={opt.value}>{opt.label}</option>{/each}</select></div>
-          <div class="field"><label for="taskUrgency">Urgency</label><select id="taskUrgency" name="urgency">{#each data.taskUrgencies as opt}<option value={opt.value} selected={opt.value === 'NORMAL'}>{opt.label}</option>{/each}</select></div>
-          <div class="field"><label for="taskImportance">Importance</label><select id="taskImportance" name="importance">{#each data.taskImportances as opt}<option value={opt.value} selected={opt.value === 'NORMAL'}>{opt.label}</option>{/each}</select></div>
-          <div class="field"><label for="taskStatus">Status</label><select id="taskStatus" name="status">{#each data.taskStatuses as opt}<option value={opt.value}>{opt.label}</option>{/each}</select></div>
-        </div>
-        <div class="grid three">
-          <div class="field"><label for="taskFocus">Focus</label><select id="taskFocus" name="focus">{#each data.taskFocusOptions as opt}<option value={opt.value} selected={opt.value === 'NEW'}>{opt.label}</option>{/each}</select></div>
-          <div class="field"><label for="taskDueAt">Due</label><input id="taskDueAt" name="dueAt" type="datetime-local" /></div>
-          <div class="field"><label for="projectId">Project</label><select id="projectId" name="projectId"><option value="">No project</option>{#each data.projectOptions as p}<option value={p.id}>{p.title}</option>{/each}</select></div>
-        </div>
-        <div class="field"><label for="taskDealId">Related deal</label><select id="taskDealId" name="dealId"><option value="">No deal</option>{#each data.dealOptions as d}<option value={d.id}>{d.title}</option>{/each}</select></div>
-        <div class="field"><label for="taskNotes">Task notes</label><textarea id="taskNotes" name="notes" rows="3"></textarea></div>
-        <div class="field"><label for="taskSummary">Summary</label><input id="taskSummary" name="summary" /></div>
-        <button class="btn primary" type="submit">Save task</button>
-      </form>
-    </section>
-  {/if}
-
   <section class="card panel">
     <div class="section-head"><h2>Relationship notes</h2><button class="btn" type="button" on:click={() => (showAddNote = !showAddNote)}>{showAddNote ? 'Cancel note' : 'Add note'}</button></div>
     {#if showAddNote}
@@ -154,28 +127,27 @@
     </NotesPanel>
   </section>
 
-  <section class="card panel">
-    <div class="section-head"><h2>Relationship tasks</h2><button class="btn" type="button" on:click={() => (showAddTask = !showAddTask)}>{showAddTask ? 'Cancel task' : 'Add task'}</button></div>
-    {#if data.tasks.length === 0}<p class="muted">No tasks attached to this relationship.</p>{:else}
-      <div class="mini-list">
-        {#each data.tasks as task}
-          <div class="mini-row">
-            <div>
-              <div class="title-line"><a href={`/tasks/${task.id}`}>{task.title}</a><span class="status-chip">{task.statusLabel}</span><span class="status-chip">{task.focusLabel}</span></div>
-              <div class="muted small">{task.taskTypeLabel} · {task.urgencyLabel} urgency · {task.importanceLabel} importance{#if task.dueAt} · Due {fmtDate(task.dueAt)}{/if}</div>
-              {#if task.dealId}<div class="muted small">Deal: <a href={`/deals/${task.dealId}`}>{task.dealTitle}</a></div>{/if}
-              {#if task.projectId}<div class="muted small">Project: <a href={`/projects/${task.projectId}`}>{task.projectTitle}</a></div>{/if}
-            </div>
-            <form method="post" action="?/updateTaskStatus" class="inline-form">
-              <input type="hidden" name="taskId" value={task.id} />
-              <select name="status">{#each data.taskStatuses as opt}<option value={opt.value} selected={task.status === opt.value}>{opt.label}</option>{/each}</select>
-              <button class="btn" type="submit">Update</button>
-            </form>
-          </div>
-        {/each}
-      </div>
-    {/if}
-  </section>
+  <TasksPanel
+    tasks={data.tasks}
+    heading="Relationship tasks"
+    emptyMessage="No tasks attached to this relationship."
+    taskTypeOptions={data.taskTypes}
+    taskStatusOptions={data.taskStatuses}
+    taskUrgencyOptions={data.taskUrgencies}
+    taskImportanceOptions={data.taskImportances}
+    taskFocusOptions={data.taskFocusOptions}
+    editReturnTo={`/companies/${data.relationship.companyId}/contacts/${data.relationship.id}`}
+    lockedContactId={data.relationship.contactId}
+    lockedCompanyId={data.relationship.companyId}
+    contactOptions={data.taskContactOptions}
+    companyOptions={data.taskCompanyOptions}
+    dealOptions={data.dealOptions}
+    projectOptions={data.projectOptions}
+    workstreamOptions={data.taskWorkstreamOptions}
+    marketLeadOptions={data.taskMarketLeadOptions}
+    dealContactOptions={data.taskDealContactOptions}
+    dealCompanyOptions={data.taskDealCompanyOptions}
+  />
 
   <section class="card panel">
     <div class="section-head"><h2>Deals involving this relationship</h2><button class="btn" type="button" on:click={() => (showLinkDeal = !showLinkDeal)}>{showLinkDeal ? 'Cancel link' : 'Link deal'}</button></div>
@@ -230,10 +202,9 @@
   .grid { display:grid; gap:12px; }
   .grid.two { grid-template-columns:repeat(2, minmax(0, 1fr)); }
   .grid.three { grid-template-columns:repeat(3, minmax(0, 1fr)); }
-  .grid.four { grid-template-columns:repeat(4, minmax(0, 1fr)); }
   .nested-form { display:grid; gap:12px; }
   .field { display:grid; gap:6px; }
-  .field input, .field select, .field textarea, .inline-form select { width:100%; padding:10px 12px; border:1px solid var(--border); border-radius:12px; background:var(--surface); color:var(--text); }
+  .field input, .field select, .field textarea { width:100%; padding:10px 12px; border:1px solid var(--border); border-radius:12px; background:var(--surface); color:var(--text); }
   .check-row { display:flex; gap:8px; align-items:center; }
   .preline { white-space:pre-wrap; }
   .info-grid { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:10px; margin-top:10px; }
@@ -243,11 +214,10 @@
   .mini-row { display:flex; justify-content:space-between; gap:12px; align-items:flex-start; }
   .edit-box { margin-top:10px; }
   .edit-box summary { cursor:pointer; color:var(--muted); }
-  .inline-form { display:flex; gap:8px; align-items:center; }
   .error-card { border-color:#ef4444; color:#b91c1c; }
 
   @media (max-width: 800px) {
     .relationship-header, .mini-row { flex-direction:column; }
-    .grid.two, .grid.three, .grid.four, .info-grid { grid-template-columns:1fr; }
+    .grid.two, .grid.three, .info-grid { grid-template-columns:1fr; }
   }
 </style>

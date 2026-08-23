@@ -2,10 +2,10 @@
 <script lang="ts">
   // PURPOSE: Show one deal, its people, commercial conversation threads, notes, and tasks.
   // SECURITY: This page renders server-prepared decrypted display values only.
-  import VoiceTextField from '$lib/recording/VoiceTextField.svelte';
   import ExchangeItemsPanel from '$lib/ExchangeItemsPanel.svelte';
   import AgentBriefingsPanel from '$lib/AgentBriefingsPanel.svelte';
   import NotesPanel from '$lib/NotesPanel.svelte';
+  import TasksPanel from '$lib/TasksPanel.svelte';
 
   export let data: any;
   export let form: any;
@@ -26,20 +26,12 @@
   let showStateEditor = false;
   let showAddPerson = false;
   let showAddCompany = false;
-  let showAddTask = false;
   let showLinkProject = false;
-  let newTaskNotes = '';
-  let newTaskSummary = '';
   let contactQuery = '';
   $: filteredContactOptions = (data.contactOptions || [])
     .filter((contact: any) => !contactQuery || String(contact.name || '').toLowerCase().includes(contactQuery.toLowerCase()))
     .sort((a: any, b: any) => String(a.name || '').localeCompare(String(b.name || '')))
     .slice(0, 80);
-
-  function submitContainingForm(event: Event) {
-    // IT: Status changes are small enough to submit immediately from the dropdown.
-    (event.currentTarget as HTMLSelectElement).form?.requestSubmit();
-  }
 
   function fmtDate(value: string | Date | null | undefined) {
     if (!value) return '';
@@ -74,7 +66,6 @@
     <div class="actions">
       <button class="btn" type="button" on:click={() => (showStateEditor = !showStateEditor)}>{showStateEditor ? 'Close state' : 'Update state'}</button>
       <button class="btn" type="button" on:click={() => (showLinkProject = !showLinkProject)}>{showLinkProject ? 'Cancel project link' : 'Link project'}</button>
-      <button class="btn" type="button" on:click={() => (showAddTask = !showAddTask)}>{showAddTask ? 'Cancel task' : 'Add task'}</button>
       <a class="btn" href={`/deals/${data.deal.id}/notes/new`}>Add voice/note</a>
       <form method="post" action="?/scoreDeal"><button class="btn" type="submit">Score opportunity</button></form>
       <a class="btn" href={`/deals/${data.deal.id}/edit`}>Edit</a>
@@ -169,70 +160,6 @@
         </div>
         <div class="field"><label for="lostReason">Lost reason</label><input id="lostReason" name="lostReason" placeholder="Only used if state is Lost" value={data.deal.lostReason} /></div>
         <button class="btn primary" type="submit">Save state</button>
-      </form>
-    </div>
-  {/if}
-
-  {#if showAddTask}
-    <div class="card panel">
-      <h2>Add task for this deal</h2>
-      <form method="post" action="?/createTask" class="task-form">
-        <div class="field"><label for="taskTitle">Task</label><input id="taskTitle" name="title" placeholder="e.g. Follow up buyer list" required /></div>
-        <div class="grid four">
-          <div class="field"><label for="taskType">Type</label><select id="taskType" name="taskType">{#each data.taskTypeOptions as opt}<option value={opt.value}>{opt.label}</option>{/each}</select></div>
-          <div class="field"><label for="taskUrgency">Urgency</label><select id="taskUrgency" name="urgency">{#each data.taskUrgencyOptions as opt}<option value={opt.value} selected={opt.value === 'NORMAL'}>{opt.label}</option>{/each}</select></div>
-          <div class="field"><label for="taskImportance">Importance</label><select id="taskImportance" name="importance">{#each data.taskImportanceOptions as opt}<option value={opt.value} selected={opt.value === 'NORMAL'}>{opt.label}</option>{/each}</select></div>
-          <div class="field"><label for="taskStatus">Status</label><select id="taskStatus" name="status">{#each data.taskStatusOptions as opt}<option value={opt.value}>{opt.label}</option>{/each}</select></div>
-        </div>
-        <div class="grid two">
-          <div class="field"><label for="taskDueAt">Due</label><input id="taskDueAt" name="dueAt" type="datetime-local" /></div>
-          <div class="field">
-            <label for="taskDealContactId">Specific person in deal</label>
-            <select id="taskDealContactId" name="dealContactId">
-              <option value="">No specific person thread</option>
-              {#each data.people as person}<option value={person.id}>{person.name} - {person.relationshipLabel}</option>{/each}
-            </select>
-          </div>
-        </div>
-        <div class="grid two">
-          <div class="field">
-            <label for="taskDealCompanyId">Specific company in deal</label>
-            <select id="taskDealCompanyId" name="dealCompanyId">
-              <option value="">No specific company thread</option>
-              {#each data.companies as company}<option value={company.id}>{company.name} - {company.relationshipLabel}</option>{/each}
-            </select>
-          </div>
-          <div class="field">
-            <label for="taskWaitingOnContactId">Waiting on</label>
-            <select id="taskWaitingOnContactId" name="waitingOnContactId">
-              <option value="">Nobody external</option>
-              {#each data.people as person}<option value={person.contactId}>{person.name}</option>{/each}
-            </select>
-          </div>
-        </div>
-        <div class="grid two">
-          <div class="field">
-            <label for="taskProjectId">Project</label>
-            <select id="taskProjectId" name="projectId">
-              <option value="">No project</option>
-              {#each data.projectOptions as project}<option value={project.id}>{project.title}</option>{/each}
-            </select>
-          </div>
-        </div>
-        <div class="field">
-          <VoiceTextField
-            id="taskNotes"
-            textName="notes"
-            summaryName="summary"
-            label="Task notes"
-            placeholder="Record or type the context, outcome, or next step."
-            rows={3}
-            bind:value={newTaskNotes}
-            bind:summary={newTaskSummary}
-            contextLabel="task note"
-          />
-        </div>
-        <button class="btn primary" type="submit">Save task</button>
       </form>
     </div>
   {/if}
@@ -403,39 +330,27 @@
     </section>
   </div>
 
-  <section class="card panel">
-    <div class="section-head"><h2>Next actions</h2><a class="btn" href="/tasks">Open task inbox</a></div>
-    {#if data.tasks.length === 0}
-      <p class="muted">No open tasks for this deal.</p>
-    {:else}
-      <div class="task-list">
-        {#each data.tasks as task}
-          <div class="task-row">
-            <div>
-              <div class="person-title"><a href={`/tasks/${task.id}`}>{task.title}</a><span class="status-chip">{task.statusLabel}</span><span class="status-chip">{task.urgencyLabel}</span></div>
-              <div class="muted small">{task.taskTypeLabel} - due {fmt(task.dueAt) || 'not set'}</div>
-              <div class="context-row small">
-                {#if task.contact}<a class="chip" href={`/contacts/${task.contact.id}`}>Person: {task.contact.name}</a>{/if}
-                {#if task.company}<a class="chip" href={`/companies/${task.company.id}`}>Company: {task.company.name}</a>{/if}
-                {#if task.dealContact}<a class="chip" href={`/deals/${data.deal.id}/relationships/${task.dealContact.id}`}>Person thread: {task.dealContact.contactName}</a>{/if}
-                {#if task.dealCompany}<a class="chip" href={`/companies/${task.dealCompany.companyId}`}>Company thread: {task.dealCompany.companyName}</a>{/if}
-                {#if task.waitingOnContact}<a class="chip" href={`/contacts/${task.waitingOnContact.id}`}>Waiting on: {task.waitingOnContact.name}</a>{/if}
-                {#if task.project}<a class="chip" href={`/projects/${task.project.id}`}>Project: {task.project.title}</a>{/if}
-              </div>
-              {#if task.notes}<p class="preline small">{task.notes}</p>{/if}
-              {#if task.summary}<div class="summary-box"><div class="muted small">AI summary</div><p>{task.summary}</p></div>{/if}
-              <a class="btn tiny" href={`/tasks/${task.id}/edit?returnTo=/deals/${data.deal.id}`}>Edit task</a>
-            </div>
-            <form method="post" action="?/updateTaskStatus" class="status-form">
-              <input type="hidden" name="taskId" value={task.id} />
-              <select name="status" on:change={submitContainingForm}>{#each data.taskStatusOptions as opt}<option value={opt.value} selected={task.status === opt.value}>{opt.label}</option>{/each}</select>
-              
-            </form>
-          </div>
-        {/each}
-      </div>
-    {/if}
-  </section>
+  <TasksPanel
+    tasks={data.tasks}
+    heading="Next actions"
+    emptyMessage="No open tasks for this deal."
+    taskTypeOptions={data.taskTypeOptions}
+    taskStatusOptions={data.taskStatusOptions}
+    taskUrgencyOptions={data.taskUrgencyOptions}
+    taskImportanceOptions={data.taskImportanceOptions}
+    taskFocusOptions={data.taskFocusOptions}
+    editReturnTo={`/deals/${data.deal.id}`}
+    inboxHref="/tasks"
+    inboxLabel="Open task inbox"
+    lockedDealId={data.deal.id}
+    contactOptions={data.taskContactOptions}
+    companyOptions={data.taskCompanyOptions}
+    projectOptions={data.projectOptions}
+    workstreamOptions={data.workstreamOptions}
+    marketLeadOptions={data.taskMarketLeadOptions}
+    dealContactOptions={data.dealContactOptions}
+    dealCompanyOptions={data.dealCompanyOptions}
+  />
 
   <section class="card panel">
     <div class="section-head"><h2>Recent deal notes</h2><a class="btn" href={`/deals/${data.deal.id}/notes/new`}>New voice/note</a></div>
@@ -460,34 +375,31 @@
   h2 { margin: 0 0 10px; font-size: 1.1rem; }
   .muted { color: var(--muted); }
   .small { font-size: 0.9rem; }
-  .meta-row, .actions, .bottom-actions, .status-form, .context-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .meta-row, .actions, .bottom-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
   .meta-row { margin-top: 8px; color: var(--muted); }
   .panel { padding: 16px; margin-bottom: 12px; }
   .main-grid { display: grid; grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr); gap: 12px; }
   .grid.two { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
   .grid.three { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
-  .grid.four { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
   .preline { white-space: pre-wrap; }
   .detail-list { display: grid; gap: 8px; margin-top: 12px; }
   .detail-list div { display: grid; grid-template-columns: 130px 1fr; gap: 8px; }
   .section-head { display: flex; justify-content: space-between; gap: 10px; align-items: center; }
-  .add-person, .task-form { border: 1px solid var(--border); border-radius: 12px; padding: 12px; margin: 10px 0; background: var(--panel); }
+  .add-person { border: 1px solid var(--border); border-radius: 12px; padding: 12px; margin: 10px 0; background: var(--panel); }
   .check-row { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; color: var(--text); }
   .check-row input { width: auto; }
-  .people-list, .task-list { display: grid; gap: 8px; }
-  .person-card, .task-row { border-top: 1px solid var(--border); padding: 12px 0; display: flex; justify-content: space-between; gap: 12px; }
+  .people-list { display: grid; gap: 8px; }
+  .person-card { border-top: 1px solid var(--border); padding: 12px 0; display: flex; justify-content: space-between; gap: 12px; }
   .person-title { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-weight: 700; }
   .person-actions { display: flex; align-items: flex-start; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
   .summary-box { border: 1px solid var(--border); background: var(--panel); border-radius: 10px; padding: 10px; margin-top: 10px; }
   .summary-box p { margin: 4px 0 0; white-space: pre-wrap; }
-  .btn.tiny { padding: 4px 8px; font-size: 0.82rem; }
-  .status-chip, .chip { border: 1px solid var(--border); background: var(--panel); border-radius: 999px; padding: 2px 8px; font-size: 0.8rem; color: var(--muted); }
-  .chip { color: var(--text); text-decoration: none; }
+  .status-chip { border: 1px solid var(--border); background: var(--panel); border-radius: 999px; padding: 2px 8px; font-size: 0.8rem; color: var(--muted); }
   .error-card { padding: 12px; color: var(--danger); margin-bottom: 12px; }
   textarea { resize: vertical; }
   @media (max-width: 860px) {
-    .deal-header, .person-card, .task-row, .section-head { flex-direction: column; }
-    .main-grid, .grid.two, .grid.three, .grid.four { grid-template-columns: 1fr; }
+    .deal-header, .person-card, .section-head { flex-direction: column; }
+    .main-grid, .grid.two, .grid.three { grid-template-columns: 1fr; }
     .actions, .bottom-actions { align-items: stretch; }
   }
 </style>

@@ -10,7 +10,9 @@ import { contactDisplayName, contactOptionsForRows } from '$lib/server/contactDi
 import { createExchangeItemFromForm, deleteExchangeItem, loadExchangeItems } from '$lib/server/exchange';
 import { loadAgentArtifacts } from '$lib/server/agents/artifacts';
 import { runOpportunityScoringAgent } from '$lib/server/agents/agents/opportunityScoringAgent';
-import { companyKindLabel, safeDecryptCompany } from '$lib/companies';
+import { createTaskFromForm } from '$lib/server/tasks';
+import { marketLeadStatusLabel } from '$lib/marketLeads';
+import { companyDisplay, companyKindLabel, safeDecryptCompany } from '$lib/companies';
 import {
   DEAL_RELATIONSHIP_TYPES,
   DEAL_STATUSES,
@@ -33,6 +35,7 @@ import {
   DEAL_CONTACT_INTERESTS,
   DEAL_CONTACT_STAGES,
   PROJECT_STATUSES,
+  TASK_FOCUS_OPTIONS,
   TASK_IMPORTANCES,
   TASK_STATUSES,
   TASK_TYPES,
@@ -44,13 +47,11 @@ import {
   normaliseDealConfidentiality,
   normaliseDealContactInterest,
   normaliseDealContactStage,
-  normaliseTaskImportance,
   normaliseTaskStatus,
-  normaliseTaskType,
-  normaliseTaskUrgency,
   parseDateTime,
   projectStatusLabel,
   safeDecryptTask,
+  taskFocusLabel,
   taskImportanceLabel,
   taskStatusLabel,
   taskTypeLabel,
@@ -306,7 +307,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
   const tasksRaw = await prisma.task.findMany({
     where: { userId: locals.user.id, dealId: row.id, status: { in: ['OPEN', 'IN_PROGRESS', 'WAITING', 'SNOOZED'] as any } },
     select: {
-      id: true, titleEnc: true, notesEnc: true, summaryEnc: true, status: true, urgency: true, importance: true, taskType: true, dueAt: true,
+      id: true, titleEnc: true, notesEnc: true, summaryEnc: true, status: true, urgency: true, importance: true, focus: true, taskType: true, dueAt: true,
       waitingOnContact: { select: { id: true, fullNameEnc: true, linkedUserId: true } },
       contact: { select: { id: true, fullNameEnc: true, linkedUserId: true } },
       company: { select: { id: true, nameEnc: true } },
@@ -328,12 +329,14 @@ export const load: PageServerLoad = async ({ params, locals }) => {
     urgency: task.urgency,
     urgencyLabel: taskUrgencyLabel(task.urgency),
     importanceLabel: taskImportanceLabel(task.importance),
+    focus: task.focus,
+    focusLabel: taskFocusLabel(task.focus),
     taskTypeLabel: taskTypeLabel(task.taskType),
     dueAt: task.dueAt,
     waitingOnContact: task.waitingOnContact ? { id: task.waitingOnContact.id, name: await contactDisplayName(task.waitingOnContact) } : null,
     contact: task.contact ? { id: task.contact.id, name: await contactDisplayName(task.contact) } : null,
     company: task.company ? { id: task.company.id, name: safeDecryptCompany(task.company.nameEnc, 'company.name', 'Untitled company') } : null,
-    dealContact: task.dealContact ? { id: task.dealContact.id, contactName: await contactDisplayName(task.dealContact.contact) } : null,
+    dealContact: task.dealContact ? { id: task.dealContact.id, dealId: row.id, contactName: await contactDisplayName(task.dealContact.contact) } : null,
     dealCompany: task.dealCompany ? { id: task.dealCompany.id, companyId: task.dealCompany.company.id, companyName: safeDecryptCompany(task.dealCompany.company.nameEnc, 'company.name', 'Untitled company') } : null,
     project: task.project ? { id: task.project.id, title: safeDecryptTask(task.project.titleEnc, 'project.title', 'Untitled project'), statusLabel: projectStatusLabel(task.project.status) } : null
   })));
@@ -396,6 +399,37 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 
   const weighted = weightedValueCents(row.valueCents, row.probability);
 
+  // IT: full canonical picker option lists for TasksPanel - see src/lib/TasksPanel.svelte. These
+  // are global/unscoped (unlike `contactOptions`/`companyOptions` above, which exclude rows
+  // already attached to this deal - wrong shape for a generic task-attach picker).
+  const allContactsForTasksRaw = await prisma.contact.findMany({
+    where: { userId: locals.user.id },
+    select: { id: true, fullNameEnc: true, linkedUserId: true },
+    orderBy: { createdAt: 'desc' },
+    take: 300
+  });
+  const taskContactOptions = await contactOptionsForRows(allContactsForTasksRaw);
+
+  const allCompaniesForTasksRaw = await prisma.company.findMany({
+    where: { userId: locals.user.id, status: { not: 'ARCHIVED' as any } },
+    select: { id: true, nameEnc: true, kind: true, status: true },
+    orderBy: { updatedAt: 'desc' },
+    take: 300
+  });
+  const taskCompanyOptions = allCompaniesForTasksRaw.map((c: any) => ({ id: c.id, name: companyDisplay(c) }));
+
+  // IT: this deal's own threads - already loaded above as `people`/`companies`.
+  const dealContactOptions = people.map((p: any) => ({ id: p.id, dealId: row.id, title: `${p.name}${p.label ? ` (${p.label})` : ''}` }));
+  const dealCompanyOptions = companies.map((c: any) => ({ id: c.id, dealId: row.id, title: `${c.name}${c.label ? ` (${c.label})` : ''}` }));
+
+  const marketLeadsForTasksRaw = await prisma.marketLead.findMany({
+    where: { userId: locals.user.id, dealId: row.id, status: { not: 'ARCHIVED' as any } },
+    select: { id: true, titleEnc: true, status: true },
+    orderBy: { updatedAt: 'desc' },
+    take: 100
+  });
+  const taskMarketLeadOptions = marketLeadsForTasksRaw.map((lead: any) => ({ id: lead.id, title: safeDecryptTask(lead.titleEnc, 'market_lead.title', 'Untitled lead'), statusLabel: marketLeadStatusLabel(lead.status) }));
+
   return {
     deal: {
       id: row.id,
@@ -434,6 +468,11 @@ export const load: PageServerLoad = async ({ params, locals }) => {
       name: safeDecryptCompany(company.nameEnc, 'company.name', 'Untitled company'),
       kindLabel: companyKindLabel(company.kind)
     })),
+    taskContactOptions,
+    taskCompanyOptions,
+    dealContactOptions,
+    dealCompanyOptions,
+    taskMarketLeadOptions,
     statusOptions: DEAL_STATUSES,
     relationshipOptions: DEAL_RELATIONSHIP_TYPES,
     dealContactStageOptions: DEAL_CONTACT_STAGES,
@@ -443,6 +482,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
     taskUrgencyOptions: TASK_URGENCIES,
     taskImportanceOptions: TASK_IMPORTANCES,
     taskTypeOptions: TASK_TYPES,
+    taskFocusOptions: TASK_FOCUS_OPTIONS,
     projectStatusOptions: PROJECT_STATUSES
   };
 };
@@ -713,74 +753,13 @@ export const actions: Actions = {
   createTask: async ({ request, params, locals }) => {
     if (!locals.user) throw redirect(303, '/auth/login');
     const userId = locals.user.id;
-    const form = await request.formData();
-    const title = String(form.get('title') || '').trim();
-    if (!title) return fail(400, { error: 'Task title is required.' });
 
     const deal = await ensureOwnedDeal(userId, params.id);
     if (!deal) return fail(404, { error: 'Deal not found.' });
 
-    const dealContactId = String(form.get('dealContactId') || '').trim() || null;
-    const dealCompanyId = String(form.get('dealCompanyId') || '').trim() || null;
-    let contactId: string | null = null;
-    let companyId: string | null = null;
-    if (dealContactId) {
-      const link = await prisma.dealContact.findFirst({ where: { id: dealContactId, dealId: params.id, userId }, select: { contactId: true } });
-      if (!link) return fail(404, { error: 'Deal relationship not found.' });
-      contactId = link.contactId;
-    }
-    if (dealCompanyId) {
-      const link = await prisma.dealCompany.findFirst({ where: { id: dealCompanyId, dealId: params.id, userId }, select: { companyId: true } });
-      if (!link) return fail(404, { error: 'Deal-company relationship not found.' });
-      companyId = link.companyId;
-    }
-
-    const waitingOnContactId = String(form.get('waitingOnContactId') || '').trim() || null;
-    if (waitingOnContactId) {
-      const ok = await prisma.contact.findFirst({ where: { id: waitingOnContactId, userId }, select: { id: true } });
-      if (!ok) return fail(404, { error: 'Waiting contact not found.' });
-    }
-
-    const projectId = String(form.get('projectId') || '').trim() || null;
-    if (projectId) {
-      const ok = await prisma.project.findFirst({ where: { id: projectId, userId }, select: { id: true } });
-      if (!ok) return fail(404, { error: 'Project not found.' });
-    }
-
-    const notes = String(form.get('notes') || '').trim();
-    const summary = String(form.get('summary') || '').trim();
-    try {
-      await prisma.task.create({
-        data: {
-          userId,
-          dealId: params.id,
-          contactId,
-          dealContactId,
-          companyId,
-          dealCompanyId,
-          projectId,
-          waitingOnContactId,
-          titleEnc: encrypt(title, 'task.title'),
-          notesEnc: notes ? encrypt(notes, 'task.notes') : null,
-          summaryEnc: summary ? encrypt(summary, 'task.summary') : null,
-          status: normaliseTaskStatus(form.get('status')) as any,
-          urgency: normaliseTaskUrgency(form.get('urgency')) as any,
-          importance: normaliseTaskImportance(form.get('importance')) as any,
-          taskType: normaliseTaskType(form.get('taskType')) as any,
-          dueAt: parseDateTime(form.get('dueAt'))
-        }
-      });
-      if (projectId) {
-        await prisma.projectDeal.upsert({
-          where: { projectId_dealId: { projectId, dealId: params.id } },
-          update: {},
-          create: { userId, projectId, dealId: params.id }
-        }).catch(() => null);
-      }
-    } catch (err) {
-      console.error('[deals:createTask] failed', err);
-      return fail(500, { error: 'Could not create task.' });
-    }
+    const form = await request.formData();
+    const result = await createTaskFromForm(userId, form, { dealId: params.id, linkProjectDeal: true });
+    if (!result.ok) return fail(result.status, { error: result.error });
 
     throw redirect(303, `/deals/${params.id}`);
   },

@@ -1,6 +1,7 @@
 <!-- src/routes/projects/[id]/workstreams/[workstreamId]/+page.svelte -->
 <script lang="ts">
   import VoiceTextField from '$lib/recording/VoiceTextField.svelte';
+  import TasksPanel from '$lib/TasksPanel.svelte';
 
   export let data: any;
   export let form: any;
@@ -8,13 +9,10 @@
   let showEdit = false;
   let showNewLead = false;
   let showAttachLead = false;
-  let showNewTask = false;
   let showNewNote = false;
   let showLinkDeal = false;
   let leadSourceChoice = 'builtin:MANUAL';
   let attachLeadSearch = '';
-  let taskNotes = '';
-  let taskSummary = '';
   let noteBody = '';
   let noteSummary = '';
 
@@ -25,20 +23,9 @@
     return d.toLocaleString();
   }
 
-  function dueClass(value: string | Date | null | undefined, statusValue: string) {
-    if (!value || statusValue === 'DONE' || statusValue === 'CANCELLED') return '';
-    const d = typeof value === 'string' ? new Date(value) : value;
-    if (Number.isNaN(d.getTime())) return '';
-    return d.getTime() < Date.now() ? 'overdue' : '';
-  }
-
   function money(cents: number | null | undefined, currency = 'AUD') {
     if (cents === null || cents === undefined) return '';
     return new Intl.NumberFormat(undefined, { style: 'currency', currency, maximumFractionDigits: 0 }).format(cents / 100);
-  }
-
-  function submitContainingForm(event: Event) {
-    (event.currentTarget as HTMLSelectElement).form?.requestSubmit();
   }
 
   $: filteredAttachableLeads = (data.options.attachableLeads || []).filter((lead: any) => {
@@ -73,7 +60,6 @@
     </div>
     <div class="actions">
       <button class="btn" type="button" on:click={() => (showEdit = !showEdit)}>{showEdit ? 'Close edit' : 'Edit'}</button>
-      <button class="btn primary" type="button" on:click={() => (showNewTask = !showNewTask)}>{showNewTask ? 'Cancel task' : '＋ Task'}</button>
       <button class="btn primary" type="button" on:click={() => (showNewLead = !showNewLead)}>{showNewLead ? 'Cancel lead' : '＋ Lead'}</button>
       <button class="btn" type="button" on:click={() => (showNewNote = !showNewNote)}>{showNewNote ? 'Cancel note' : '＋ Note'}</button>
       <button class="btn" type="button" on:click={() => (showLinkDeal = !showLinkDeal)}>{showLinkDeal ? 'Cancel deal' : 'Link deal'}</button>
@@ -224,35 +210,6 @@
     </section>
   {/if}
 
-  {#if showNewTask}
-    <section class="card panel">
-      <h2>New task in {data.workstream.name}</h2>
-      <form method="post" action="?/createTask">
-        <div class="grid two">
-          <div class="field"><label for="taskTitle">Title</label><input id="taskTitle" name="title" required placeholder="e.g. Call consultant list" /></div>
-          <div class="field"><label for="taskType">Type</label><select id="taskType" name="taskType">{#each data.taskTypes as opt}<option value={opt.value}>{opt.label}</option>{/each}</select></div>
-        </div>
-        <div class="grid four">
-          <div class="field"><label for="taskFocus">Focus</label><select id="taskFocus" name="focus">{#each data.taskFocusOptions as opt}<option value={opt.value}>{opt.label}</option>{/each}</select></div>
-          <div class="field"><label for="taskStatus">Status</label><select id="taskStatus" name="status">{#each data.taskStatuses as opt}<option value={opt.value}>{opt.label}</option>{/each}</select></div>
-          <div class="field"><label for="taskUrgency">Urgency</label><select id="taskUrgency" name="urgency">{#each data.taskUrgencies as opt}<option value={opt.value}>{opt.label}</option>{/each}</select></div>
-          <div class="field"><label for="taskImportance">Importance</label><select id="taskImportance" name="importance">{#each data.taskImportances as opt}<option value={opt.value}>{opt.label}</option>{/each}</select></div>
-        </div>
-        <div class="grid two">
-          <div class="field"><label for="taskDueAt">Due</label><input id="taskDueAt" name="dueAt" type="datetime-local" /></div>
-          <div class="field"><label for="taskLeadId">Lead</label><select id="taskLeadId" name="marketLeadId"><option value="">No lead</option>{#each data.options.workstreamLeads as lead}<option value={lead.id}>{lead.title}</option>{/each}</select></div>
-          <div class="field"><label for="taskDealId">Deal</label><select id="taskDealId" name="dealId"><option value="">No deal</option>{#each data.options.deals as deal}<option value={deal.id}>{deal.title}</option>{/each}</select></div>
-          <div class="field"><label for="taskCompanyId">Company</label><select id="taskCompanyId" name="companyId"><option value="">No company</option>{#each data.options.companies as company}<option value={company.id}>{company.name}</option>{/each}</select></div>
-          <div class="field"><label for="taskContactId">Person</label><select id="taskContactId" name="contactId"><option value="">No person</option>{#each data.options.contacts as contact}<option value={contact.id}>{contact.name}</option>{/each}</select></div>
-          <div class="field"><label for="waitingOnContactId">Waiting on</label><select id="waitingOnContactId" name="waitingOnContactId"><option value="">No one</option>{#each data.options.contacts as contact}<option value={contact.id}>{contact.name}</option>{/each}</select></div>
-        </div>
-        <div class="field"><label for="taskNotes">Notes</label><VoiceTextField id="taskNotes" name="notes" bind:value={taskNotes} rows={3} placeholder="Task context" /></div>
-        <div class="field"><label for="taskSummary">Summary</label><textarea id="taskSummary" name="summary" bind:value={taskSummary} rows="2"></textarea></div>
-        <button class="btn primary" type="submit">Create task</button>
-      </form>
-    </section>
-  {/if}
-
   {#if showNewNote}
     <section class="card panel">
       <h2>New workstream note</h2>
@@ -280,34 +237,29 @@
     </section>
   {/if}
 
-  <section class="card panel">
-    <div class="section-head"><h2>Tasks</h2><div class="actions"><button class="btn" type="button" on:click={() => (showNewTask = !showNewTask)}>＋ Add task</button><a class="btn" href={`/tasks?projectId=${data.project.id}&workstreamId=${data.workstream.id}`}>Open in task inbox</a></div></div>
-    {#if data.tasks.length === 0}<p class="muted">No tasks in this workstream yet.</p>{:else}
-      <div class="task-list">
-        {#each data.tasks as task}
-          <article class="task-row {dueClass(task.dueAt, task.status)}">
-            <div class="task-main">
-              <div class="task-title-row"><a href={`/tasks/${task.id}/edit?returnTo=/projects/${data.project.id}/workstreams/${data.workstream.id}`}><strong>{task.title}</strong></a><span class="status-chip">{task.focusLabel}</span><span class="status-chip">{task.urgencyLabel}</span></div>
-              <div class="muted small">{task.statusLabel} - {task.taskTypeLabel} - due {fmt(task.dueAt)}</div>
-              {#if task.notes}<p class="preline small">{task.notes}</p>{/if}
-              <div class="context-row">
-                {#if task.marketLead}<a class="chip" href={`/leads/${task.marketLead.id}`}>Lead: {task.marketLead.title}</a>{/if}
-                {#if task.deal}<a class="chip" href={`/deals/${task.deal.id}`}>Deal: {task.deal.title}</a>{/if}
-                {#if task.company}<a class="chip" href={`/companies/${task.company.id}`}>Company: {task.company.name}</a>{/if}
-                {#if task.contact}<a class="chip" href={`/contacts/${task.contact.id}`}>Person: {task.contact.name}</a>{/if}
-                {#if task.waitingOnContact}<a class="chip" href={`/contacts/${task.waitingOnContact.id}`}>Waiting on: {task.waitingOnContact.name}</a>{/if}
-              </div>
-            </div>
-            <div class="task-actions">
-              <form method="post" action="?/updateTaskStatus"><input type="hidden" name="taskId" value={task.id} /><select name="status" on:change={submitContainingForm}>{#each data.taskStatuses as opt}<option value={opt.value} selected={task.status === opt.value}>{opt.label}</option>{/each}</select></form>
-              <a class="btn" href={`/tasks/${task.id}/edit?returnTo=/projects/${data.project.id}/workstreams/${data.workstream.id}`}>Edit</a>
-              <form method="post" action="?/deleteTask" on:submit={(event) => { if (!confirm('Delete this task?')) event.preventDefault(); }}><input type="hidden" name="taskId" value={task.id} /><button class="btn" type="submit">Delete</button></form>
-            </div>
-          </article>
-        {/each}
-      </div>
-    {/if}
-  </section>
+  <TasksPanel
+    tasks={data.tasks}
+    heading="Tasks"
+    emptyMessage="No tasks in this workstream yet."
+    taskTypeOptions={data.taskTypes}
+    taskStatusOptions={data.taskStatuses}
+    taskUrgencyOptions={data.taskUrgencies}
+    taskImportanceOptions={data.taskImportances}
+    taskFocusOptions={data.taskFocusOptions}
+    editReturnTo={`/projects/${data.project.id}/workstreams/${data.workstream.id}`}
+    showDelete
+    inboxHref={`/tasks?projectId=${data.project.id}&workstreamId=${data.workstream.id}`}
+    inboxLabel="Open in task inbox"
+    lockedProjectId={data.project.id}
+    lockedWorkstreamId={data.workstream.id}
+    contactOptions={data.options.contacts}
+    companyOptions={data.options.companies}
+    dealOptions={data.options.deals}
+    workstreamOptions={data.options.workstreams}
+    marketLeadOptions={data.options.workstreamLeads}
+    dealContactOptions={data.taskDealContactOptions}
+    dealCompanyOptions={data.taskDealCompanyOptions}
+  />
 
   <section class="card panel">
     <div class="section-head"><h2>Leads</h2><div class="actions"><button class="btn" type="button" on:click={() => (showNewLead = !showNewLead)}>＋ New lead</button><button class="btn" type="button" on:click={() => (showAttachLead = !showAttachLead)}>Attach existing</button><a class="btn" href={`/leads?projectId=${data.project.id}&workstreamId=${data.workstream.id}`}>Open in leads</a></div></div>
@@ -354,7 +306,7 @@
 
 <style>
   .header-card { padding: 18px; display: flex; justify-content: space-between; gap: 16px; align-items: flex-start; margin-bottom: 12px; }
-  .actions, .meta-row, .section-head, .context-row, .task-title-row, .chip-list, .lead-badges { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .actions, .meta-row, .section-head, .chip-list, .lead-badges { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
   .section-head { justify-content: space-between; }
   h1 { margin: 0; }
   h2 { margin: 0 0 10px; font-size: 1.1rem; }
@@ -372,17 +324,13 @@
   .result-row { display: flex; justify-content: space-between; gap: 10px; align-items: center; border-top: 1px solid var(--border); padding: 8px 0; }
   .grid.two { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
   .grid.three { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
-  .grid.four { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
   .span2 { grid-column: 1 / span 2; }
   .align-end { align-self: end; }
   .preline { white-space: pre-wrap; }
-  .task-list, .lead-list, .note-list { display: grid; gap: 8px; }
-  .task-row, .lead-row, .note-row { border-top: 1px solid var(--border); padding: 12px 0; display: flex; justify-content: space-between; gap: 12px; color: var(--text); text-decoration: none; }
-  .task-row.overdue { border-color: var(--danger); }
-  .task-main { min-width: 0; }
-  .task-actions { display: flex; gap: 8px; align-items: flex-start; flex-wrap: wrap; }
+  .lead-list, .note-list { display: grid; gap: 8px; }
+  .lead-row, .note-row { border-top: 1px solid var(--border); padding: 12px 0; display: flex; justify-content: space-between; gap: 12px; color: var(--text); text-decoration: none; }
   .field { display: grid; gap: 6px; margin-bottom: 10px; }
   input, textarea, select { width: 100%; }
   .btn.danger { background:#b00020; color:#fff; border-color:#b00020; }
-  @media (max-width: 780px) { .header-card, .task-row, .lead-row, .note-row { flex-direction: column; } .grid.two, .grid.three, .grid.four { grid-template-columns: 1fr; } .span2 { grid-column: auto; } }
+  @media (max-width: 780px) { .header-card, .lead-row, .note-row { flex-direction: column; } .grid.two, .grid.three { grid-template-columns: 1fr; } .span2 { grid-column: auto; } }
 </style>

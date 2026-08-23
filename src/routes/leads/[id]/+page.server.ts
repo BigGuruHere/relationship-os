@@ -33,18 +33,15 @@ import {
   marketLeadCreateData,
   resolveLeadSourceId
 } from '$lib/server/marketLeads';
+import { createTaskFromForm } from '$lib/server/tasks';
+import { contactDisplayName } from '$lib/server/contactDisplay';
 import {
   TASK_FOCUS_OPTIONS,
   TASK_IMPORTANCES,
   TASK_STATUSES,
   TASK_TYPES,
   TASK_URGENCIES,
-  normaliseTaskFocus,
-  normaliseTaskImportance,
   normaliseTaskStatus,
-  normaliseTaskType,
-  normaliseTaskUrgency,
-  parseDateTime,
   projectStatusLabel,
   safeDecryptTask,
   taskFocusLabel,
@@ -120,7 +117,7 @@ function mapLeadNote(note: any) {
   };
 }
 
-function mapLeadTask(task: any) {
+async function mapLeadTask(task: any) {
   return {
     id: task.id,
     title: safeDecryptTask(task.titleEnc, 'task.title', 'Untitled task'),
@@ -140,11 +137,28 @@ function mapLeadTask(task: any) {
     snoozedUntil: task.snoozedUntil,
     completedAt: task.completedAt,
     updatedAt: task.updatedAt,
+    assignedToText: safeDecryptTask(task.assignedToTextEnc, 'task.assigned_to_text', ''),
+    assignedToContact: task.assignedToContact ? { id: task.assignedToContact.id, name: await contactDisplayName(task.assignedToContact) } : null,
+    waitingOnContact: task.waitingOnContact ? { id: task.waitingOnContact.id, name: await contactDisplayName(task.waitingOnContact) } : null,
     project: task.project ? { id: task.project.id, title: safeDecryptTask(task.project.titleEnc, 'project.title', 'Untitled project') } : null,
     workstream: task.workstream ? { id: task.workstream.id, name: safeDecryptTask(task.workstream.nameEnc, 'project_workstream.name', 'Untitled workstream') } : null,
     contact: task.contact ? { id: task.contact.id, name: contactName(task.contact) } : null,
     company: task.company ? { id: task.company.id, name: safeDecryptCompany(task.company.nameEnc, 'company.name', 'Untitled company') } : null,
-    deal: task.deal ? { id: task.deal.id, title: safeDecrypt(task.deal.titleEnc, 'deal.title', 'Untitled deal') } : null
+    deal: task.deal ? { id: task.deal.id, title: safeDecrypt(task.deal.titleEnc, 'deal.title', 'Untitled deal') } : null,
+    dealContact: task.dealContact ? {
+      id: task.dealContact.id,
+      dealId: task.dealContact.deal.id,
+      contactId: task.dealContact.contact.id,
+      dealTitle: safeDecrypt(task.dealContact.deal.titleEnc, 'deal.title', 'Untitled deal'),
+      contactName: await contactDisplayName(task.dealContact.contact)
+    } : null,
+    dealCompany: task.dealCompany ? {
+      id: task.dealCompany.id,
+      dealId: task.dealCompany.deal.id,
+      companyId: task.dealCompany.company.id,
+      dealTitle: safeDecrypt(task.dealCompany.deal.titleEnc, 'deal.title', 'Untitled deal'),
+      companyName: safeDecryptCompany(task.dealCompany.company.nameEnc, 'company.name', 'Untitled company')
+    } : null
   };
 }
 
@@ -230,11 +244,16 @@ export const load: PageServerLoad = async ({ params, locals }) => {
         snoozedUntil: true,
         completedAt: true,
         updatedAt: true,
+        assignedToTextEnc: true,
+        assignedToContact: { select: { id: true, fullNameEnc: true, linkedUserId: true } },
+        waitingOnContact: { select: { id: true, fullNameEnc: true, linkedUserId: true } },
         project: { select: { id: true, titleEnc: true } },
         workstream: { select: { id: true, nameEnc: true, projectId: true } },
         contact: { select: { id: true, fullNameEnc: true } },
         company: { select: { id: true, nameEnc: true } },
-        deal: { select: { id: true, titleEnc: true } }
+        deal: { select: { id: true, titleEnc: true } },
+        dealContact: { select: { id: true, deal: { select: { id: true, titleEnc: true } }, contact: { select: { id: true, fullNameEnc: true, linkedUserId: true } } } },
+        dealCompany: { select: { id: true, deal: { select: { id: true, titleEnc: true } }, company: { select: { id: true, nameEnc: true } } } }
       },
       orderBy: [{ focus: 'asc' }, { status: 'asc' }, { dueAt: 'asc' }, { updatedAt: 'desc' }],
       take: 150
@@ -244,6 +263,23 @@ export const load: PageServerLoad = async ({ params, locals }) => {
     loadCompanyOptions(userId),
     loadLeadSources(userId)
   ]);
+
+  // IT: full canonical picker option lists for TasksPanel - see src/lib/TasksPanel.svelte. Project,
+  // contact, company, deal, and workstream are inherited from the lead by createTaskFromForm and are
+  // not offered as separate pickers here; contactOptions is still needed for the always-visible
+  // assigned-to/waiting-on pickers, and the deal-thread pickers are scoped to the lead's own deal.
+  const [taskContactsRaw, taskDealContactsRaw, taskDealCompaniesRaw] = await Promise.all([
+    prisma.contact.findMany({ where: { userId }, select: { id: true, fullNameEnc: true, linkedUserId: true }, orderBy: { createdAt: 'desc' }, take: 300 }),
+    row.dealId
+      ? prisma.dealContact.findMany({ where: { userId, dealId: row.dealId }, select: { id: true, label: true, deal: { select: { id: true, titleEnc: true } } }, orderBy: { updatedAt: 'desc' }, take: 100 })
+      : Promise.resolve([]),
+    row.dealId
+      ? prisma.dealCompany.findMany({ where: { userId, dealId: row.dealId }, select: { id: true, label: true, deal: { select: { id: true, titleEnc: true } } }, orderBy: { updatedAt: 'desc' }, take: 100 })
+      : Promise.resolve([])
+  ]);
+  const taskContactOptions = await Promise.all(taskContactsRaw.map(async (c: any) => ({ id: c.id, name: await contactDisplayName(c) })));
+  const taskDealContactOptions = taskDealContactsRaw.map((link: any) => ({ id: link.id, dealId: link.deal.id, title: `${safeDecrypt(link.deal.titleEnc, 'deal.title', 'Untitled deal')}${link.label ? ` (${link.label})` : ''}` }));
+  const taskDealCompanyOptions = taskDealCompaniesRaw.map((link: any) => ({ id: link.id, dealId: link.deal.id, title: `${safeDecrypt(link.deal.titleEnc, 'deal.title', 'Untitled deal')}${link.label ? ` (${link.label})` : ''}` }));
 
   return {
     lead: {
@@ -260,7 +296,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
       linkedExchangeTitle: row.exchangeItem ? safeDecrypt(row.exchangeItem.titleEnc, 'exchange.title', '') : ''
     },
     leadNotes: leadNotesRaw.map(mapLeadNote),
-    leadTasks: leadTasksRaw.map(mapLeadTask),
+    leadTasks: await Promise.all(leadTasksRaw.map(mapLeadTask)),
     projects,
     workstreams,
     companies,
@@ -276,7 +312,10 @@ export const load: PageServerLoad = async ({ params, locals }) => {
     taskUrgencies: TASK_URGENCIES,
     taskImportances: TASK_IMPORTANCES,
     taskFocusOptions: TASK_FOCUS_OPTIONS,
-    taskTypes: TASK_TYPES
+    taskTypes: TASK_TYPES,
+    taskContactOptions,
+    taskDealContactOptions,
+    taskDealCompanyOptions
   };
 };
 
@@ -373,41 +412,12 @@ export const actions: Actions = {
   createTask: async ({ request, params, locals }) => {
     if (!locals.user) throw redirect(303, '/auth/login');
     const userId = locals.user.id;
-    const lead = await prisma.marketLead.findFirst({ where: { id: params.id, userId }, select: { id: true, projectId: true, workstreamId: true, contactId: true, companyId: true, dealId: true } });
+    const lead = await prisma.marketLead.findFirst({ where: { id: params.id, userId }, select: { id: true } });
     if (!lead) return fail(404, { error: 'Lead not found.' });
 
     const form = await request.formData();
-    const title = String(form.get('title') || '').trim();
-    if (!title) return fail(400, { error: 'Task title is required.' });
-    const notes = String(form.get('notes') || '').trim();
-    const summary = String(form.get('summary') || '').trim();
-    const assignedToText = String(form.get('assignedToText') || '').trim();
-    const status = normaliseTaskStatus(form.get('status'));
-
-    await prisma.task.create({
-      data: {
-        userId,
-        marketLeadId: params.id,
-        projectId: lead.projectId || null,
-        workstreamId: lead.workstreamId || null,
-        contactId: lead.contactId || null,
-        companyId: lead.companyId || null,
-        dealId: lead.dealId || null,
-        titleEnc: encrypt(title, 'task.title'),
-        notesEnc: notes ? encrypt(notes, 'task.notes') : null,
-        summaryEnc: summary ? encrypt(summary, 'task.summary') : null,
-        status: status as any,
-        urgency: normaliseTaskUrgency(form.get('urgency')) as any,
-        importance: normaliseTaskImportance(form.get('importance')) as any,
-        focus: normaliseTaskFocus(form.get('focus')) as any,
-        taskType: normaliseTaskType(form.get('taskType')) as any,
-        dueAt: parseDateTime(form.get('dueAt')),
-        snoozedUntil: parseDateTime(form.get('snoozedUntil')),
-        completedAt: status === 'DONE' ? new Date() : null,
-        cancelledAt: status === 'CANCELLED' ? new Date() : null,
-        assignedToTextEnc: assignedToText ? encrypt(assignedToText, 'task.assigned_to_text') : null
-      }
-    });
+    const result = await createTaskFromForm(userId, form, { marketLeadId: params.id });
+    if (!result.ok) return fail(result.status, { error: result.error });
     throw redirect(303, `/leads/${params.id}`);
   },
 

@@ -13,6 +13,7 @@ import { buildLeadSourceOptions, leadFormValues, loadLeadSources, mapMarketLead,
 import { contactDisplayName, contactOptionsForRows } from '$lib/server/contactDisplay';
 import { createExchangeItemFromForm, deleteExchangeItem, loadExchangeItems } from '$lib/server/exchange';
 import { loadAgentArtifacts } from '$lib/server/agents/artifacts';
+import { createTaskFromForm } from '$lib/server/tasks';
 import {
   PROJECT_STATUSES,
   TASK_FOCUS_OPTIONS,
@@ -21,12 +22,7 @@ import {
   TASK_TYPES,
   TASK_URGENCIES,
   normaliseProjectStatus,
-  normaliseTaskFocus,
-  normaliseTaskImportance,
   normaliseTaskStatus,
-  normaliseTaskType,
-  normaliseTaskUrgency,
-  parseDateTime,
   projectStatusLabel,
   safeDecryptTask,
   taskFocusLabel,
@@ -112,14 +108,6 @@ async function loadOptions(userId: string) {
   }));
 
   return { contacts, deals, companies, marketLeads, dealContacts, dealCompanies };
-}
-
-async function ownedIdExists(userId: string, kind: 'contact' | 'deal' | 'company' | 'marketLead', id: string | null) {
-  if (!id) return true;
-  if (kind === 'contact') return !!(await prisma.contact.findFirst({ where: { id, userId }, select: { id: true } }));
-  if (kind === 'company') return !!(await prisma.company.findFirst({ where: { id, userId }, select: { id: true } }));
-  if (kind === 'marketLead') return !!(await prisma.marketLead.findFirst({ where: { id, userId }, select: { id: true } }));
-  return !!(await prisma.deal.findFirst({ where: { id, userId }, select: { id: true } }));
 }
 
 function marketLeadSelect() {
@@ -359,10 +347,15 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 
   const [options, customLeadSources] = await Promise.all([loadOptions(userId), loadLeadSources(userId)]);
 
+  const projectTitle = safeDecryptTask(project.titleEnc, 'project.title', 'Untitled project');
+  // IT: TasksPanel's workstream picker shows "<project title> - <workstream name>" - every
+  // workstream here already belongs to this one project (the project picker itself is locked).
+  const taskWorkstreamOptions = workstreams.map((ws: any) => ({ id: ws.id, name: ws.name, projectId: project.id, projectTitle }));
+
   return {
     project: {
       id: project.id,
-      title: safeDecryptTask(project.titleEnc, 'project.title', 'Untitled project'),
+      title: projectTitle,
       description: safeDecryptTask(project.descriptionEnc, 'project.description', ''),
       status: project.status,
       statusLabel: projectStatusLabel(project.status),
@@ -386,6 +379,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
     marketLeadStatuses: MARKET_LEAD_STATUSES,
     marketLeadSourceOptions: buildLeadSourceOptions(customLeadSources),
     options,
+    taskWorkstreamOptions,
     projectStatuses: PROJECT_STATUSES,
     taskStatuses: TASK_STATUSES,
     taskUrgencies: TASK_URGENCIES,
@@ -585,99 +579,14 @@ export const actions: Actions = {
   createTask: async ({ request, params, locals }) => {
     if (!locals.user) throw redirect(303, '/auth/login');
     const userId = locals.user.id;
-    const form = await request.formData();
-    const title = String(form.get('title') || '').trim();
-    if (!title) return fail(400, { error: 'Task title is required.' });
-
-    let contactId = String(form.get('contactId') || '').trim() || null;
-    let dealId = String(form.get('dealId') || '').trim() || null;
-    let dealContactId = String(form.get('dealContactId') || '').trim() || null;
-    let companyId = String(form.get('companyId') || '').trim() || null;
-    let marketLeadId = String(form.get('marketLeadId') || '').trim() || null;
-    let dealCompanyId = String(form.get('dealCompanyId') || '').trim() || null;
-    let workstreamId = String(form.get('workstreamId') || '').trim() || null;
-    const assignedToContactId = String(form.get('assignedToContactId') || '').trim() || null;
-    const waitingOnContactId = String(form.get('waitingOnContactId') || '').trim() || null;
 
     const projectOk = await prisma.project.findFirst({ where: { id: params.id, userId }, select: { id: true } });
     if (!projectOk) return fail(404, { error: 'Project not found.' });
 
-    if (dealContactId) {
-      const link = await prisma.dealContact.findFirst({ where: { id: dealContactId, userId }, select: { id: true, dealId: true, contactId: true } });
-      if (!link) return fail(404, { error: 'Deal-person thread not found.' });
-      dealId = link.dealId;
-      contactId = contactId || link.contactId;
-    }
+    const form = await request.formData();
+    const result = await createTaskFromForm(userId, form, { projectId: params.id, linkProjectDeal: true });
+    if (!result.ok) return fail(result.status, { error: result.error });
 
-    if (dealCompanyId) {
-      const link = await prisma.dealCompany.findFirst({ where: { id: dealCompanyId, userId }, select: { id: true, dealId: true, companyId: true } });
-      if (!link) return fail(404, { error: 'Deal-company thread not found.' });
-      dealId = link.dealId;
-      companyId = companyId || link.companyId;
-    }
-
-    if (marketLeadId) {
-      const lead = await prisma.marketLead.findFirst({ where: { id: marketLeadId, userId }, select: { id: true, projectId: true, workstreamId: true, contactId: true, companyId: true, dealId: true } });
-      if (!lead) return fail(404, { error: 'Lead not found.' });
-      if (lead.projectId && lead.projectId !== params.id) return fail(400, { error: 'Lead belongs to another project.' });
-      workstreamId = workstreamId || lead.workstreamId || null;
-      contactId = contactId || lead.contactId || null;
-      companyId = companyId || lead.companyId || null;
-      dealId = dealId || lead.dealId || null;
-    }
-
-    if (workstreamId && !(await workstreamOk(userId, params.id, workstreamId))) return fail(404, { error: 'Selected workstream was not found.' });
-
-    const [contactOk, dealOk, companyOk, leadOk, assignedOk, waitingOk] = await Promise.all([
-      ownedIdExists(userId, 'contact', contactId),
-      ownedIdExists(userId, 'deal', dealId),
-      ownedIdExists(userId, 'company', companyId),
-      ownedIdExists(userId, 'marketLead', marketLeadId),
-      ownedIdExists(userId, 'contact', assignedToContactId),
-      ownedIdExists(userId, 'contact', waitingOnContactId)
-    ]);
-    if (!contactOk || !dealOk || !companyOk || !leadOk || !assignedOk || !waitingOk) return fail(404, { error: 'One of the selected links was not found.' });
-
-    const notes = String(form.get('notes') || '').trim();
-    const summary = String(form.get('summary') || '').trim();
-    const assignedToText = String(form.get('assignedToText') || '').trim();
-    const status = normaliseTaskStatus(form.get('status'));
-
-    await prisma.task.create({
-      data: {
-        userId,
-        projectId: params.id,
-        marketLeadId,
-        workstreamId,
-        titleEnc: encrypt(title, 'task.title'),
-        notesEnc: notes ? encrypt(notes, 'task.notes') : null,
-        summaryEnc: summary ? encrypt(summary, 'task.summary') : null,
-        status: status as any,
-        urgency: normaliseTaskUrgency(form.get('urgency')) as any,
-        importance: normaliseTaskImportance(form.get('importance')) as any,
-        focus: normaliseTaskFocus(form.get('focus')) as any,
-        taskType: normaliseTaskType(form.get('taskType')) as any,
-        dueAt: parseDateTime(form.get('dueAt')),
-        snoozedUntil: parseDateTime(form.get('snoozedUntil')),
-        completedAt: status === 'DONE' ? new Date() : null,
-        cancelledAt: status === 'CANCELLED' ? new Date() : null,
-        assignedToTextEnc: assignedToText ? encrypt(assignedToText, 'task.assigned_to_text') : null,
-        assignedToContactId,
-        waitingOnContactId,
-        contactId,
-        dealId,
-        dealContactId,
-        companyId,
-        dealCompanyId
-      }
-    });
-    if (dealId) {
-      await prisma.projectDeal.upsert({
-        where: { projectId_dealId: { projectId: params.id, dealId } },
-        update: workstreamId ? { workstreamId } : {},
-        create: { userId, projectId: params.id, dealId, workstreamId }
-      }).catch(() => null);
-    }
     throw redirect(303, `/projects/${params.id}`);
   },
 

@@ -29,7 +29,7 @@
   <header class="relationship-header card">
     <div>
       <div class="eyebrow">Contact-company relationship</div>
-      <h1>{data.relationship.contactName} at {data.relationship.companyName}</h1>
+      <h1><a href={`/contacts/${data.relationship.contactId}`}>{data.relationship.contactName}</a> at <a href={`/companies/${data.relationship.companyId}`}>{data.relationship.companyName}</a></h1>
       <div class="meta-row">
         <span class="status-chip">{data.relationship.statusLabel}</span>
         {#if data.relationship.isPrimary}<span class="status-chip">Primary</span>{/if}

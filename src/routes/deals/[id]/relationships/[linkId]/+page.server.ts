@@ -9,7 +9,7 @@ import { encrypt } from '$lib/crypto';
 import { contactDisplayName } from '$lib/server/contactDisplay';
 import { createTaskFromForm } from '$lib/server/tasks';
 import { companyDisplay } from '$lib/companies';
-import { marketLeadStatusLabel } from '$lib/marketLeads';
+import { NOTE_CHANNELS, marketLeadStatusLabel, normaliseNoteChannel, noteChannelLabel } from '$lib/marketLeads';
 import { DEAL_RELATIONSHIP_TYPES, dealRelationshipLabel, normaliseDealRelationshipType, safeDecrypt } from '$lib/deals';
 import {
   DEAL_CONFIDENTIALITY_STAGES,
@@ -89,7 +89,10 @@ export const load: PageServerLoad = async ({ params, locals }) => {
     return {
       id: note.id,
       channel: note.channel,
+      channelLabel: noteChannelLabel(note.channel),
       occurredAt: note.occurredAt,
+      occurredAtInput: dateTimeToInputValue(note.occurredAt),
+      rawText,
       preview: previewSource.length > 320 ? `${previewSource.slice(0, 317)}...` : previewSource,
       summary
     };
@@ -239,6 +242,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
     },
     notes,
     tasks,
+    noteChannels: NOTE_CHANNELS,
     relationshipOptions: DEAL_RELATIONSHIP_TYPES,
     dealContactStageOptions: DEAL_CONTACT_STAGES,
     dealContactInterestOptions: DEAL_CONTACT_INTERESTS,
@@ -298,6 +302,31 @@ export const actions: Actions = {
       console.error('[deal-thread:save] failed', err);
       return fail(500, { error: 'Could not save deal relationship.' });
     }
+
+    throw redirect(303, `/deals/${params.id}/relationships/${params.linkId}`);
+  },
+
+  updateNote: async ({ params, request, locals }) => {
+    if (!locals.user) throw redirect(303, '/auth/login');
+    const userId = locals.user.id;
+    const link = await loadOwnedLink(userId, params.id, params.linkId);
+    if (!link) return fail(404, { error: 'Deal relationship not found.' });
+
+    const form = await request.formData();
+    const noteId = String(form.get('noteId') || '');
+    const text = String(form.get('text') || '').trim();
+    const summary = String(form.get('summary') || '').trim();
+    if (!noteId || !text) return fail(400, { error: 'Note text is required.' });
+
+    await prisma.dealContactNote.updateMany({
+      where: { id: noteId, userId, dealContactId: link.id },
+      data: {
+        occurredAt: parseDateTime(form.get('occurredAt')) || new Date(),
+        channel: normaliseNoteChannel(form.get('channel')),
+        rawTextEnc: encrypt(text, 'deal_contact_note.raw_text'),
+        summaryEnc: summary ? encrypt(summary, 'deal_contact_note.summary') : null
+      }
+    });
 
     throw redirect(303, `/deals/${params.id}/relationships/${params.linkId}`);
   },

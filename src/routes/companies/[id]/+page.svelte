@@ -13,6 +13,8 @@
 
   let showEdit = false;
   let showAddContact = false;
+  let showCreateContact = false;
+  let editingContactLinkId: string | null = null;
   let showAddDeal = false;
   let showAddRelationship = false;
   let showAddCompanyNote = false;
@@ -169,7 +171,13 @@
     </section>
 
     <section class="card panel">
-      <div class="section-head"><h2>Employees / contacts</h2><button class="btn" type="button" on:click={() => (showAddContact = !showAddContact)}>{showAddContact ? 'Cancel' : 'Add contact'}</button></div>
+      <div class="section-head">
+        <h2>Employees / contacts</h2>
+        <div class="row-actions">
+          <button class="btn" type="button" on:click={() => { showAddContact = !showAddContact; showCreateContact = false; }}>{showAddContact ? 'Cancel' : 'Add contact'}</button>
+          <button class="btn" type="button" on:click={() => { showCreateContact = !showCreateContact; showAddContact = false; }}>{showCreateContact ? 'Cancel' : 'New contact'}</button>
+        </div>
+      </div>
       {#if showAddContact}
         <form method="post" action="?/addContact" class="nested-form">
           <div class="field"><label for="contactSearch">Search contacts</label><input id="contactSearch" bind:value={contactSearch} placeholder="Type a name, email or phone" /></div>
@@ -185,6 +193,29 @@
         </form>
       {/if}
 
+      {#if showCreateContact}
+        <form method="post" action="?/createAndLinkContact" class="nested-form">
+          <p class="muted small">Creates a brand new contact and attaches it to this company - use this instead of "Add contact" when the person isn't in your contacts yet.</p>
+          <div class="grid three">
+            <div class="field"><label for="newContactName">Full name</label><input id="newContactName" name="fullName" required placeholder="Jane Smith" /></div>
+            <div class="field"><label for="newContactEmail">Email</label><input id="newContactEmail" name="email" type="email" /></div>
+            <div class="field"><label for="newContactPhone">Phone</label><input id="newContactPhone" name="phone" /></div>
+          </div>
+          <div class="grid three">
+            <div class="field"><label for="newContactTitle">Title</label><input id="newContactTitle" name="title" placeholder="e.g. CEO, CFO, M&A" /></div>
+            <div class="field"><label for="newContactDepartment">Department</label><input id="newContactDepartment" name="department" /></div>
+            <div class="field"><label for="newContactStatus">Status</label><select id="newContactStatus" name="status">{#each data.companyContactStatuses as opt}<option value={opt.value}>{opt.label}</option>{/each}</select></div>
+          </div>
+          <div class="grid two">
+            <div class="field"><label for="newContactPosition">Position</label><input id="newContactPosition" name="position" placeholder="Job title" /></div>
+            <div class="field"><label for="newContactLinkedin">LinkedIn</label><input id="newContactLinkedin" name="linkedin" /></div>
+          </div>
+          <div class="field"><label for="newContactNotes">Notes</label><textarea id="newContactNotes" name="notes" rows="2"></textarea></div>
+          <label class="check-row"><input type="checkbox" name="isPrimary" /><span>Primary contact at this company</span></label>
+          <button class="btn primary" type="submit">Create and attach contact</button>
+        </form>
+      {/if}
+
       {#if data.employees.length === 0}<p class="muted">No contacts attached to this company yet.</p>{:else}
         <div class="mini-list">
           {#each data.employees as employee}
@@ -195,6 +226,7 @@
                 {#if employee.notes}<p class="preline small">{employee.notes}</p>{/if}
               </div>
               <div class="row-actions">
+                <button class="btn" type="button" on:click={() => (editingContactLinkId = editingContactLinkId === employee.id ? null : employee.id)}>{editingContactLinkId === employee.id ? 'Cancel' : 'Edit'}</button>
                 <a class="btn" href={`/companies/${data.company.id}/contacts/${employee.id}`}>Open relationship</a>
                 <form method="post" action="?/removeContact" on:submit={(event) => { if (!confirm('Remove this contact from the company?')) event.preventDefault(); }}>
                   <input type="hidden" name="linkId" value={employee.id} />
@@ -202,6 +234,19 @@
                 </form>
               </div>
             </div>
+            {#if editingContactLinkId === employee.id}
+              <form method="post" action="?/updateContact" class="nested-form">
+                <input type="hidden" name="linkId" value={employee.id} />
+                <div class="grid three">
+                  <div class="field"><label for={`editTitle-${employee.id}`}>Title</label><input id={`editTitle-${employee.id}`} name="title" value={employee.title} placeholder="e.g. CEO, CFO, M&A" /></div>
+                  <div class="field"><label for={`editDepartment-${employee.id}`}>Department</label><input id={`editDepartment-${employee.id}`} name="department" value={employee.department} /></div>
+                  <div class="field"><label for={`editStatus-${employee.id}`}>Status</label><select id={`editStatus-${employee.id}`} name="status">{#each data.companyContactStatuses as opt}<option value={opt.value} selected={employee.status === opt.value}>{opt.label}</option>{/each}</select></div>
+                </div>
+                <div class="field"><label for={`editNotes-${employee.id}`}>Notes</label><textarea id={`editNotes-${employee.id}`} name="notes" rows="2">{employee.notes}</textarea></div>
+                <label class="check-row"><input type="checkbox" name="isPrimary" checked={employee.isPrimary} /><span>Primary contact at this company</span></label>
+                <button class="btn primary" type="submit">Save changes</button>
+              </form>
+            {/if}
           {/each}
         </div>
       {/if}

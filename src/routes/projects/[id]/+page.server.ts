@@ -21,8 +21,10 @@ import {
   TASK_STATUSES,
   TASK_TYPES,
   TASK_URGENCIES,
+  dateTimeToInputValue,
   normaliseProjectStatus,
   normaliseTaskStatus,
+  parseDateTime,
   projectStatusLabel,
   safeDecryptTask,
   taskFocusLabel,
@@ -305,6 +307,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
     summary: safeDecryptTask(note.summaryEnc, 'project_note.summary', ''),
     channel: note.channel || 'note',
     occurredAt: note.occurredAt,
+    occurredAtInput: dateTimeToInputValue(note.occurredAt),
     workstream: note.workstream ? { id: note.workstream.id, name: safeDecryptTask(note.workstream.nameEnc, 'project_workstream.name', 'Untitled workstream'), status: note.workstream.status } : null,
     createdAt: note.createdAt,
     updatedAt: note.updatedAt
@@ -529,6 +532,26 @@ export const actions: Actions = {
     if (workstreamId && !(await workstreamOk(userId, params.id, workstreamId))) return fail(404, { error: 'Selected workstream was not found.' });
     if (!body) return fail(400, { error: 'Project note is required.' });
     await prisma.projectNote.create({ data: { userId, projectId: params.id, workstreamId, channel, bodyEnc: encrypt(body, 'project_note.body'), summaryEnc: summary ? encrypt(summary, 'project_note.summary') : null } });
+    throw redirect(303, `/projects/${params.id}`);
+  },
+
+  updateProjectNote: async ({ request, params, locals }) => {
+    if (!locals.user) throw redirect(303, '/auth/login');
+    const userId = locals.user.id;
+    const form = await request.formData();
+    const noteId = String(form.get('noteId') || '').trim();
+    const body = String(form.get('body') || '').trim();
+    const summary = String(form.get('summary') || '').trim();
+    if (!noteId) return fail(400, { error: 'Missing project note id.' });
+    if (!body) return fail(400, { error: 'Project note is required.' });
+    await prisma.projectNote.updateMany({
+      where: { id: noteId, userId, projectId: params.id },
+      data: {
+        occurredAt: parseDateTime(form.get('occurredAt')) || new Date(),
+        bodyEnc: encrypt(body, 'project_note.body'),
+        summaryEnc: summary ? encrypt(summary, 'project_note.summary') : null
+      }
+    });
     throw redirect(303, `/projects/${params.id}`);
   },
 

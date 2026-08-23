@@ -16,13 +16,18 @@
     if (Number.isNaN(d.getTime())) return '';
     return d.toLocaleString();
   }
+
+  function closeContainingDetails(event: Event) {
+    const details = (event.currentTarget as HTMLElement).closest('details') as HTMLDetailsElement | null;
+    if (details) details.open = false;
+  }
 </script>
 
 <div class="container">
   <div class="card thread-header">
     <div>
       <div class="eyebrow">Deal relationship</div>
-      <h1>{data.thread.contactName}</h1>
+      <h1><a href={`/contacts/${data.thread.contactId}`}>{data.thread.contactName}</a></h1>
       <div class="muted">on <a href={`/deals/${data.thread.dealId}`}>{data.thread.dealTitle}</a></div>
       <div class="meta-row">
         <span class="status-chip">{data.thread.relationshipLabel}</span>
@@ -135,7 +140,23 @@
 
   <section class="card panel">
     <div class="section-head"><h2>Thread notes</h2><a class="btn" href={`/deals/${data.thread.dealId}/relationships/${data.thread.id}/notes/new`}>New voice/note</a></div>
-    <NotesPanel notes={data.notes} emptyMessage="No notes yet for this deal-person thread." />
+    <NotesPanel notes={data.notes} emptyMessage="No notes yet for this deal-person thread.">
+      <svelte:fragment slot="actions" let:note>
+        <details class="edit-box">
+          <summary>Edit note</summary>
+          <form method="post" action="?/updateNote" class="nested-form">
+            <input type="hidden" name="noteId" value={note.id} />
+            <div class="grid two">
+              <div class="field"><label for={`thread-note-channel-${note.id}`}>Channel</label><select id={`thread-note-channel-${note.id}`} name="channel">{#each data.noteChannels as opt}<option value={opt.value} selected={note.channel === opt.value}>{opt.label}</option>{/each}</select></div>
+              <div class="field"><label for={`thread-note-occurred-${note.id}`}>Note date</label><input id={`thread-note-occurred-${note.id}`} name="occurredAt" type="datetime-local" value={note.occurredAtInput} on:change={closeDatePickerOnChange} /></div>
+            </div>
+            <div class="field"><label for={`thread-note-text-${note.id}`}>Note</label><textarea id={`thread-note-text-${note.id}`} name="text" rows="4" required>{note.rawText}</textarea></div>
+            <div class="field"><label for={`thread-note-summary-${note.id}`}>Summary</label><input id={`thread-note-summary-${note.id}`} name="summary" value={note.summary} /></div>
+            <div class="row-actions"><button class="btn primary" type="submit">Save note</button><button class="btn" type="button" on:click={closeContainingDetails}>Cancel</button></div>
+          </form>
+        </details>
+      </svelte:fragment>
+    </NotesPanel>
   </section>
 
   <div class="bottom-actions"><a class="btn" href={`/deals/${data.thread.dealId}`}>Back to deal</a></div>
@@ -158,6 +179,10 @@
   .preline { white-space: pre-wrap; }
   .status-chip { border: 1px solid var(--border); background: var(--panel); border-radius: 999px; padding: 2px 8px; font-size: 0.8rem; color: var(--muted); }
   .inline-action { margin: 12px 0; }
+  .nested-form { display: grid; gap: 12px; margin-top: 10px; }
+  .row-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .edit-box { margin-top: 10px; }
+  .edit-box summary { cursor: pointer; color: var(--muted); }
   textarea { resize: vertical; }
   @media (max-width: 860px) {
     .thread-header, .section-head { flex-direction: column; align-items: stretch; }

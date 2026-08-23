@@ -8,6 +8,7 @@
   import AgentBriefingsPanel from '$lib/AgentBriefingsPanel.svelte';
   import NotesPanel from '$lib/NotesPanel.svelte';
   import TasksPanel from '$lib/TasksPanel.svelte';
+  import { closeDatePickerOnChange } from '$lib/closeDatePicker';
 
   export let data: any;
   export let form: any;
@@ -30,6 +31,11 @@
     const d = typeof value === 'string' ? new Date(value) : value;
     if (Number.isNaN(d.getTime())) return 'No date';
     return d.toLocaleString();
+  }
+
+  function closeContainingDetails(event: Event) {
+    const details = (event.currentTarget as HTMLElement).closest('details') as HTMLDetailsElement | null;
+    if (details) details.open = false;
   }
 
   function sectionFor(workstreamId: string) {
@@ -189,6 +195,16 @@
       </form>
       <NotesPanel notes={projectNotesForPanel} emptyMessage="No project notes yet.">
         <svelte:fragment slot="actions" let:note>
+          <details class="edit-box">
+            <summary>Edit note</summary>
+            <form method="post" action="?/updateProjectNote" class="nested-form">
+              <input type="hidden" name="noteId" value={note.id} />
+              <div class="field"><label for={`project-note-occurred-${note.id}`}>Note date</label><input id={`project-note-occurred-${note.id}`} name="occurredAt" type="datetime-local" value={note.occurredAtInput} on:change={closeDatePickerOnChange} /></div>
+              <div class="field"><label for={`project-note-body-${note.id}`}>Note</label><textarea id={`project-note-body-${note.id}`} name="body" rows="4" required>{note.body}</textarea></div>
+              <div class="field"><label for={`project-note-summary-${note.id}`}>Summary</label><input id={`project-note-summary-${note.id}`} name="summary" value={note.summary} /></div>
+              <div class="row-actions"><button class="btn primary" type="submit">Save note</button><button class="btn" type="button" on:click={closeContainingDetails}>Cancel</button></div>
+            </form>
+          </details>
           <form method="post" action="?/deleteProjectNote" on:submit={(event) => { if (!confirm('Delete this project note?')) event.preventDefault(); }}>
             <input type="hidden" name="noteId" value={note.id} />
             <button class="btn" type="submit">Delete</button>
@@ -366,6 +382,8 @@
   .mini-row { border-top: 1px solid var(--border); padding: 12px 0; display: flex; justify-content: space-between; gap: 12px; }
   .status-chip, .chip { border: 1px solid var(--border); background: var(--panel); border-radius: 999px; padding: 3px 9px; font-size: 0.85rem; color: var(--muted); }
   .chip { color: var(--text); text-decoration: none; }
+  .edit-box { margin-top: 8px; }
+  .row-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
   textarea { resize: vertical; }
   @media (max-width: 860px) {
     .project-header, .section-head, .mini-row { flex-direction: column; }

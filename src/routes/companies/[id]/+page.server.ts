@@ -753,6 +753,111 @@ export const actions: Actions = {
     throw redirect(303, `/companies/${params.id}`);
   },
 
+  // IT: creates a brand new contact (not selected from the existing list) and attaches it to
+  // this company in one step, following the same encrypt/buildIndexToken conventions as
+  // src/routes/contacts/new/+page.server.ts.
+  createAndLinkContact: async ({ request, params, locals }) => {
+    if (!locals.user) throw redirect(303, '/auth/login');
+    const userId = locals.user.id;
+    const company = await ensureCompany(userId, params.id);
+    if (!company) return fail(404, { error: 'Company not found.' });
+
+    const form = await request.formData();
+    const fullName = String(form.get('fullName') || '').trim();
+    if (!fullName) return fail(400, { error: 'Contact name is required.' });
+
+    const email = String(form.get('email') || '').trim();
+    const phone = String(form.get('phone') || '').trim();
+    const position = String(form.get('position') || '').trim();
+    const linkedin = String(form.get('linkedin') || '').trim();
+
+    const title = String(form.get('title') || '').trim();
+    const department = String(form.get('department') || '').trim();
+    const notes = String(form.get('notes') || '').trim();
+    const isPrimary = String(form.get('isPrimary') || '') === 'on';
+
+    const contactData: any = {
+      userId,
+      fullNameEnc: encrypt(fullName, 'contact.full_name'),
+      fullNameIdx: buildIndexToken(fullName)
+    };
+    if (email) {
+      contactData.emailEnc = encrypt(email, 'contact.email');
+      contactData.emailIdx = buildIndexToken(email);
+    }
+    if (phone) {
+      contactData.phoneEnc = encrypt(phone, 'contact.phone');
+      contactData.phoneIdx = buildIndexToken(phone);
+    }
+    if (position) {
+      contactData.positionEnc = encrypt(position, 'contact.position');
+    }
+    if (linkedin) {
+      contactData.linkedinEnc = encrypt(linkedin, 'contact.linkedin');
+      contactData.linkedinIdx = buildIndexToken(linkedin);
+    }
+
+    try {
+      await prisma.$transaction(async (tx: any) => {
+        const contact = await tx.contact.create({ data: contactData, select: { id: true } });
+        if (isPrimary) {
+          await tx.companyContact.updateMany({ where: { userId, companyId: params.id, isPrimary: true }, data: { isPrimary: false } });
+        }
+        await tx.companyContact.create({
+          data: {
+            userId,
+            companyId: params.id,
+            contactId: contact.id,
+            titleEnc: title ? encrypt(title, 'company_contact.title') : null,
+            departmentEnc: department ? encrypt(department, 'company_contact.department') : null,
+            notesEnc: notes ? encrypt(notes, 'company_contact.notes') : null,
+            status: normaliseCompanyContactStatus(form.get('status')) as any,
+            isPrimary
+          }
+        });
+      });
+    } catch (err: any) {
+      console.error('[companies:createAndLinkContact] failed', err);
+      return fail(500, { error: 'Could not create and link contact.' });
+    }
+
+    throw redirect(303, `/companies/${params.id}`);
+  },
+
+  updateContact: async ({ request, params, locals }) => {
+    if (!locals.user) throw redirect(303, '/auth/login');
+    const userId = locals.user.id;
+    const form = await request.formData();
+    const linkId = String(form.get('linkId') || '').trim();
+    if (!linkId) return fail(400, { error: 'Missing relationship id.' });
+    // IT: scope the lookup by userId + companyId so a linkId belonging to another tenant/company can't be edited.
+    const existing = await prisma.companyContact.findFirst({ where: { id: linkId, userId, companyId: params.id }, select: { id: true } });
+    if (!existing) return fail(404, { error: 'Contact relationship not found.' });
+
+    const title = String(form.get('title') || '').trim();
+    const department = String(form.get('department') || '').trim();
+    const notes = String(form.get('notes') || '').trim();
+    const isPrimary = String(form.get('isPrimary') || '') === 'on';
+
+    await prisma.$transaction(async (tx: any) => {
+      if (isPrimary) {
+        await tx.companyContact.updateMany({ where: { userId, companyId: params.id, isPrimary: true }, data: { isPrimary: false } });
+      }
+      await tx.companyContact.update({
+        where: { id: existing.id },
+        data: {
+          titleEnc: title ? encrypt(title, 'company_contact.title') : null,
+          departmentEnc: department ? encrypt(department, 'company_contact.department') : null,
+          notesEnc: notes ? encrypt(notes, 'company_contact.notes') : null,
+          status: normaliseCompanyContactStatus(form.get('status')) as any,
+          isPrimary
+        }
+      });
+    });
+
+    throw redirect(303, `/companies/${params.id}`);
+  },
+
   removeContact: async ({ request, params, locals }) => {
     if (!locals.user) throw redirect(303, '/auth/login');
     const form = await request.formData();

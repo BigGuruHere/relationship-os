@@ -1,13 +1,16 @@
 <!-- src/routes/deals/[id]/notes/[noteId]/+page.svelte -->
 <script lang="ts">
-  // PURPOSE: Display a full deal note and its AI summary.
+  // PURPOSE: Display and edit a full deal note and its AI summary.
   // SECURITY: Text is decrypted on the server only and rendered here after tenant-scoped load.
+  import { closeDatePickerOnChange } from '$lib/closeDatePicker';
 
   export let data: {
     note: {
       id: string;
       channel: string;
+      channelLabel: string;
       occurredAt: string | Date;
+      occurredAtInput: string;
       text: string;
       summary: string;
       createdAt: string | Date;
@@ -16,8 +19,11 @@
       contactId: string | null;
       contactName: string;
     };
+    noteChannels: { value: string; label: string }[];
   };
   export let form: any;
+
+  let showEdit = false;
 
   function fmt(value: string | Date | null | undefined) {
     if (!value) return '';
@@ -39,6 +45,7 @@
         {/if}
       </div>
       <div class="actions">
+        <button class="btn" type="button" on:click={() => (showEdit = !showEdit)}>{showEdit ? 'Cancel edit' : 'Edit note'}</button>
         <a class="btn" href={`/deals/${data.note.dealId}`}>Back to deal</a>
         <form method="post" action="?/delete" on:submit={(event) => { if (!confirm('Delete this deal note?')) event.preventDefault(); }}>
           <button class="btn" type="submit">Delete</button>
@@ -50,17 +57,32 @@
       <p class="error-text">{form.error}</p>
     {/if}
 
-    {#if data.note.summary}
+    {#if showEdit}
       <section class="section-block">
-        <h2>AI summary</h2>
-        <p class="preline">{data.note.summary}</p>
+        <h2>Edit note</h2>
+        <form method="post" action="?/update" class="nested-form">
+          <div class="grid two">
+            <div class="field"><label for="channel">Channel</label><select id="channel" name="channel">{#each data.noteChannels as opt}<option value={opt.value} selected={data.note.channel === opt.value}>{opt.label}</option>{/each}</select></div>
+            <div class="field"><label for="occurredAt">Note date</label><input id="occurredAt" name="occurredAt" type="datetime-local" value={data.note.occurredAtInput} on:change={closeDatePickerOnChange} /></div>
+          </div>
+          <div class="field"><label for="text">Note</label><textarea id="text" name="text" rows="6" required>{data.note.text}</textarea></div>
+          <div class="field"><label for="summary">Summary</label><input id="summary" name="summary" value={data.note.summary} /></div>
+          <button class="btn primary" type="submit">Save note</button>
+        </form>
+      </section>
+    {:else}
+      {#if data.note.summary}
+        <section class="section-block">
+          <h2>AI summary</h2>
+          <p class="preline">{data.note.summary}</p>
+        </section>
+      {/if}
+
+      <section class="section-block">
+        <h2>Full note</h2>
+        <p class="preline">{data.note.text}</p>
       </section>
     {/if}
-
-    <section class="section-block">
-      <h2>Full note</h2>
-      <p class="preline">{data.note.text}</p>
-    </section>
   </div>
 </div>
 
@@ -75,5 +97,9 @@
   .section-block { border-top: 1px solid var(--border); margin-top: 16px; padding-top: 16px; }
   .preline { white-space: pre-wrap; }
   .error-text { color: var(--danger); }
-  @media (max-width: 760px) { .title-row { flex-direction: column; } }
+  .nested-form { display: grid; gap: 12px; }
+  .grid.two { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+  .field input, .field select, .field textarea { width: 100%; padding: 10px 12px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); color: var(--text); }
+  textarea { resize: vertical; }
+  @media (max-width: 760px) { .title-row { flex-direction: column; } .grid.two { grid-template-columns: 1fr; } }
 </style>

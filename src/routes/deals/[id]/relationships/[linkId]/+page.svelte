@@ -2,6 +2,7 @@
 <script lang="ts">
   // PURPOSE: Manage the deal-person commercial conversation thread.
   import VoiceTextField from '$lib/recording/VoiceTextField.svelte';
+  import NotesPanel from '$lib/NotesPanel.svelte';
 
   export let data: any;
   export let form: any;
@@ -178,18 +179,7 @@
 
   <section class="card panel">
     <div class="section-head"><h2>Thread notes</h2><a class="btn" href={`/deals/${data.thread.dealId}/relationships/${data.thread.id}/notes/new`}>New voice/note</a></div>
-    {#if data.notes.length === 0}
-      <p class="muted">No notes yet for this deal-person thread.</p>
-    {:else}
-      <ul class="notes-list">
-        {#each data.notes as note}
-          <li class="note-row">
-            <div class="note-meta"><span class="status-chip">{note.channel}</span><span class="muted">{fmt(note.occurredAt)}</span></div>
-            <p class="preline">{note.preview || '(empty)'}</p>
-          </li>
-        {/each}
-      </ul>
-    {/if}
+    <NotesPanel notes={data.notes} emptyMessage="No notes yet for this deal-person thread." />
   </section>
 
   <div class="bottom-actions"><a class="btn" href={`/deals/${data.thread.dealId}`}>Back to deal</a></div>
@@ -218,11 +208,8 @@
   .inline-action { margin: 12px 0; }
   .check-row { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
   .check-row input { width: auto; }
-  .task-list, .notes-list { display: grid; gap: 8px; }
-  .notes-list { list-style: none; padding: 0; margin: 0; }
-  .task-row, .note-row { border-top: 1px solid var(--border); padding: 12px 0; display: flex; justify-content: space-between; gap: 12px; }
-  .note-row { display: block; }
-  .note-meta { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .task-list { display: grid; gap: 8px; }
+  .task-row { border-top: 1px solid var(--border); padding: 12px 0; display: flex; justify-content: space-between; gap: 12px; }
   textarea { resize: vertical; }
   @media (max-width: 860px) {
     .thread-header, .task-row, .section-head { flex-direction: column; align-items: stretch; }

@@ -488,7 +488,7 @@
     <section class="card panel">
       <div class="section-head">
         <h2>Open tasks</h2>
-        <a class="btn" href="/tasks">Open task inbox</a>
+        <a class="btn" href="/tasks">Add task</a>
       </div>
       {#if tasks.length === 0}
         <p class="muted">No open tasks for this person.</p>
@@ -497,7 +497,7 @@
           {#each tasks as task}
             <div class="mini-row task-mini-row">
               <div>
-                <div class="strong-link">{task.title} <span class="status-chip">{task.statusLabel}</span> <span class="status-chip">{task.urgencyLabel}</span></div>
+                <div class="strong-link"><a href={`/tasks/${task.id}`}>{task.title}</a> <span class="status-chip">{task.statusLabel}</span> <span class="status-chip">{task.urgencyLabel}</span></div>
                 <div class="muted small">{task.taskTypeLabel} - due {fmt(task.dueAt) || 'not set'}{task.deal ? ` - ${task.deal.title}` : ''}</div>
                 {#if task.notes}<p class="preline muted small">{task.notes}</p>{/if}
                 {#if task.summary}<div class="summary-box"><div class="muted small">AI summary</div><p>{task.summary}</p></div>{/if}

@@ -6,9 +6,15 @@
   import VoiceTextField from '$lib/recording/VoiceTextField.svelte';
   import ExchangeItemsPanel from '$lib/ExchangeItemsPanel.svelte';
   import AgentBriefingsPanel from '$lib/AgentBriefingsPanel.svelte';
+  import NotesPanel from '$lib/NotesPanel.svelte';
 
   export let data: any;
   export let form: any;
+
+  $: projectNotesForPanel = (data.projectNotes || []).map((note: any) => ({
+    ...note,
+    withLabel: note.workstream ? note.workstream.name : null
+  }));
 
   let showEdit = false;
   let showNewTask = false;
@@ -256,25 +262,14 @@
         />
         <button class="btn primary" type="submit">Save note</button>
       </form>
-      {#if data.projectNotes?.length}
-        <div class="mini-list">
-          {#each data.projectNotes as note}
-            <div class="mini-row">
-              <div>
-                <div class="muted small">{fmt(note.occurredAt || note.createdAt)}{#if note.workstream} - {note.workstream.name}{/if}</div>
-                <p class="preline small">{note.body}</p>
-                {#if note.summary}<div class="summary-box"><div class="muted small">AI summary</div><p>{note.summary}</p></div>{/if}
-              </div>
-              <form method="post" action="?/deleteProjectNote" on:submit={(event) => { if (!confirm('Delete this project note?')) event.preventDefault(); }}>
-                <input type="hidden" name="noteId" value={note.id} />
-                <button class="btn" type="submit">Delete</button>
-              </form>
-            </div>
-          {/each}
-        </div>
-      {:else}
-        <p class="muted">No project notes yet.</p>
-      {/if}
+      <NotesPanel notes={projectNotesForPanel} emptyMessage="No project notes yet.">
+        <svelte:fragment slot="actions" let:note>
+          <form method="post" action="?/deleteProjectNote" on:submit={(event) => { if (!confirm('Delete this project note?')) event.preventDefault(); }}>
+            <input type="hidden" name="noteId" value={note.id} />
+            <button class="btn" type="submit">Delete</button>
+          </form>
+        </svelte:fragment>
+      </NotesPanel>
     </details>
   </section>
 

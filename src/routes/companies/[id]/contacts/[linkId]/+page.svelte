@@ -1,6 +1,7 @@
 <!-- src/routes/companies/[id]/contacts/[linkId]/+page.svelte -->
 <script lang="ts">
   import ExchangeItemsPanel from '$lib/ExchangeItemsPanel.svelte';
+  import NotesPanel from '$lib/NotesPanel.svelte';
 
   export let data: any;
   export let form: any;
@@ -17,7 +18,6 @@
     return `${deal.title || ''} ${deal.statusLabel || ''}`.toLowerCase().includes(q);
   });
 
-  const fmt = (value: any) => value ? new Date(value).toLocaleString() : '';
   const fmtDate = (value: any) => value ? new Date(value).toLocaleDateString() : '';
 
   function closeContainingDetails(event: Event) {
@@ -131,34 +131,27 @@
       </form>
     {/if}
 
-    {#if data.notes.length === 0}<p class="muted">No relationship notes yet.</p>{:else}
-      <div class="note-list">
-        {#each data.notes as note}
-          <div class="note-card">
-            <div class="note-head"><strong>{note.channelLabel}</strong><span class="muted small">{fmt(note.occurredAt)}</span></div>
-            <p class="preline">{note.body}</p>
-            {#if note.summary}<div class="summary-box"><div class="muted small">Summary</div><p>{note.summary}</p></div>{/if}
-            <details class="edit-box">
-              <summary>Edit note</summary>
-              <form method="post" action="?/updateNote" class="nested-form">
-                <input type="hidden" name="noteId" value={note.id} />
-                <div class="grid two">
-                  <div class="field"><label for={`channel-${note.id}`}>Channel</label><select id={`channel-${note.id}`} name="channel">{#each data.noteChannels as opt}<option value={opt.value} selected={note.channel === opt.value}>{opt.label}</option>{/each}</select></div>
-                  <div class="field"><label for={`occurred-${note.id}`}>Note date</label><input id={`occurred-${note.id}`} name="occurredAt" type="datetime-local" value={note.occurredAtInput} /></div>
-                </div>
-                <div class="field"><label for={`body-${note.id}`}>Note</label><textarea id={`body-${note.id}`} name="body" rows="4" required>{note.body}</textarea></div>
-                <div class="field"><label for={`summary-${note.id}`}>Summary</label><input id={`summary-${note.id}`} name="summary" value={note.summary} /></div>
-                <div class="row-actions"><button class="btn primary" type="submit">Save note</button><button class="btn" type="button" on:click={closeContainingDetails}>Cancel</button></div>
-              </form>
-            </details>
-            <form method="post" action="?/deleteNote" on:submit={(event) => { if (!confirm('Delete this relationship note?')) event.preventDefault(); }}>
-              <input type="hidden" name="noteId" value={note.id} />
-              <button class="btn" type="submit">Delete note</button>
-            </form>
-          </div>
-        {/each}
-      </div>
-    {/if}
+    <NotesPanel notes={data.notes} emptyMessage="No relationship notes yet.">
+      <svelte:fragment slot="actions" let:note>
+        <details class="edit-box">
+          <summary>Edit note</summary>
+          <form method="post" action="?/updateNote" class="nested-form">
+            <input type="hidden" name="noteId" value={note.id} />
+            <div class="grid two">
+              <div class="field"><label for={`channel-${note.id}`}>Channel</label><select id={`channel-${note.id}`} name="channel">{#each data.noteChannels as opt}<option value={opt.value} selected={note.channel === opt.value}>{opt.label}</option>{/each}</select></div>
+              <div class="field"><label for={`occurred-${note.id}`}>Note date</label><input id={`occurred-${note.id}`} name="occurredAt" type="datetime-local" value={note.occurredAtInput} /></div>
+            </div>
+            <div class="field"><label for={`body-${note.id}`}>Note</label><textarea id={`body-${note.id}`} name="body" rows="4" required>{note.body}</textarea></div>
+            <div class="field"><label for={`summary-${note.id}`}>Summary</label><input id={`summary-${note.id}`} name="summary" value={note.summary} /></div>
+            <div class="row-actions"><button class="btn primary" type="submit">Save note</button><button class="btn" type="button" on:click={closeContainingDetails}>Cancel</button></div>
+          </form>
+        </details>
+        <form method="post" action="?/deleteNote" on:submit={(event) => { if (!confirm('Delete this relationship note?')) event.preventDefault(); }}>
+          <input type="hidden" name="noteId" value={note.id} />
+          <button class="btn" type="submit">Delete note</button>
+        </form>
+      </svelte:fragment>
+    </NotesPanel>
   </section>
 
   <section class="card panel">
@@ -245,12 +238,9 @@
   .preline { white-space:pre-wrap; }
   .info-grid { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:10px; margin-top:10px; }
   .info-grid > div { display:grid; gap:4px; border:1px solid var(--border); border-radius:12px; padding:10px; background:var(--surface); }
-  .note-list, .mini-list { display:grid; gap:10px; }
-  .note-card, .mini-row { border:1px solid var(--border); border-radius:14px; padding:12px; background:var(--surface); }
+  .mini-list { display:grid; gap:10px; }
+  .mini-row { border:1px solid var(--border); border-radius:14px; padding:12px; background:var(--surface); }
   .mini-row { display:flex; justify-content:space-between; gap:12px; align-items:flex-start; }
-  .note-head { display:flex; justify-content:space-between; gap:10px; align-items:center; }
-  .summary-box { background:var(--bg); border:1px solid var(--border); border-radius:12px; padding:10px; margin-top:8px; }
-  .summary-box p { margin:4px 0 0; white-space:pre-wrap; }
   .edit-box { margin-top:10px; }
   .edit-box summary { cursor:pointer; color:var(--muted); }
   .inline-form { display:flex; gap:8px; align-items:center; }

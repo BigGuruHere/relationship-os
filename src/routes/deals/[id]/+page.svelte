@@ -5,9 +5,23 @@
   import VoiceTextField from '$lib/recording/VoiceTextField.svelte';
   import ExchangeItemsPanel from '$lib/ExchangeItemsPanel.svelte';
   import AgentBriefingsPanel from '$lib/AgentBriefingsPanel.svelte';
+  import NotesPanel from '$lib/NotesPanel.svelte';
 
   export let data: any;
   export let form: any;
+
+  $: dealNotesForPanel = (data.notes || []).map((note: any) => ({
+    ...note,
+    withLabel: note.contactId ? note.contactName : null,
+    withHref: note.contactId ? `/contacts/${note.contactId}` : null,
+    href: `/deals/${data.deal.id}/notes/${note.id}`
+  }));
+
+  $: threadNotesForPanel = (data.threadNotes || []).map((note: any) => ({
+    ...note,
+    withLabel: note.contactName,
+    withHref: `/deals/${data.deal.id}/relationships/${note.dealContactId}`
+  }));
 
   let showStateEditor = false;
   let showAddPerson = false;
@@ -398,7 +412,7 @@
         {#each data.tasks as task}
           <div class="task-row">
             <div>
-              <div class="person-title"><span>{task.title}</span><span class="status-chip">{task.statusLabel}</span><span class="status-chip">{task.urgencyLabel}</span></div>
+              <div class="person-title"><a href={`/tasks/${task.id}`}>{task.title}</a><span class="status-chip">{task.statusLabel}</span><span class="status-chip">{task.urgencyLabel}</span></div>
               <div class="muted small">{task.taskTypeLabel} - due {fmt(task.dueAt) || 'not set'}</div>
               <div class="context-row small">
                 {#if task.contact}<a class="chip" href={`/contacts/${task.contact.id}`}>Person: {task.contact.name}</a>{/if}
@@ -425,52 +439,13 @@
 
   <section class="card panel">
     <div class="section-head"><h2>Recent deal notes</h2><a class="btn" href={`/deals/${data.deal.id}/notes/new`}>New voice/note</a></div>
-    {#if data.notes.length === 0}
-      <p class="muted">No deal notes yet. Add a typed note or record a voice note.</p>
-    {:else}
-      <ul class="notes-list">
-        {#each data.notes as note}
-          <li class="note-row">
-            <div class="note-meta">
-              <span class="status-chip">{note.channel}</span>
-              <span class="muted">{fmtDate(note.occurredAt)}</span>
-              {#if note.contactId}<span class="muted">with <a href={`/contacts/${note.contactId}`}>{note.contactName}</a></span>{/if}
-            </div>
-            <details class="note-details">
-              <summary class="preline note-preview">{note.preview || '(empty)'}</summary>
-              {#if note.summary}<div class="summary-box"><div class="muted small">AI summary</div><p>{note.summary}</p></div>{/if}
-              <p class="preline small">{note.rawText || '(empty)'}</p>
-              <a class="btn tiny" href={`/deals/${data.deal.id}/notes/${note.id}`}>Open full note</a>
-            </details>
-          </li>
-        {/each}
-      </ul>
-    {/if}
+    <NotesPanel notes={dealNotesForPanel} emptyMessage="No deal notes yet. Add a typed note or record a voice note." />
   </section>
 
 
   <section class="card panel">
     <div class="section-head"><h2>Recent relationship notes</h2><span class="muted small">Notes on specific people in this deal</span></div>
-    {#if !data.threadNotes || data.threadNotes.length === 0}
-      <p class="muted">No deal-person thread notes yet.</p>
-    {:else}
-      <ul class="notes-list">
-        {#each data.threadNotes as note}
-          <li class="note-row">
-            <div class="note-meta">
-              <span class="status-chip">{note.channel}</span>
-              <span class="muted">{fmtDate(note.occurredAt)}</span>
-              <span class="muted">with <a href={`/deals/${data.deal.id}/relationships/${note.dealContactId}`}>{note.contactName}</a></span>
-            </div>
-            <details class="note-details">
-              <summary class="preline note-preview">{note.preview || '(empty)'}</summary>
-              {#if note.summary}<div class="summary-box"><div class="muted small">AI summary</div><p>{note.summary}</p></div>{/if}
-              <p class="preline small">{note.rawText || '(empty)'}</p>
-            </details>
-          </li>
-        {/each}
-      </ul>
-    {/if}
+    <NotesPanel notes={threadNotesForPanel} emptyMessage="No deal-person thread notes yet." />
   </section>
 
   <div class="bottom-actions"><a class="btn" href="/deals">Back to deals</a></div>
@@ -499,13 +474,7 @@
   .add-person, .task-form { border: 1px solid var(--border); border-radius: 12px; padding: 12px; margin: 10px 0; background: var(--panel); }
   .check-row { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; color: var(--text); }
   .check-row input { width: auto; }
-  .people-list, .notes-list, .task-list { display: grid; gap: 8px; }
-  .notes-list { list-style: none; padding: 0; margin: 0; }
-  .note-row { border-top: 1px solid var(--border); padding: 12px 0; }
-  .note-meta { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 6px; }
-  .note-preview { margin: 0; display: block; color: inherit; text-decoration: none; }
-  .note-link:hover { text-decoration: underline; }
-  .note-details summary { cursor: pointer; }
+  .people-list, .task-list { display: grid; gap: 8px; }
   .person-card, .task-row { border-top: 1px solid var(--border); padding: 12px 0; display: flex; justify-content: space-between; gap: 12px; }
   .person-title { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-weight: 700; }
   .person-actions { display: flex; align-items: flex-start; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }

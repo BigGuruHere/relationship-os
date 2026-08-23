@@ -2,6 +2,7 @@
 <script lang="ts">
   import ExchangeItemsPanel from '$lib/ExchangeItemsPanel.svelte';
   import AgentBriefingsPanel from '$lib/AgentBriefingsPanel.svelte';
+  import NotesPanel from '$lib/NotesPanel.svelte';
   // PURPOSE: Company command centre for employees, deal links, company relationships, and tasks.
   import VoiceTextField from '$lib/recording/VoiceTextField.svelte';
 
@@ -167,38 +168,27 @@
       </form>
     {/if}
 
-    {#if data.companyNotes?.length}
-      <div class="mini-list">
-        {#each data.companyNotes as note}
-          <div class="mini-row">
-            <div>
-              <div class="muted small"><span class="status-chip">{note.channelLabel}</span> {fmt(note.occurredAt)}</div>
-              <p class="preline small">{note.body}</p>
-              {#if note.summary}<div class="summary-box"><div class="muted small">AI summary</div><p>{note.summary}</p></div>{/if}
-              <details class="edit-note">
-                <summary>Edit note</summary>
-                <form method="post" action="?/updateCompanyNote" class="nested-form">
-                  <input type="hidden" name="noteId" value={note.id} />
-                  <div class="grid two">
-                    <div class="field"><label for={`companyNoteChannel-${note.id}`}>Channel</label><select id={`companyNoteChannel-${note.id}`} name="channel">{#each data.noteChannels as opt}<option value={opt.value} selected={note.channel === opt.value}>{opt.label}</option>{/each}</select></div>
-                    <div class="field"><label for={`companyNoteOccurred-${note.id}`}>Note date</label><input id={`companyNoteOccurred-${note.id}`} name="occurredAt" type="datetime-local" value={note.occurredAtInput} /></div>
-                  </div>
-                  <div class="field"><label for={`companyNoteBody-${note.id}`}>Note</label><textarea id={`companyNoteBody-${note.id}`} name="body" rows="4">{note.body}</textarea></div>
-                  <div class="field"><label for={`companyNoteSummary-${note.id}`}>Summary</label><textarea id={`companyNoteSummary-${note.id}`} name="summary" rows="2">{note.summary}</textarea></div>
-                  <div class="actions small-actions"><button class="btn primary" type="submit">Save note changes</button><button class="btn" type="button" on:click={closeContainingDetails}>Cancel</button></div>
-                </form>
-              </details>
+    <NotesPanel notes={data.companyNotes || []} emptyMessage="No company notes yet.">
+      <svelte:fragment slot="actions" let:note>
+        <details class="edit-note">
+          <summary>Edit note</summary>
+          <form method="post" action="?/updateCompanyNote" class="nested-form">
+            <input type="hidden" name="noteId" value={note.id} />
+            <div class="grid two">
+              <div class="field"><label for={`companyNoteChannel-${note.id}`}>Channel</label><select id={`companyNoteChannel-${note.id}`} name="channel">{#each data.noteChannels as opt}<option value={opt.value} selected={note.channel === opt.value}>{opt.label}</option>{/each}</select></div>
+              <div class="field"><label for={`companyNoteOccurred-${note.id}`}>Note date</label><input id={`companyNoteOccurred-${note.id}`} name="occurredAt" type="datetime-local" value={note.occurredAtInput} /></div>
             </div>
-            <form method="post" action="?/deleteCompanyNote" on:submit={(event) => { if (!confirm('Delete this company note?')) event.preventDefault(); }}>
-              <input type="hidden" name="noteId" value={note.id} />
-              <button class="btn" type="submit">Delete</button>
-            </form>
-          </div>
-        {/each}
-      </div>
-    {:else}
-      <p class="muted">No company notes yet.</p>
-    {/if}
+            <div class="field"><label for={`companyNoteBody-${note.id}`}>Note</label><textarea id={`companyNoteBody-${note.id}`} name="body" rows="4">{note.body}</textarea></div>
+            <div class="field"><label for={`companyNoteSummary-${note.id}`}>Summary</label><textarea id={`companyNoteSummary-${note.id}`} name="summary" rows="2">{note.summary}</textarea></div>
+            <div class="actions small-actions"><button class="btn primary" type="submit">Save note changes</button><button class="btn" type="button" on:click={closeContainingDetails}>Cancel</button></div>
+          </form>
+        </details>
+        <form method="post" action="?/deleteCompanyNote" on:submit={(event) => { if (!confirm('Delete this company note?')) event.preventDefault(); }}>
+          <input type="hidden" name="noteId" value={note.id} />
+          <button class="btn" type="submit">Delete</button>
+        </form>
+      </svelte:fragment>
+    </NotesPanel>
   </section>
 
   <div class="grid main-grid">

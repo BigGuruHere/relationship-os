@@ -96,7 +96,7 @@
       <form method="post" action="?/createNote" class="nested-form">
         <div class="grid two">
           <div class="field"><label for="noteChannel">Channel</label><select id="noteChannel" name="channel">{#each data.noteChannels as opt}<option value={opt.value}>{opt.label}</option>{/each}</select></div>
-          <div class="field"><label for="occurredAt">Note date</label><input id="occurredAt" name="occurredAt" type="datetime-local" /></div>
+          <div class="field"><label for="occurredAt">Note date</label><input id="occurredAt" name="occurredAt" type="datetime-local" on:change={(e) => (e.currentTarget as HTMLInputElement).blur()} /></div>
         </div>
         <div class="field"><label for="body">Note</label><textarea id="body" name="body" rows="4" required></textarea></div>
         <div class="field"><label for="summary">Summary</label><input id="summary" name="summary" /></div>
@@ -112,7 +112,7 @@
             <input type="hidden" name="noteId" value={note.id} />
             <div class="grid two">
               <div class="field"><label for={`channel-${note.id}`}>Channel</label><select id={`channel-${note.id}`} name="channel">{#each data.noteChannels as opt}<option value={opt.value} selected={note.channel === opt.value}>{opt.label}</option>{/each}</select></div>
-              <div class="field"><label for={`occurred-${note.id}`}>Note date</label><input id={`occurred-${note.id}`} name="occurredAt" type="datetime-local" value={note.occurredAtInput} /></div>
+              <div class="field"><label for={`occurred-${note.id}`}>Note date</label><input id={`occurred-${note.id}`} name="occurredAt" type="datetime-local" value={note.occurredAtInput} on:change={(e) => (e.currentTarget as HTMLInputElement).blur()} /></div>
             </div>
             <div class="field"><label for={`body-${note.id}`}>Note</label><textarea id={`body-${note.id}`} name="body" rows="4" required>{note.body}</textarea></div>
             <div class="field"><label for={`summary-${note.id}`}>Summary</label><input id={`summary-${note.id}`} name="summary" value={note.summary} /></div>

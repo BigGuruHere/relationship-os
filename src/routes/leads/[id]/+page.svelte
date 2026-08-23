@@ -144,7 +144,7 @@
           <div class="field"><label for="buyerStatusEdit">Buyer status</label><select id="buyerStatusEdit" name="buyerStatus">{#each data.buyerQualificationStatuses as opt}<option value={opt.value} selected={lead.buyerStatus === opt.value}>{opt.label}</option>{/each}</select></div>
           <div class="field"><label for="sellerStatusEdit">Seller status</label><select id="sellerStatusEdit" name="sellerStatus">{#each data.sellerQualificationStatuses as opt}<option value={opt.value} selected={lead.sellerStatus === opt.value}>{opt.label}</option>{/each}</select></div>
         </div>
-        <div class="field"><label for="lastContactedAtEdit">Last contacted</label><input id="lastContactedAtEdit" name="lastContactedAt" type="datetime-local" value={lead.lastContactedAtInput} /></div>
+        <div class="field"><label for="lastContactedAtEdit">Last contacted</label><input id="lastContactedAtEdit" name="lastContactedAt" type="datetime-local" value={lead.lastContactedAtInput} on:change={(e) => (e.currentTarget as HTMLInputElement).blur()} /></div>
         <div class="grid two"><div class="field"><label for="projectIdEdit">Project</label><select id="projectIdEdit" name="projectId"><option value="">Standalone lead</option>{#each data.projects as project}<option value={project.id} selected={(lead.projectId || '') === project.id}>{project.title}</option>{/each}</select></div><div class="field"><label for="workstreamIdEdit">Workstream</label><select id="workstreamIdEdit" name="workstreamId"><option value="">No workstream</option>{#each data.workstreams as ws}<option value={ws.id} selected={(lead.workstreamId || '') === ws.id}>{ws.projectTitle} - {ws.name}</option>{/each}</select></div></div>
         <div class="grid two"><div class="field"><label for="name">Person name</label><input id="name" name="name" value={lead.name} /></div><div class="field"><label for="companyName">Company name</label><input id="companyName" name="companyName" value={lead.companyName} /></div></div>
         <div class="grid two"><div class="field"><label for="email">Email</label><input id="email" name="email" type="email" value={lead.email} /></div><div class="field"><label for="phone">Phone</label><input id="phone" name="phone" value={lead.phone} /></div></div>
@@ -167,7 +167,7 @@
       <form method="post" action="?/createLeadNote" class="nested-form">
         <div class="grid two">
           <div class="field"><label for="leadNoteChannel">Channel</label><select id="leadNoteChannel" name="channel">{#each data.noteChannels as opt}<option value={opt.value}>{opt.label}</option>{/each}</select></div>
-          <div class="field"><label for="leadNoteOccurredAt">Note date</label><input id="leadNoteOccurredAt" name="occurredAt" type="datetime-local" /></div>
+          <div class="field"><label for="leadNoteOccurredAt">Note date</label><input id="leadNoteOccurredAt" name="occurredAt" type="datetime-local" on:change={(e) => (e.currentTarget as HTMLInputElement).blur()} /></div>
         </div>
         <VoiceTextField
           id="leadNote"
@@ -196,7 +196,7 @@
                     <input type="hidden" name="noteId" value={note.id} />
                     <div class="grid two">
                       <div class="field"><label for={`noteChannel-${note.id}`}>Channel</label><select id={`noteChannel-${note.id}`} name="channel">{#each data.noteChannels as opt}<option value={opt.value} selected={note.channel === opt.value}>{opt.label}</option>{/each}</select></div>
-                      <div class="field"><label for={`noteOccurred-${note.id}`}>Note date</label><input id={`noteOccurred-${note.id}`} name="occurredAt" type="datetime-local" value={note.occurredAtInput} /></div>
+                      <div class="field"><label for={`noteOccurred-${note.id}`}>Note date</label><input id={`noteOccurred-${note.id}`} name="occurredAt" type="datetime-local" value={note.occurredAtInput} on:change={(e) => (e.currentTarget as HTMLInputElement).blur()} /></div>
                     </div>
                     <div class="field"><label for={`noteBody-${note.id}`}>Note</label><textarea id={`noteBody-${note.id}`} name="body" rows="4">{note.body}</textarea></div>
                     <div class="field"><label for={`noteSummary-${note.id}`}>Summary</label><textarea id={`noteSummary-${note.id}`} name="summary" rows="2">{note.summary}</textarea></div>

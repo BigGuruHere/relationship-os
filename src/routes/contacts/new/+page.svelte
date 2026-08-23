@@ -137,7 +137,7 @@
 
       <div class="field">
         <label for="lastContactedAt">Last contacted</label>
-        <input id="lastContactedAt" name="lastContactedAt" type="datetime-local" value={form?.values?.lastContactedAt || ''} />
+        <input id="lastContactedAt" name="lastContactedAt" type="datetime-local" value={form?.values?.lastContactedAt || ''} on:change={(e) => (e.currentTarget as HTMLInputElement).blur()} />
       </div>
 
       <div style="display:flex; gap:8px; margin-top:12px; flex-wrap:wrap;">

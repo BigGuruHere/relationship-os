@@ -103,7 +103,7 @@
 
       <div class="grid two">
         <div class="field"><label for="tp-status">Status</label><select id="tp-status" name="status">{#each taskStatusOptions as opt}<option value={opt.value}>{opt.label}</option>{/each}</select></div>
-        <div class="field"><label for="tp-due">Due</label><input id="tp-due" name="dueAt" type="datetime-local" /></div>
+        <div class="field"><label for="tp-due">Due</label><input id="tp-due" name="dueAt" type="datetime-local" on:change={(e) => (e.currentTarget as HTMLInputElement).blur()} /></div>
       </div>
 
       <div class="field">
@@ -132,7 +132,7 @@
       <details class="link-more">
         <summary>{linkFieldsLabel}</summary>
         <div class="link-more-body">
-          <div class="field"><label for="tp-snooze">Snooze until</label><input id="tp-snooze" name="snoozedUntil" type="datetime-local" /></div>
+          <div class="field"><label for="tp-snooze">Snooze until</label><input id="tp-snooze" name="snoozedUntil" type="datetime-local" on:change={(e) => (e.currentTarget as HTMLInputElement).blur()} /></div>
 
           <div class="grid two">
             {#if !lockedContactId && !lockedMarketLeadId}
@@ -217,45 +217,51 @@
         {@const deal = dealInfo(task)}
         {@const project = projectInfo(task)}
         <article class="task-row {dueClass(task.dueAt, task.status)}">
-          <div class="task-main">
-            <div class="task-title-row">
-              <a href={`/tasks/${task.id}`}>{task.title}</a>
-              <span class="status-chip">{task.statusLabel}</span>
-              <span class="status-chip">{task.urgencyLabel}</span>
-              {#if task.focusLabel}<span class="status-chip">{task.focusLabel}</span>{/if}
+          <details class="task-details">
+            <summary>
+              <span class="task-title-row">
+                <a href={`/tasks/${task.id}`}>{task.title}</a>
+                <span class="status-chip">{task.statusLabel}</span>
+                <span class="status-chip">{task.urgencyLabel}</span>
+                {#if task.focusLabel}<span class="status-chip">{task.focusLabel}</span>{/if}
+              </span>
+              <span class="muted small">{task.taskTypeLabel}{task.importanceLabel ? ` - ${task.importanceLabel} importance` : ''} - due {fmtDate(task.dueAt)}</span>
+            </summary>
+            <div class="task-full">
+              <div class="task-main">
+                {#if task.notes}<p class="preline small">{task.notes}</p>{/if}
+                {#if task.summary}<div class="summary-box"><div class="muted small">AI summary</div><p>{task.summary}</p></div>{/if}
+                <div class="context-row">
+                  {#if task.contact}<a class="chip" href={`/contacts/${task.contact.id}`}>Person: {task.contact.name}</a>{/if}
+                  {#if task.company}<a class="chip" href={`/companies/${task.company.id}`}>Company: {task.company.name}</a>{/if}
+                  {#if deal}<a class="chip" href={`/deals/${deal.id}`}>Deal: {deal.title}</a>{/if}
+                  {#if project}<a class="chip" href={`/projects/${project.id}`}>Project: {project.title}</a>{/if}
+                  {#if task.workstream}<span class="chip">Workstream: {task.workstream.name}</span>{/if}
+                  {#if task.marketLead}<a class="chip" href={`/leads/${task.marketLead.id}`}>Lead: {task.marketLead.title}</a>{/if}
+                  {#if task.dealContact}<a class="chip" href={`/deals/${task.dealContact.dealId}/relationships/${task.dealContact.id}`}>Person thread: {task.dealContact.contactName}</a>{/if}
+                  {#if task.dealCompany}<a class="chip" href={`/companies/${task.dealCompany.companyId}`}>Company thread: {task.dealCompany.companyName}</a>{/if}
+                  {#if task.waitingOnContact}<a class="chip" href={`/contacts/${task.waitingOnContact.id}`}>Waiting on: {task.waitingOnContact.name}</a>{/if}
+                  {#if task.assignedToContact}<a class="chip" href={`/contacts/${task.assignedToContact.id}`}>Assigned: {task.assignedToContact.name}</a>{/if}
+                  {#if task.assignedToText}<span class="chip">Assigned: {task.assignedToText}</span>{/if}
+                </div>
+              </div>
+              <div class="task-actions">
+                <form method="post" action="?/updateTaskStatus">
+                  <input type="hidden" name="taskId" value={task.id} />
+                  <select name="status" aria-label="Update status" on:change={submitContainingForm}>
+                    {#each taskStatusOptions as opt}<option value={opt.value} selected={task.status === opt.value}>{opt.label}</option>{/each}
+                  </select>
+                </form>
+                <a class="btn" href={`/tasks/${task.id}/edit?returnTo=${editReturnTo}`}>Edit</a>
+                {#if showDelete}
+                  <form method="post" action={deleteAction} on:submit={(event) => { if (!confirm('Delete this task?')) event.preventDefault(); }}>
+                    <input type="hidden" name="taskId" value={task.id} />
+                    <button class="btn" type="submit">Delete</button>
+                  </form>
+                {/if}
+              </div>
             </div>
-            <div class="muted small">{task.taskTypeLabel}{task.importanceLabel ? ` - ${task.importanceLabel} importance` : ''} - due {fmtDate(task.dueAt)}</div>
-            {#if task.notes}<p class="preline small">{task.notes}</p>{/if}
-            {#if task.summary}<div class="summary-box"><div class="muted small">AI summary</div><p>{task.summary}</p></div>{/if}
-            <div class="context-row">
-              {#if task.contact}<a class="chip" href={`/contacts/${task.contact.id}`}>Person: {task.contact.name}</a>{/if}
-              {#if task.company}<a class="chip" href={`/companies/${task.company.id}`}>Company: {task.company.name}</a>{/if}
-              {#if deal}<a class="chip" href={`/deals/${deal.id}`}>Deal: {deal.title}</a>{/if}
-              {#if project}<a class="chip" href={`/projects/${project.id}`}>Project: {project.title}</a>{/if}
-              {#if task.workstream}<span class="chip">Workstream: {task.workstream.name}</span>{/if}
-              {#if task.marketLead}<a class="chip" href={`/leads/${task.marketLead.id}`}>Lead: {task.marketLead.title}</a>{/if}
-              {#if task.dealContact}<a class="chip" href={`/deals/${task.dealContact.dealId}/relationships/${task.dealContact.id}`}>Person thread: {task.dealContact.contactName}</a>{/if}
-              {#if task.dealCompany}<a class="chip" href={`/companies/${task.dealCompany.companyId}`}>Company thread: {task.dealCompany.companyName}</a>{/if}
-              {#if task.waitingOnContact}<a class="chip" href={`/contacts/${task.waitingOnContact.id}`}>Waiting on: {task.waitingOnContact.name}</a>{/if}
-              {#if task.assignedToContact}<a class="chip" href={`/contacts/${task.assignedToContact.id}`}>Assigned: {task.assignedToContact.name}</a>{/if}
-              {#if task.assignedToText}<span class="chip">Assigned: {task.assignedToText}</span>{/if}
-            </div>
-          </div>
-          <div class="task-actions">
-            <form method="post" action="?/updateTaskStatus">
-              <input type="hidden" name="taskId" value={task.id} />
-              <select name="status" aria-label="Update status" on:change={submitContainingForm}>
-                {#each taskStatusOptions as opt}<option value={opt.value} selected={task.status === opt.value}>{opt.label}</option>{/each}
-              </select>
-            </form>
-            <a class="btn" href={`/tasks/${task.id}/edit?returnTo=${editReturnTo}`}>Edit</a>
-            {#if showDelete}
-              <form method="post" action={deleteAction} on:submit={(event) => { if (!confirm('Delete this task?')) event.preventDefault(); }}>
-                <input type="hidden" name="taskId" value={task.id} />
-                <button class="btn" type="submit">Delete</button>
-              </form>
-            {/if}
-          </div>
+          </details>
         </article>
       {/each}
     </div>
@@ -281,9 +287,11 @@
   .link-more summary { cursor: pointer; color: var(--muted); }
   .link-more-body { display: grid; gap: 12px; margin-top: 10px; }
   .task-list { display: grid; gap: 10px; }
-  .task-row { display: flex; justify-content: space-between; gap: 12px; border-top: 1px solid var(--border); padding: 12px 0; }
+  .task-row { border-top: 1px solid var(--border); padding: 12px 0; }
   .task-row:first-child { border-top: none; padding-top: 0; }
   .task-row.overdue { border-color: var(--danger); }
+  .task-details summary { cursor: pointer; display: flex; flex-wrap: wrap; gap: 8px; align-items: baseline; }
+  .task-full { display: flex; justify-content: space-between; gap: 12px; margin-top: 10px; }
   .task-main { min-width: 0; }
   .task-title-row, .context-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
   .task-title-row a { font-weight: 700; }
@@ -300,7 +308,7 @@
   .btn.primary { font-weight: 700; }
 
   @media (max-width: 760px) {
-    .task-row { flex-direction: column; }
+    .task-full { flex-direction: column; }
     .task-actions { min-width: 0; }
     .grid.two, .grid.four { grid-template-columns: 1fr; }
   }

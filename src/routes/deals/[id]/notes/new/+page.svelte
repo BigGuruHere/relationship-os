@@ -251,7 +251,7 @@
 
         <div class="field">
           <label for="occurredAt">When - optional</label>
-          <input id="occurredAt" name="occurredAt" type="datetime-local" bind:value={occurredAt} disabled={recording} />
+          <input id="occurredAt" name="occurredAt" type="datetime-local" bind:value={occurredAt} disabled={recording} on:change={(e) => (e.currentTarget as HTMLInputElement).blur()} />
         </div>
       </div>
 

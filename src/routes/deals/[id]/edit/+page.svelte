@@ -85,7 +85,7 @@
         </div>
         <div class="field">
           <label for="expectedCloseDate">Expected close</label>
-          <input id="expectedCloseDate" name="expectedCloseDate" type="date" value={data.deal.expectedCloseDate} />
+          <input id="expectedCloseDate" name="expectedCloseDate" type="date" value={data.deal.expectedCloseDate} on:change={(e) => (e.currentTarget as HTMLInputElement).blur()} />
         </div>
       </div>
 

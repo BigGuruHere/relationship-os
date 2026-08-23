@@ -141,14 +141,14 @@
         </div>
         <div class="field">
           <label for="reviewAt">Review date</label>
-          <input id="reviewAt" name="reviewAt" type="date" />
+          <input id="reviewAt" name="reviewAt" type="date" on:change={(e) => (e.currentTarget as HTMLInputElement).blur()} />
         </div>
       </div>
 
       <div class="grid two">
         <div class="field">
           <label for="expiresAt">Expiry date</label>
-          <input id="expiresAt" name="expiresAt" type="date" />
+          <input id="expiresAt" name="expiresAt" type="date" on:change={(e) => (e.currentTarget as HTMLInputElement).blur()} />
         </div>
       </div>
 

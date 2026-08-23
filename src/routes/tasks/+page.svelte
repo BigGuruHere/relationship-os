@@ -127,11 +127,11 @@
         <div class="grid two">
           <div class="field">
             <label for="dueAt">Due</label>
-            <input id="dueAt" name="dueAt" type="datetime-local" />
+            <input id="dueAt" name="dueAt" type="datetime-local" on:change={(e) => (e.currentTarget as HTMLInputElement).blur()} />
           </div>
           <div class="field">
             <label for="snoozedUntil">Snooze until</label>
-            <input id="snoozedUntil" name="snoozedUntil" type="datetime-local" />
+            <input id="snoozedUntil" name="snoozedUntil" type="datetime-local" on:change={(e) => (e.currentTarget as HTMLInputElement).blur()} />
           </div>
         </div>
 

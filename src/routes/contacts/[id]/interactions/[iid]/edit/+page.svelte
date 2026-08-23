@@ -33,7 +33,7 @@
   
           <div class="field">
             <label for="occurredAt">When</label>
-            <input id="occurredAt" name="occurredAt" type="datetime-local" bind:value={occurredAt} />
+            <input id="occurredAt" name="occurredAt" type="datetime-local" bind:value={occurredAt} on:change={(e) => (e.currentTarget as HTMLInputElement).blur()} />
           </div>
   
           <div class="field">

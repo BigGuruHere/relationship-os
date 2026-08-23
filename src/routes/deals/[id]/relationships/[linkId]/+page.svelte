@@ -57,12 +57,12 @@
         <div class="grid three">
           <div class="field"><label for="interestLevel">Interest</label><select id="interestLevel" name="interestLevel">{#each data.dealContactInterestOptions as opt}<option value={opt.value} selected={data.thread.interestLevel === opt.value}>{opt.label}</option>{/each}</select></div>
           <div class="field"><label for="confidentialityStage">Confidentiality</label><select id="confidentialityStage" name="confidentialityStage">{#each data.dealConfidentialityOptions as opt}<option value={opt.value} selected={data.thread.confidentialityStage === opt.value}>{opt.label}</option>{/each}</select></div>
-          <div class="field"><label for="lastContactedAt">Last contacted</label><input id="lastContactedAt" name="lastContactedAt" type="datetime-local" value={data.thread.lastContactedAtInput} /></div>
+          <div class="field"><label for="lastContactedAt">Last contacted</label><input id="lastContactedAt" name="lastContactedAt" type="datetime-local" value={data.thread.lastContactedAtInput} on:change={(e) => (e.currentTarget as HTMLInputElement).blur()} /></div>
         </div>
 
         <div class="grid two">
           <div class="field"><label for="nextAction">Next action</label><input id="nextAction" name="nextAction" value={data.thread.nextAction} /></div>
-          <div class="field"><label for="nextFollowUpAt">Next follow-up</label><input id="nextFollowUpAt" name="nextFollowUpAt" type="datetime-local" value={data.thread.nextFollowUpAtInput} /></div>
+          <div class="field"><label for="nextFollowUpAt">Next follow-up</label><input id="nextFollowUpAt" name="nextFollowUpAt" type="datetime-local" value={data.thread.nextFollowUpAtInput} on:change={(e) => (e.currentTarget as HTMLInputElement).blur()} /></div>
         </div>
 
         <div class="grid two">

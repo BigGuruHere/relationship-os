@@ -2,6 +2,7 @@
 <script lang="ts">
   import VoiceTextField from '$lib/recording/VoiceTextField.svelte';
   import TasksPanel from '$lib/TasksPanel.svelte';
+  import { closeDatePickerOnChange } from '$lib/closeDatePicker';
 
   export let data: any;
   export let form: any;
@@ -216,7 +217,7 @@
       <form method="post" action="?/createNote">
         <div class="grid two">
           <div class="field"><label for="noteChannel">Channel</label><select id="noteChannel" name="channel"><option value="note">Note</option><option value="call">Call</option><option value="email">Email</option><option value="sms">SMS</option><option value="linkedin">LinkedIn</option><option value="meeting">Meeting</option><option value="whatsapp">WhatsApp</option><option value="other">Other</option></select></div>
-          <div class="field"><label for="noteOccurredAt">Occurred at</label><input id="noteOccurredAt" name="occurredAt" type="datetime-local" on:change={(e) => (e.currentTarget as HTMLInputElement).blur()} /></div>
+          <div class="field"><label for="noteOccurredAt">Occurred at</label><input id="noteOccurredAt" name="occurredAt" type="datetime-local" on:change={closeDatePickerOnChange} /></div>
         </div>
         <div class="field"><label for="noteBody">Note</label><VoiceTextField id="noteBody" name="body" bind:value={noteBody} rows={4} placeholder="What happened in this workstream?" /></div>
         <div class="field"><label for="noteSummary">Summary</label><textarea id="noteSummary" name="summary" bind:value={noteSummary} rows="2"></textarea></div>

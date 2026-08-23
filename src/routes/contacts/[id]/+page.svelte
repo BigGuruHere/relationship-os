@@ -5,6 +5,7 @@
   import ExchangeItemsPanel from '$lib/ExchangeItemsPanel.svelte';
   import AgentBriefingsPanel from '$lib/AgentBriefingsPanel.svelte';
   import TasksPanel from '$lib/TasksPanel.svelte';
+  import { closeDatePickerOnChange } from '$lib/closeDatePicker';
 
   export let data: any;
   export let form: any;
@@ -154,7 +155,7 @@
           <form method="post" action="?/createReminder" class="reminder-form">
             <div class="field compact">
               <label for="dueAt">Due</label>
-              <input id="dueAt" name="dueAt" type="datetime-local" required on:change={(e) => (e.currentTarget as HTMLInputElement).blur()} />
+              <input id="dueAt" name="dueAt" type="datetime-local" required on:change={closeDatePickerOnChange} />
             </div>
             <div class="field compact grow">
               <label for="note">Note</label>
@@ -336,7 +337,7 @@
 
             <div class="grid two">
               <div class="field"><label for="dealNextAction">Next action</label><input id="dealNextAction" name="nextAction" placeholder="e.g. send NDA, follow up Friday" /></div>
-              <div class="field"><label for="dealNextFollowUpAt">Next follow-up</label><input id="dealNextFollowUpAt" name="nextFollowUpAt" type="datetime-local" on:change={(e) => (e.currentTarget as HTMLInputElement).blur()} /></div>
+              <div class="field"><label for="dealNextFollowUpAt">Next follow-up</label><input id="dealNextFollowUpAt" name="nextFollowUpAt" type="datetime-local" on:change={closeDatePickerOnChange} /></div>
             </div>
 
             <div class="field"><label for="buyingCriteria">Buying criteria / fit</label><textarea id="buyingCriteria" name="buyingCriteria" rows="2"></textarea></div>

@@ -4,6 +4,7 @@
   // SECURITY: All display values were prepared server side.
 
   import VoiceTextField from '$lib/recording/VoiceTextField.svelte';
+  import { closeDatePickerOnChange } from '$lib/closeDatePicker';
 
   export let data: any;
   export let form: any;
@@ -127,11 +128,11 @@
         <div class="grid two">
           <div class="field">
             <label for="dueAt">Due</label>
-            <input id="dueAt" name="dueAt" type="datetime-local" on:change={(e) => (e.currentTarget as HTMLInputElement).blur()} />
+            <input id="dueAt" name="dueAt" type="datetime-local" on:change={closeDatePickerOnChange} />
           </div>
           <div class="field">
             <label for="snoozedUntil">Snooze until</label>
-            <input id="snoozedUntil" name="snoozedUntil" type="datetime-local" on:change={(e) => (e.currentTarget as HTMLInputElement).blur()} />
+            <input id="snoozedUntil" name="snoozedUntil" type="datetime-local" on:change={closeDatePickerOnChange} />
           </div>
         </div>
 

@@ -2,6 +2,8 @@
   // src/routes/contacts/[id]/edit/+page.svelte
   // PURPOSE: Edit a single contact. Prefills with decrypted values passed from the server.
   // SECURITY: No decryption in the browser - we only render strings provided by the server.
+  import { closeDatePickerOnChange } from '$lib/closeDatePicker';
+
   export let data;
   export let form;
 
@@ -110,7 +112,7 @@
 
       <div class="field">
         <label for="lastContactedAt">Last contacted</label>
-        <input id="lastContactedAt" name="lastContactedAt" type="datetime-local" value={data.contact.lastContactedAt || ''} on:change={(e) => (e.currentTarget as HTMLInputElement).blur()} />
+        <input id="lastContactedAt" name="lastContactedAt" type="datetime-local" value={data.contact.lastContactedAt || ''} on:change={closeDatePickerOnChange} />
       </div>
 
       <div style="display:flex; gap:8px; margin-top:12px;">

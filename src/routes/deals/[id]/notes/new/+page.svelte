@@ -7,6 +7,7 @@
   import { browser } from '$app/environment';
   import { goto, beforeNavigate } from '$app/navigation';
   import RecordingGuard from '$lib/recording/RecordingGuard.svelte';
+  import { closeDatePickerOnChange } from '$lib/closeDatePicker';
 
   export let form: any;
   export let data: {
@@ -251,7 +252,7 @@
 
         <div class="field">
           <label for="occurredAt">When - optional</label>
-          <input id="occurredAt" name="occurredAt" type="datetime-local" bind:value={occurredAt} disabled={recording} on:change={(e) => (e.currentTarget as HTMLInputElement).blur()} />
+          <input id="occurredAt" name="occurredAt" type="datetime-local" bind:value={occurredAt} disabled={recording} on:change={closeDatePickerOnChange} />
         </div>
       </div>
 

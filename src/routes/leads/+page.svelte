@@ -1,5 +1,7 @@
 <!-- src/routes/leads/+page.svelte -->
 <script lang="ts">
+  import { closeDatePickerOnChange } from '$lib/closeDatePicker';
+
   export let data: any;
   export let form: any;
 
@@ -56,7 +58,7 @@
           <div class="field"><label for="buyerStatusCreate">Buyer status</label><select id="buyerStatusCreate" name="buyerStatus">{#each data.buyerQualificationStatuses as opt}<option value={opt.value} selected={(form?.values?.buyerStatus || 'NOT_ASKED') === opt.value}>{opt.label}</option>{/each}</select></div>
           <div class="field"><label for="sellerStatusCreate">Seller status</label><select id="sellerStatusCreate" name="sellerStatus">{#each data.sellerQualificationStatuses as opt}<option value={opt.value} selected={(form?.values?.sellerStatus || 'NOT_ASKED') === opt.value}>{opt.label}</option>{/each}</select></div>
         </div>
-        <div class="field"><label for="lastContactedAtCreate">Last contacted</label><input id="lastContactedAtCreate" name="lastContactedAt" type="datetime-local" value={form?.values?.lastContactedAt || ''} on:change={(e) => (e.currentTarget as HTMLInputElement).blur()} /></div>
+        <div class="field"><label for="lastContactedAtCreate">Last contacted</label><input id="lastContactedAtCreate" name="lastContactedAt" type="datetime-local" value={form?.values?.lastContactedAt || ''} on:change={closeDatePickerOnChange} /></div>
         <div class="grid two"><div class="field"><label for="projectIdCreate">Project</label><select id="projectIdCreate" name="projectId"><option value="">Standalone lead</option>{#each data.projects as project}<option value={project.id} selected={(form?.values?.projectId || '') === project.id}>{project.title}</option>{/each}</select></div><div class="field"><label for="workstreamIdCreate">Workstream</label><select id="workstreamIdCreate" name="workstreamId"><option value="">No workstream</option>{#each data.workstreams as ws}<option value={ws.id} selected={(form?.values?.workstreamId || '') === ws.id}>{ws.projectTitle} - {ws.name}</option>{/each}</select></div></div>
         <div class="grid two">
           <div class="field"><label for="name">Person name</label><input id="name" name="name" value={form?.values?.name || ''} /></div>

@@ -3,6 +3,7 @@
   // PURPOSE: Render the create deal form.
   // SECURITY: Server validates and encrypts the stored deal fields.
   import VoiceTextField from '$lib/recording/VoiceTextField.svelte';
+  import { closeDatePickerOnChange } from '$lib/closeDatePicker';
 
   export let data: {
     statusOptions: Array<{ value: string; label: string }>;
@@ -112,7 +113,7 @@
         </div>
         <div class="field">
           <label for="expectedCloseDate">Expected close</label>
-          <input id="expectedCloseDate" name="expectedCloseDate" type="date" value={values.expectedCloseDate || ''} on:change={(e) => (e.currentTarget as HTMLInputElement).blur()} />
+          <input id="expectedCloseDate" name="expectedCloseDate" type="date" value={values.expectedCloseDate || ''} on:change={closeDatePickerOnChange} />
         </div>
       </div>
 

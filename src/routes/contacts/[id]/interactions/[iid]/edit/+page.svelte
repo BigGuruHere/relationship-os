@@ -1,5 +1,7 @@
 <!-- src/routes/contacts/[id]/interactions/[iid]/edit/+page.svelte -->
 <script lang="ts">
+    import { closeDatePickerOnChange } from '$lib/closeDatePicker';
+
     export let data;
     export let form;
   
@@ -33,7 +35,7 @@
   
           <div class="field">
             <label for="occurredAt">When</label>
-            <input id="occurredAt" name="occurredAt" type="datetime-local" bind:value={occurredAt} on:change={(e) => (e.currentTarget as HTMLInputElement).blur()} />
+            <input id="occurredAt" name="occurredAt" type="datetime-local" bind:value={occurredAt} on:change={closeDatePickerOnChange} />
           </div>
   
           <div class="field">

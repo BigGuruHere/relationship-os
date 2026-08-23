@@ -6,6 +6,7 @@
   import TasksPanel from '$lib/TasksPanel.svelte';
   // PURPOSE: Company command centre for employees, deal links, company relationships, and tasks.
   import VoiceTextField from '$lib/recording/VoiceTextField.svelte';
+  import { closeDatePickerOnChange } from '$lib/closeDatePicker';
 
   export let data: any;
   export let form: any;
@@ -129,7 +130,7 @@
       <form method="post" action="?/createCompanyNote" class="nested-form">
         <div class="grid two">
           <div class="field"><label for="companyNoteChannel">Channel</label><select id="companyNoteChannel" name="channel">{#each data.noteChannels as opt}<option value={opt.value}>{opt.label}</option>{/each}</select></div>
-          <div class="field"><label for="companyNoteOccurredAt">Note date</label><input id="companyNoteOccurredAt" name="occurredAt" type="datetime-local" on:change={(e) => (e.currentTarget as HTMLInputElement).blur()} /></div>
+          <div class="field"><label for="companyNoteOccurredAt">Note date</label><input id="companyNoteOccurredAt" name="occurredAt" type="datetime-local" on:change={closeDatePickerOnChange} /></div>
         </div>
         <VoiceTextField id="companyNote" textName="body" summaryName="summary" label="Add company note" placeholder="Record company-level research, calls, emails, source context, or next steps." rows={4} bind:value={companyNoteText} bind:summary={companyNoteSummary} contextLabel="company note" />
         <button class="btn primary" type="submit">Save note</button>
@@ -144,7 +145,7 @@
             <input type="hidden" name="noteId" value={note.id} />
             <div class="grid two">
               <div class="field"><label for={`companyNoteChannel-${note.id}`}>Channel</label><select id={`companyNoteChannel-${note.id}`} name="channel">{#each data.noteChannels as opt}<option value={opt.value} selected={note.channel === opt.value}>{opt.label}</option>{/each}</select></div>
-              <div class="field"><label for={`companyNoteOccurred-${note.id}`}>Note date</label><input id={`companyNoteOccurred-${note.id}`} name="occurredAt" type="datetime-local" value={note.occurredAtInput} on:change={(e) => (e.currentTarget as HTMLInputElement).blur()} /></div>
+              <div class="field"><label for={`companyNoteOccurred-${note.id}`}>Note date</label><input id={`companyNoteOccurred-${note.id}`} name="occurredAt" type="datetime-local" value={note.occurredAtInput} on:change={closeDatePickerOnChange} /></div>
             </div>
             <div class="field"><label for={`companyNoteBody-${note.id}`}>Note</label><textarea id={`companyNoteBody-${note.id}`} name="body" rows="4">{note.body}</textarea></div>
             <div class="field"><label for={`companyNoteSummary-${note.id}`}>Summary</label><textarea id={`companyNoteSummary-${note.id}`} name="summary" rows="2">{note.summary}</textarea></div>
@@ -225,7 +226,7 @@
         <div class="grid three">
           <div class="field"><label for="leadStatus">Status</label><select id="leadStatus" name="status">{#each data.leadStatuses as opt}<option value={opt.value} selected={opt.value === 'NEW'}>{opt.label}</option>{/each}</select></div>
           <div class="field"><label for="leadSourceChoice">Source</label><select id="leadSourceChoice" name="sourceChoice" bind:value={newCompanyLeadSourceChoice}>{#each data.leadSourceOptions as opt}<option value={opt.value}>{opt.label}</option>{/each}</select></div>
-          <div class="field"><label for="leadNextActionAt">Next action date</label><input id="leadNextActionAt" name="nextActionAt" type="datetime-local" on:change={(e) => (e.currentTarget as HTMLInputElement).blur()} /></div>
+          <div class="field"><label for="leadNextActionAt">Next action date</label><input id="leadNextActionAt" name="nextActionAt" type="datetime-local" on:change={closeDatePickerOnChange} /></div>
         </div>
         {#if newCompanyLeadSourceChoice === 'CUSTOM'}
           <div class="field"><label for="newLeadSource">Custom source</label><input id="newLeadSource" name="newLeadSource" placeholder="e.g. Sam spreadsheet, LinkedIn search" /></div>
@@ -289,7 +290,7 @@
         </div>
         <div class="grid three">
           <div class="field"><label for="confidentialityStage">Confidentiality</label><select id="confidentialityStage" name="confidentialityStage">{#each data.dealConfidentialityOptions as opt}<option value={opt.value}>{opt.label}</option>{/each}</select></div>
-          <div class="field"><label for="nextFollowUpAt">Next follow-up</label><input id="nextFollowUpAt" name="nextFollowUpAt" type="datetime-local" on:change={(e) => (e.currentTarget as HTMLInputElement).blur()} /></div>
+          <div class="field"><label for="nextFollowUpAt">Next follow-up</label><input id="nextFollowUpAt" name="nextFollowUpAt" type="datetime-local" on:change={closeDatePickerOnChange} /></div>
           <div class="field"><label for="label">Custom label</label><input id="label" name="label" placeholder="e.g. acquirer, funder" /></div>
         </div>
         <div class="field"><label for="nextAction">Next action</label><input id="nextAction" name="nextAction" placeholder="e.g. find contact, send blind teaser" /></div>

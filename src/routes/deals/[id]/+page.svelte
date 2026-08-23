@@ -6,6 +6,7 @@
   import AgentBriefingsPanel from '$lib/AgentBriefingsPanel.svelte';
   import NotesPanel from '$lib/NotesPanel.svelte';
   import TasksPanel from '$lib/TasksPanel.svelte';
+  import { closeDatePickerOnChange } from '$lib/closeDatePicker';
 
   export let data: any;
   export let form: any;
@@ -151,7 +152,7 @@
           </div>
           <div class="field">
             <label for="expectedCloseDate">Expected close</label>
-            <input id="expectedCloseDate" name="expectedCloseDate" type="date" value={data.deal.expectedCloseDateInput} on:change={(e) => (e.currentTarget as HTMLInputElement).blur()} />
+            <input id="expectedCloseDate" name="expectedCloseDate" type="date" value={data.deal.expectedCloseDateInput} on:change={closeDatePickerOnChange} />
           </div>
         </div>
         <div class="grid two">
@@ -216,7 +217,7 @@
           </div>
           <div class="grid two">
             <div class="field"><label for="nextAction">Next action</label><input id="nextAction" name="nextAction" placeholder="e.g. send NDA, follow up Friday" /></div>
-            <div class="field"><label for="nextFollowUpAt">Next follow-up</label><input id="nextFollowUpAt" name="nextFollowUpAt" type="datetime-local" on:change={(e) => (e.currentTarget as HTMLInputElement).blur()} /></div>
+            <div class="field"><label for="nextFollowUpAt">Next follow-up</label><input id="nextFollowUpAt" name="nextFollowUpAt" type="datetime-local" on:change={closeDatePickerOnChange} /></div>
           </div>
           <div class="field"><label for="buyingCriteria">Buying criteria / fit</label><textarea id="buyingCriteria" name="buyingCriteria" rows="2" placeholder="What would make this deal relevant to them?"></textarea></div>
           <div class="field"><label for="notes">Relationship notes</label><textarea id="notes" name="notes" rows="3" placeholder="Why this person matters to the deal"></textarea></div>
@@ -287,7 +288,7 @@
           </div>
           <div class="grid two">
             <div class="field"><label for="companyNextAction">Next action</label><input id="companyNextAction" name="nextAction" placeholder="e.g. find M&A contact, send blind teaser" /></div>
-            <div class="field"><label for="companyNextFollowUpAt">Next follow-up</label><input id="companyNextFollowUpAt" name="nextFollowUpAt" type="datetime-local" on:change={(e) => (e.currentTarget as HTMLInputElement).blur()} /></div>
+            <div class="field"><label for="companyNextFollowUpAt">Next follow-up</label><input id="companyNextFollowUpAt" name="nextFollowUpAt" type="datetime-local" on:change={closeDatePickerOnChange} /></div>
           </div>
           <div class="field"><label for="acquisitionRationale">Why this company fits</label><textarea id="acquisitionRationale" name="acquisitionRationale" rows="2"></textarea></div>
           <div class="field"><label for="companyNotes">Company deal notes</label><textarea id="companyNotes" name="notes" rows="3"></textarea></div>

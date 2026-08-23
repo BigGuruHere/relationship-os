@@ -3,6 +3,7 @@
   // PURPOSE: Reusable entity-local task list plus inline "add task" form.
   // SECURITY: Submit goes to the current page's server actions, which tenant-scope and encrypt values.
   import VoiceTextField from '$lib/recording/VoiceTextField.svelte';
+  import { closeDatePickerOnChange } from '$lib/closeDatePicker';
 
   export let tasks: any[] = [];
   export let heading = 'Tasks';
@@ -103,7 +104,7 @@
 
       <div class="grid two">
         <div class="field"><label for="tp-status">Status</label><select id="tp-status" name="status">{#each taskStatusOptions as opt}<option value={opt.value}>{opt.label}</option>{/each}</select></div>
-        <div class="field"><label for="tp-due">Due</label><input id="tp-due" name="dueAt" type="datetime-local" on:change={(e) => (e.currentTarget as HTMLInputElement).blur()} /></div>
+        <div class="field"><label for="tp-due">Due</label><input id="tp-due" name="dueAt" type="datetime-local" on:change={closeDatePickerOnChange} /></div>
       </div>
 
       <div class="field">
@@ -132,7 +133,7 @@
       <details class="link-more">
         <summary>{linkFieldsLabel}</summary>
         <div class="link-more-body">
-          <div class="field"><label for="tp-snooze">Snooze until</label><input id="tp-snooze" name="snoozedUntil" type="datetime-local" on:change={(e) => (e.currentTarget as HTMLInputElement).blur()} /></div>
+          <div class="field"><label for="tp-snooze">Snooze until</label><input id="tp-snooze" name="snoozedUntil" type="datetime-local" on:change={closeDatePickerOnChange} /></div>
 
           <div class="grid two">
             {#if !lockedContactId && !lockedMarketLeadId}

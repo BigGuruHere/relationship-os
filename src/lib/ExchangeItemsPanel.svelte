@@ -3,6 +3,7 @@
   // PURPOSE: Reusable entity-local Wants & Offers panel.
   // SECURITY: Submit goes to the current page server action, which tenant-scopes and encrypts values.
   import VoiceTextField from '$lib/recording/VoiceTextField.svelte';
+  import { closeDatePickerOnChange } from '$lib/closeDatePicker';
   import {
     EXCHANGE_CONFIDENCES,
     EXCHANGE_DIRECTIONS,
@@ -141,14 +142,14 @@
         </div>
         <div class="field">
           <label for="reviewAt">Review date</label>
-          <input id="reviewAt" name="reviewAt" type="date" on:change={(e) => (e.currentTarget as HTMLInputElement).blur()} />
+          <input id="reviewAt" name="reviewAt" type="date" on:change={closeDatePickerOnChange} />
         </div>
       </div>
 
       <div class="grid two">
         <div class="field">
           <label for="expiresAt">Expiry date</label>
-          <input id="expiresAt" name="expiresAt" type="date" on:change={(e) => (e.currentTarget as HTMLInputElement).blur()} />
+          <input id="expiresAt" name="expiresAt" type="date" on:change={closeDatePickerOnChange} />
         </div>
       </div>
 

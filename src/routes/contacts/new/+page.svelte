@@ -2,6 +2,7 @@
   // PURPOSE: Render the create contact form.
   // SECURITY: No decryption is done here - all data is plain inputs from the user.
   import { enhance } from '$app/forms'; // IT: use enhance so redirects are handled smoothly
+  import { closeDatePickerOnChange } from '$lib/closeDatePicker';
   export let data;
   export let form; // IT: SvelteKit enhances this with action results
 
@@ -137,7 +138,7 @@
 
       <div class="field">
         <label for="lastContactedAt">Last contacted</label>
-        <input id="lastContactedAt" name="lastContactedAt" type="datetime-local" value={form?.values?.lastContactedAt || ''} on:change={(e) => (e.currentTarget as HTMLInputElement).blur()} />
+        <input id="lastContactedAt" name="lastContactedAt" type="datetime-local" value={form?.values?.lastContactedAt || ''} on:change={closeDatePickerOnChange} />
       </div>
 
       <div style="display:flex; gap:8px; margin-top:12px; flex-wrap:wrap;">

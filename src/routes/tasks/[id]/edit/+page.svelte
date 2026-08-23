@@ -4,6 +4,7 @@
   // SECURITY: Server action validates ownership of every linked record before saving.
 
   import VoiceTextField from '$lib/recording/VoiceTextField.svelte';
+  import { closeDatePickerOnChange } from '$lib/closeDatePicker';
 
   export let data: any;
   export let form: any;
@@ -57,8 +58,8 @@
       </div>
 
       <div class="grid two">
-        <div class="field"><label for="dueAt">Due</label><input id="dueAt" name="dueAt" type="datetime-local" value={data.task.dueAtInput} on:change={(e) => (e.currentTarget as HTMLInputElement).blur()} /></div>
-        <div class="field"><label for="snoozedUntil">Snooze until</label><input id="snoozedUntil" name="snoozedUntil" type="datetime-local" value={data.task.snoozedUntilInput} on:change={(e) => (e.currentTarget as HTMLInputElement).blur()} /></div>
+        <div class="field"><label for="dueAt">Due</label><input id="dueAt" name="dueAt" type="datetime-local" value={data.task.dueAtInput} on:change={closeDatePickerOnChange} /></div>
+        <div class="field"><label for="snoozedUntil">Snooze until</label><input id="snoozedUntil" name="snoozedUntil" type="datetime-local" value={data.task.snoozedUntilInput} on:change={closeDatePickerOnChange} /></div>
       </div>
 
       <div class="grid two">

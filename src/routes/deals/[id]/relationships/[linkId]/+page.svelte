@@ -3,6 +3,7 @@
   // PURPOSE: Manage the deal-person commercial conversation thread.
   import NotesPanel from '$lib/NotesPanel.svelte';
   import TasksPanel from '$lib/TasksPanel.svelte';
+  import { closeDatePickerOnChange } from '$lib/closeDatePicker';
 
   export let data: any;
   export let form: any;
@@ -57,12 +58,12 @@
         <div class="grid three">
           <div class="field"><label for="interestLevel">Interest</label><select id="interestLevel" name="interestLevel">{#each data.dealContactInterestOptions as opt}<option value={opt.value} selected={data.thread.interestLevel === opt.value}>{opt.label}</option>{/each}</select></div>
           <div class="field"><label for="confidentialityStage">Confidentiality</label><select id="confidentialityStage" name="confidentialityStage">{#each data.dealConfidentialityOptions as opt}<option value={opt.value} selected={data.thread.confidentialityStage === opt.value}>{opt.label}</option>{/each}</select></div>
-          <div class="field"><label for="lastContactedAt">Last contacted</label><input id="lastContactedAt" name="lastContactedAt" type="datetime-local" value={data.thread.lastContactedAtInput} on:change={(e) => (e.currentTarget as HTMLInputElement).blur()} /></div>
+          <div class="field"><label for="lastContactedAt">Last contacted</label><input id="lastContactedAt" name="lastContactedAt" type="datetime-local" value={data.thread.lastContactedAtInput} on:change={closeDatePickerOnChange} /></div>
         </div>
 
         <div class="grid two">
           <div class="field"><label for="nextAction">Next action</label><input id="nextAction" name="nextAction" value={data.thread.nextAction} /></div>
-          <div class="field"><label for="nextFollowUpAt">Next follow-up</label><input id="nextFollowUpAt" name="nextFollowUpAt" type="datetime-local" value={data.thread.nextFollowUpAtInput} on:change={(e) => (e.currentTarget as HTMLInputElement).blur()} /></div>
+          <div class="field"><label for="nextFollowUpAt">Next follow-up</label><input id="nextFollowUpAt" name="nextFollowUpAt" type="datetime-local" value={data.thread.nextFollowUpAtInput} on:change={closeDatePickerOnChange} /></div>
         </div>
 
         <div class="grid two">

@@ -8,6 +8,7 @@ import { prisma } from '$lib/db';
 import { encrypt } from '$lib/crypto';
 import { contactDisplayName, contactOptionsForRows } from '$lib/server/contactDisplay';
 import { createExchangeItemFromForm, deleteExchangeItem, loadExchangeItems } from '$lib/server/exchange';
+import { createWantFromForm, deleteWant, loadWants } from '$lib/server/wants';
 import { loadAgentArtifacts } from '$lib/server/agents/artifacts';
 import { runOpportunityScoringAgent } from '$lib/server/agents/agents/opportunityScoringAgent';
 import { createTaskFromForm } from '$lib/server/tasks';
@@ -395,6 +396,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
   const linkedProjectIds = new Set(linkedProjects.map((project: any) => project.projectId));
 
   const exchangeItems = await loadExchangeItems({ userId: locals.user.id, links: { dealId: row.id } });
+  const wants = await loadWants({ userId: locals.user.id, links: { dealId: row.id } });
   const agentArtifacts = await loadAgentArtifacts({ userId: locals.user.id, entityType: 'deal', entityId: row.id });
 
   const weighted = weightedValueCents(row.valueCents, row.probability);
@@ -456,6 +458,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
     notes,
     threadNotes,
     tasks,
+    wants,
     exchangeItems,
     agentArtifacts,
     linkedProjects,
@@ -764,6 +767,27 @@ export const actions: Actions = {
     throw redirect(303, `/deals/${params.id}`);
   },
 
+
+  createWant: async ({ request, params, locals }) => {
+    if (!locals.user) throw redirect(303, '/auth/login');
+    const userId = locals.user.id;
+    try {
+      await createWantFromForm({ userId, form: await request.formData(), links: { dealId: params.id } });
+    } catch (err: any) {
+      console.error('[wants:createWant] failed', err);
+      return fail(400, { error: err?.message || 'Failed to save want.' });
+    }
+    throw redirect(303, `/deals/${params.id}`);
+  },
+
+  deleteWant: async ({ request, params, locals }) => {
+    if (!locals.user) throw redirect(303, '/auth/login');
+    const form = await request.formData();
+    const wantId = String(form.get('wantId') || '').trim();
+    if (!wantId) return fail(400, { error: 'Missing want id.' });
+    await deleteWant({ userId: locals.user.id, id: wantId, links: { dealId: params.id } });
+    throw redirect(303, `/deals/${params.id}`);
+  },
 
   createExchangeItem: async ({ request, params, locals }) => {
     if (!locals.user) throw redirect(303, '/auth/login');

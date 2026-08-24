@@ -9,6 +9,8 @@ import { companyDisplay, companyContactStatusLabel } from '$lib/companies';
 import { safeDecrypt } from '$lib/deals';
 import { contactDisplayName } from '$lib/server/contactDisplay';
 import { marketLeadStatusLabel } from '$lib/marketLeads';
+import { wantStatusLabel } from '$lib/wants';
+import { offerStatusLabel } from '$lib/offers';
 import {
   TASK_FOCUS_OPTIONS,
   TASK_STATUSES,
@@ -50,6 +52,8 @@ async function loadTask(userId: string, taskId: string) {
       project: { select: { id: true, titleEnc: true, status: true } },
       workstream: { select: { id: true, nameEnc: true, projectId: true, status: true } },
       marketLead: { select: { id: true, titleEnc: true, type: true, status: true, projectId: true } },
+      want: { select: { id: true, titleEnc: true, status: true, projectId: true } },
+      offer: { select: { id: true, titleEnc: true, status: true, projectId: true } },
       company: { select: { id: true, nameEnc: true, kind: true, status: true } },
       companyContact: {
         select: {
@@ -106,6 +110,8 @@ async function mapTask(row: Awaited<ReturnType<typeof loadTask>>) {
   const projectTitle = row.project ? safeDecryptTask(row.project.titleEnc, 'project.title', 'Untitled project') : '';
   const workstreamName = row.workstream ? safeDecryptTask(row.workstream.nameEnc, 'project_workstream.name', 'Untitled workstream') : '';
   const marketLeadTitle = row.marketLead ? safeDecryptTask(row.marketLead.titleEnc, 'market_lead.title', 'Untitled lead') : '';
+  const wantTitle = row.want ? safeDecrypt(row.want.titleEnc, 'want.title', 'Untitled want') : '';
+  const offerTitle = row.offer ? safeDecrypt(row.offer.titleEnc, 'offer.title', 'Untitled offer') : '';
   const companyName = row.company ? companyDisplay(row.company) : '';
   const companyContactTitle = row.companyContact ? safeDecrypt(row.companyContact.titleEnc, 'company_contact.title', '') : '';
   const companyContactCompanyName = row.companyContact?.company ? companyDisplay(row.companyContact.company) : '';
@@ -142,6 +148,8 @@ async function mapTask(row: Awaited<ReturnType<typeof loadTask>>) {
     project: row.project ? { id: row.project.id, title: projectTitle, statusLabel: projectStatusLabel(row.project.status) } : null,
     workstream: row.workstream ? { id: row.workstream.id, name: workstreamName, projectId: row.workstream.projectId } : null,
     marketLead: row.marketLead ? { id: row.marketLead.id, title: marketLeadTitle, statusLabel: marketLeadStatusLabel(row.marketLead.status) } : null,
+    want: row.want ? { id: row.want.id, title: wantTitle, statusLabel: wantStatusLabel(row.want.status) } : null,
+    offer: row.offer ? { id: row.offer.id, title: offerTitle, statusLabel: offerStatusLabel(row.offer.status) } : null,
     company: row.company ? { id: row.company.id, name: companyName } : null,
     companyContact: row.companyContact ? {
       id: row.companyContact.id,

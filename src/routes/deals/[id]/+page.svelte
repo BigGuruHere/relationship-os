@@ -3,6 +3,7 @@
   // PURPOSE: Show one deal, its people, commercial conversation threads, notes, and tasks.
   // SECURITY: This page renders server-prepared decrypted display values only.
   import ExchangeItemsPanel from '$lib/ExchangeItemsPanel.svelte';
+  import WantsPanel from '$lib/WantsPanel.svelte';
   import AgentBriefingsPanel from '$lib/AgentBriefingsPanel.svelte';
   import NotesPanel from '$lib/NotesPanel.svelte';
   import TasksPanel from '$lib/TasksPanel.svelte';
@@ -77,7 +78,9 @@
     <div class="card error-card">{form.error}</div>
   {/if}
 
-  <ExchangeItemsPanel items={data.exchangeItems ?? []} entityLabel={data.deal.title} />
+  <WantsPanel items={data.wants ?? []} entityLabel={data.deal.title} />
+
+    <ExchangeItemsPanel items={data.exchangeItems ?? []} entityLabel={data.deal.title} />
 
   <AgentBriefingsPanel entityType="deal" entityId={data.deal.id} entityLabel={data.deal.title} artifacts={data.agentArtifacts ?? []} />
 

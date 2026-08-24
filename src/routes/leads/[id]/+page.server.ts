@@ -293,6 +293,8 @@ export const load: PageServerLoad = async ({ params, locals }) => {
       linkedDealTitle: row.deal ? safeDecrypt(row.deal.titleEnc, 'deal.title', '') : '',
       linkedProjectTitle: row.project ? safeDecryptTask(row.project.titleEnc, 'project.title', '') : '',
       linkedWorkstreamTitle: row.workstream ? safeDecryptTask(row.workstream.nameEnc, 'project_workstream.name', '') : '',
+      linkedWantTitle: row.want ? safeDecrypt(row.want.titleEnc, 'want.title', '') : '',
+      linkedOfferTitle: row.offer ? safeDecrypt(row.offer.titleEnc, 'offer.title', '') : '',
       linkedExchangeTitle: row.exchangeItem ? safeDecrypt(row.exchangeItem.titleEnc, 'exchange.title', '') : ''
     },
     leadNotes: leadNotesRaw.map(mapLeadNote),
@@ -506,8 +508,8 @@ export const actions: Actions = {
   convertToWant: async ({ params, locals }) => {
     if (!locals.user) throw redirect(303, '/auth/login');
     try {
-      const exchangeId = await convertLeadToExchangeItem(locals.user.id, params.id, 'WANT');
-      throw redirect(303, `/leads/${params.id}?converted=want&exchangeItemId=${exchangeId}`);
+      const wantId = await convertLeadToExchangeItem(locals.user.id, params.id, 'WANT');
+      throw redirect(303, `/wants/${wantId}`);
     } catch (err: any) {
       if (err?.status) throw err;
       return fail(400, { error: err?.message || 'Could not convert lead to want.' });
@@ -517,8 +519,8 @@ export const actions: Actions = {
   convertToOffer: async ({ params, locals }) => {
     if (!locals.user) throw redirect(303, '/auth/login');
     try {
-      const exchangeId = await convertLeadToExchangeItem(locals.user.id, params.id, 'OFFER');
-      throw redirect(303, `/leads/${params.id}?converted=offer&exchangeItemId=${exchangeId}`);
+      const offerId = await convertLeadToExchangeItem(locals.user.id, params.id, 'OFFER');
+      throw redirect(303, `/offers/${offerId}`);
     } catch (err: any) {
       if (err?.status) throw err;
       return fail(400, { error: err?.message || 'Could not convert lead to offer.' });

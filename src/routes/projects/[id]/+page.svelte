@@ -5,6 +5,7 @@
 
   import VoiceTextField from '$lib/recording/VoiceTextField.svelte';
   import ExchangeItemsPanel from '$lib/ExchangeItemsPanel.svelte';
+  import WantsPanel from '$lib/WantsPanel.svelte';
   import AgentBriefingsPanel from '$lib/AgentBriefingsPanel.svelte';
   import NotesPanel from '$lib/NotesPanel.svelte';
   import TasksPanel from '$lib/TasksPanel.svelte';
@@ -66,7 +67,9 @@
 
   {#if form?.error}<div class="card error-card">{form.error}</div>{/if}
 
-  <ExchangeItemsPanel items={data.exchangeItems ?? []} entityLabel={data.project.title} />
+  <WantsPanel items={data.wants ?? []} entityLabel={data.project.title} />
+
+    <ExchangeItemsPanel items={data.exchangeItems ?? []} entityLabel={data.project.title} />
 
   <AgentBriefingsPanel entityType="project" entityId={data.project.id} entityLabel={data.project.title} artifacts={data.agentArtifacts ?? []} />
 

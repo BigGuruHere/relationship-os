@@ -3,6 +3,7 @@
   // PURPOSE: Show a contact with tags, relationships, deals, reminders, and notes.
   // SECURITY: Data has already been decrypted server side where needed.
   import ExchangeItemsPanel from '$lib/ExchangeItemsPanel.svelte';
+  import WantsPanel from '$lib/WantsPanel.svelte';
   import AgentBriefingsPanel from '$lib/AgentBriefingsPanel.svelte';
   import TasksPanel from '$lib/TasksPanel.svelte';
   import { closeDatePickerOnChange } from '$lib/closeDatePicker';
@@ -180,6 +181,8 @@
         </div>
       {/if}
     </div>
+
+    <WantsPanel items={data.wants ?? []} entityLabel={contact.name} />
 
     <ExchangeItemsPanel items={data.exchangeItems ?? []} entityLabel={contact.name} />
 

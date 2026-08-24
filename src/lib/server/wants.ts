@@ -1,0 +1,475 @@
+// src/lib/server/wants.ts
+// PURPOSE: Server-only helpers for first-class Want records.
+// SECURITY: All reads/writes are tenant scoped by userId. Want text is encrypted at rest.
+
+import { prisma } from '$lib/db';
+import { decrypt, encrypt } from '$lib/crypto';
+import { createEmbeddingForText } from '$lib/embeddings_api';
+import { parseMoneyToCents, formatDealValue, safeDecrypt } from '$lib/deals';
+import { companyDisplay } from '$lib/companies';
+import {
+  importanceLabel,
+  normaliseWantConfidence,
+  normaliseWantStatus,
+  normaliseWantTimeHorizon,
+  normaliseWantType,
+  normaliseWantUrgency,
+  wantConfidenceLabel,
+  wantStatusLabel,
+  wantTimeHorizonLabel,
+  wantTypeLabel,
+  wantUrgencyLabel
+} from '$lib/wants';
+
+export type WantEntityLink = {
+  contactId?: string | null;
+  companyId?: string | null;
+  dealId?: string | null;
+  projectId?: string | null;
+  workstreamId?: string | null;
+  companyContactId?: string | null;
+};
+
+function safeDecryptWant(payload: string | null | undefined, aad: string, fallback = '', legacyAad?: string | string[]) {
+  if (!payload) return fallback;
+  const aads = [aad, ...(Array.isArray(legacyAad) ? legacyAad : legacyAad ? [legacyAad] : [])];
+  for (const key of aads) {
+    try {
+      return decrypt(payload, key);
+    } catch {
+      // try next AAD
+    }
+  }
+  return fallback;
+}
+
+function parseImportance(value: FormDataEntryValue | null) {
+  const n = Number.parseInt(String(value || '3'), 10);
+  if (!Number.isFinite(n)) return 3;
+  return Math.min(5, Math.max(1, n));
+}
+
+function parseDate(value: FormDataEntryValue | null): Date | null {
+  const raw = String(value || '').trim();
+  if (!raw) return null;
+  const date = new Date(raw);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function toPgVectorLiteral(vec: number[]): string {
+  return `[${vec.join(',')}]`;
+}
+
+function embeddingText(input: {
+  wantType: string;
+  status: string;
+  title: string;
+  description: string;
+  criteria: string;
+  summary: string;
+  category: string;
+  importance: number;
+  urgency: string;
+  timeHorizon: string;
+  confidence: string;
+  geography: string;
+  valueMin: string;
+  valueMax: string;
+  currency: string;
+}) {
+  return [
+    `Want type: ${input.wantType}`,
+    `Status: ${input.status}`,
+    `Title: ${input.title}`,
+    input.description ? `Description: ${input.description}` : '',
+    input.criteria ? `Criteria: ${input.criteria}` : '',
+    input.summary ? `Summary: ${input.summary}` : '',
+    input.category ? `Category: ${input.category}` : '',
+    `Importance: ${input.importance}`,
+    `Urgency: ${input.urgency}`,
+    `Time horizon: ${input.timeHorizon}`,
+    `Confidence: ${input.confidence}`,
+    input.geography ? `Geography: ${input.geography}` : '',
+    input.valueMin || input.valueMax ? `Value range: ${input.valueMin || 'unspecified'} to ${input.valueMax || 'unspecified'} ${input.currency}` : ''
+  ].filter(Boolean).join('\n');
+}
+
+export async function storeWantEmbedding(userId: string, wantId: string, text: string) {
+  const input = text.trim();
+  if (!input) return;
+  try {
+    const vec = await createEmbeddingForText(input);
+    if (!Array.isArray(vec) || vec.length === 0) return;
+    await prisma.$executeRawUnsafe(
+      'UPDATE "Want" SET "embedding_vec" = $1::vector WHERE "id" = $2 AND "userId" = $3',
+      toPgVectorLiteral(vec),
+      wantId,
+      userId
+    );
+  } catch (err: any) {
+    console.warn('[wants] failed to store embedding', { wantId, message: err?.message });
+  }
+}
+
+export async function createWantFromForm(params: { userId: string; form: FormData; links?: WantEntityLink }) {
+  const { userId, form, links = {} } = params;
+  const title = String(form.get('wantTitle') || form.get('title') || '').trim();
+  if (!title) throw new Error('Want title is required.');
+
+  const description = String(form.get('wantDescription') || form.get('description') || '').trim();
+  const criteria = String(form.get('criteria') || '').trim();
+  const summary = String(form.get('wantSummary') || form.get('summary') || '').trim();
+  const category = String(form.get('category') || '').trim();
+  const geography = String(form.get('geography') || '').trim();
+  const currency = String(form.get('currency') || 'AUD').trim().toUpperCase() || 'AUD';
+  const valueMinRaw = String(form.get('valueMin') || '').trim();
+  const valueMaxRaw = String(form.get('valueMax') || '').trim();
+
+  const wantType = normaliseWantType(form.get('wantType'));
+  const status = normaliseWantStatus(form.get('status'));
+  const urgency = normaliseWantUrgency(form.get('urgency'));
+  const timeHorizon = normaliseWantTimeHorizon(form.get('timeHorizon'));
+  const confidence = normaliseWantConfidence(form.get('confidence'));
+  const importance = parseImportance(form.get('importance'));
+
+  let workstreamId = links.workstreamId || String(form.get('workstreamId') || '').trim() || null;
+  let projectId = links.projectId || String(form.get('projectId') || '').trim() || null;
+  if (workstreamId) {
+    const ws = await prisma.projectWorkstream.findFirst({ where: { id: workstreamId, userId }, select: { id: true, projectId: true } });
+    if (!ws) throw new Error('Workstream not found.');
+    projectId = projectId || ws.projectId;
+    if (projectId !== ws.projectId) throw new Error('Selected workstream belongs to a different project.');
+  }
+
+  const row = await prisma.want.create({
+    data: {
+      userId,
+      wantType: wantType as any,
+      status: status as any,
+      titleEnc: encrypt(title, 'want.title'),
+      descriptionEnc: description ? encrypt(description, 'want.description') : null,
+      criteriaEnc: criteria ? encrypt(criteria, 'want.criteria') : null,
+      summaryEnc: summary ? encrypt(summary, 'want.summary') : null,
+      categoryEnc: category ? encrypt(category, 'want.category') : null,
+      geographyEnc: geography ? encrypt(geography, 'want.geography') : null,
+      importance,
+      urgency: urgency as any,
+      timeHorizon: timeHorizon as any,
+      confidence: confidence as any,
+      valueMinCents: parseMoneyToCents(valueMinRaw),
+      valueMaxCents: parseMoneyToCents(valueMaxRaw),
+      currency,
+      reviewAt: parseDate(form.get('reviewAt')),
+      expiresAt: parseDate(form.get('expiresAt')),
+      contactId: links.contactId || String(form.get('contactId') || '').trim() || null,
+      companyId: links.companyId || String(form.get('companyId') || '').trim() || null,
+      dealId: links.dealId || String(form.get('dealId') || '').trim() || null,
+      projectId,
+      workstreamId,
+      companyContactId: links.companyContactId || String(form.get('companyContactId') || '').trim() || null
+    },
+    select: { id: true }
+  });
+
+  await storeWantEmbedding(userId, row.id, embeddingText({
+    wantType,
+    status,
+    title,
+    description,
+    criteria,
+    summary,
+    category,
+    importance,
+    urgency,
+    timeHorizon,
+    confidence,
+    geography,
+    valueMin: valueMinRaw,
+    valueMax: valueMaxRaw,
+    currency
+  }));
+
+  return row;
+}
+
+export async function updateWantFromForm(params: { userId: string; wantId: string; form: FormData }) {
+  const { userId, wantId, form } = params;
+  const existing = await prisma.want.findFirst({ where: { id: wantId, userId }, select: { id: true } });
+  if (!existing) throw new Error('Want not found.');
+  const title = String(form.get('wantTitle') || form.get('title') || '').trim();
+  if (!title) throw new Error('Want title is required.');
+  const description = String(form.get('wantDescription') || form.get('description') || '').trim();
+  const criteria = String(form.get('criteria') || '').trim();
+  const summary = String(form.get('wantSummary') || form.get('summary') || '').trim();
+  const category = String(form.get('category') || '').trim();
+  const geography = String(form.get('geography') || '').trim();
+  const currency = String(form.get('currency') || 'AUD').trim().toUpperCase() || 'AUD';
+  const valueMinRaw = String(form.get('valueMin') || '').trim();
+  const valueMaxRaw = String(form.get('valueMax') || '').trim();
+  const wantType = normaliseWantType(form.get('wantType'));
+  const status = normaliseWantStatus(form.get('status'));
+  const urgency = normaliseWantUrgency(form.get('urgency'));
+  const timeHorizon = normaliseWantTimeHorizon(form.get('timeHorizon'));
+  const confidence = normaliseWantConfidence(form.get('confidence'));
+  const importance = parseImportance(form.get('importance'));
+
+  let workstreamId = String(form.get('workstreamId') || '').trim() || null;
+  let projectId = String(form.get('projectId') || '').trim() || null;
+  if (workstreamId) {
+    const ws = await prisma.projectWorkstream.findFirst({ where: { id: workstreamId, userId }, select: { id: true, projectId: true } });
+    if (!ws) throw new Error('Workstream not found.');
+    projectId = projectId || ws.projectId;
+    if (projectId !== ws.projectId) throw new Error('Selected workstream belongs to a different project.');
+  }
+
+  await prisma.want.updateMany({
+    where: { id: wantId, userId },
+    data: {
+      wantType: wantType as any,
+      status: status as any,
+      titleEnc: encrypt(title, 'want.title'),
+      descriptionEnc: description ? encrypt(description, 'want.description') : null,
+      criteriaEnc: criteria ? encrypt(criteria, 'want.criteria') : null,
+      summaryEnc: summary ? encrypt(summary, 'want.summary') : null,
+      categoryEnc: category ? encrypt(category, 'want.category') : null,
+      geographyEnc: geography ? encrypt(geography, 'want.geography') : null,
+      importance,
+      urgency: urgency as any,
+      timeHorizon: timeHorizon as any,
+      confidence: confidence as any,
+      valueMinCents: parseMoneyToCents(valueMinRaw),
+      valueMaxCents: parseMoneyToCents(valueMaxRaw),
+      currency,
+      reviewAt: parseDate(form.get('reviewAt')),
+      expiresAt: parseDate(form.get('expiresAt')),
+      contactId: String(form.get('contactId') || '').trim() || null,
+      companyId: String(form.get('companyId') || '').trim() || null,
+      dealId: String(form.get('dealId') || '').trim() || null,
+      projectId,
+      workstreamId,
+      companyContactId: String(form.get('companyContactId') || '').trim() || null
+    }
+  });
+
+  await storeWantEmbedding(userId, wantId, embeddingText({
+    wantType,
+    status,
+    title,
+    description,
+    criteria,
+    summary,
+    category,
+    importance,
+    urgency,
+    timeHorizon,
+    confidence,
+    geography,
+    valueMin: valueMinRaw,
+    valueMax: valueMaxRaw,
+    currency
+  }));
+}
+
+export async function loadWants(params: { userId: string; links?: WantEntityLink; take?: number; includeArchived?: boolean }) {
+  const where: any = { userId: params.userId };
+  const links = params.links || {};
+  if (links.contactId) where.contactId = links.contactId;
+  if (links.companyId) where.companyId = links.companyId;
+  if (links.dealId) where.dealId = links.dealId;
+  if (links.projectId) where.projectId = links.projectId;
+  if (links.workstreamId) where.workstreamId = links.workstreamId;
+  if (links.companyContactId) where.companyContactId = links.companyContactId;
+  if (!params.includeArchived) where.status = { not: 'ARCHIVED' as any };
+
+  const rows = await prisma.want.findMany({
+    where,
+    select: wantSelect,
+    orderBy: [{ status: 'asc' }, { importance: 'desc' }, { updatedAt: 'desc' }],
+    take: params.take ?? 50
+  });
+  return rows.map(mapWant);
+}
+
+export const wantSelect = {
+  id: true,
+  wantType: true,
+  status: true,
+  titleEnc: true,
+  descriptionEnc: true,
+  summaryEnc: true,
+  criteriaEnc: true,
+  categoryEnc: true,
+  geographyEnc: true,
+  importance: true,
+  urgency: true,
+  timeHorizon: true,
+  confidence: true,
+  valueMinCents: true,
+  valueMaxCents: true,
+  currency: true,
+  reviewAt: true,
+  expiresAt: true,
+  contactId: true,
+  companyId: true,
+  dealId: true,
+  projectId: true,
+  workstreamId: true,
+  companyContactId: true,
+  convertedDealId: true,
+  exchangeItemId: true,
+  createdAt: true,
+  updatedAt: true,
+  contact: { select: { id: true, fullNameEnc: true, linkedUserId: true } },
+  company: { select: { id: true, nameEnc: true, kind: true, status: true } },
+  deal: { select: { id: true, titleEnc: true, status: true } },
+  project: { select: { id: true, titleEnc: true, status: true } },
+  workstream: { select: { id: true, nameEnc: true, projectId: true, status: true } },
+  companyContact: {
+    select: {
+      id: true,
+      titleEnc: true,
+      company: { select: { id: true, nameEnc: true } },
+      contact: { select: { id: true, fullNameEnc: true, linkedUserId: true } }
+    }
+  }
+} as const;
+
+export function mapWant(row: any) {
+  const title = safeDecryptWant(row.titleEnc, 'want.title', 'Untitled want', ['exchange.title', 'company.name']);
+  const description = safeDecryptWant(row.descriptionEnc, 'want.description', '', 'exchange.description');
+  const criteria = safeDecryptWant(row.criteriaEnc, 'want.criteria', '', 'company.criteria');
+  const summary = safeDecryptWant(row.summaryEnc, 'want.summary', '', 'exchange.summary');
+  const category = safeDecryptWant(row.categoryEnc, 'want.category', '', 'exchange.category');
+  const geography = safeDecryptWant(row.geographyEnc, 'want.geography', '', 'exchange.geography');
+  return {
+    id: row.id,
+    wantType: row.wantType,
+    wantTypeLabel: wantTypeLabel(row.wantType),
+    status: row.status,
+    statusLabel: wantStatusLabel(row.status),
+    title,
+    description,
+    criteria,
+    summary,
+    category,
+    geography,
+    importance: row.importance,
+    importanceLabel: importanceLabel(row.importance),
+    urgency: row.urgency,
+    urgencyLabel: wantUrgencyLabel(row.urgency),
+    timeHorizon: row.timeHorizon,
+    timeHorizonLabel: wantTimeHorizonLabel(row.timeHorizon),
+    confidence: row.confidence,
+    confidenceLabel: wantConfidenceLabel(row.confidence),
+    valueMinCents: row.valueMinCents,
+    valueMaxCents: row.valueMaxCents,
+    valueMinLabel: typeof row.valueMinCents === 'number' ? formatDealValue(row.valueMinCents, row.currency) : '',
+    valueMaxLabel: typeof row.valueMaxCents === 'number' ? formatDealValue(row.valueMaxCents, row.currency) : '',
+    currency: row.currency || 'AUD',
+    reviewAt: row.reviewAt,
+    expiresAt: row.expiresAt,
+    contactId: row.contactId,
+    companyId: row.companyId,
+    dealId: row.dealId,
+    projectId: row.projectId,
+    workstreamId: row.workstreamId,
+    companyContactId: row.companyContactId,
+    convertedDealId: row.convertedDealId,
+    exchangeItemId: row.exchangeItemId,
+    contact: row.contact ? { id: row.contact.id, name: safeDecryptWant(row.contact.fullNameEnc, 'contact.full_name', 'Relish user') } : null,
+    company: row.company ? { id: row.company.id, name: companyDisplay(row.company), kind: row.company.kind, status: row.company.status } : null,
+    deal: row.deal ? { id: row.deal.id, title: safeDecrypt(row.deal.titleEnc, 'deal.title', 'Untitled deal'), status: row.deal.status } : null,
+    project: row.project ? { id: row.project.id, title: safeDecrypt(row.project.titleEnc, 'project.title', 'Untitled project'), status: row.project.status } : null,
+    workstream: row.workstream ? { id: row.workstream.id, name: safeDecrypt(row.workstream.nameEnc, 'project_workstream.name', 'Untitled workstream'), projectId: row.workstream.projectId, status: row.workstream.status } : null,
+    companyContact: row.companyContact ? {
+      id: row.companyContact.id,
+      title: safeDecryptWant(row.companyContact.titleEnc, 'company_contact.title', ''),
+      company: row.companyContact.company ? { id: row.companyContact.company.id, name: safeDecrypt(row.companyContact.company.nameEnc, 'company.name', 'Untitled company') } : null,
+      contact: row.companyContact.contact ? { id: row.companyContact.contact.id, name: safeDecryptWant(row.companyContact.contact.fullNameEnc, 'contact.full_name', 'Relish user') } : null
+    } : null,
+    descriptionPreview: description ? description.slice(0, 240) : '',
+    criteriaPreview: criteria ? criteria.slice(0, 240) : '',
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt
+  };
+}
+
+export async function loadWant(userId: string, wantId: string) {
+  const row = await prisma.want.findFirst({ where: { id: wantId, userId }, select: wantSelect });
+  return row ? mapWant(row) : null;
+}
+
+export async function deleteWant(params: { userId: string; id: string; links?: WantEntityLink }) {
+  const where: any = { id: params.id, userId: params.userId };
+  const links = params.links || {};
+  if (links.contactId) where.contactId = links.contactId;
+  if (links.companyId) where.companyId = links.companyId;
+  if (links.dealId) where.dealId = links.dealId;
+  if (links.projectId) where.projectId = links.projectId;
+  if (links.workstreamId) where.workstreamId = links.workstreamId;
+  if (links.companyContactId) where.companyContactId = links.companyContactId;
+  return prisma.want.deleteMany({ where });
+}
+
+export async function createWantNote(userId: string, wantId: string, form: FormData) {
+  const want = await prisma.want.findFirst({ where: { id: wantId, userId }, select: { id: true } });
+  if (!want) throw new Error('Want not found.');
+  const body = String(form.get('body') || form.get('note') || '').trim();
+  if (!body) throw new Error('Note body is required.');
+  const summary = String(form.get('summary') || '').trim();
+  const channel = String(form.get('channel') || 'note').trim() || 'note';
+  await prisma.wantNote.create({
+    data: {
+      userId,
+      wantId,
+      occurredAt: parseDate(form.get('occurredAt')) || new Date(),
+      channel,
+      bodyEnc: encrypt(body, 'want_note.body'),
+      summaryEnc: summary ? encrypt(summary, 'want_note.summary') : null
+    }
+  });
+}
+
+export async function updateWantNote(userId: string, noteId: string, form: FormData) {
+  const note = await prisma.wantNote.findFirst({ where: { id: noteId, userId }, select: { id: true, wantId: true } });
+  if (!note) throw new Error('Want note not found.');
+  const body = String(form.get('body') || form.get('note') || '').trim();
+  if (!body) throw new Error('Note body is required.');
+  const summary = String(form.get('summary') || '').trim();
+  const channel = String(form.get('channel') || 'note').trim() || 'note';
+  await prisma.wantNote.updateMany({
+    where: { id: noteId, userId },
+    data: {
+      occurredAt: parseDate(form.get('occurredAt')) || new Date(),
+      channel,
+      bodyEnc: encrypt(body, 'want_note.body'),
+      summaryEnc: summary ? encrypt(summary, 'want_note.summary') : null
+    }
+  });
+  return note.wantId;
+}
+
+export async function loadWantNotes(userId: string, wantId: string) {
+  const rows = await prisma.wantNote.findMany({
+    where: { userId, wantId },
+    select: { id: true, occurredAt: true, channel: true, bodyEnc: true, summaryEnc: true, createdAt: true, updatedAt: true },
+    orderBy: [{ occurredAt: 'desc' }, { createdAt: 'desc' }],
+    take: 100
+  });
+  return rows.map((row: any) => ({
+    id: row.id,
+    occurredAt: row.occurredAt,
+    channel: row.channel || 'note',
+    body: safeDecryptWant(row.bodyEnc, 'want_note.body', ''),
+    summary: safeDecryptWant(row.summaryEnc, 'want_note.summary', ''),
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt
+  }));
+}
+
+export async function deleteWantNote(userId: string, noteId: string) {
+  const note = await prisma.wantNote.findFirst({ where: { id: noteId, userId }, select: { wantId: true } });
+  if (!note) throw new Error('Want note not found.');
+  await prisma.wantNote.deleteMany({ where: { id: noteId, userId } });
+  return note.wantId;
+}

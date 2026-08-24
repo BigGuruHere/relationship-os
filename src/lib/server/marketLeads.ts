@@ -5,6 +5,8 @@
 import { prisma } from '$lib/db';
 import { buildIndexToken, decrypt, encrypt } from '$lib/crypto';
 import { parseMoneyToCents } from '$lib/deals';
+import { storeWantEmbedding } from '$lib/server/wants';
+import { storeOfferEmbedding } from '$lib/server/offers';
 import {
   MARKET_LEAD_SOURCES,
   clampInt,
@@ -256,6 +258,8 @@ export function mapMarketLead(row: any) {
     workstreamId: row.workstreamId,
     workstream: row.workstream ? { id: row.workstream.id, name: safeDecryptLead(row.workstream.nameEnc, 'project_workstream.name', 'Untitled workstream'), projectId: row.workstream.projectId, status: row.workstream.status } : null,
     exchangeItemId: row.exchangeItemId,
+    wantId: row.wantId,
+    offerId: row.offerId,
     convertedAt: row.convertedAt,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
@@ -263,6 +267,8 @@ export function mapMarketLead(row: any) {
     company: row.company,
     deal: row.deal,
     project: row.project,
+    want: row.want,
+    offer: row.offer,
     exchangeItem: row.exchangeItem
   };
 }
@@ -603,29 +609,66 @@ export async function convertLeadToExchangeItem(userId: string, leadId: string, 
   if (!lead) throw new Error('Lead not found.');
   const display = mapMarketLead(lead);
   const title = display.title || display.companyName || display.name || (type === 'WANT' ? 'Untitled want' : 'Untitled offer');
+  const body = [display.description, display.notes].filter(Boolean).join('
 
-  const item = await prisma.exchangeItem.create({
+');
+
+  if (type === 'WANT') {
+    const want = await prisma.want.create({
+      data: {
+        userId,
+        wantType: display.type === 'BUYER' || display.type === 'POTENTIAL_BUYER' || display.type === 'MANDATE' ? 'BUYER_MANDATE' as any : 'GENERAL' as any,
+        status: 'NEW' as any,
+        titleEnc: encrypt(title, 'want.title'),
+        descriptionEnc: body ? encrypt(body, 'want.description') : null,
+        categoryEnc: display.type ? encrypt(marketLeadTypeLabel(display.type), 'want.category') : null,
+        importance: display.priority || 3,
+        confidence: display.confidence >= 75 ? 'HIGH' as any : display.confidence <= 35 ? 'LOW' as any : 'MEDIUM' as any,
+        geographyEnc: display.geography ? encrypt(display.geography, 'want.geography') : null,
+        valueMinCents: display.valueMinCents || null,
+        valueMaxCents: display.valueMaxCents || null,
+        currency: display.currency || 'AUD',
+        contactId: lead.contactId || null,
+        companyId: lead.companyId || null,
+        dealId: lead.dealId || null,
+        projectId: lead.projectId || null,
+        workstreamId: lead.workstreamId || null
+      },
+      select: { id: true }
+    });
+    await storeWantEmbedding(userId, want.id, [title, body, display.geography, marketLeadTypeLabel(display.type)].filter(Boolean).join('
+'));
+    await prisma.marketLead.updateMany({ where: { id: leadId, userId }, data: { wantId: want.id, status: 'CONVERTED' as any, convertedAt: new Date() } });
+    await prisma.task.updateMany({ where: { userId, marketLeadId: leadId, wantId: null }, data: { wantId: want.id } }).catch(() => null);
+    return want.id;
+  }
+
+  const offer = await prisma.offer.create({
     data: {
       userId,
-      type: type as any,
-      direction: type === 'WANT' ? 'SEEKING' as any : 'OFFERING' as any,
-      titleEnc: encrypt(title, 'exchange.title'),
-      descriptionEnc: display.description || display.notes ? encrypt([display.description, display.notes].filter(Boolean).join('\n\n'), 'exchange.description') : null,
-      categoryEnc: display.type ? encrypt(marketLeadTypeLabel(display.type), 'exchange.category') : null,
+      offerType: display.type === 'SELLER' || display.type === 'POTENTIAL_SELLER' || display.type === 'ASSET' ? 'SELLER_OPPORTUNITY' as any : 'GENERAL' as any,
+      status: 'NEW' as any,
+      direction: 'OFFERING' as any,
+      titleEnc: encrypt(title, 'offer.title'),
+      descriptionEnc: body ? encrypt(body, 'offer.description') : null,
+      categoryEnc: display.type ? encrypt(marketLeadTypeLabel(display.type), 'offer.category') : null,
       importance: display.priority || 3,
       confidence: display.confidence >= 75 ? 'HIGH' as any : display.confidence <= 35 ? 'LOW' as any : 'MEDIUM' as any,
-      geographyEnc: display.geography ? encrypt(display.geography, 'exchange.geography') : null,
+      geographyEnc: display.geography ? encrypt(display.geography, 'offer.geography') : null,
       valueMinCents: display.valueMinCents || null,
       valueMaxCents: display.valueMaxCents || null,
       currency: display.currency || 'AUD',
       contactId: lead.contactId || null,
       companyId: lead.companyId || null,
       dealId: lead.dealId || null,
-      projectId: lead.projectId || null
+      projectId: lead.projectId || null,
+      workstreamId: lead.workstreamId || null
     },
     select: { id: true }
   });
 
-  await prisma.marketLead.updateMany({ where: { id: leadId, userId }, data: { exchangeItemId: item.id, status: 'CONVERTED' as any, convertedAt: new Date() } });
-  return item.id;
+  await storeOfferEmbedding(userId, offer.id, [title, body, display.geography, marketLeadTypeLabel(display.type)].filter(Boolean).join('\n'));
+  await prisma.marketLead.updateMany({ where: { id: leadId, userId }, data: { offerId: offer.id, status: 'CONVERTED' as any, convertedAt: new Date() } });
+  await prisma.task.updateMany({ where: { userId, marketLeadId: leadId, offerId: null }, data: { offerId: offer.id } }).catch(() => null);
+  return offer.id;
 }

@@ -106,7 +106,8 @@
         <strong>Deal</strong><span>{#if lead.dealId}<a href={`/deals/${lead.dealId}`}>{lead.linkedDealTitle || 'Open deal'}</a>{:else} - {/if}</span>
         <strong>Project</strong><span>{#if lead.projectId}<a href={`/projects/${lead.projectId}`}>{lead.linkedProjectTitle || 'Open project'}</a>{:else} - {/if}</span>
         <strong>Workstream</strong><span>{lead.linkedWorkstreamTitle || ' - '}</span>
-        <strong>Want/offer</strong><span>{#if lead.exchangeItemId}{lead.linkedExchangeTitle || 'Created'}{:else} - {/if}</span>
+        <strong>Want</strong><span>{#if lead.wantId}<a href={`/wants/${lead.wantId}`}>{lead.linkedWantTitle || 'Open want'}</a>{:else} - {/if}</span>
+        <strong>Offer</strong><span>{#if lead.offerId}<a href={`/offers/${lead.offerId}`}>{lead.linkedOfferTitle || 'Open offer'}</a>{:else} - {/if}</span>
       </div>
       {#if lead.companyId}
         <form method="post" action="?/unlinkCompany" on:submit={(e) => { if (!confirm('Unlink this lead from the company?')) e.preventDefault(); }}><button class="btn" type="submit">Unlink company</button></form>

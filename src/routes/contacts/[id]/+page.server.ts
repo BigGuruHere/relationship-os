@@ -9,6 +9,7 @@ import { attachContactTags, detachContactTag } from '$lib/tags';
 import type { Actions, PageServerLoad } from './$types';
 import { getBestDisplayName } from '$lib/server/names';
 import { createExchangeItemFromForm, deleteExchangeItem, loadExchangeItems } from '$lib/server/exchange';
+import { createWantFromForm, deleteWant, loadWants } from '$lib/server/wants';
 import { loadAgentArtifacts } from '$lib/server/agents/artifacts';
 import { runOpportunityScoringAgent } from '$lib/server/agents/agents/opportunityScoringAgent';
 import { runContactEnrichmentAgent } from '$lib/server/agents/agents/contactEnrichmentAgent';
@@ -408,6 +409,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
   }));
 
   const exchangeItems = await loadExchangeItems({ userId: locals.user.id, links: { contactId: id } });
+  const wants = await loadWants({ userId: locals.user.id, links: { contactId: id } });
   const agentArtifacts = await loadAgentArtifacts({ userId: locals.user.id, entityType: 'contact', entityId: id });
 
   const projectsRaw = await prisma.project.findMany({
@@ -571,6 +573,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
     interactions,
     dealNotes,
     dealContactNotes,
+    wants,
     exchangeItems,
     agentArtifacts,
     tasks,
@@ -894,6 +897,27 @@ export const actions: Actions = {
     throw redirect(303, `/contacts/${params.id}`);
   },
 
+
+  createWant: async ({ request, params, locals }) => {
+    if (!locals.user) throw redirect(303, '/auth/login');
+    const userId = locals.user.id;
+    try {
+      await createWantFromForm({ userId, form: await request.formData(), links: { contactId: params.id } });
+    } catch (err: any) {
+      console.error('[wants:createWant] failed', err);
+      return fail(400, { error: err?.message || 'Failed to save want.' });
+    }
+    throw redirect(303, `/contacts/${params.id}`);
+  },
+
+  deleteWant: async ({ request, params, locals }) => {
+    if (!locals.user) throw redirect(303, '/auth/login');
+    const form = await request.formData();
+    const wantId = String(form.get('wantId') || '').trim();
+    if (!wantId) return fail(400, { error: 'Missing want id.' });
+    await deleteWant({ userId: locals.user.id, id: wantId, links: { contactId: params.id } });
+    throw redirect(303, `/contacts/${params.id}`);
+  },
 
   createExchangeItem: async ({ request, params, locals }) => {
     if (!locals.user) throw redirect(303, '/auth/login');

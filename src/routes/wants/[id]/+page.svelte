@@ -1,0 +1,134 @@
+<!-- src/routes/wants/[id]/+page.svelte -->
+<script lang="ts">
+  import VoiceTextField from '$lib/recording/VoiceTextField.svelte';
+  import { closeDatePickerOnChange } from '$lib/closeDatePicker';
+
+  export let data: any;
+  export let form: any;
+
+  let showEdit = false;
+  let showNoteForm = false;
+  let showTaskForm = false;
+  let description = data.want.description || '';
+  let summary = data.want.summary || '';
+  let editingNoteId = '';
+
+  function fmt(value: string | Date | null | undefined) {
+    if (!value) return 'Not set';
+    const d = typeof value === 'string' ? new Date(value) : value;
+    if (Number.isNaN(d.getTime())) return 'Not set';
+    return d.toLocaleString();
+  }
+
+  function valueRange(item: any) {
+    if (item.valueMinLabel && item.valueMaxLabel) return `${item.valueMinLabel} to ${item.valueMaxLabel}`;
+    if (item.valueMinLabel) return `From ${item.valueMinLabel}`;
+    if (item.valueMaxLabel) return `Up to ${item.valueMaxLabel}`;
+    return 'Not set';
+  }
+</script>
+
+<div class="container">
+  <header class="page-head">
+    <div>
+      <div class="eyebrow">Want</div>
+      <h1>{data.want.title}</h1>
+      <p class="muted">{data.want.wantTypeLabel} - {data.want.statusLabel} - {data.want.urgencyLabel} - {data.want.timeHorizonLabel}</p>
+    </div>
+    <div class="head-actions">
+      <a class="btn" href="/wants">All wants</a>
+      <button class="btn" type="button" on:click={() => (showEdit = !showEdit)}>{showEdit ? 'Cancel edit' : 'Edit want'}</button>
+      <form method="post" action="?/convertToDeal" on:submit={(event) => { if (!confirm('Create a deal from this want?')) event.preventDefault(); }}><button class="btn primary" type="submit">Convert to deal</button></form>
+    </div>
+  </header>
+
+  {#if form?.error}<div class="card error-card">{form.error}</div>{/if}
+
+  <section class="card panel">
+    <div class="grid details">
+      <div><strong>Status</strong></div><div>{data.want.statusLabel}</div>
+      <div><strong>Type</strong></div><div>{data.want.wantTypeLabel}</div>
+      <div><strong>Contact</strong></div><div>{#if data.want.contact}<a href={`/contacts/${data.want.contact.id}`}>{data.want.contact.name}</a>{:else} - {/if}</div>
+      <div><strong>Company</strong></div><div>{#if data.want.company}<a href={`/companies/${data.want.company.id}`}>{data.want.company.name}</a>{:else} - {/if}</div>
+      <div><strong>Project</strong></div><div>{#if data.want.project}<a href={`/projects/${data.want.project.id}`}>{data.want.project.title}</a>{:else} - {/if}</div>
+      <div><strong>Workstream</strong></div><div>{#if data.want.workstream}<a href={`/projects/${data.want.workstream.projectId}/workstreams/${data.want.workstream.id}`}>{data.want.workstream.name}</a>{:else} - {/if}</div>
+      <div><strong>Value</strong></div><div>{valueRange(data.want)}</div>
+      <div><strong>Geography</strong></div><div>{data.want.geography || ' - '}</div>
+      <div><strong>Review</strong></div><div>{fmt(data.want.reviewAt)}</div>
+    </div>
+    {#if data.want.description}<div class="text-block"><h3>Description</h3><p>{data.want.description}</p></div>{/if}
+    {#if data.want.criteria}<div class="text-block"><h3>Criteria</h3><p>{data.want.criteria}</p></div>{/if}
+  </section>
+
+  {#if showEdit}
+    <section class="card panel">
+      <h2>Edit want</h2>
+      <form method="post" action="?/updateWant" class="edit-form">
+        <div class="grid three">
+          <div class="field"><label for="wantType">Type</label><select id="wantType" name="wantType">{#each data.wantTypes as opt}<option value={opt.value} selected={data.want.wantType === opt.value}>{opt.label}</option>{/each}</select></div>
+          <div class="field"><label for="status">Status</label><select id="status" name="status">{#each data.wantStatuses as opt}<option value={opt.value} selected={data.want.status === opt.value}>{opt.label}</option>{/each}</select></div>
+          <div class="field"><label for="category">Category</label><input id="category" name="category" value={data.want.category || ''} /></div>
+        </div>
+        <div class="field"><label for="wantTitle">Title</label><input id="wantTitle" name="wantTitle" value={data.want.title} required /></div>
+        <VoiceTextField id="wantDescription" textName="wantDescription" summaryName="wantSummary" label="Description" rows={4} bind:value={description} bind:summary={summary} contextLabel="want" />
+        <div class="field"><label for="criteria">Criteria</label><textarea id="criteria" name="criteria" rows="4">{data.want.criteria || ''}</textarea></div>
+        <div class="grid three">
+          <div class="field"><label for="contactId">Contact</label><select id="contactId" name="contactId"><option value="">No contact</option>{#each data.contacts as c}<option value={c.id} selected={data.want.contactId === c.id}>{c.name}</option>{/each}</select></div>
+          <div class="field"><label for="companyId">Company</label><select id="companyId" name="companyId"><option value="">No company</option>{#each data.companies as c}<option value={c.id} selected={data.want.companyId === c.id}>{c.name}</option>{/each}</select></div>
+          <div class="field"><label for="dealId">Deal</label><select id="dealId" name="dealId"><option value="">No deal</option>{#each data.deals as d}<option value={d.id} selected={data.want.dealId === d.id}>{d.title}</option>{/each}</select></div>
+        </div>
+        <div class="grid two"><div class="field"><label for="projectId">Project</label><select id="projectId" name="projectId"><option value="">No project</option>{#each data.projects as p}<option value={p.id} selected={data.want.projectId === p.id}>{p.title}</option>{/each}</select></div><div class="field"><label for="workstreamId">Workstream</label><select id="workstreamId" name="workstreamId"><option value="">No workstream</option>{#each data.workstreams as ws}<option value={ws.id} selected={data.want.workstreamId === ws.id}>{ws.projectTitle} - {ws.name}</option>{/each}</select></div></div>
+        <div class="grid three"><div class="field"><label for="importance">Importance</label><input id="importance" name="importance" type="number" min="1" max="5" value={data.want.importance} /></div><div class="field"><label for="urgency">Urgency</label><select id="urgency" name="urgency">{#each data.wantUrgencies as opt}<option value={opt.value} selected={data.want.urgency === opt.value}>{opt.label}</option>{/each}</select></div><div class="field"><label for="timeHorizon">Time horizon</label><select id="timeHorizon" name="timeHorizon">{#each data.wantTimeHorizons as opt}<option value={opt.value} selected={data.want.timeHorizon === opt.value}>{opt.label}</option>{/each}</select></div></div>
+        <div class="grid three"><div class="field"><label for="confidence">Confidence</label><select id="confidence" name="confidence">{#each data.wantConfidences as opt}<option value={opt.value} selected={data.want.confidence === opt.value}>{opt.label}</option>{/each}</select></div><div class="field"><label for="geography">Geography</label><input id="geography" name="geography" value={data.want.geography || ''} /></div><div class="field"><label for="currency">Currency</label><input id="currency" name="currency" value={data.want.currency || 'AUD'} /></div></div>
+        <div class="grid four"><div class="field"><label for="valueMin">Value min</label><input id="valueMin" name="valueMin" inputmode="decimal" value={data.editValues.valueMin || ''} /></div><div class="field"><label for="valueMax">Value max</label><input id="valueMax" name="valueMax" inputmode="decimal" value={data.editValues.valueMax || ''} /></div><div class="field"><label for="reviewAt">Review</label><input id="reviewAt" name="reviewAt" type="date" value={data.editValues.reviewAt} on:change={closeDatePickerOnChange} /></div><div class="field"><label for="expiresAt">Expiry</label><input id="expiresAt" name="expiresAt" type="date" value={data.editValues.expiresAt} on:change={closeDatePickerOnChange} /></div></div>
+        <button class="btn primary" type="submit">Save changes</button>
+      </form>
+    </section>
+  {/if}
+
+  <section class="card panel">
+    <div class="section-head"><h2>Tasks</h2><button class="btn" type="button" on:click={() => (showTaskForm = !showTaskForm)}>{showTaskForm ? 'Cancel' : 'Add task'}</button></div>
+    {#if showTaskForm}
+      <form method="post" action="?/createTask" class="nested-form">
+        <div class="field"><label for="title">Task title</label><input id="title" name="title" required /></div>
+        <div class="grid three"><div class="field"><label for="statusTask">Status</label><select id="statusTask" name="status">{#each data.taskStatuses as opt}<option value={opt.value}>{opt.label}</option>{/each}</select></div><div class="field"><label for="focusTask">Focus</label><select id="focusTask" name="focus">{#each data.taskFocusOptions as opt}<option value={opt.value}>{opt.label}</option>{/each}</select></div><div class="field"><label for="taskType">Type</label><select id="taskType" name="taskType">{#each data.taskTypes as opt}<option value={opt.value}>{opt.label}</option>{/each}</select></div></div>
+        <div class="field"><label for="dueAt">Due</label><input id="dueAt" name="dueAt" type="datetime-local" on:change={closeDatePickerOnChange} /></div>
+        <div class="field"><label for="notes">Notes</label><textarea id="notes" name="notes" rows="3"></textarea></div>
+        <button class="btn primary" type="submit">Save task</button>
+      </form>
+    {/if}
+    {#if data.tasks.length === 0}<p class="muted">No tasks attached to this want.</p>{:else}<div class="item-list">{#each data.tasks as task}<div class="item-row"><div><a href={`/tasks/${task.id}`}><strong>{task.title}</strong></a><div class="muted small">{task.statusLabel} - {task.focusLabel} - due {fmt(task.dueAt)}</div></div><a class="btn" href={`/tasks/${task.id}/edit?returnTo=/wants/${data.want.id}`}>Edit</a></div>{/each}</div>{/if}
+  </section>
+
+  <section class="card panel">
+    <div class="section-head"><h2>Notes</h2><button class="btn" type="button" on:click={() => (showNoteForm = !showNoteForm)}>{showNoteForm ? 'Cancel' : 'Add note'}</button></div>
+    {#if showNoteForm}
+      <form method="post" action="?/addNote" class="nested-form"><div class="grid two"><div class="field"><label for="occurredAt">Date</label><input id="occurredAt" name="occurredAt" type="datetime-local" on:change={closeDatePickerOnChange} /></div><div class="field"><label for="channel">Channel</label><select id="channel" name="channel">{#each data.noteChannels as opt}<option value={opt.value}>{opt.label}</option>{/each}</select></div></div><div class="field"><label for="body">Note</label><textarea id="body" name="body" rows="4" required></textarea></div><button class="btn primary" type="submit">Save note</button></form>
+    {/if}
+    {#if data.notes.length === 0}<p class="muted">No notes yet.</p>{:else}<div class="item-list">{#each data.notes as note}<div class="note-card">{#if editingNoteId === note.id}<form method="post" action="?/updateNote" class="nested-form"><input type="hidden" name="noteId" value={note.id} /><div class="grid two"><div class="field"><label>Date</label><input name="occurredAt" type="datetime-local" value={note.occurredInput} on:change={closeDatePickerOnChange} /></div><div class="field"><label>Channel</label><select name="channel">{#each data.noteChannels as opt}<option value={opt.value} selected={note.channel === opt.value}>{opt.label}</option>{/each}</select></div></div><div class="field"><label>Note</label><textarea name="body" rows="4">{note.body}</textarea></div><div class="actions"><button class="btn primary" type="submit">Save note</button><button class="btn" type="button" on:click={() => (editingNoteId = '')}>Cancel</button></div></form>{:else}<div class="note-head"><div><strong>{note.channelLabel}</strong><div class="muted small">{fmt(note.occurredAt)}</div></div><div class="actions"><button class="btn" type="button" on:click={() => (editingNoteId = note.id)}>Edit</button><form method="post" action="?/deleteNote" on:submit={(event) => { if (!confirm('Delete this note?')) event.preventDefault(); }}><input type="hidden" name="noteId" value={note.id} /><button class="btn" type="submit">Delete</button></form></div></div><p class="preline">{note.body}</p>{/if}</div>{/each}</div>{/if}
+  </section>
+</div>
+
+<style>
+  .container { padding:12px; }
+  .page-head, .section-head, .item-row, .note-head, .actions { display:flex; justify-content:space-between; gap:12px; align-items:flex-start; }
+  .head-actions, .actions { display:flex; gap:8px; flex-wrap:wrap; }
+  h1, h2, h3 { margin:0; } h2 { font-size:1.1rem; } h3 { font-size:1rem; margin-top:12px; }
+  .eyebrow { color:var(--accent); font-weight:700; font-size:0.85rem; text-transform:uppercase; letter-spacing:0.04em; }
+  .muted { color:var(--muted); } .small { font-size:0.9rem; }
+  .panel, .error-card { padding:14px; margin-bottom:12px; }
+  .error-card { color:var(--danger); }
+  .grid.details { display:grid; grid-template-columns:180px 1fr; gap:8px 12px; }
+  .grid.two { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:12px; }
+  .grid.three { display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:12px; }
+  .grid.four { display:grid; grid-template-columns:repeat(4, minmax(0, 1fr)); gap:12px; }
+  .field { display:flex; flex-direction:column; gap:6px; margin-bottom:12px; }
+  .field input, .field select, .field textarea { padding:10px 12px; border:1px solid var(--border); border-radius:12px; background:var(--surface); color:var(--text); }
+  .text-block { border-top:1px solid var(--border); margin-top:12px; padding-top:12px; }
+  .text-block p, .preline { white-space:pre-wrap; }
+  .item-list { display:grid; gap:10px; }
+  .item-row, .note-card { border:1px solid var(--border); border-radius:14px; padding:12px; background:var(--surface); }
+  .btn { border:1px solid var(--border); border-radius:12px; padding:8px 12px; background:var(--surface); color:var(--text); text-decoration:none; cursor:pointer; }
+  .btn.primary { font-weight:700; }
+  @media (max-width:860px) { .page-head, .section-head, .item-row, .note-head { flex-direction:column; } .grid.details, .grid.two, .grid.three, .grid.four { grid-template-columns:1fr; } }
+</style>

@@ -24,3 +24,8 @@ vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 
 /../generated/prisma
+
+# DB restore/backup dumps (contains PII, must never be committed)
+relish-restore/
+*.dat
+*.dump

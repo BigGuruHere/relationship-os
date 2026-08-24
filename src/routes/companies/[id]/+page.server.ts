@@ -9,6 +9,7 @@ import { buildIndexToken, encrypt } from '$lib/crypto';
 import { resolveOrCreateTagForTenant } from '$lib/tags';
 import { contactDisplayName, contactOptionsForRows } from '$lib/server/contactDisplay';
 import { createExchangeItemFromForm, deleteExchangeItem, loadExchangeItems } from '$lib/server/exchange';
+import { createWantFromForm, deleteWant, loadWants } from '$lib/server/wants';
 import { loadAgentArtifacts } from '$lib/server/agents/artifacts';
 import { ensureCoreAgentSetup } from '$lib/server/agents/agentSetup';
 import { runOutreachAgent } from '$lib/server/agents/agents/outreachAgent';
@@ -343,6 +344,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
   const companyNotes = companyNotesRaw.map(mapCompanyNote);
 
   const exchangeItems = await loadExchangeItems({ userId, links: { companyId: row.id } });
+  const wants = await loadWants({ userId, links: { companyId: row.id } });
   const agentArtifacts = await loadAgentArtifacts({ userId, entityType: 'company', entityId: row.id });
 
   const [contactsRaw, dealsRaw, companiesRaw, linkedLeadsRaw, leadOptionsRaw, customLeadSources] = await Promise.all([
@@ -432,6 +434,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
     companyNotes,
     linkedLeads,
     leadOptions,
+    wants,
     exchangeItems,
     agentArtifacts,
     contactOptions: contactOptions.filter((contact: any) => !attachedContactIds.has(contact.id)),
@@ -684,6 +687,27 @@ export const actions: Actions = {
     const linkId = String(form.get('linkId') || '').trim();
     if (!linkId) return fail(400, { error: 'Missing tag link id.' });
     await prisma.companyTag.deleteMany({ where: { id: linkId, userId: locals.user.id, companyId: params.id } });
+    throw redirect(303, `/companies/${params.id}`);
+  },
+
+  createWant: async ({ request, params, locals }) => {
+    if (!locals.user) throw redirect(303, '/auth/login');
+    const userId = locals.user.id;
+    try {
+      await createWantFromForm({ userId, form: await request.formData(), links: { companyId: params.id } });
+    } catch (err: any) {
+      console.error('[wants:createWant] failed', err);
+      return fail(400, { error: err?.message || 'Failed to save want.' });
+    }
+    throw redirect(303, `/companies/${params.id}`);
+  },
+
+  deleteWant: async ({ request, params, locals }) => {
+    if (!locals.user) throw redirect(303, '/auth/login');
+    const form = await request.formData();
+    const wantId = String(form.get('wantId') || '').trim();
+    if (!wantId) return fail(400, { error: 'Missing want id.' });
+    await deleteWant({ userId: locals.user.id, id: wantId, links: { companyId: params.id } });
     throw redirect(303, `/companies/${params.id}`);
   },
 

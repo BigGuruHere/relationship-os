@@ -18,7 +18,6 @@ generator client {
 datasource db {
   provider          = "postgresql" // Using Postgres
   url               = env("DATABASE_URL") // Connection string from your .env
-  shadowDatabaseUrl = env("SHADOW_DATABASE_URL") // optional - only used by migrate dev
 }
 
 // IT: role for feature gating
@@ -81,6 +80,10 @@ model User {
   dealCompanies         DealCompany[]
   companyRelationships  CompanyRelationship[]
   exchangeItems         ExchangeItem[]
+  wants                 Want[]
+  wantNotes             WantNote[]
+  offers                Offer[]
+  offerNotes            OfferNote[]
 
   // IT: agent framework records. Agents read/write through Relish services and every run is logged.
   agentDefinitions     AgentDefinition[]
@@ -378,6 +381,8 @@ model Contact {
   // IT: company memberships/employment history. A person can belong to more than one company over time.
   companyLinks      CompanyContact[]
   exchangeItems     ExchangeItem[]
+  wants             Want[]
+  offers            Offer[]
   opportunityScores OpportunityScore[]
   opportunityScoreFactors OpportunityScoreFactor[]
   researchSources   ResearchSource[]
@@ -660,6 +665,8 @@ model Deal {
   tasks    Task[]
   projects ProjectDeal[]
   exchangeItems ExchangeItem[]
+  wants         Want[]
+  offers        Offer[]
   opportunityScores OpportunityScore[]
   opportunityScoreFactors OpportunityScoreFactor[]
   marketLeads        MarketLead[]
@@ -894,6 +901,8 @@ model Company {
   relationshipsAsA CompanyRelationship[] @relation("CompanyAsA")
   relationshipsAsB CompanyRelationship[] @relation("CompanyAsB")
   exchangeItems     ExchangeItem[]
+  wants             Want[]
+  offers            Offer[]
   opportunityScores OpportunityScore[]
   opportunityScoreFactors OpportunityScoreFactor[]
   researchSources   ResearchSource[]
@@ -952,6 +961,8 @@ model CompanyContact {
 
   dealContacts  DealContact[]
   exchangeItems ExchangeItem[]
+  wants         Want[]
+  offers        Offer[]
   notes         CompanyContactNote[]
   tasks         Task[]
 
@@ -1061,6 +1072,256 @@ model CompanyRelationship {
 }
 
 
+
+// ---------------------------------------------------------------------------
+// FIRST-CLASS WANT MODELS
+// ---------------------------------------------------------------------------
+// IT: Want is the demand-side object for buyer mandates, acquisition criteria,
+// search briefs, and "keep an eye out" requests. Offers remain in ExchangeItem
+// for now, while matching can compare Want.embedding_vec against OFFER exchange items.
+enum WantType {
+  GENERAL
+  ACQUISITION_CRITERIA
+  BUYER_MANDATE
+  REFERRAL_REQUEST
+  SERVICE_NEED
+  ASSET_SEARCH
+  FUNDING_NEED
+  PARTNERSHIP_INTEREST
+  TALENT_NEED
+  OTHER
+}
+
+enum WantStatus {
+  NEW
+  CLARIFYING_CRITERIA
+  ACTIVE_MANDATE
+  WATCHING_MARKET
+  MATCHED
+  CONVERTED_TO_DEAL
+  CLOSED_INACTIVE
+  ARCHIVED
+}
+
+model Want {
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  wantType WantType @default(GENERAL)
+  status   WantStatus @default(NEW)
+
+  titleEnc       String
+  descriptionEnc String?
+  summaryEnc     String?
+  criteriaEnc    String?
+  categoryEnc    String?
+  geographyEnc   String?
+
+  importance Int @default(3)
+  urgency    ExchangeUrgency @default(NORMAL)
+  timeHorizon ExchangeTimeHorizon @default(ONGOING)
+  confidence ExchangeConfidence @default(MEDIUM)
+
+  valueMinCents Int?
+  valueMaxCents Int?
+  currency      String @default("AUD")
+  reviewAt      DateTime?
+  expiresAt     DateTime?
+
+  contactId String?
+  contact   Contact? @relation(fields: [contactId], references: [id], onDelete: SetNull)
+
+  companyId String?
+  company   Company? @relation(fields: [companyId], references: [id], onDelete: SetNull)
+
+  dealId String?
+  deal   Deal? @relation(fields: [dealId], references: [id], onDelete: SetNull)
+
+  projectId String?
+  project   Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
+  workstreamId String?
+  workstream   ProjectWorkstream? @relation(fields: [workstreamId], references: [id], onDelete: SetNull)
+
+  companyContactId String?
+  companyContact   CompanyContact? @relation(fields: [companyContactId], references: [id], onDelete: SetNull)
+
+  exchangeItemId String? @unique
+  exchangeItem   ExchangeItem? @relation(fields: [exchangeItemId], references: [id], onDelete: SetNull)
+
+  convertedDealId String?
+
+  embeddingVec Unsupported("vector")? @map("embedding_vec")
+
+  tasks Task[]
+  notes WantNote[]
+  marketLeads MarketLead[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, wantType])
+  @@index([userId, status])
+  @@index([userId, urgency])
+  @@index([userId, timeHorizon])
+  @@index([userId, confidence])
+  @@index([userId, contactId])
+  @@index([userId, companyId])
+  @@index([userId, dealId])
+  @@index([userId, projectId])
+  @@index([userId, workstreamId])
+  @@index([userId, companyContactId])
+  @@index([userId, reviewAt])
+  @@index([userId, expiresAt])
+  @@index([userId, createdAt])
+}
+
+model WantNote {
+  id String @id @default(uuid())
+  userId String
+  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  wantId String
+  want   Want @relation(fields: [wantId], references: [id], onDelete: Cascade)
+
+  occurredAt DateTime @default(now())
+  channel    String   @default("note")
+  bodyEnc    String
+  summaryEnc String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, wantId, occurredAt])
+  @@index([userId, createdAt])
+}
+
+// ---------------------------------------------------------------------------
+// FIRST-CLASS OFFER MODELS
+// ---------------------------------------------------------------------------
+// IT: Offer is the supply-side object for seller opportunities, available assets,
+// introductions, services, and things a person/company can make available.
+enum OfferType {
+  GENERAL
+  SELLER_OPPORTUNITY
+  AVAILABLE_ASSET
+  INTRODUCTION
+  SERVICE
+  CAPITAL
+  EXPERTISE
+  REFERRAL
+  PARTNERSHIP
+  OTHER
+}
+
+enum OfferStatus {
+  NEW
+  CLARIFYING_SUPPLY
+  AVAILABLE
+  WATCHING_INTEREST
+  MATCHED
+  CONVERTED_TO_DEAL
+  CLOSED_INACTIVE
+  ARCHIVED
+}
+
+model Offer {
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  offerType OfferType @default(GENERAL)
+  status    OfferStatus @default(NEW)
+  direction ExchangeDirection @default(OFFERING)
+
+  titleEnc       String
+  descriptionEnc String?
+  summaryEnc     String?
+  termsEnc       String?
+  categoryEnc    String?
+  geographyEnc   String?
+
+  importance Int @default(3)
+  urgency    ExchangeUrgency @default(NORMAL)
+  timeHorizon ExchangeTimeHorizon @default(ONGOING)
+  confidence ExchangeConfidence @default(MEDIUM)
+
+  valueMinCents Int?
+  valueMaxCents Int?
+  currency      String @default("AUD")
+  reviewAt      DateTime?
+  expiresAt     DateTime?
+
+  contactId String?
+  contact   Contact? @relation(fields: [contactId], references: [id], onDelete: SetNull)
+
+  companyId String?
+  company   Company? @relation(fields: [companyId], references: [id], onDelete: SetNull)
+
+  dealId String?
+  deal   Deal? @relation(fields: [dealId], references: [id], onDelete: SetNull)
+
+  projectId String?
+  project   Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
+  workstreamId String?
+  workstream   ProjectWorkstream? @relation(fields: [workstreamId], references: [id], onDelete: SetNull)
+
+  companyContactId String?
+  companyContact   CompanyContact? @relation(fields: [companyContactId], references: [id], onDelete: SetNull)
+
+  exchangeItemId String? @unique
+  exchangeItem   ExchangeItem? @relation(fields: [exchangeItemId], references: [id], onDelete: SetNull)
+
+  convertedDealId String?
+
+  embeddingVec Unsupported("vector")? @map("embedding_vec")
+
+  tasks Task[]
+  notes OfferNote[]
+  marketLeads MarketLead[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, offerType])
+  @@index([userId, status])
+  @@index([userId, urgency])
+  @@index([userId, timeHorizon])
+  @@index([userId, confidence])
+  @@index([userId, contactId])
+  @@index([userId, companyId])
+  @@index([userId, dealId])
+  @@index([userId, projectId])
+  @@index([userId, workstreamId])
+  @@index([userId, companyContactId])
+  @@index([userId, reviewAt])
+  @@index([userId, expiresAt])
+  @@index([userId, createdAt])
+}
+
+model OfferNote {
+  id String @id @default(uuid())
+  userId String
+  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  offerId String
+  offer   Offer @relation(fields: [offerId], references: [id], onDelete: Cascade)
+
+  occurredAt DateTime @default(now())
+  channel    String   @default("note")
+  bodyEnc    String
+  summaryEnc String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, offerId, occurredAt])
+  @@index([userId, createdAt])
+}
+
+
 // ---------------------------------------------------------------------------
 // WANTS AND OFFERS MODELS
 // ---------------------------------------------------------------------------
@@ -1159,6 +1420,8 @@ model ExchangeItem {
   embeddingVec Unsupported("vector")? @map("embedding_vec")
 
   marketLeads MarketLead[]
+  migratedWant Want?
+  migratedOffer Offer?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1333,6 +1596,12 @@ model MarketLead {
   exchangeItemId String?
   exchangeItem   ExchangeItem? @relation(fields: [exchangeItemId], references: [id], onDelete: SetNull)
 
+  wantId String?
+  want   Want? @relation(fields: [wantId], references: [id], onDelete: SetNull)
+
+  offerId String?
+  offer   Offer? @relation(fields: [offerId], references: [id], onDelete: SetNull)
+
   convertedAt DateTime?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -1354,6 +1623,8 @@ model MarketLead {
   @@index([userId, projectId])
   @@index([userId, workstreamId])
   @@index([userId, exchangeItemId])
+  @@index([userId, wantId])
+  @@index([userId, offerId])
   @@index([titleIdx])
   @@index([nameIdx])
   @@index([companyNameIdx])
@@ -1468,6 +1739,8 @@ model Project {
   notes ProjectNote[]
   deals ProjectDeal[]
   exchangeItems ExchangeItem[]
+  wants         Want[]
+  offers        Offer[]
   marketLeads   MarketLead[]
   workstreams   ProjectWorkstream[]
 
@@ -1492,6 +1765,8 @@ model ProjectWorkstream {
   sortOrder      Int @default(0)
 
   marketLeads  MarketLead[]
+  wants        Want[]
+  offers       Offer[]
   tasks        Task[]
   projectDeals ProjectDeal[]
   projectNotes ProjectNote[]
@@ -1605,6 +1880,12 @@ model Task {
   marketLeadId String?
   marketLead   MarketLead? @relation(fields: [marketLeadId], references: [id], onDelete: SetNull)
 
+  wantId String?
+  want   Want? @relation(fields: [wantId], references: [id], onDelete: SetNull)
+
+  offerId String?
+  offer   Offer? @relation(fields: [offerId], references: [id], onDelete: SetNull)
+
   // IT: optional company context for broker work.
   companyId String?
   company   Company? @relation(fields: [companyId], references: [id], onDelete: SetNull)
@@ -1630,6 +1911,8 @@ model Task {
   @@index([userId, projectId])
   @@index([userId, workstreamId])
   @@index([userId, marketLeadId])
+  @@index([userId, wantId])
+  @@index([userId, offerId])
   @@index([userId, companyId])
   @@index([userId, companyContactId])
   @@index([userId, dealCompanyId])

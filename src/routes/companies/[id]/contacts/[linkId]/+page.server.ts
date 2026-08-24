@@ -8,6 +8,7 @@ import { prisma } from '$lib/db';
 import { encrypt } from '$lib/crypto';
 import { contactDisplayName } from '$lib/server/contactDisplay';
 import { createExchangeItemFromForm, deleteExchangeItem, loadExchangeItems } from '$lib/server/exchange';
+import { createWantFromForm, deleteWant, loadWants } from '$lib/server/wants';
 import { companyContactStatusLabel, companyDisplay, COMPANY_CONTACT_STATUSES, normaliseCompanyContactStatus, safeDecryptCompany } from '$lib/companies';
 import { safeDecrypt, dealRelationshipLabel, normaliseDealRelationshipType, DEAL_RELATIONSHIP_TYPES, dealStatusLabel } from '$lib/deals';
 import {
@@ -131,7 +132,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
   const contactName = await contactDisplayName(relationship.contact);
   const companyName = safeDecryptCompany(relationship.company.nameEnc, 'company.name', 'Untitled company');
 
-  const [notes, tasks, dealContacts, exchangeItems, dealOptions, projectOptions] = await Promise.all([
+  const [notes, tasks, dealContacts, wants, exchangeItems, dealOptions, projectOptions] = await Promise.all([
     prisma.companyContactNote.findMany({
       where: { userId, companyContactId: linkId },
       orderBy: [{ occurredAt: 'desc' }, { createdAt: 'desc' }],
@@ -175,6 +176,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
       orderBy: [{ updatedAt: 'desc' }],
       take: 100
     }),
+    loadWants({ userId, links: { companyContactId: linkId }, take: 50 }),
     loadExchangeItems({ userId, links: { companyContactId: linkId }, take: 50 }),
     prisma.deal.findMany({ where: { userId }, select: { id: true, titleEnc: true, status: true }, orderBy: { updatedAt: 'desc' }, take: 300 }),
     prisma.project.findMany({ where: { userId, status: { not: 'ARCHIVED' } }, select: { id: true, titleEnc: true }, orderBy: { updatedAt: 'desc' }, take: 200 })
@@ -253,6 +255,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
     notes: notes.map(mapCompanyContactNote),
     tasks: tasks.map(mapTask),
     dealContacts: dealContacts.map(mapDealContact),
+    wants,
     exchangeItems,
     dealOptions: dealOptions.map((d: any) => ({ id: d.id, title: safeDecrypt(d.titleEnc, 'deal.title', 'Untitled deal'), status: d.status, statusLabel: dealStatusLabel(d.status) })),
     projectOptions: projectOptions.map((p: any) => ({ id: p.id, title: safeDecryptTask(p.titleEnc, 'project.title', 'Untitled project') })),
@@ -445,6 +448,27 @@ export const actions: Actions = {
       where: { id: dealContactId, userId: locals.user.id, companyContactId: params.linkId },
       data: { companyContactId: null }
     });
+    throw redirect(303, `/companies/${params.id}/contacts/${params.linkId}`);
+  },
+
+  createWant: async ({ request, params, locals }) => {
+    if (!locals.user) throw redirect(303, '/auth/login');
+    const userId = locals.user.id;
+    try {
+      await createWantFromForm({ userId, form: await request.formData(), links: { companyContactId: params.linkId } });
+    } catch (err: any) {
+      console.error('[wants:createWant] failed', err);
+      return fail(400, { error: err?.message || 'Failed to save want.' });
+    }
+    throw redirect(303, `/companies/${params.id}/contacts/${params.linkId}`);
+  },
+
+  deleteWant: async ({ request, params, locals }) => {
+    if (!locals.user) throw redirect(303, '/auth/login');
+    const form = await request.formData();
+    const wantId = String(form.get('wantId') || '').trim();
+    if (!wantId) return fail(400, { error: 'Missing want id.' });
+    await deleteWant({ userId: locals.user.id, id: wantId, links: { companyContactId: params.linkId } });
     throw redirect(303, `/companies/${params.id}/contacts/${params.linkId}`);
   },
 

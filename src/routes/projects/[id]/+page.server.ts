@@ -12,6 +12,7 @@ import { MARKET_LEAD_STATUSES, MARKET_LEAD_TYPES, marketLeadStatusLabel } from '
 import { buildLeadSourceOptions, leadFormValues, loadLeadSources, mapMarketLead, marketLeadCreateData, resolveLeadSourceId } from '$lib/server/marketLeads';
 import { contactDisplayName, contactOptionsForRows } from '$lib/server/contactDisplay';
 import { createExchangeItemFromForm, deleteExchangeItem, loadExchangeItems } from '$lib/server/exchange';
+import { createWantFromForm, deleteWant, loadWants } from '$lib/server/wants';
 import { loadAgentArtifacts } from '$lib/server/agents/artifacts';
 import { createTaskFromForm } from '$lib/server/tasks';
 import {
@@ -294,6 +295,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
   const linkedDealIds = new Set(linkedDeals.map((deal: any) => deal.dealId));
 
   const exchangeItems = await loadExchangeItems({ userId, links: { projectId: project.id } });
+  const wants = await loadWants({ userId, links: { projectId: project.id } });
   const agentArtifacts = await loadAgentArtifacts({ userId, entityType: 'project', entityId: project.id });
   const projectNotesRaw = await prisma.projectNote.findMany({
     where: { userId, projectId: project.id },
@@ -370,6 +372,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
     relatedDeals: [...dealMap.values()].filter((deal: any) => !linkedDealIds.has(deal.id)),
     relatedPeople: [...peopleMap.values()],
     relatedCompanies: [...companyMap.values()],
+    wants,
     exchangeItems,
     agentArtifacts,
     projectNotes,
@@ -561,6 +564,27 @@ export const actions: Actions = {
     const noteId = String(form.get('noteId') || '').trim();
     if (!noteId) return fail(400, { error: 'Missing project note id.' });
     await prisma.projectNote.deleteMany({ where: { id: noteId, userId: locals.user.id, projectId: params.id } });
+    throw redirect(303, `/projects/${params.id}`);
+  },
+
+  createWant: async ({ request, params, locals }) => {
+    if (!locals.user) throw redirect(303, '/auth/login');
+    const userId = locals.user.id;
+    try {
+      await createWantFromForm({ userId, form: await request.formData(), links: { projectId: params.id } });
+    } catch (err: any) {
+      console.error('[wants:createWant] failed', err);
+      return fail(400, { error: err?.message || 'Failed to save want.' });
+    }
+    throw redirect(303, `/projects/${params.id}`);
+  },
+
+  deleteWant: async ({ request, params, locals }) => {
+    if (!locals.user) throw redirect(303, '/auth/login');
+    const form = await request.formData();
+    const wantId = String(form.get('wantId') || '').trim();
+    if (!wantId) return fail(400, { error: 'Missing want id.' });
+    await deleteWant({ userId: locals.user.id, id: wantId, links: { projectId: params.id } });
     throw redirect(303, `/projects/${params.id}`);
   },
 

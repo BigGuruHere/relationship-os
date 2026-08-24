@@ -78,7 +78,6 @@
           <div class="field"><label for="location">Location</label><input id="location" name="location" placeholder="e.g. Melbourne, Australia" value={form?.values?.location || ''} /></div>
         </div>
         <div class="field"><label for="description">Description</label><textarea id="description" name="description" rows="3" placeholder="What they do and why they matter">{form?.values?.description || ''}</textarea></div>
-        <div class="field"><label for="criteria">Acquisition / buyer criteria</label><textarea id="criteria" name="criteria" rows="3" placeholder="Deal size, sector, geography, must-haves, hard no's">{form?.values?.criteria || ''}</textarea></div>
         <div class="field"><label for="notes">Internal notes</label><textarea id="notes" name="notes" rows="3">{form?.values?.notes || ''}</textarea></div>
         <button class="btn primary" type="submit">{duplicateWarning ? 'Create anyway' : 'Save company'}</button>
       </form>

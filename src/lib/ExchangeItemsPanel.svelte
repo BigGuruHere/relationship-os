@@ -1,6 +1,6 @@
 <!-- src/lib/ExchangeItemsPanel.svelte -->
 <script lang="ts">
-  // PURPOSE: Reusable entity-local Wants & Offers panel.
+  // PURPOSE: Reusable entity-local Offers panel. First-class Wants live in Want/WantsPanel.
   // SECURITY: Submit goes to the current page server action, which tenant-scopes and encrypts values.
   import VoiceTextField from '$lib/recording/VoiceTextField.svelte';
   import { closeDatePickerOnChange } from '$lib/closeDatePicker';
@@ -9,13 +9,12 @@
     EXCHANGE_DIRECTIONS,
     EXCHANGE_STATUSES,
     EXCHANGE_TIME_HORIZONS,
-    EXCHANGE_TYPES,
     EXCHANGE_URGENCIES
   } from '$lib/exchange';
 
   export let items: any[] = [];
   export let entityLabel = 'this record';
-  export let title = 'Wants & offers';
+  export let title = 'Offers';
 
   let showForm = false;
   let description = '';
@@ -40,19 +39,18 @@
   <div class="section-head">
     <div>
       <h2>{title}</h2>
-      <p class="muted small">Record what {entityLabel} needs, wants, can offer, or is open to.</p>
+      <p class="muted small">Record what {entityLabel} can offer, provide, introduce, or make available. Wants now live in the first-class Wants section.</p>
     </div>
-    <button class="btn" type="button" on:click={() => (showForm = !showForm)}>{showForm ? 'Cancel' : 'Add want/offer'}</button>
+    <button class="btn" type="button" on:click={() => (showForm = !showForm)}>{showForm ? 'Cancel' : 'Add offer'}</button>
   </div>
 
   {#if showForm}
     <form method="post" action="?/createExchangeItem" class="nested-form exchange-form">
+      <input type="hidden" name="exchangeType" value="OFFER" />
       <div class="grid three">
         <div class="field">
-          <label for="exchangeType">Type</label>
-          <select id="exchangeType" name="exchangeType">
-            {#each EXCHANGE_TYPES as opt}<option value={opt.value}>{opt.label}</option>{/each}
-          </select>
+          <label>Type</label>
+          <div class="readonly-chip">Offer</div>
         </div>
         <div class="field">
           <label for="direction">Direction</label>
@@ -68,7 +66,7 @@
 
       <div class="field">
         <label for="exchangeTitle">Title</label>
-        <input id="exchangeTitle" name="exchangeTitle" placeholder="e.g. Wants NDIS acquisition targets" required />
+        <input id="exchangeTitle" name="exchangeTitle" placeholder="e.g. Can introduce aged care provider owners" required />
       </div>
 
       <VoiceTextField
@@ -76,11 +74,11 @@
         textName="exchangeDescription"
         summaryName="exchangeSummary"
         label="Description"
-        placeholder="Record or type the want/offer in plain English. The text is stored and embedded for future matching."
+        placeholder="Record or type the offer in plain English. The text is stored and embedded for future matching."
         rows={4}
         bind:value={description}
         bind:summary={summary}
-        contextLabel="want or offer"
+        contextLabel="offer"
       />
 
       <div class="grid three">
@@ -153,12 +151,12 @@
         </div>
       </div>
 
-      <button class="btn primary" type="submit">Save want/offer</button>
+      <button class="btn primary" type="submit">Save offer</button>
     </form>
   {/if}
 
   {#if items.length === 0}
-    <p class="muted">No wants or offers recorded yet.</p>
+    <p class="muted">No offers recorded yet.</p>
   {:else}
     <div class="exchange-list">
       {#each items as item}
@@ -183,7 +181,7 @@
               {#if item.expiresAt}<span>Expires: {fmtDate(item.expiresAt)}</span>{/if}
             </div>
           </div>
-          <form method="post" action="?/deleteExchangeItem" on:submit={(event) => { if (!confirm('Delete this want/offer?')) event.preventDefault(); }}>
+          <form method="post" action="?/deleteExchangeItem" on:submit={(event) => { if (!confirm('Delete this offer?')) event.preventDefault(); }}>
             <input type="hidden" name="exchangeItemId" value={item.id} />
             <button class="btn" type="submit">Delete</button>
           </form>
@@ -201,6 +199,7 @@
   .small { font-size:0.9rem; }
   .nested-form { display:grid; gap:12px; margin:12px 0; }
   .field { display:grid; gap:6px; }
+  .readonly-chip { border:1px solid var(--border); border-radius:12px; padding:10px 12px; background:var(--bg); font-weight:700; }
   .field input, .field select, .field textarea { width:100%; padding:10px 12px; border:1px solid var(--border); border-radius:12px; background:var(--surface); color:var(--text); }
   .grid { display:grid; gap:12px; }
   .grid.two { grid-template-columns:repeat(2, minmax(0, 1fr)); }

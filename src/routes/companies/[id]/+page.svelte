@@ -1,6 +1,7 @@
 <!-- src/routes/companies/[id]/+page.svelte -->
 <script lang="ts">
   import ExchangeItemsPanel from '$lib/ExchangeItemsPanel.svelte';
+  import WantsPanel from '$lib/WantsPanel.svelte';
   import AgentBriefingsPanel from '$lib/AgentBriefingsPanel.svelte';
   import NotesPanel from '$lib/NotesPanel.svelte';
   import TasksPanel from '$lib/TasksPanel.svelte';
@@ -95,7 +96,6 @@
           <div class="field"><label for="location">Location</label><input id="location" name="location" value={data.company.location} /></div>
         </div>
         <div class="field"><label for="description">Description</label><textarea id="description" name="description" rows="3">{data.company.description}</textarea></div>
-        <div class="field"><label for="criteria">Acquisition / buyer criteria</label><textarea id="criteria" name="criteria" rows="3">{data.company.criteria}</textarea></div>
         <div class="field"><label for="notes">Internal notes</label><textarea id="notes" name="notes" rows="3">{data.company.notes}</textarea></div>
         <button class="btn primary" type="submit">Save company</button>
       </form>
@@ -122,7 +122,9 @@
     </form>
   </section>
 
-  <ExchangeItemsPanel items={data.exchangeItems ?? []} entityLabel={data.company.name} />
+  <WantsPanel items={data.wants ?? []} entityLabel={data.company.name} title="Wants / acquisition criteria" />
+
+    <ExchangeItemsPanel items={data.exchangeItems ?? []} entityLabel={data.company.name} />
 
   <AgentBriefingsPanel entityType="company" entityId={data.company.id} entityLabel={data.company.name} artifacts={data.agentArtifacts ?? []} />
 
@@ -166,7 +168,7 @@
     <section class="card panel">
       <h2>Company profile</h2>
       {#if data.company.description}<p class="preline">{data.company.description}</p>{:else}<p class="muted">No description yet.</p>{/if}
-      {#if data.company.criteria}<div class="summary-box"><div class="muted small">Acquisition / buyer criteria</div><p>{data.company.criteria}</p></div>{/if}
+      <div class="summary-box"><div class="muted small">Acquisition criteria</div><p>Use the Wants section to manage acquisition criteria, buyer mandates, and “keep an eye out” requests.</p></div>
       {#if data.company.notes}<div class="summary-box"><div class="muted small">Internal notes</div><p>{data.company.notes}</p></div>{/if}
     </section>
 

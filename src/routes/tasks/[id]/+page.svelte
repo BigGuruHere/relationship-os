@@ -89,7 +89,7 @@
 
   <section class="card panel">
     <h2>Attached to</h2>
-    {#if !(data.task.contact || data.task.company || data.task.deal || data.task.dealContact || data.task.dealCompany || data.task.companyContact || data.task.project || data.task.workstream || data.task.marketLead || data.task.assignedToContact || data.task.waitingOnContact || data.task.assignedToText)}
+    {#if !(data.task.contact || data.task.company || data.task.deal || data.task.dealContact || data.task.dealCompany || data.task.companyContact || data.task.project || data.task.workstream || data.task.marketLead || data.task.want || data.task.offer || data.task.assignedToContact || data.task.waitingOnContact || data.task.assignedToText)}
       <p class="muted">This task is not attached to anything.</p>
     {:else}
       <div class="context-row">
@@ -102,6 +102,8 @@
         {#if data.task.project}<a class="chip" href={`/projects/${data.task.project.id}`}>Project: {data.task.project.title}</a>{/if}
         {#if data.task.workstream}<a class="chip" href={`/projects/${data.task.workstream.projectId}`}>Workstream: {data.task.workstream.name}</a>{/if}
         {#if data.task.marketLead}<a class="chip" href={`/leads/${data.task.marketLead.id}`}>Lead: {data.task.marketLead.title}</a>{/if}
+        {#if data.task.want}<a class="chip" href={`/wants/${data.task.want.id}`}>Want: {data.task.want.title}</a>{/if}
+        {#if data.task.offer}<a class="chip" href={`/offers/${data.task.offer.id}`}>Offer: {data.task.offer.title}</a>{/if}
         {#if data.task.assignedToContact}<a class="chip" href={`/contacts/${data.task.assignedToContact.id}`}>Assigned: {data.task.assignedToContact.name}</a>{/if}
         {#if data.task.assignedToText}<span class="chip">Assigned: {data.task.assignedToText}</span>{/if}
         {#if data.task.waitingOnContact}<a class="chip" href={`/contacts/${data.task.waitingOnContact.id}`}>Waiting on: {data.task.waitingOnContact.name}</a>{/if}

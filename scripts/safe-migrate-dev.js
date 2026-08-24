@@ -17,7 +17,7 @@ const okOrigins = new Set([
     process.exit(1);
   }
   
-  const { spawn } = require('node:child_process');
-  const child = spawn('npx', ['prisma', 'migrate', 'dev', ...process.argv.slice(2)], { stdio: 'inherit' });
+  const { spawn } = await import('node:child_process');
+  const child = spawn('npx', ['prisma', 'migrate', 'dev', ...process.argv.slice(2)], { stdio: 'inherit', shell: true });
   child.on('exit', code => process.exit(code ?? 1));
   

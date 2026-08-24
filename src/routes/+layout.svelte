@@ -234,6 +234,8 @@
       <a class="nav-link" href="/">Contacts</a>
       {#if data.user}
         <a class="nav-link" href="/leads">◇ Leads</a>
+        <a class="nav-link" href="/wants">◎ Wants</a>
+        <a class="nav-link" href="/offers">◌ Offers</a>
         <a class="nav-link" href="/deals">◆ Deals</a>
         <a class="nav-link" href="/companies">▥ Companies</a>
         <a class="nav-link" href="/tasks">☑ Tasks{#if (data.tasksOpenCount || 0) > 0} <span class="pill">{data.tasksOpenCount}</span>{/if}</a>

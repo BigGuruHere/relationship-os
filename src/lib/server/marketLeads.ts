@@ -609,9 +609,7 @@ export async function convertLeadToExchangeItem(userId: string, leadId: string, 
   if (!lead) throw new Error('Lead not found.');
   const display = mapMarketLead(lead);
   const title = display.title || display.companyName || display.name || (type === 'WANT' ? 'Untitled want' : 'Untitled offer');
-  const body = [display.description, display.notes].filter(Boolean).join('
-
-');
+  const body = [display.description, display.notes].filter(Boolean).join('\n\n');
 
   if (type === 'WANT') {
     const want = await prisma.want.create({
@@ -636,8 +634,7 @@ export async function convertLeadToExchangeItem(userId: string, leadId: string, 
       },
       select: { id: true }
     });
-    await storeWantEmbedding(userId, want.id, [title, body, display.geography, marketLeadTypeLabel(display.type)].filter(Boolean).join('
-'));
+    await storeWantEmbedding(userId, want.id, [title, body, display.geography, marketLeadTypeLabel(display.type)].filter(Boolean).join('\n'));
     await prisma.marketLead.updateMany({ where: { id: leadId, userId }, data: { wantId: want.id, status: 'CONVERTED' as any, convertedAt: new Date() } });
     await prisma.task.updateMany({ where: { userId, marketLeadId: leadId, wantId: null }, data: { wantId: want.id } }).catch(() => null);
     return want.id;

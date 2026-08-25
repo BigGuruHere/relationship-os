@@ -4,7 +4,7 @@
   // SECURITY: All data has been tenant-filtered and decrypted server side.
 
   import VoiceTextField from '$lib/recording/VoiceTextField.svelte';
-  import ExchangeItemsPanel from '$lib/ExchangeItemsPanel.svelte';
+  import OffersPanel from '$lib/OffersPanel.svelte';
   import WantsPanel from '$lib/WantsPanel.svelte';
   import AgentBriefingsPanel from '$lib/AgentBriefingsPanel.svelte';
   import NotesPanel from '$lib/NotesPanel.svelte';
@@ -69,7 +69,7 @@
 
   <WantsPanel items={data.wants ?? []} entityLabel={data.project.title} />
 
-    <ExchangeItemsPanel items={data.exchangeItems ?? []} entityLabel={data.project.title} />
+    <OffersPanel items={data.exchangeItems ?? []} createAction="?/createExchangeItem" deleteAction="?/deleteExchangeItem" deleteFieldName="exchangeItemId" entityLabel={data.project.title} />
 
   <AgentBriefingsPanel entityType="project" entityId={data.project.id} entityLabel={data.project.title} artifacts={data.agentArtifacts ?? []} />
 

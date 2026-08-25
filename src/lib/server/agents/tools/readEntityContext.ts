@@ -6,6 +6,8 @@ import { decrypt } from '$lib/crypto';
 import { companyDisplay, companyKindLabel, companyRelationshipTypeLabel, companyStatusLabel, safeDecryptCompany } from '$lib/companies';
 import { dealRelationshipLabel, dealStatusLabel, formatDealValue, safeDecrypt } from '$lib/deals';
 import { contactDisplayName } from '$lib/server/contactDisplay';
+import { loadWants, type WantEntityLink } from '$lib/server/wants';
+import { loadOffers } from '$lib/server/offers';
 import {
   dealConfidentialityLabel,
   dealContactInterestLabel,
@@ -43,6 +45,54 @@ function iso(value: Date | string | null | undefined) {
   if (!value) return null;
   const d = typeof value === 'string' ? new Date(value) : value;
   return Number.isNaN(d.getTime()) ? null : d.toISOString();
+}
+
+function wantForAgent(item: any) {
+  return {
+    id: item.id,
+    type: 'WANT',
+    wantType: item.wantType,
+    title: item.title,
+    summary: compactText(item.summary || item.criteria || item.description, 800),
+    criteria: compactText(item.criteria, 1000),
+    category: item.category,
+    geography: item.geography,
+    importance: item.importance,
+    urgency: item.urgency,
+    timeHorizon: item.timeHorizon,
+    status: item.status,
+    confidence: item.confidence
+  };
+}
+
+function offerForAgent(item: any) {
+  return {
+    id: item.id,
+    type: 'OFFER',
+    offerType: item.offerType,
+    direction: item.direction,
+    title: item.title,
+    summary: compactText(item.summary || item.terms || item.description, 800),
+    terms: compactText(item.terms, 1000),
+    category: item.category,
+    geography: item.geography,
+    importance: item.importance,
+    urgency: item.urgency,
+    timeHorizon: item.timeHorizon,
+    status: item.status,
+    confidence: item.confidence
+  };
+}
+
+async function loadFirstClassExchangeContext(userId: string, links: WantEntityLink) {
+  // IT: Stage 7.3.1 agents read the new source-of-truth tables, not legacy ExchangeItem rows.
+  const [wantRows, offerRows] = await Promise.all([
+    loadWants({ userId, links, take: 20 }),
+    loadOffers({ userId, links, take: 20 })
+  ]);
+  const wants = wantRows.map(wantForAgent);
+  const offers = offerRows.map(offerForAgent);
+  return { wants, offers, wantsOffers: [...wants, ...offers] };
 }
 
 async function readContact(userId: string, contactId: string) {
@@ -95,15 +145,11 @@ async function readContact(userId: string, contactId: string) {
         orderBy: [{ dueAt: 'asc' }, { updatedAt: 'desc' }],
         take: 20
       },
-      exchangeItems: {
-        select: { id: true, type: true, direction: true, titleEnc: true, summaryEnc: true, importance: true, urgency: true, timeHorizon: true, status: true, confidence: true },
-        orderBy: { updatedAt: 'desc' },
-        take: 20
-      }
     }
   });
 
   if (!row) throw new Error('Contact not found.');
+  const exchange = await loadFirstClassExchangeContext(userId, { contactId });
 
   return {
     entityType: 'contact',
@@ -155,18 +201,9 @@ async function readContact(userId: string, contactId: string) {
       type: taskTypeLabel(task.taskType),
       dueAt: iso(task.dueAt)
     })),
-    wantsOffers: row.exchangeItems.map((item: any) => ({
-      id: item.id,
-      type: item.type,
-      direction: item.direction,
-      title: safeDecryptTask(item.titleEnc, 'exchange.title', 'Untitled item'),
-      summary: safeDecryptTask(item.summaryEnc, 'exchange.summary', ''),
-      importance: item.importance,
-      urgency: item.urgency,
-      timeHorizon: item.timeHorizon,
-      status: item.status,
-      confidence: item.confidence
-    }))
+    wants: exchange.wants,
+    offers: exchange.offers,
+    wantsOffers: exchange.wantsOffers
   };
 }
 
@@ -224,15 +261,11 @@ async function readDeal(userId: string, dealId: string) {
         orderBy: [{ dueAt: 'asc' }, { updatedAt: 'desc' }],
         take: 30
       },
-      exchangeItems: {
-        select: { id: true, type: true, direction: true, titleEnc: true, summaryEnc: true, importance: true, urgency: true, timeHorizon: true, status: true, confidence: true },
-        orderBy: { updatedAt: 'desc' },
-        take: 20
-      }
     }
   });
 
   if (!row) throw new Error('Deal not found.');
+  const exchange = await loadFirstClassExchangeContext(userId, { dealId });
 
   return {
     entityType: 'deal',
@@ -288,18 +321,9 @@ async function readDeal(userId: string, dealId: string) {
       type: taskTypeLabel(task.taskType),
       dueAt: iso(task.dueAt)
     })),
-    wantsOffers: row.exchangeItems.map((item: any) => ({
-      id: item.id,
-      type: item.type,
-      direction: item.direction,
-      title: safeDecryptTask(item.titleEnc, 'exchange.title', 'Untitled item'),
-      summary: safeDecryptTask(item.summaryEnc, 'exchange.summary', ''),
-      importance: item.importance,
-      urgency: item.urgency,
-      timeHorizon: item.timeHorizon,
-      status: item.status,
-      confidence: item.confidence
-    }))
+    wants: exchange.wants,
+    offers: exchange.offers,
+    wantsOffers: exchange.wantsOffers
   };
 }
 
@@ -351,15 +375,11 @@ async function readCompany(userId: string, companyId: string) {
         orderBy: [{ dueAt: 'asc' }, { updatedAt: 'desc' }],
         take: 30
       },
-      exchangeItems: {
-        select: { id: true, type: true, direction: true, titleEnc: true, summaryEnc: true, importance: true, urgency: true, timeHorizon: true, status: true, confidence: true },
-        orderBy: { updatedAt: 'desc' },
-        take: 20
-      }
     }
   });
 
   if (!row) throw new Error('Company not found.');
+  const exchange = await loadFirstClassExchangeContext(userId, { companyId });
 
   const relationships = [
     ...row.relationshipsAsA.map((r: any) => ({
@@ -387,7 +407,14 @@ async function readCompany(userId: string, companyId: string) {
     kind: companyKindLabel(row.kind),
     status: companyStatusLabel(row.status),
     description: compactText(safeDecryptCompany(row.descriptionEnc, 'company.description', ''), 1600),
-    criteria: compactText(safeDecryptCompany(row.criteriaEnc, 'company.criteria', ''), 1200),
+    criteria: compactText(
+      exchange.wants
+        .filter((want: any) => want.wantType === 'ACQUISITION_CRITERIA')
+        .map((want: any) => want.criteria || want.summary || want.title)
+        .filter(Boolean)
+        .join('\n\n') || safeDecryptCompany(row.criteriaEnc, 'company.criteria', ''),
+      1200
+    ),
     notes: compactText(safeDecryptCompany(row.notesEnc, 'company.notes', ''), 1200),
     employees: await Promise.all(row.contacts.map(async (link: any) => ({
       id: link.contact.id,
@@ -422,18 +449,9 @@ async function readCompany(userId: string, companyId: string) {
       type: taskTypeLabel(task.taskType),
       dueAt: iso(task.dueAt)
     })),
-    wantsOffers: row.exchangeItems.map((item: any) => ({
-      id: item.id,
-      type: item.type,
-      direction: item.direction,
-      title: safeDecryptTask(item.titleEnc, 'exchange.title', 'Untitled item'),
-      summary: safeDecryptTask(item.summaryEnc, 'exchange.summary', ''),
-      importance: item.importance,
-      urgency: item.urgency,
-      timeHorizon: item.timeHorizon,
-      status: item.status,
-      confidence: item.confidence
-    }))
+    wants: exchange.wants,
+    offers: exchange.offers,
+    wantsOffers: exchange.wantsOffers
   };
 }
 
@@ -461,15 +479,11 @@ async function readProject(userId: string, projectId: string) {
         orderBy: [{ status: 'asc' }, { dueAt: 'asc' }, { updatedAt: 'desc' }],
         take: 80
       },
-      exchangeItems: {
-        select: { id: true, type: true, direction: true, titleEnc: true, summaryEnc: true, importance: true, urgency: true, timeHorizon: true, status: true, confidence: true },
-        orderBy: { updatedAt: 'desc' },
-        take: 20
-      }
     }
   });
 
   if (!row) throw new Error('Project not found.');
+  const exchange = await loadFirstClassExchangeContext(userId, { projectId });
 
   const openStatuses = new Set(['OPEN', 'IN_PROGRESS', 'WAITING', 'SNOOZED']);
   const relatedDeals = new Map<string, any>();
@@ -503,18 +517,9 @@ async function readProject(userId: string, projectId: string) {
     relatedDeals: [...relatedDeals.values()],
     relatedCompanies: [...relatedCompanies.values()],
     relatedPeople: [...relatedPeople.values()],
-    wantsOffers: row.exchangeItems.map((item: any) => ({
-      id: item.id,
-      type: item.type,
-      direction: item.direction,
-      title: safeDecryptTask(item.titleEnc, 'exchange.title', 'Untitled item'),
-      summary: safeDecryptTask(item.summaryEnc, 'exchange.summary', ''),
-      importance: item.importance,
-      urgency: item.urgency,
-      timeHorizon: item.timeHorizon,
-      status: item.status,
-      confidence: item.confidence
-    }))
+    wants: exchange.wants,
+    offers: exchange.offers,
+    wantsOffers: exchange.wantsOffers
   };
 }
 

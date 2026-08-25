@@ -3,10 +3,11 @@
 // SECURITY: All reads/writes are tenant scoped by userId. Want text is encrypted at rest.
 
 import { prisma } from '$lib/db';
+import { validateCommercialEntityLinks, type CommercialEntityLinks } from '$lib/server/commercialEntityLinks';
 import { decrypt, encrypt } from '$lib/crypto';
 import { createEmbeddingForText } from '$lib/embeddings_api';
 import { parseMoneyToCents, formatDealValue, safeDecrypt } from '$lib/deals';
-import { companyDisplay } from '$lib/companies';
+import { companyDisplay, safeDecryptCompany } from '$lib/companies';
 import {
   importanceLabel,
   normaliseWantConfidence,
@@ -21,14 +22,7 @@ import {
   wantUrgencyLabel
 } from '$lib/wants';
 
-export type WantEntityLink = {
-  contactId?: string | null;
-  companyId?: string | null;
-  dealId?: string | null;
-  projectId?: string | null;
-  workstreamId?: string | null;
-  companyContactId?: string | null;
-};
+export type WantEntityLink = CommercialEntityLinks;
 
 function safeDecryptWant(payload: string | null | undefined, aad: string, fallback = '', legacyAad?: string | string[]) {
   if (!payload) return fallback;
@@ -132,14 +126,16 @@ export async function createWantFromForm(params: { userId: string; form: FormDat
   const confidence = normaliseWantConfidence(form.get('confidence'));
   const importance = parseImportance(form.get('importance'));
 
-  let workstreamId = links.workstreamId || String(form.get('workstreamId') || '').trim() || null;
-  let projectId = links.projectId || String(form.get('projectId') || '').trim() || null;
-  if (workstreamId) {
-    const ws = await prisma.projectWorkstream.findFirst({ where: { id: workstreamId, userId }, select: { id: true, projectId: true } });
-    if (!ws) throw new Error('Workstream not found.');
-    projectId = projectId || ws.projectId;
-    if (projectId !== ws.projectId) throw new Error('Selected workstream belongs to a different project.');
-  }
+  // IT: Route-provided links lock the corresponding browser fields. All resolved links are then
+  // tenant-validated together, including relationship/contact/company consistency.
+  const entityLinks = await validateCommercialEntityLinks(userId, {
+    contactId: links.contactId || String(form.get('contactId') || '').trim() || null,
+    companyId: links.companyId || String(form.get('companyId') || '').trim() || null,
+    dealId: links.dealId || String(form.get('dealId') || '').trim() || null,
+    projectId: links.projectId || String(form.get('projectId') || '').trim() || null,
+    workstreamId: links.workstreamId || String(form.get('workstreamId') || '').trim() || null,
+    companyContactId: links.companyContactId || String(form.get('companyContactId') || '').trim() || null
+  });
 
   const row = await prisma.want.create({
     data: {
@@ -161,12 +157,12 @@ export async function createWantFromForm(params: { userId: string; form: FormDat
       currency,
       reviewAt: parseDate(form.get('reviewAt')),
       expiresAt: parseDate(form.get('expiresAt')),
-      contactId: links.contactId || String(form.get('contactId') || '').trim() || null,
-      companyId: links.companyId || String(form.get('companyId') || '').trim() || null,
-      dealId: links.dealId || String(form.get('dealId') || '').trim() || null,
-      projectId,
-      workstreamId,
-      companyContactId: links.companyContactId || String(form.get('companyContactId') || '').trim() || null
+      contactId: entityLinks.contactId,
+      companyId: entityLinks.companyId,
+      dealId: entityLinks.dealId,
+      projectId: entityLinks.projectId,
+      workstreamId: entityLinks.workstreamId,
+      companyContactId: entityLinks.companyContactId
     },
     select: { id: true }
   });
@@ -213,14 +209,15 @@ export async function updateWantFromForm(params: { userId: string; wantId: strin
   const confidence = normaliseWantConfidence(form.get('confidence'));
   const importance = parseImportance(form.get('importance'));
 
-  let workstreamId = String(form.get('workstreamId') || '').trim() || null;
-  let projectId = String(form.get('projectId') || '').trim() || null;
-  if (workstreamId) {
-    const ws = await prisma.projectWorkstream.findFirst({ where: { id: workstreamId, userId }, select: { id: true, projectId: true } });
-    if (!ws) throw new Error('Workstream not found.');
-    projectId = projectId || ws.projectId;
-    if (projectId !== ws.projectId) throw new Error('Selected workstream belongs to a different project.');
-  }
+  // IT: Updates are just as strict as creates. Never rely on dropdown contents as an ownership boundary.
+  const entityLinks = await validateCommercialEntityLinks(userId, {
+    contactId: String(form.get('contactId') || '').trim() || null,
+    companyId: String(form.get('companyId') || '').trim() || null,
+    dealId: String(form.get('dealId') || '').trim() || null,
+    projectId: String(form.get('projectId') || '').trim() || null,
+    workstreamId: String(form.get('workstreamId') || '').trim() || null,
+    companyContactId: String(form.get('companyContactId') || '').trim() || null
+  });
 
   await prisma.want.updateMany({
     where: { id: wantId, userId },
@@ -242,12 +239,12 @@ export async function updateWantFromForm(params: { userId: string; wantId: strin
       currency,
       reviewAt: parseDate(form.get('reviewAt')),
       expiresAt: parseDate(form.get('expiresAt')),
-      contactId: String(form.get('contactId') || '').trim() || null,
-      companyId: String(form.get('companyId') || '').trim() || null,
-      dealId: String(form.get('dealId') || '').trim() || null,
-      projectId,
-      workstreamId,
-      companyContactId: String(form.get('companyContactId') || '').trim() || null
+      contactId: entityLinks.contactId,
+      companyId: entityLinks.companyId,
+      dealId: entityLinks.dealId,
+      projectId: entityLinks.projectId,
+      workstreamId: entityLinks.workstreamId,
+      companyContactId: entityLinks.companyContactId
     }
   });
 
@@ -268,6 +265,63 @@ export async function updateWantFromForm(params: { userId: string; wantId: strin
     valueMax: valueMaxRaw,
     currency
   }));
+}
+
+
+export async function applyCompanyAcquisitionCriteria(params: {
+  userId: string;
+  companyId: string;
+  criteria: string;
+  overwrite?: boolean;
+}) {
+  const { userId, companyId, overwrite = false } = params;
+  const criteria = String(params.criteria || '').trim();
+  if (!criteria) throw new Error('Acquisition criteria is required.');
+
+  const company = await prisma.company.findFirst({
+    where: { id: companyId, userId },
+    select: { id: true, nameEnc: true }
+  });
+  if (!company) throw new Error('Company not found.');
+
+  const existing = await prisma.want.findFirst({
+    where: { userId, companyId, wantType: 'ACQUISITION_CRITERIA' as any, status: { not: 'ARCHIVED' as any } },
+    select: { id: true, criteriaEnc: true, titleEnc: true },
+    orderBy: { createdAt: 'asc' }
+  });
+
+  if (existing?.criteriaEnc && !overwrite) return { id: existing.id, changed: false };
+
+  const companyName = safeDecryptCompany(company.nameEnc, 'company.name', 'Company');
+  if (existing) {
+    // IT: Agent-applied criteria updates the first-class Want. Legacy Company.criteriaEnc is no longer
+    // the working source of truth, although the old column remains for migration compatibility.
+    await prisma.want.updateMany({
+      where: { id: existing.id, userId },
+      data: { criteriaEnc: encrypt(criteria, 'want.criteria') }
+    });
+    await storeWantEmbedding(userId, existing.id, `Acquisition criteria for ${companyName}\n${criteria}`);
+    return { id: existing.id, changed: true };
+  }
+
+  const title = `Acquisition criteria - ${companyName}`;
+  const created = await prisma.want.create({
+    data: {
+      userId,
+      companyId,
+      wantType: 'ACQUISITION_CRITERIA' as any,
+      status: 'WATCHING_MARKET' as any,
+      titleEnc: encrypt(title, 'want.title'),
+      criteriaEnc: encrypt(criteria, 'want.criteria'),
+      importance: 3,
+      urgency: 'NORMAL' as any,
+      timeHorizon: 'ONGOING' as any,
+      confidence: 'MEDIUM' as any
+    },
+    select: { id: true }
+  });
+  await storeWantEmbedding(userId, created.id, `${title}\n${criteria}`);
+  return { id: created.id, changed: true };
 }
 
 export async function loadWants(params: { userId: string; links?: WantEntityLink; take?: number; includeArchived?: boolean }) {

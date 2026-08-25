@@ -2,7 +2,7 @@
 <script lang="ts">
   // PURPOSE: Show one deal, its people, commercial conversation threads, notes, and tasks.
   // SECURITY: This page renders server-prepared decrypted display values only.
-  import ExchangeItemsPanel from '$lib/ExchangeItemsPanel.svelte';
+  import OffersPanel from '$lib/OffersPanel.svelte';
   import WantsPanel from '$lib/WantsPanel.svelte';
   import AgentBriefingsPanel from '$lib/AgentBriefingsPanel.svelte';
   import NotesPanel from '$lib/NotesPanel.svelte';
@@ -80,7 +80,7 @@
 
   <WantsPanel items={data.wants ?? []} entityLabel={data.deal.title} />
 
-    <ExchangeItemsPanel items={data.exchangeItems ?? []} entityLabel={data.deal.title} />
+    <OffersPanel items={data.exchangeItems ?? []} createAction="?/createExchangeItem" deleteAction="?/deleteExchangeItem" deleteFieldName="exchangeItemId" entityLabel={data.deal.title} />
 
   <AgentBriefingsPanel entityType="deal" entityId={data.deal.id} entityLabel={data.deal.title} artifacts={data.agentArtifacts ?? []} />
 

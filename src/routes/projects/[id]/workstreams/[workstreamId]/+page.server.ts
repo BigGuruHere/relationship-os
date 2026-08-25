@@ -24,6 +24,8 @@ import {
 } from '$lib/server/marketLeads';
 import { contactDisplayName, contactOptionsForRows } from '$lib/server/contactDisplay';
 import { createTaskFromForm } from '$lib/server/tasks';
+import { createWantFromForm, deleteWant, loadWants } from '$lib/server/wants';
+import { createOfferFromForm, deleteOffer, loadOffers } from '$lib/server/offers';
 import {
   TASK_FOCUS_OPTIONS,
   TASK_IMPORTANCES,
@@ -260,7 +262,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
   const workstreamId = params.workstreamId;
   const { project, workstream } = await assertProjectAndWorkstream(userId, projectId, workstreamId);
 
-  const [leadsRaw, tasksRaw, notesRaw, dealsRaw, options] = await Promise.all([
+  const [leadsRaw, tasksRaw, notesRaw, dealsRaw, wants, offers, options] = await Promise.all([
     prisma.marketLead.findMany({
       where: { userId, projectId, workstreamId, status: { notIn: ['ARCHIVED', 'CONVERTED'] as any } },
       select: marketLeadSelect() as any,
@@ -305,6 +307,8 @@ export const load: PageServerLoad = async ({ params, locals }) => {
       orderBy: { createdAt: 'desc' },
       take: 200
     }),
+    loadWants({ userId, links: { projectId, workstreamId }, take: 100 }),
+    loadOffers({ userId, links: { projectId, workstreamId }, take: 100 }),
     loadOptions(userId, projectId, workstreamId, safeDecryptTask(project.titleEnc, 'project.title', 'Untitled project'))
   ]);
 
@@ -398,6 +402,8 @@ export const load: PageServerLoad = async ({ params, locals }) => {
     openTasks: tasks.filter((task: any) => ACTIVE_TASK_STATUSES.includes(task.status)).length,
     overdueTasks: tasks.filter((task: any) => ACTIVE_TASK_STATUSES.includes(task.status) && task.dueAt && new Date(task.dueAt).getTime() < now.getTime()).length,
     deals: deals.length,
+    wants: wants.length,
+    offers: offers.length,
     notes: notes.length,
     readyLeads: leads.filter((lead: any) => lead.status === 'QUALIFIED').length
   };
@@ -409,6 +415,8 @@ export const load: PageServerLoad = async ({ params, locals }) => {
     tasks,
     notes,
     deals,
+    wants,
+    offers,
     summary,
     options,
     taskDealContactOptions,
@@ -478,6 +486,64 @@ export const actions: Actions = {
     if (!lead) return fail(404, { error: 'Lead not found.' });
     if (lead.projectId && lead.projectId !== params.id) return fail(400, { error: 'Lead already belongs to another project.' });
     await prisma.marketLead.updateMany({ where: { id: leadId, userId }, data: { projectId: params.id, workstreamId: params.workstreamId } });
+    throw redirect(303, returnTo(params.id, params.workstreamId));
+  },
+
+  createWant: async ({ request, params, locals }) => {
+    if (!locals.user) throw redirect(303, '/auth/login');
+    const userId = locals.user.id;
+    await assertProjectAndWorkstream(userId, params.id, params.workstreamId);
+    try {
+      await createWantFromForm({
+        userId,
+        form: await request.formData(),
+        links: { projectId: params.id, workstreamId: params.workstreamId }
+      });
+    } catch (err: any) {
+      return fail(400, { error: err?.message || 'Could not create want.' });
+    }
+    throw redirect(303, returnTo(params.id, params.workstreamId));
+  },
+
+  deleteWant: async ({ request, params, locals }) => {
+    if (!locals.user) throw redirect(303, '/auth/login');
+    const form = await request.formData();
+    const wantId = String(form.get('wantId') || '').trim();
+    if (!wantId) return fail(400, { error: 'Missing want id.' });
+    await deleteWant({
+      userId: locals.user.id,
+      id: wantId,
+      links: { projectId: params.id, workstreamId: params.workstreamId }
+    });
+    throw redirect(303, returnTo(params.id, params.workstreamId));
+  },
+
+  createOffer: async ({ request, params, locals }) => {
+    if (!locals.user) throw redirect(303, '/auth/login');
+    const userId = locals.user.id;
+    await assertProjectAndWorkstream(userId, params.id, params.workstreamId);
+    try {
+      await createOfferFromForm({
+        userId,
+        form: await request.formData(),
+        links: { projectId: params.id, workstreamId: params.workstreamId }
+      });
+    } catch (err: any) {
+      return fail(400, { error: err?.message || 'Could not create offer.' });
+    }
+    throw redirect(303, returnTo(params.id, params.workstreamId));
+  },
+
+  deleteOffer: async ({ request, params, locals }) => {
+    if (!locals.user) throw redirect(303, '/auth/login');
+    const form = await request.formData();
+    const offerId = String(form.get('offerId') || '').trim();
+    if (!offerId) return fail(400, { error: 'Missing offer id.' });
+    await deleteOffer({
+      userId: locals.user.id,
+      id: offerId,
+      links: { projectId: params.id, workstreamId: params.workstreamId }
+    });
     throw redirect(303, returnTo(params.id, params.workstreamId));
   },
 

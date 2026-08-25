@@ -1077,8 +1077,8 @@ model CompanyRelationship {
 // FIRST-CLASS WANT MODELS
 // ---------------------------------------------------------------------------
 // IT: Want is the demand-side object for buyer mandates, acquisition criteria,
-// search briefs, and "keep an eye out" requests. Offers remain in ExchangeItem
-// for now, while matching can compare Want.embedding_vec against OFFER exchange items.
+// search briefs, and "keep an eye out" requests. Stage 7.3 also promoted Offers to a
+// first-class model; legacy ExchangeItem rows remain only for migration/history compatibility.
 enum WantType {
   GENERAL
   ACQUISITION_CRITERIA
@@ -1323,9 +1323,11 @@ model OfferNote {
 
 
 // ---------------------------------------------------------------------------
-// WANTS AND OFFERS MODELS
+// LEGACY EXCHANGEITEM COMPATIBILITY MODEL
 // ---------------------------------------------------------------------------
-// IT: Whether the exchange item represents a need/want or something available to offer.
+// IT: Historical WANT/OFFER rows are preserved here for rollback/audit compatibility. New UI
+// writes use first-class Want and Offer models and Stage 7.4 matching should use those tables.
+// IT: Whether the legacy exchange item represents a need/want or something available to offer.
 enum ExchangeItemType {
   WANT
   OFFER

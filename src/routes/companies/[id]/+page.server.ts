@@ -635,7 +635,6 @@ export const actions: Actions = {
     const industry = String(form.get('industry') || '').trim();
     const location = String(form.get('location') || '').trim();
     const description = String(form.get('description') || '').trim();
-    const criteria = String(form.get('criteria') || '').trim();
     const notes = String(form.get('notes') || '').trim();
 
     try {
@@ -651,7 +650,6 @@ export const actions: Actions = {
           industryEnc: industry ? encrypt(industry, 'company.industry') : null,
           locationEnc: location ? encrypt(location, 'company.location') : null,
           descriptionEnc: description ? encrypt(description, 'company.description') : null,
-          criteriaEnc: criteria ? encrypt(criteria, 'company.criteria') : null,
           notesEnc: notes ? encrypt(notes, 'company.notes') : null,
           kind: normaliseCompanyKind(form.get('kind')) as any,
           status: normaliseCompanyStatus(form.get('status')) as any
@@ -1019,7 +1017,12 @@ export const actions: Actions = {
     const industry = safeDecryptCompany(company.industryEnc, 'company.industry', '');
     const location = safeDecryptCompany(company.locationEnc, 'company.location', '');
     const description = safeDecryptCompany(company.descriptionEnc, 'company.description', '');
-    const criteria = safeDecryptCompany(company.criteriaEnc, 'company.criteria', '');
+    const criteriaWants = await loadWants({ userId, links: { companyId: params.id }, take: 50 });
+    const criteria = criteriaWants
+      .filter((want: any) => want.wantType === 'ACQUISITION_CRITERIA')
+      .map((want: any) => want.criteria || want.description || want.summary || want.title)
+      .filter(Boolean)
+      .join('\n\n') || safeDecryptCompany(company.criteriaEnc, 'company.criteria', '');
 
     const run = await runOutreachAgent({
       userId,

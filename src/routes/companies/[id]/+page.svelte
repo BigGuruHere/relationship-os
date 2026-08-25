@@ -1,6 +1,6 @@
 <!-- src/routes/companies/[id]/+page.svelte -->
 <script lang="ts">
-  import ExchangeItemsPanel from '$lib/ExchangeItemsPanel.svelte';
+  import OffersPanel from '$lib/OffersPanel.svelte';
   import WantsPanel from '$lib/WantsPanel.svelte';
   import AgentBriefingsPanel from '$lib/AgentBriefingsPanel.svelte';
   import NotesPanel from '$lib/NotesPanel.svelte';
@@ -124,7 +124,7 @@
 
   <WantsPanel items={data.wants ?? []} entityLabel={data.company.name} title="Wants / acquisition criteria" />
 
-    <ExchangeItemsPanel items={data.exchangeItems ?? []} entityLabel={data.company.name} />
+    <OffersPanel items={data.exchangeItems ?? []} createAction="?/createExchangeItem" deleteAction="?/deleteExchangeItem" deleteFieldName="exchangeItemId" entityLabel={data.company.name} />
 
   <AgentBriefingsPanel entityType="company" entityId={data.company.id} entityLabel={data.company.name} artifacts={data.agentArtifacts ?? []} />
 

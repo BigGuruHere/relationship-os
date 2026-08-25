@@ -7,6 +7,7 @@ import { prisma } from '$lib/db';
 import { buildIndexToken, encrypt } from '$lib/crypto';
 import { loadAgentArtifacts } from '$lib/server/agents/artifacts';
 import { safeDecryptCompany } from '$lib/companies';
+import { applyCompanyAcquisitionCriteria } from '$lib/server/wants';
 
 function dec(payload: string | null | undefined, aad: string, fallback = '') {
   return safeDecryptCompany(payload, aad, fallback);
@@ -473,6 +474,22 @@ export const actions: Actions = {
       if (!companyId) return fail(400, { error: 'This company enrichment is not linked to a company.' });
       const existing = await prisma.company.findFirst({ where: { id: companyId, userId: locals.user.id }, select: { id: true, nameEnc: true, websiteEnc: true, phoneEnc: true, industryEnc: true, locationEnc: true, descriptionEnc: true, criteriaEnc: true, notesEnc: true } });
       if (!existing) return fail(404, { error: 'Linked company not found.' });
+      if (fieldKey === 'company.criteria') {
+        const applied = await applyCompanyAcquisitionCriteria({
+          userId: locals.user.id,
+          companyId,
+          criteria: proposedValue,
+          overwrite
+        });
+        await prisma.contactEnrichment.update({
+          where: { id: enrichment.id },
+          data: applied.changed
+            ? { status: 'APPLIED', appliedAt: new Date(), appliedEntityType: 'want', appliedEntityId: applied.id }
+            : { status: 'NO_CHANGE' }
+        });
+        redirectBack(params.id);
+      }
+
       const data: any = {};
       if (fieldKey === 'company.name' && (overwrite || !existing.nameEnc)) { data.nameEnc = encrypt(proposedValue, 'company.name'); data.nameIdx = buildIndexToken(proposedValue); }
       if (fieldKey === 'company.website' && (overwrite || !existing.websiteEnc)) { data.websiteEnc = encrypt(proposedValue, 'company.website'); data.websiteIdx = buildIndexToken(proposedValue); }
@@ -480,7 +497,6 @@ export const actions: Actions = {
       if (fieldKey === 'company.industry' && (overwrite || !existing.industryEnc)) data.industryEnc = encrypt(proposedValue, 'company.industry');
       if (fieldKey === 'company.location' && (overwrite || !existing.locationEnc)) data.locationEnc = encrypt(proposedValue, 'company.location');
       if (fieldKey === 'company.description' && (overwrite || !existing.descriptionEnc)) data.descriptionEnc = encrypt(proposedValue, 'company.description');
-      if (fieldKey === 'company.criteria' && (overwrite || !existing.criteriaEnc)) data.criteriaEnc = encrypt(proposedValue, 'company.criteria');
       if (fieldKey === 'company.notes' && (overwrite || !existing.notesEnc)) data.notesEnc = encrypt(proposedValue, 'company.notes');
       if (!Object.keys(data).length) {
         await prisma.contactEnrichment.update({ where: { id: enrichment.id }, data: { status: 'NO_CHANGE' } });

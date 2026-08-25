@@ -1,6 +1,6 @@
 <!-- src/routes/companies/[id]/contacts/[linkId]/+page.svelte -->
 <script lang="ts">
-  import ExchangeItemsPanel from '$lib/ExchangeItemsPanel.svelte';
+  import OffersPanel from '$lib/OffersPanel.svelte';
   import WantsPanel from '$lib/WantsPanel.svelte';
   import NotesPanel from '$lib/NotesPanel.svelte';
   import TasksPanel from '$lib/TasksPanel.svelte';
@@ -186,7 +186,7 @@
 
   <WantsPanel items={data.wants ?? []} entityLabel={`${data.relationship.contactName} at ${data.relationship.companyName}`} title="Wants for this relationship" />
 
-  <ExchangeItemsPanel items={data.exchangeItems ?? []} entityLabel={`${data.relationship.contactName} at ${data.relationship.companyName}`} title="Offers for this relationship" />
+  <OffersPanel items={data.exchangeItems ?? []} createAction="?/createExchangeItem" deleteAction="?/deleteExchangeItem" deleteFieldName="exchangeItemId" entityLabel={`${data.relationship.contactName} at ${data.relationship.companyName}`} title="Offers for this relationship" />
 </div>
 
 <style>

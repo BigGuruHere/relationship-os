@@ -3,6 +3,7 @@
 // SECURITY: All reads/writes are tenant scoped by userId. Offer text is encrypted at rest.
 
 import { prisma } from '$lib/db';
+import { validateCommercialEntityLinks, type CommercialEntityLinks } from '$lib/server/commercialEntityLinks';
 import { decrypt, encrypt } from '$lib/crypto';
 import { createEmbeddingForText } from '$lib/embeddings_api';
 import { parseMoneyToCents, formatDealValue, safeDecrypt } from '$lib/deals';
@@ -23,14 +24,7 @@ import {
   offerUrgencyLabel
 } from '$lib/offers';
 
-export type OfferEntityLink = {
-  contactId?: string | null;
-  companyId?: string | null;
-  dealId?: string | null;
-  projectId?: string | null;
-  workstreamId?: string | null;
-  companyContactId?: string | null;
-};
+export type OfferEntityLink = CommercialEntityLinks;
 
 function safeDecryptOffer(payload: string | null | undefined, aad: string, fallback = '', legacyAad?: string | string[]) {
   if (!payload) return fallback;
@@ -137,14 +131,16 @@ export async function createOfferFromForm(params: { userId: string; form: FormDa
   const confidence = normaliseOfferConfidence(form.get('confidence'));
   const importance = parseImportance(form.get('importance'));
 
-  let workstreamId = links.workstreamId || String(form.get('workstreamId') || '').trim() || null;
-  let projectId = links.projectId || String(form.get('projectId') || '').trim() || null;
-  if (workstreamId) {
-    const ws = await prisma.projectWorkstream.findFirst({ where: { id: workstreamId, userId }, select: { id: true, projectId: true } });
-    if (!ws) throw new Error('Workstream not found.');
-    projectId = projectId || ws.projectId;
-    if (projectId !== ws.projectId) throw new Error('Selected workstream belongs to a different project.');
-  }
+  // IT: Route-provided links lock the corresponding browser fields. All resolved links are then
+  // tenant-validated together, including relationship/contact/company consistency.
+  const entityLinks = await validateCommercialEntityLinks(userId, {
+    contactId: links.contactId || String(form.get('contactId') || '').trim() || null,
+    companyId: links.companyId || String(form.get('companyId') || '').trim() || null,
+    dealId: links.dealId || String(form.get('dealId') || '').trim() || null,
+    projectId: links.projectId || String(form.get('projectId') || '').trim() || null,
+    workstreamId: links.workstreamId || String(form.get('workstreamId') || '').trim() || null,
+    companyContactId: links.companyContactId || String(form.get('companyContactId') || '').trim() || null
+  });
 
   const row = await prisma.offer.create({
     data: {
@@ -167,12 +163,12 @@ export async function createOfferFromForm(params: { userId: string; form: FormDa
       currency,
       reviewAt: parseDate(form.get('reviewAt')),
       expiresAt: parseDate(form.get('expiresAt')),
-      contactId: links.contactId || String(form.get('contactId') || '').trim() || null,
-      companyId: links.companyId || String(form.get('companyId') || '').trim() || null,
-      dealId: links.dealId || String(form.get('dealId') || '').trim() || null,
-      projectId,
-      workstreamId,
-      companyContactId: links.companyContactId || String(form.get('companyContactId') || '').trim() || null
+      contactId: entityLinks.contactId,
+      companyId: entityLinks.companyId,
+      dealId: entityLinks.dealId,
+      projectId: entityLinks.projectId,
+      workstreamId: entityLinks.workstreamId,
+      companyContactId: entityLinks.companyContactId
     },
     select: { id: true }
   });
@@ -221,14 +217,15 @@ export async function updateOfferFromForm(params: { userId: string; offerId: str
   const confidence = normaliseOfferConfidence(form.get('confidence'));
   const importance = parseImportance(form.get('importance'));
 
-  let workstreamId = String(form.get('workstreamId') || '').trim() || null;
-  let projectId = String(form.get('projectId') || '').trim() || null;
-  if (workstreamId) {
-    const ws = await prisma.projectWorkstream.findFirst({ where: { id: workstreamId, userId }, select: { id: true, projectId: true } });
-    if (!ws) throw new Error('Workstream not found.');
-    projectId = projectId || ws.projectId;
-    if (projectId !== ws.projectId) throw new Error('Selected workstream belongs to a different project.');
-  }
+  // IT: Updates are just as strict as creates. Never rely on dropdown contents as an ownership boundary.
+  const entityLinks = await validateCommercialEntityLinks(userId, {
+    contactId: String(form.get('contactId') || '').trim() || null,
+    companyId: String(form.get('companyId') || '').trim() || null,
+    dealId: String(form.get('dealId') || '').trim() || null,
+    projectId: String(form.get('projectId') || '').trim() || null,
+    workstreamId: String(form.get('workstreamId') || '').trim() || null,
+    companyContactId: String(form.get('companyContactId') || '').trim() || null
+  });
 
   await prisma.offer.updateMany({
     where: { id: offerId, userId },
@@ -251,12 +248,12 @@ export async function updateOfferFromForm(params: { userId: string; offerId: str
       currency,
       reviewAt: parseDate(form.get('reviewAt')),
       expiresAt: parseDate(form.get('expiresAt')),
-      contactId: String(form.get('contactId') || '').trim() || null,
-      companyId: String(form.get('companyId') || '').trim() || null,
-      dealId: String(form.get('dealId') || '').trim() || null,
-      projectId,
-      workstreamId,
-      companyContactId: String(form.get('companyContactId') || '').trim() || null
+      contactId: entityLinks.contactId,
+      companyId: entityLinks.companyId,
+      dealId: entityLinks.dealId,
+      projectId: entityLinks.projectId,
+      workstreamId: entityLinks.workstreamId,
+      companyContactId: entityLinks.companyContactId
     }
   });
 

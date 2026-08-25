@@ -2,7 +2,7 @@
 <script lang="ts">
   // PURPOSE: Show a contact with tags, relationships, deals, reminders, and notes.
   // SECURITY: Data has already been decrypted server side where needed.
-  import ExchangeItemsPanel from '$lib/ExchangeItemsPanel.svelte';
+  import OffersPanel from '$lib/OffersPanel.svelte';
   import WantsPanel from '$lib/WantsPanel.svelte';
   import AgentBriefingsPanel from '$lib/AgentBriefingsPanel.svelte';
   import TasksPanel from '$lib/TasksPanel.svelte';
@@ -184,7 +184,7 @@
 
     <WantsPanel items={data.wants ?? []} entityLabel={contact.name} />
 
-    <ExchangeItemsPanel items={data.exchangeItems ?? []} entityLabel={contact.name} />
+    <OffersPanel items={data.exchangeItems ?? []} createAction="?/createExchangeItem" deleteAction="?/deleteExchangeItem" deleteFieldName="exchangeItemId" entityLabel={contact.name} />
 
     <AgentBriefingsPanel entityType="contact" entityId={contact.id} entityLabel={contact.name} artifacts={data.agentArtifacts ?? []} />
 

@@ -2,6 +2,8 @@
 <script lang="ts">
   import VoiceTextField from '$lib/recording/VoiceTextField.svelte';
   import TasksPanel from '$lib/TasksPanel.svelte';
+  import WantsPanel from '$lib/WantsPanel.svelte';
+  import OffersPanel from '$lib/OffersPanel.svelte';
   import { closeDatePickerOnChange } from '$lib/closeDatePicker';
 
   export let data: any;
@@ -129,6 +131,8 @@
     <div class="card stat"><span>Ready leads</span><strong>{data.summary.readyLeads}</strong></div>
     <div class="card stat"><span>Open tasks</span><strong>{data.summary.openTasks}</strong></div>
     <div class="card stat"><span>Overdue</span><strong>{data.summary.overdueTasks}</strong></div>
+    <div class="card stat"><span>Wants</span><strong>{data.summary.wants}</strong></div>
+    <div class="card stat"><span>Offers</span><strong>{data.summary.offers}</strong></div>
     <div class="card stat"><span>Deals</span><strong>{data.summary.deals}</strong></div>
     <div class="card stat"><span>Notes</span><strong>{data.summary.notes}</strong></div>
   </div>
@@ -237,6 +241,10 @@
       </form>
     </section>
   {/if}
+
+  <WantsPanel items={data.wants ?? []} entityLabel={data.workstream.name} title="Wants in this workstream" />
+
+  <OffersPanel items={data.offers ?? []} entityLabel={data.workstream.name} title="Offers in this workstream" />
 
   <TasksPanel
     tasks={data.tasks}

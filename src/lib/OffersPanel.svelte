@@ -9,6 +9,10 @@
   export let items: any[] = [];
   export let entityLabel = 'this record';
   export let title = 'Offers';
+  // IT: Older entity pages keep their Stage 7.3 compatibility action names while still reading/writing Offer.
+  export let createAction = '?/createOffer';
+  export let deleteAction = '?/deleteOffer';
+  export let deleteFieldName = 'offerId';
 
   let showForm = false;
   let description = '';
@@ -40,7 +44,7 @@
   </div>
 
   {#if showForm}
-    <form method="post" action="?/createOffer" class="nested-form offer-form">
+    <form method="post" action={createAction} class="nested-form offer-form">
       <div class="grid three">
         <div class="field"><label for="offerType">Offer type</label><select id="offerType" name="offerType">{#each OFFER_TYPES as opt}<option value={opt.value}>{opt.label}</option>{/each}</select></div>
         <div class="field"><label for="status">Status</label><select id="status" name="status">{#each OFFER_STATUSES as opt}<option value={opt.value}>{opt.label}</option>{/each}</select></div>
@@ -111,8 +115,8 @@
               {#if item.expiresAt}<span>Expires: {fmtDate(item.expiresAt)}</span>{/if}
             </div>
           </div>
-          <form method="post" action="?/deleteOffer" on:submit={(event) => { if (!confirm('Delete this offer?')) event.preventDefault(); }}>
-            <input type="hidden" name="offerId" value={item.id} />
+          <form method="post" action={deleteAction} on:submit={(event) => { if (!confirm('Delete this offer?')) event.preventDefault(); }}>
+            <input type="hidden" name={deleteFieldName} value={item.id} />
             <button class="btn" type="submit">Delete</button>
           </form>
         </div>

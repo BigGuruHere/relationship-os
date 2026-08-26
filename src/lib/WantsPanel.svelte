@@ -109,9 +109,9 @@
               {#if item.expiresAt}<span>Expires: {fmtDate(item.expiresAt)}</span>{/if}
             </div>
           </div>
-          <form method="post" action="?/deleteWant" on:submit={(event) => { if (!confirm('Delete this want?')) event.preventDefault(); }}>
+          <form method="post" action="?/deleteWant" on:submit={(event) => { if (!confirm('Remove this want from this record? The Want itself will remain in Relish.')) event.preventDefault(); }}>
             <input type="hidden" name="wantId" value={item.id} />
-            <button class="btn" type="submit">Delete</button>
+            <button class="btn" type="submit">Remove</button>
           </form>
         </div>
       {/each}
@@ -141,6 +141,6 @@
   .criteria-box p { margin:4px 0 0; }
   .meta-row { display:flex; flex-wrap:wrap; gap:10px; margin-top:8px; }
   .btn { border:1px solid var(--border); border-radius:12px; padding:8px 12px; background:var(--surface); color:var(--text); text-decoration:none; cursor:pointer; }
-  .btn.primary { font-weight:700; }
+  .btn.primary { background:linear-gradient(180deg, #21c7b6, #0fa7a0); border-color:#0f9b92; color:#fff; font-weight:700; }
   @media (max-width: 760px) { .section-head, .want-item { flex-direction:column; } .grid.three, .grid.four { grid-template-columns:1fr; } }
 </style>

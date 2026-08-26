@@ -61,6 +61,8 @@ type TaskFilters = {
   contactId: string;
   companyId: string;
   dealId: string;
+  taskType: string;
+  due: string;
 };
 
 type TaskRow = any;
@@ -137,6 +139,9 @@ async function loadTaskRows(userId: string, filters: TaskFilters, sort: TaskSort
   if (filters.contactId) where.contactId = filters.contactId;
   if (filters.companyId) where.companyId = filters.companyId;
   if (filters.dealId) where.dealId = filters.dealId;
+  if (filters.taskType && TASK_TYPES.some((t) => t.value === filters.taskType)) where.taskType = filters.taskType;
+  if (filters.due === 'overdue') where.dueAt = { lt: new Date() };
+  if (filters.due === 'today') { const start = new Date(); start.setHours(0, 0, 0, 0); const end = new Date(start); end.setDate(end.getDate() + 1); where.dueAt = { gte: start, lt: end }; }
 
   const orderBy = taskOrderBy(sort);
 
@@ -159,14 +164,14 @@ async function loadTaskRows(userId: string, filters: TaskFilters, sort: TaskSort
       createdAt: true,
       updatedAt: true,
       assignedToTextEnc: true,
-      contact: { select: { id: true, fullNameEnc: true, linkedUserId: true } },
+      contact: { select: { id: true, fullNameEnc: true, phoneEnc: true, linkedUserId: true } },
       assignedToContact: { select: { id: true, fullNameEnc: true, linkedUserId: true } },
       waitingOnContact: { select: { id: true, fullNameEnc: true, linkedUserId: true } },
       deal: { select: { id: true, titleEnc: true, status: true } },
       project: { select: { id: true, titleEnc: true, status: true } },
       workstream: { select: { id: true, nameEnc: true, projectId: true, status: true } },
       marketLead: { select: { id: true, titleEnc: true, type: true, status: true, projectId: true, workstreamId: true } },
-      company: { select: { id: true, nameEnc: true, kind: true, status: true } },
+      company: { select: { id: true, nameEnc: true, phoneEnc: true, kind: true, status: true } },
       dealCompany: {
         select: {
           id: true,
@@ -204,6 +209,8 @@ async function mapTask(row: TaskRow) {
   const marketLeadTitle = row.marketLead ? safeDecryptTask(row.marketLead.titleEnc, 'market_lead.title', 'Untitled lead') : '';
   const workstreamName = row.workstream ? safeDecryptTask(row.workstream.nameEnc, 'project_workstream.name', 'Untitled workstream') : '';
   const companyName = row.company ? companyDisplay(row.company) : '';
+  const contactPhone = row.contact ? safeDecrypt(row.contact.phoneEnc, 'contact.phone', '') : '';
+  const companyPhone = row.company ? safeDecrypt(row.company.phoneEnc, 'company.phone', '') : '';
   const dealCompanyDealTitle = row.dealCompany?.deal ? safeDecrypt(row.dealCompany.deal.titleEnc, 'deal.title', 'Untitled deal') : '';
   const dealCompanyName = row.dealCompany?.company ? companyDisplay(row.dealCompany.company) : '';
   const threadContactName = row.dealContact?.contact ? await contactDisplayName(row.dealContact.contact) : '';
@@ -230,14 +237,14 @@ async function mapTask(row: TaskRow) {
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
     assignedToText,
-    contact: row.contact ? { id: row.contact.id, name: contactName } : null,
+    contact: row.contact ? { id: row.contact.id, name: contactName, phone: contactPhone } : null,
     assignedToContact: row.assignedToContact ? { id: row.assignedToContact.id, name: assignedContactName } : null,
     waitingOnContact: row.waitingOnContact ? { id: row.waitingOnContact.id, name: waitingName } : null,
     deal: row.deal ? { id: row.deal.id, title: dealTitle, status: row.deal.status } : null,
     project: row.project ? { id: row.project.id, title: projectTitle, statusLabel: projectStatusLabel(row.project.status) } : null,
     workstream: row.workstream ? { id: row.workstream.id, name: workstreamName, projectId: row.workstream.projectId, status: row.workstream.status } : null,
     marketLead: row.marketLead ? { id: row.marketLead.id, title: marketLeadTitle, type: row.marketLead.type, status: row.marketLead.status, statusLabel: marketLeadStatusLabel(row.marketLead.status), projectId: row.marketLead.projectId } : null,
-    company: row.company ? { id: row.company.id, name: companyName, status: row.company.status } : null,
+    company: row.company ? { id: row.company.id, name: companyName, phone: companyPhone, status: row.company.status } : null,
     dealCompany: row.dealCompany ? {
       id: row.dealCompany.id,
       dealId: row.dealCompany.deal.id,
@@ -349,7 +356,9 @@ export const load: PageServerLoad = async ({ locals, url }) => {
     marketLeadId: String(url.searchParams.get('marketLeadId') || '').trim(),
     contactId: String(url.searchParams.get('contactId') || '').trim(),
     companyId: String(url.searchParams.get('companyId') || '').trim(),
-    dealId: String(url.searchParams.get('dealId') || '').trim()
+    dealId: String(url.searchParams.get('dealId') || '').trim(),
+    taskType: String(url.searchParams.get('taskType') || '').trim().toUpperCase(),
+    due: String(url.searchParams.get('due') || '').trim().toLowerCase()
   };
   const q = String(url.searchParams.get('q') || '').trim();
   const sort = normaliseSort(String(url.searchParams.get('sort') || '').trim());
@@ -359,8 +368,11 @@ export const load: PageServerLoad = async ({ locals, url }) => {
   const tasks = sortMappedTasks(mapped.filter((task) => taskMatchesQuery(task, q)), sort);
 
   const now = new Date();
-  const startTomorrow = new Date(now);
-  startTomorrow.setHours(24, 0, 0, 0);
+  // IT: Today is the whole local calendar day so the Today card matches the Today filter exactly.
+  const startToday = new Date(now);
+  startToday.setHours(0, 0, 0, 0);
+  const startTomorrow = new Date(startToday);
+  startTomorrow.setDate(startTomorrow.getDate() + 1);
 
   const summary = {
     open: await prisma.task.count({ where: { userId, status: { in: ACTIVE_STATUSES as any } } }),
@@ -368,7 +380,8 @@ export const load: PageServerLoad = async ({ locals, url }) => {
     doingNow: await prisma.task.count({ where: { userId, status: { in: ACTIVE_STATUSES as any }, focus: 'DOING_NOW' as any } }),
     waiting: await prisma.task.count({ where: { userId, status: 'WAITING' as any } }),
     overdue: await prisma.task.count({ where: { userId, status: { in: ACTIVE_STATUSES as any }, dueAt: { lt: now } } }),
-    today: await prisma.task.count({ where: { userId, status: { in: ACTIVE_STATUSES as any }, dueAt: { gte: now, lt: startTomorrow } } })
+    today: await prisma.task.count({ where: { userId, status: { in: ACTIVE_STATUSES as any }, dueAt: { gte: startToday, lt: startTomorrow } } }),
+    calls: await prisma.task.count({ where: { userId, status: { in: ACTIVE_STATUSES as any }, taskType: 'CALL' as any } })
   };
 
   return {
@@ -381,6 +394,8 @@ export const load: PageServerLoad = async ({ locals, url }) => {
     selectedContactId: filters.contactId,
     selectedCompanyId: filters.companyId,
     selectedDealId: filters.dealId,
+    selectedTaskType: filters.taskType,
+    selectedDue: filters.due,
     selectedSort: sort,
     currentPath: `${url.pathname}${url.search}`,
     tasks,

@@ -1,6 +1,7 @@
 <!-- src/routes/offers/[id]/+page.svelte -->
 <script lang="ts">
   import VoiceTextField from '$lib/recording/VoiceTextField.svelte';
+  import NotesPanel from '$lib/NotesPanel.svelte';
   import { closeDatePickerOnChange } from '$lib/closeDatePicker';
 
   export let data: any;
@@ -11,7 +12,8 @@
   let showTaskForm = false;
   let description = data.offer.description || '';
   let summary = data.offer.summary || '';
-  let editingNoteId = '';
+  let noteBody = '';
+  let noteSummary = '';
 
   function fmt(value: string | Date | null | undefined) {
     if (!value) return 'Not set';
@@ -105,9 +107,47 @@
   <section class="card panel">
     <div class="section-head"><h2>Notes</h2><button class="btn" type="button" on:click={() => (showNoteForm = !showNoteForm)}>{showNoteForm ? 'Cancel' : 'Add note'}</button></div>
     {#if showNoteForm}
-      <form method="post" action="?/addNote" class="nested-form"><div class="grid two"><div class="field"><label for="occurredAt">Date</label><input id="occurredAt" name="occurredAt" type="datetime-local" on:change={closeDatePickerOnChange} /></div><div class="field"><label for="channel">Channel</label><select id="channel" name="channel">{#each data.noteChannels as opt}<option value={opt.value}>{opt.label}</option>{/each}</select></div></div><div class="field"><label for="body">Note</label><textarea id="body" name="body" rows="4" required></textarea></div><button class="btn primary" type="submit">Save note</button></form>
+      <form method="post" action="?/addNote" class="nested-form">
+        <div class="grid two">
+          <div class="field"><label for="occurredAt">Date</label><input id="occurredAt" name="occurredAt" type="datetime-local" on:change={closeDatePickerOnChange} /></div>
+          <div class="field"><label for="channel">Channel</label><select id="channel" name="channel">{#each data.noteChannels as opt}<option value={opt.value}>{opt.label}</option>{/each}</select></div>
+        </div>
+        <VoiceTextField
+          id="noteBody"
+          textName="body"
+          summaryName="summary"
+          label="Note"
+          placeholder="Record or type what happened, what matters, or the next step."
+          rows={4}
+          bind:value={noteBody}
+          bind:summary={noteSummary}
+          contextLabel="offer note"
+        />
+        <button class="btn primary" type="submit">Save note</button>
+      </form>
     {/if}
-    {#if data.notes.length === 0}<p class="muted">No notes yet.</p>{:else}<div class="item-list">{#each data.notes as note}<div class="note-card">{#if editingNoteId === note.id}<form method="post" action="?/updateNote" class="nested-form"><input type="hidden" name="noteId" value={note.id} /><div class="grid two"><div class="field"><label>Date</label><input name="occurredAt" type="datetime-local" value={note.occurredInput} on:change={closeDatePickerOnChange} /></div><div class="field"><label>Channel</label><select name="channel">{#each data.noteChannels as opt}<option value={opt.value} selected={note.channel === opt.value}>{opt.label}</option>{/each}</select></div></div><div class="field"><label>Note</label><textarea name="body" rows="4">{note.body}</textarea></div><div class="actions"><button class="btn primary" type="submit">Save note</button><button class="btn" type="button" on:click={() => (editingNoteId = '')}>Cancel</button></div></form>{:else}<div class="note-head"><div><strong>{note.channelLabel}</strong><div class="muted small">{fmt(note.occurredAt)}</div></div><div class="actions"><button class="btn" type="button" on:click={() => (editingNoteId = note.id)}>Edit</button><form method="post" action="?/deleteNote" on:submit={(event) => { if (!confirm('Delete this note?')) event.preventDefault(); }}><input type="hidden" name="noteId" value={note.id} /><button class="btn" type="submit">Delete</button></form></div></div><p class="preline">{note.body}</p>{/if}</div>{/each}</div>{/if}
+
+    <NotesPanel notes={data.notes} emptyMessage="No notes yet.">
+      <svelte:fragment slot="actions" let:note>
+        <details class="edit-box">
+          <summary>Edit note</summary>
+          <form method="post" action="?/updateNote" class="nested-form">
+            <input type="hidden" name="noteId" value={note.id} />
+            <div class="grid two">
+              <div class="field"><label for={`note-date-${note.id}`}>Date</label><input id={`note-date-${note.id}`} name="occurredAt" type="datetime-local" value={note.occurredInput} on:change={closeDatePickerOnChange} /></div>
+              <div class="field"><label for={`note-channel-${note.id}`}>Channel</label><select id={`note-channel-${note.id}`} name="channel">{#each data.noteChannels as opt}<option value={opt.value} selected={note.channel === opt.value}>{opt.label}</option>{/each}</select></div>
+            </div>
+            <div class="field"><label for={`note-body-${note.id}`}>Note</label><textarea id={`note-body-${note.id}`} name="body" rows="4" required>{note.body}</textarea></div>
+            <div class="field"><label for={`note-summary-${note.id}`}>Summary</label><input id={`note-summary-${note.id}`} name="summary" value={note.summary || ''} /></div>
+            <button class="btn primary" type="submit">Save note changes</button>
+          </form>
+        </details>
+        <form method="post" action="?/deleteNote" on:submit={(event) => { if (!confirm('Delete this note?')) event.preventDefault(); }}>
+          <input type="hidden" name="noteId" value={note.id} />
+          <button class="btn" type="submit">Delete</button>
+        </form>
+      </svelte:fragment>
+    </NotesPanel>
   </section>
 </div>
 
@@ -131,6 +171,6 @@
   .item-list { display:grid; gap:10px; }
   .item-row, .note-card { border:1px solid var(--border); border-radius:14px; padding:12px; background:var(--surface); }
   .btn { border:1px solid var(--border); border-radius:12px; padding:8px 12px; background:var(--surface); color:var(--text); text-decoration:none; cursor:pointer; }
-  .btn.primary { font-weight:700; }
+  .btn.primary { background:linear-gradient(180deg, #21c7b6, #0fa7a0); border-color:#0f9b92; color:#fff; font-weight:700; }
   @media (max-width:860px) { .page-head, .section-head, .item-row, .note-head { flex-direction:column; } .grid.details, .grid.two, .grid.three, .grid.four { grid-template-columns:1fr; } }
 </style>

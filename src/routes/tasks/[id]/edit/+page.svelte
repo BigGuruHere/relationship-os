@@ -125,7 +125,7 @@
         <TaskCommercialLinkPicker
           kind="want"
           bind:selectedId={wantId}
-          initialSuggestions={data.wantSuggestions}
+          initialSelected={data.linkedWant}
           {contactId}
           {companyId}
           {dealId}
@@ -135,7 +135,7 @@
         <TaskCommercialLinkPicker
           kind="offer"
           bind:selectedId={offerId}
-          initialSuggestions={data.offerSuggestions}
+          initialSelected={data.linkedOffer}
           {contactId}
           {companyId}
           {dealId}

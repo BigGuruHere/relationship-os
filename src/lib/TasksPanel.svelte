@@ -335,7 +335,7 @@
   .summary-box { border: 1px solid var(--border); background: var(--panel); border-radius: 10px; padding: 10px; margin-top: 8px; }
   .summary-box p { margin: 4px 0 0; white-space: pre-wrap; }
   .btn { border: 1px solid var(--border); border-radius: 12px; padding: 8px 12px; background: var(--panel); color: var(--text); text-decoration: none; cursor: pointer; }
-  .btn.primary { font-weight: 700; }
+  .btn.primary { background:linear-gradient(180deg, #21c7b6, #0fa7a0); border-color:#0f9b92; color:#fff; font-weight:700; }
 
   @media (max-width: 760px) {
     .task-full { flex-direction: column; }

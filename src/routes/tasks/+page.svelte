@@ -23,6 +23,8 @@
   let companyId = data.selectedCompanyId || '';
   let dealId = data.selectedDealId || '';
   let sort = data.selectedSort || 'focus';
+  let taskType = data.selectedTaskType || '';
+  let due = data.selectedDue || '';
 
   function fmt(value: string | Date | null | undefined) {
     if (!value) return 'No date';
@@ -48,10 +50,11 @@
   <div class="page-head">
     <div>
       <div class="eyebrow">Action system</div>
-      <h1>Tasks</h1>
-      <p class="muted">One inbox for follow-ups, reminders, deal steps, waiting items, and project work.</p>
+      <h1>{data.selectedTaskType === 'CALL' ? 'Call list' : 'Tasks'}</h1>
+      <p class="muted">{data.selectedTaskType === 'CALL' ? 'Work through open call tasks with the linked person or company context beside each call.' : 'One inbox for follow-ups, reminders, deal steps, waiting items, and project work.'}</p>
     </div>
     <div class="head-actions">
+      {#if data.selectedTaskType === 'CALL'}<a class="btn" href="/tasks">All tasks</a>{:else}<a class="btn" href="/tasks?taskType=CALL&sort=due_asc">Call list</a>{/if}
       <button type="button" class="btn" on:click={() => (showNewProject = !showNewProject)}>{showNewProject ? 'Cancel project' : 'New project'}</button>
       <button type="button" class="btn primary" on:click={() => (showNewTask = !showNewTask)}>{showNewTask ? 'Cancel task' : '＋ New task'}</button>
     </div>
@@ -62,12 +65,13 @@
   {/if}
 
   <div class="summary-grid">
-    <div class="card stat"><span>Open</span><strong>{data.summary.open}</strong></div>
-    <div class="card stat"><span>New</span><strong>{data.summary.newTasks}</strong></div>
-    <div class="card stat"><span>Doing now</span><strong>{data.summary.doingNow}</strong></div>
-    <div class="card stat"><span>Overdue</span><strong>{data.summary.overdue}</strong></div>
-    <div class="card stat"><span>Today</span><strong>{data.summary.today}</strong></div>
-    <div class="card stat"><span>Waiting</span><strong>{data.summary.waiting}</strong></div>
+    <a class="card stat" href="/tasks"><span>Open</span><strong>{data.summary.open}</strong></a>
+    <a class="card stat" href="/tasks?focus=NEW"><span>New</span><strong>{data.summary.newTasks}</strong></a>
+    <a class="card stat" href="/tasks?focus=DOING_NOW"><span>Doing now</span><strong>{data.summary.doingNow}</strong></a>
+    <a class="card stat" href="/tasks?due=overdue&sort=due_asc"><span>Overdue</span><strong>{data.summary.overdue}</strong></a>
+    <a class="card stat" href="/tasks?due=today&sort=due_asc"><span>Today</span><strong>{data.summary.today}</strong></a>
+    <a class="card stat" href="/tasks?status=WAITING"><span>Waiting</span><strong>{data.summary.waiting}</strong></a>
+    <a class="card stat call-stat" href="/tasks?taskType=CALL&sort=due_asc"><span>Calls</span><strong>{data.summary.calls}</strong></a>
   </div>
 
   {#if showNewProject}
@@ -263,6 +267,21 @@
         </select>
       </div>
       <div class="field">
+        <label for="taskTypeFilter">Type</label>
+        <select id="taskTypeFilter" name="taskType" bind:value={taskType}>
+          <option value="">Any type</option>
+          {#each data.taskTypes as opt}<option value={opt.value}>{opt.label}</option>{/each}
+        </select>
+      </div>
+      <div class="field">
+        <label for="dueFilter">Due</label>
+        <select id="dueFilter" name="due" bind:value={due}>
+          <option value="">Any due date</option>
+          <option value="overdue">Overdue</option>
+          <option value="today">Today</option>
+        </select>
+      </div>
+      <div class="field">
         <label for="focusFilter">Focus</label>
         <select id="focusFilter" name="focus" bind:value={focus}>
           <option value="">Any focus</option>
@@ -335,7 +354,7 @@
         <article class="card task-card {dueClass(task.dueAt, task.status)}">
           <div class="task-main">
             <div class="task-title-row">
-              <h2><a href={`/tasks/${task.id}/edit`}>{task.title}</a></h2>
+              <h2><a href={`/tasks/${task.id}`}>{task.title}</a></h2>
               <span class="status-chip">{task.statusLabel}</span>
               <span class="status-chip">{task.urgencyLabel}</span>
               <span class="status-chip">{task.focusLabel}</span>
@@ -343,6 +362,12 @@
             <div class="muted small">
               {task.taskTypeLabel} - {task.importanceLabel} importance - due {fmt(task.dueAt)}
             </div>
+            {#if task.taskType === 'CALL'}
+              {@const callPhone = task.contact?.phone || task.company?.phone || ''}
+              <div class="call-row">
+                {#if callPhone}<a class="btn compact call-button" href={`tel:${callPhone}`}>Call {callPhone}</a>{:else}<span class="muted small">No phone number linked to this call task.</span>{/if}
+              </div>
+            {/if}
 
             {#if task.notes}<p class="preline">{task.notes}</p>{/if}
             {#if task.summary}<div class="summary-box"><div class="muted small">AI summary</div><p>{task.summary}</p></div>{/if}
@@ -403,7 +428,7 @@
   .muted { color: var(--muted); }
   .hint { color: var(--muted); font-size: 0.82rem; margin: 4px 0 0; }
   .small { font-size: 0.9rem; }
-  .summary-grid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 10px; margin-bottom: 12px; }
+  .summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; margin-bottom: 12px; }
   .stat { padding: 12px; display: grid; gap: 4px; }
   .stat span { color: var(--muted); font-size: 0.9rem; }
   .stat strong { font-size: 1.5rem; }
@@ -416,6 +441,12 @@
   .task-list { display: grid; gap: 10px; }
   .task-card { padding: 14px; display: flex; justify-content: space-between; gap: 16px; }
   .task-card.overdue { border-color: var(--danger); }
+  .summary-grid .stat { color: var(--text); text-decoration: none; }
+  .summary-grid .stat:hover { border-color: var(--accent); text-decoration: none; }
+  .call-stat { border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); }
+  .call-row { margin-top: 8px; }
+  .compact { padding: 6px 9px; }
+  .call-button { font-weight: 700; }
   .task-main { min-width: 0; }
   .task-actions { min-width: 220px; display: grid; gap: 8px; align-content: start; }
   .task-actions form { display: flex; gap: 6px; align-items: center; }

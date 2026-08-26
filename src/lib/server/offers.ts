@@ -410,14 +410,28 @@ export async function loadOffer(userId: string, offerId: string) {
 }
 
 export async function deleteOffer(params: { userId: string; id: string; links?: OfferEntityLink }) {
-  const where: any = { id: params.id, userId: params.userId };
   const links = params.links || {};
+  const where: any = { id: params.id, userId: params.userId };
   if (links.contactId) where.contactId = links.contactId;
   if (links.companyId) where.companyId = links.companyId;
   if (links.dealId) where.dealId = links.dealId;
   if (links.projectId) where.projectId = links.projectId;
   if (links.workstreamId) where.workstreamId = links.workstreamId;
   if (links.companyContactId) where.companyContactId = links.companyContactId;
+
+  // IT: Entity panels mean "remove this link", not "destroy the commercial record". A permanent
+  // delete only happens when this helper is deliberately called without a contextual link.
+  if (Object.values(links).some(Boolean)) {
+    const data: any = {};
+    if (links.workstreamId) data.workstreamId = null;
+    else if (links.projectId) { data.projectId = null; data.workstreamId = null; }
+    if (links.contactId) { data.contactId = null; data.companyContactId = null; }
+    if (links.companyId) { data.companyId = null; data.companyContactId = null; }
+    if (links.dealId) data.dealId = null;
+    if (links.companyContactId) data.companyContactId = null;
+    return prisma.offer.updateMany({ where, data });
+  }
+
   return prisma.offer.deleteMany({ where });
 }
 

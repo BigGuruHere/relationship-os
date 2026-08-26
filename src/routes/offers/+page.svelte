@@ -87,6 +87,7 @@
       <select name="status"><option value="">Open statuses</option>{#each data.offerStatuses as opt}<option value={opt.value} selected={data.selectedStatus === opt.value}>{opt.label}</option>{/each}</select>
       <select name="projectId"><option value="">All projects</option>{#each data.projects as p}<option value={p.id} selected={data.selectedProjectId === p.id}>{p.title}</option>{/each}</select>
       <select name="workstreamId"><option value="">All workstreams</option>{#each data.workstreams as ws}<option value={ws.id} selected={data.selectedWorkstreamId === ws.id}>{ws.projectTitle} - {ws.name}</option>{/each}</select>
+      <select name="sort" aria-label="Sort"><option value="attention" selected={data.selectedSort === 'attention'}>Attention</option>{#each data.sortOptions.filter((opt) => opt.value !== 'attention') as opt}<option value={opt.value} selected={data.selectedSort === opt.value}>{opt.label}</option>{/each}</select>
       <button class="btn primary" type="submit">Filter</button>
     </form>
   </section>
@@ -133,6 +134,6 @@
   .chip-row { display:flex; gap:6px; flex-wrap:wrap; }
   .status-chip { border:1px solid var(--border); background:var(--panel); border-radius:999px; padding:3px 8px; font-size:0.82rem; color:var(--muted); }
   .btn { border:1px solid var(--border); border-radius:12px; padding:8px 12px; background:var(--surface); color:var(--text); text-decoration:none; cursor:pointer; }
-  .btn.primary { font-weight:700; }
+  .btn.primary { background:linear-gradient(180deg, #21c7b6, #0fa7a0); border-color:#0f9b92; color:#fff; font-weight:700; }
   @media (max-width: 860px) { .page-head, .topline, .filter-row { flex-direction:column; align-items:stretch; } .grid.two, .grid.three, .grid.four, .summary-grid { grid-template-columns:1fr; } }
 </style>

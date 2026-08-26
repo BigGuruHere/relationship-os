@@ -67,21 +67,21 @@
 
   {#if form?.error}<div class="card error-card">{form.error}</div>{/if}
 
-  <WantsPanel items={data.wants ?? []} entityLabel={data.project.title} />
+  <div id="project-wants"><WantsPanel items={data.wants ?? []} entityLabel={data.project.title} /></div>
 
-    <OffersPanel items={data.exchangeItems ?? []} createAction="?/createExchangeItem" deleteAction="?/deleteExchangeItem" deleteFieldName="exchangeItemId" entityLabel={data.project.title} />
+    <div id="project-offers"><OffersPanel items={data.exchangeItems ?? []} createAction="?/createExchangeItem" deleteAction="?/deleteExchangeItem" deleteFieldName="exchangeItemId" entityLabel={data.project.title} /></div>
 
   <AgentBriefingsPanel entityType="project" entityId={data.project.id} entityLabel={data.project.title} artifacts={data.agentArtifacts ?? []} />
 
   <div class="summary-grid">
-    <div class="card stat"><span>Active</span><strong>{data.summary.active}</strong></div>
-    <div class="card stat"><span>Overdue</span><strong>{data.summary.overdue}</strong></div>
-    <div class="card stat"><span>Waiting</span><strong>{data.summary.waiting}</strong></div>
-    <div class="card stat"><span>Completed</span><strong>{data.summary.completed}</strong></div>
-    <div class="card stat"><span>Leads</span><strong>{data.summary.leads}</strong></div>
-    <div class="card stat"><span>Deals</span><strong>{data.summary.deals}</strong></div>
-    <div class="card stat"><span>Workstreams</span><strong>{data.summary.workstreams}</strong></div>
-    <div class="card stat"><span>Qualified leads</span><strong>{data.summary.readyLeads}</strong></div>
+    <a class="card stat" href={`/tasks?projectId=${data.project.id}`}><span>Active</span><strong>{data.summary.active}</strong></a>
+    <a class="card stat" href={`/tasks?projectId=${data.project.id}&due=overdue&sort=due_asc`}><span>Overdue</span><strong>{data.summary.overdue}</strong></a>
+    <a class="card stat" href={`/tasks?projectId=${data.project.id}&status=WAITING`}><span>Waiting</span><strong>{data.summary.waiting}</strong></a>
+    <a class="card stat" href={`/tasks?projectId=${data.project.id}&status=DONE`}><span>Completed</span><strong>{data.summary.completed}</strong></a>
+    <a class="card stat" href="#project-leads"><span>Leads</span><strong>{data.summary.leads}</strong></a>
+    <a class="card stat" href="#project-deals"><span>Deals</span><strong>{data.summary.deals}</strong></a>
+    <a class="card stat" href="#project-workstreams"><span>Workstreams</span><strong>{data.summary.workstreams}</strong></a>
+    <a class="card stat" href="#project-leads"><span>Qualified leads</span><strong>{data.summary.readyLeads}</strong></a>
   </div>
 
   {#if showEdit}
@@ -107,7 +107,7 @@
     </section>
   {/if}
 
-  <section class="card panel">
+  <section id="project-workstreams" class="card panel">
     <div class="section-head"><h2>Workstreams</h2><button class="btn" type="button" on:click={() => (showNewWorkstream = !showNewWorkstream)}>{showNewWorkstream ? 'Cancel workstream' : '＋ Add workstream'}</button></div>
     <p class="muted small">Use workstreams as lanes inside this project, such as Buyer mandates, Seller outreach, Referrer outreach, Research, or Active deals.</p>
     {#if data.workstreams?.length}
@@ -218,7 +218,7 @@
   </section>
 
 
-  <section class="card panel">
+  <section id="project-leads" class="card panel">
     <div class="section-head"><h2>Project leads</h2><button class="btn" type="button" on:click={() => (showNewLead = !showNewLead)}>{showNewLead ? 'Cancel lead' : '＋ Add lead'}</button></div>
     {#if data.projectLeads?.length}
       <div class="lead-list">
@@ -241,7 +241,7 @@
     {/if}
   </section>
 
-  <section class="card panel">
+  <section id="project-deals" class="card panel">
     <div class="section-head">
       <h2>Linked deals</h2>
       <a class="btn" href={`/deals/new?projectId=${data.project.id}`}>＋ New deal</a>
@@ -322,14 +322,14 @@
           <summary><strong>{section.name}</strong> <span class="muted small">{section.leads.length} leads - {section.tasks.length} tasks - {section.deals.length} deals - {section.notes.length} notes</span>{#if section.id}<a class="btn tiny" href={`/projects/${data.project.id}/workstreams/${section.id}`}>Open</a>{/if}</summary>
           {#if section.leads.length}<div class="chip-list">{#each section.leads as lead}<a class="chip" href={`/leads/${lead.id}`}>{lead.title}</a>{/each}</div>{/if}
           {#if section.deals.length}<div class="chip-list">{#each section.deals as deal}<a class="chip" href={`/deals/${deal.dealId}`}>Deal: {deal.title}</a>{/each}</div>{/if}
-          {#if section.tasks.length}<div class="chip-list">{#each section.tasks as task}<a class="chip" href={`/tasks/${task.id}/edit?returnTo=/projects/${data.project.id}`}>Task: {task.title}</a>{/each}</div>{/if}
+          {#if section.tasks.length}<div class="chip-list">{#each section.tasks as task}<a class="chip" href={`/tasks/${task.id}`}>Task: {task.title}</a>{/each}</div>{/if}
           {#if !section.leads.length && !section.tasks.length && !section.deals.length && !section.notes.length}<p class="muted small">No items yet.</p>{/if}
         </details>
       {/each}
     </div>
   </section>
 
-  <TasksPanel
+  <div id="project-tasks"><TasksPanel
     tasks={data.tasks}
     heading="Project tasks"
     emptyMessage="No tasks yet. Add a task to turn this project into an operating list."
@@ -350,7 +350,7 @@
     marketLeadOptions={leadTaskOptions}
     dealContactOptions={data.options.dealContacts}
     dealCompanyOptions={data.options.dealCompanies}
-  />
+  /></div>
 </div>
 
 <style>
@@ -364,6 +364,8 @@
   details summary { cursor: pointer; margin-bottom: 10px; }
   .nested-form { border: 1px solid var(--border); border-radius: 12px; padding: 12px; margin: 10px 0; background: var(--panel); }
   .summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; margin-bottom: 12px; }
+  .summary-grid .stat { color: var(--text); text-decoration: none; }
+  .summary-grid .stat:hover { border-color: var(--accent); text-decoration: none; }
   .stat { padding: 12px; display: grid; gap: 4px; }
   .stat strong { font-size: 1.5rem; }
   .panel, .error-card { padding: 14px; margin-bottom: 12px; }

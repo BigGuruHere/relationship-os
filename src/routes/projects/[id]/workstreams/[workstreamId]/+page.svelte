@@ -128,14 +128,14 @@
   {/if}
 
   <div class="summary-grid">
-    <div class="card stat"><span>Leads</span><strong>{data.summary.leads}</strong></div>
-    <div class="card stat"><span>Ready leads</span><strong>{data.summary.readyLeads}</strong></div>
-    <div class="card stat"><span>Open tasks</span><strong>{data.summary.openTasks}</strong></div>
-    <div class="card stat"><span>Overdue</span><strong>{data.summary.overdueTasks}</strong></div>
-    <div class="card stat"><span>Wants</span><strong>{data.summary.wants}</strong></div>
-    <div class="card stat"><span>Offers</span><strong>{data.summary.offers}</strong></div>
-    <div class="card stat"><span>Deals</span><strong>{data.summary.deals}</strong></div>
-    <div class="card stat"><span>Notes</span><strong>{data.summary.notes}</strong></div>
+    <a class="card stat" href="#workstream-leads"><span>Leads</span><strong>{data.summary.leads}</strong></a>
+    <a class="card stat" href="#workstream-leads"><span>Ready leads</span><strong>{data.summary.readyLeads}</strong></a>
+    <a class="card stat" href={`/tasks?projectId=${data.project.id}&workstreamId=${data.workstream.id}`}><span>Open tasks</span><strong>{data.summary.openTasks}</strong></a>
+    <a class="card stat" href={`/tasks?projectId=${data.project.id}&workstreamId=${data.workstream.id}&due=overdue&sort=due_asc`}><span>Overdue</span><strong>{data.summary.overdueTasks}</strong></a>
+    <a class="card stat" href="#workstream-wants"><span>Wants</span><strong>{data.summary.wants}</strong></a>
+    <a class="card stat" href="#workstream-offers"><span>Offers</span><strong>{data.summary.offers}</strong></a>
+    <a class="card stat" href="#workstream-deals"><span>Deals</span><strong>{data.summary.deals}</strong></a>
+    <a class="card stat" href="#workstream-notes"><span>Notes</span><strong>{data.summary.notes}</strong></a>
   </div>
 
   <section class="mission-grid">
@@ -148,7 +148,7 @@
           {#each data.nextActions as task}
             <div class="mission-row">
               <div>
-                <a href={`/tasks/${task.id}/edit?returnTo=/projects/${data.project.id}/workstreams/${data.workstream.id}`}><strong>{task.title}</strong></a>
+                <a href={`/tasks/${task.id}`}><strong>{task.title}</strong></a>
                 <div class="muted small">{task.statusLabel} · {task.urgencyLabel} · due {fmt(task.dueAt)}</div>
                 <div class="chip-list compact-chips">
                   {#if task.want}<a class="status-chip" href={`/wants/${task.want.id}`}>Want: {task.want.title}</a>{/if}
@@ -300,11 +300,11 @@
     </section>
   {/if}
 
-  <WantsPanel items={data.wants ?? []} entityLabel={data.workstream.name} title="Wants in this workstream" />
+  <div id="workstream-wants"><WantsPanel items={data.wants ?? []} entityLabel={data.workstream.name} title="Wants in this workstream" /></div>
 
-  <OffersPanel items={data.offers ?? []} entityLabel={data.workstream.name} title="Offers in this workstream" />
+  <div id="workstream-offers"><OffersPanel items={data.offers ?? []} entityLabel={data.workstream.name} title="Offers in this workstream" /></div>
 
-  <TasksPanel
+  <div id="workstream-tasks"><TasksPanel
     tasks={data.tasks}
     heading="Tasks"
     emptyMessage="No tasks in this workstream yet."
@@ -328,9 +328,9 @@
     dealCompanyOptions={data.taskDealCompanyOptions}
     wantOptions={data.wants}
     offerOptions={data.offers}
-  />
+  /></div>
 
-  <section class="card panel">
+  <section id="workstream-leads" class="card panel">
     <div class="section-head"><h2>Leads</h2><div class="actions"><button class="btn" type="button" on:click={() => (showNewLead = !showNewLead)}>＋ New lead</button><button class="btn" type="button" on:click={() => (showAttachLead = !showAttachLead)}>Attach existing</button><a class="btn" href={`/leads?projectId=${data.project.id}&workstreamId=${data.workstream.id}`}>Open in leads</a></div></div>
     {#if data.leads.length === 0}<p class="muted">No leads in this workstream yet.</p>{:else}
       <div class="lead-list">
@@ -344,7 +344,7 @@
     {/if}
   </section>
 
-  <section class="card panel">
+  <section id="workstream-deals" class="card panel">
     <div class="section-head"><h2>Linked deals</h2><button class="btn" type="button" on:click={() => (showLinkDeal = !showLinkDeal)}>Link deal</button></div>
     {#if data.deals.length === 0}<p class="muted">No deals linked to this workstream yet.</p>{:else}
       <div class="lead-list">
@@ -358,7 +358,7 @@
     {/if}
   </section>
 
-  <section class="card panel">
+  <section id="workstream-notes" class="card panel">
     <div class="section-head"><h2>Notes</h2><button class="btn" type="button" on:click={() => (showNewNote = !showNewNote)}>＋ Add note</button></div>
     {#if data.notes.length === 0}<p class="muted">No notes in this workstream yet.</p>{:else}
       <div class="note-list">
@@ -383,6 +383,8 @@
   .muted { color: var(--muted); }
   .small { font-size: 0.9rem; }
   .summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; margin-bottom: 12px; }
+  .summary-grid .stat { color: var(--text); text-decoration: none; }
+  .summary-grid .stat:hover { border-color: var(--accent); text-decoration: none; }
   .mission-grid { display: grid; grid-template-columns: 1.25fr 1fr 1fr; gap: 10px; margin-bottom: 12px; }
   .mission-card { margin-bottom: 0; min-width: 0; }
   .mission-list { display: grid; gap: 7px; }

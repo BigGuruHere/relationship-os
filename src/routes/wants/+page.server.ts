@@ -10,6 +10,55 @@ import { contactDisplayName } from '$lib/server/contactDisplay';
 import { createWantFromForm, mapWant, wantSelect } from '$lib/server/wants';
 import { WANT_CONFIDENCES, WANT_STATUSES, WANT_TIME_HORIZONS, WANT_TYPES, WANT_URGENCIES } from '$lib/wants';
 
+
+const SORT_OPTIONS = [
+  { value: 'attention', label: 'Attention' },
+  { value: 'urgency', label: 'Urgency' },
+  { value: 'importance', label: 'Importance' },
+  { value: 'review', label: 'Review date' },
+  { value: 'updated', label: 'Recently updated' },
+  { value: 'title', label: 'Title A-Z' }
+] as const;
+
+const URGENCY_SCORE: Record<string, number> = { IMMEDIATE: 40, CRITICAL: 40, HIGH: 25, NORMAL: 10, LOW: 0 };
+
+function sortItems(items: any[], sort: string, openTasks: any[]) {
+  const now = Date.now();
+  const taskMap = new Map<string, { overdue: number; today: number }>();
+  const tomorrow = new Date(); tomorrow.setHours(24, 0, 0, 0);
+  for (const task of openTasks) {
+    if (!task.wantId) continue;
+    const state = taskMap.get(task.wantId) || { overdue: 0, today: 0 };
+    if (task.dueAt) {
+      const due = new Date(task.dueAt).getTime();
+      if (due < now) state.overdue += 1;
+      else if (due < tomorrow.getTime()) state.today += 1;
+    }
+    taskMap.set(task.wantId, state);
+  }
+  const attention = (item: any) => {
+    const tasks = taskMap.get(item.id) || { overdue: 0, today: 0 };
+    let score = tasks.overdue * 100 + tasks.today * 60 + (URGENCY_SCORE[item.urgency] || 0) + Number(item.importance || 0) * 8;
+    if (item.reviewAt) {
+      const days = (new Date(item.reviewAt).getTime() - now) / 86_400_000;
+      if (days <= 0) score += 35;
+      else if (days <= 7) score += 20;
+      else if (days <= 30) score += 8;
+    }
+    return score;
+  };
+  const updated = (item: any) => new Date(item.updatedAt || 0).getTime();
+  const review = (item: any) => item.reviewAt ? new Date(item.reviewAt).getTime() : Number.POSITIVE_INFINITY;
+  return [...items].sort((a, b) => {
+    if (sort === 'urgency') return (URGENCY_SCORE[b.urgency] || 0) - (URGENCY_SCORE[a.urgency] || 0) || Number(b.importance || 0) - Number(a.importance || 0) || updated(b) - updated(a);
+    if (sort === 'importance') return Number(b.importance || 0) - Number(a.importance || 0) || (URGENCY_SCORE[b.urgency] || 0) - (URGENCY_SCORE[a.urgency] || 0) || updated(b) - updated(a);
+    if (sort === 'review') return review(a) - review(b) || updated(b) - updated(a);
+    if (sort === 'updated') return updated(b) - updated(a);
+    if (sort === 'title') return String(a.title || '').localeCompare(String(b.title || ''), undefined, { sensitivity: 'base' });
+    return attention(b) - attention(a) || updated(b) - updated(a);
+  });
+}
+
 export const load: PageServerLoad = async ({ locals, url }) => {
   if (!locals.user) throw redirect(303, '/auth/login');
   const userId = locals.user.id;
@@ -18,6 +67,7 @@ export const load: PageServerLoad = async ({ locals, url }) => {
   const selectedType = String(url.searchParams.get('wantType') || '').trim().toUpperCase();
   const selectedProjectId = String(url.searchParams.get('projectId') || '').trim();
   const selectedWorkstreamId = String(url.searchParams.get('workstreamId') || '').trim();
+  const selectedSort = SORT_OPTIONS.some((opt) => opt.value === url.searchParams.get('sort')) ? String(url.searchParams.get('sort')) : 'attention';
 
   const where: any = { userId };
   if (selectedStatus && WANT_STATUSES.some((o) => o.value === selectedStatus)) where.status = selectedStatus;
@@ -26,20 +76,22 @@ export const load: PageServerLoad = async ({ locals, url }) => {
   if (selectedProjectId) where.projectId = selectedProjectId;
   if (selectedWorkstreamId) where.workstreamId = selectedWorkstreamId;
 
-  const [rows, projectsRaw, workstreamsRaw, contactsRaw, companiesRaw, dealsRaw, counts] = await Promise.all([
+  const [rows, projectsRaw, workstreamsRaw, contactsRaw, companiesRaw, dealsRaw, counts, openTasks] = await Promise.all([
     prisma.want.findMany({ where, select: wantSelect, orderBy: [{ status: 'asc' }, { importance: 'desc' }, { updatedAt: 'desc' }], take: 300 }),
     prisma.project.findMany({ where: { userId, status: { not: 'ARCHIVED' as any } }, select: { id: true, titleEnc: true }, orderBy: { updatedAt: 'desc' }, take: 200 }),
     prisma.projectWorkstream.findMany({ where: { userId, status: { not: 'ARCHIVED' as any } }, select: { id: true, nameEnc: true, projectId: true, project: { select: { titleEnc: true } } }, orderBy: [{ sortOrder: 'asc' }, { updatedAt: 'desc' }], take: 300 }),
     prisma.contact.findMany({ where: { userId }, select: { id: true, fullNameEnc: true, linkedUserId: true }, orderBy: { updatedAt: 'desc' }, take: 200 }),
     prisma.company.findMany({ where: { userId, status: { not: 'ARCHIVED' as any } }, select: { id: true, nameEnc: true }, orderBy: { updatedAt: 'desc' }, take: 200 }),
     prisma.deal.findMany({ where: { userId }, select: { id: true, titleEnc: true, status: true }, orderBy: { updatedAt: 'desc' }, take: 200 }),
-    prisma.want.groupBy({ by: ['status'], where: { userId }, _count: { status: true } })
+    prisma.want.groupBy({ by: ['status'], where: { userId }, _count: { status: true } }),
+    prisma.task.findMany({ where: { userId, wantId: { not: null }, status: { in: ['OPEN', 'IN_PROGRESS', 'WAITING', 'SNOOZED'] as any } }, select: { wantId: true, dueAt: true }, take: 5000 })
   ]);
 
   let wants = rows.map(mapWant);
   if (q) {
     wants = wants.filter((want) => [want.title, want.description, want.criteria, want.category, want.geography, want.wantTypeLabel, want.statusLabel, want.contact?.name, want.company?.name, want.project?.title, want.workstream?.name].join(' ').toLowerCase().includes(q));
   }
+  wants = sortItems(wants, selectedSort, openTasks);
 
   const openCount = counts.filter((row: any) => !['ARCHIVED', 'CLOSED_INACTIVE', 'CONVERTED_TO_DEAL'].includes(String(row.status))).reduce((sum: number, row: any) => sum + row._count.status, 0);
   const summary = {
@@ -56,6 +108,8 @@ export const load: PageServerLoad = async ({ locals, url }) => {
     selectedType,
     selectedProjectId,
     selectedWorkstreamId,
+    selectedSort,
+    sortOptions: SORT_OPTIONS,
     summary,
     wantTypes: WANT_TYPES,
     wantStatuses: WANT_STATUSES,

@@ -9,7 +9,8 @@ import { encrypt } from '$lib/crypto';
 import { companyDisplay } from '$lib/companies';
 import { safeDecrypt } from '$lib/deals';
 import { contactDisplayName, contactOptionsForRows } from '$lib/server/contactDisplay';
-import { getTaskCommercialLinkSuggestions } from '$lib/server/taskLinkSuggestions';
+import { loadWant } from '$lib/server/wants';
+import { loadOffer } from '$lib/server/offers';
 import {
   TASK_FOCUS_OPTIONS,
   TASK_IMPORTANCES,
@@ -141,20 +142,26 @@ export const load: PageServerLoad = async ({ params, locals, url }) => {
 
   if (!row) throw redirect(303, '/tasks');
 
-  // IT: Initial suggestions are relationship-ranked on the server. The browser only receives a
-  // small relevant set, while free-text search can query the authenticated search endpoint later.
-  const suggestionContext = {
-    contactId: row.contactId,
-    companyId: row.companyId,
-    dealId: row.dealId,
-    projectId: row.projectId,
-    workstreamId: row.workstreamId
-  };
-  const [options, wantSuggestions, offerSuggestions] = await Promise.all([
+  // IT: Only load the already-linked Want/Offer for the collapsed summary. Ranked suggestions are
+  // fetched lazily from the authenticated endpoint only when the user expands an attachment panel.
+  const [options, linkedWant, linkedOffer] = await Promise.all([
     loadOptions(userId),
-    getTaskCommercialLinkSuggestions({ userId, kind: 'want', context: { ...suggestionContext, selectedId: row.wantId }, limit: 12 }),
-    getTaskCommercialLinkSuggestions({ userId, kind: 'offer', context: { ...suggestionContext, selectedId: row.offerId }, limit: 12 })
+    row.wantId ? loadWant(userId, row.wantId) : Promise.resolve(null),
+    row.offerId ? loadOffer(userId, row.offerId) : Promise.resolve(null)
   ]);
+
+  const pickerItem = (kind: 'want' | 'offer', item: any) => item ? ({
+    id: item.id,
+    title: item.title,
+    status: item.status,
+    statusLabel: item.statusLabel,
+    typeLabel: kind === 'want' ? item.wantTypeLabel : item.offerTypeLabel,
+    contactName: item.contact?.name || '',
+    companyName: item.company?.name || '',
+    projectTitle: item.project?.title || '',
+    workstreamName: item.workstream?.name || '',
+    reasons: ['currently linked']
+  }) : null;
 
   return {
     returnTo: String(url.searchParams.get('returnTo') || '/tasks'),
@@ -191,8 +198,8 @@ export const load: PageServerLoad = async ({ params, locals, url }) => {
       updatedAt: row.updatedAt
     },
     options,
-    wantSuggestions,
-    offerSuggestions,
+    linkedWant: pickerItem('want', linkedWant),
+    linkedOffer: pickerItem('offer', linkedOffer),
     taskStatuses: TASK_STATUSES,
     taskUrgencies: TASK_URGENCIES,
     taskImportances: TASK_IMPORTANCES,

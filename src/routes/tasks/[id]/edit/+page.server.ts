@@ -9,6 +9,7 @@ import { encrypt } from '$lib/crypto';
 import { companyDisplay } from '$lib/companies';
 import { safeDecrypt } from '$lib/deals';
 import { contactDisplayName, contactOptionsForRows } from '$lib/server/contactDisplay';
+import { getTaskCommercialLinkSuggestions } from '$lib/server/taskLinkSuggestions';
 import {
   TASK_FOCUS_OPTIONS,
   TASK_IMPORTANCES,
@@ -31,12 +32,14 @@ import {
   taskUrgencyLabel
 } from '$lib/tasks';
 
-async function ownedIdExists(userId: string, kind: 'contact' | 'deal' | 'project' | 'company' | 'workstream', id: string | null) {
+async function ownedIdExists(userId: string, kind: 'contact' | 'deal' | 'project' | 'company' | 'workstream' | 'want' | 'offer', id: string | null) {
   if (!id) return true;
   if (kind === 'contact') return !!(await prisma.contact.findFirst({ where: { id, userId }, select: { id: true } }));
   if (kind === 'deal') return !!(await prisma.deal.findFirst({ where: { id, userId }, select: { id: true } }));
   if (kind === 'company') return !!(await prisma.company.findFirst({ where: { id, userId }, select: { id: true } }));
   if (kind === 'workstream') return !!(await prisma.projectWorkstream.findFirst({ where: { id, userId, status: { not: 'ARCHIVED' as any } }, select: { id: true } }));
+  if (kind === 'want') return !!(await prisma.want.findFirst({ where: { id, userId }, select: { id: true } }));
+  if (kind === 'offer') return !!(await prisma.offer.findFirst({ where: { id, userId }, select: { id: true } }));
   return !!(await prisma.project.findFirst({ where: { id, userId }, select: { id: true } }));
 }
 
@@ -126,6 +129,8 @@ export const load: PageServerLoad = async ({ params, locals, url }) => {
       dealCompanyId: true,
       projectId: true,
       workstreamId: true,
+      wantId: true,
+      offerId: true,
       assignedToTextEnc: true,
       assignedToContactId: true,
       waitingOnContactId: true,
@@ -135,6 +140,21 @@ export const load: PageServerLoad = async ({ params, locals, url }) => {
   });
 
   if (!row) throw redirect(303, '/tasks');
+
+  // IT: Initial suggestions are relationship-ranked on the server. The browser only receives a
+  // small relevant set, while free-text search can query the authenticated search endpoint later.
+  const suggestionContext = {
+    contactId: row.contactId,
+    companyId: row.companyId,
+    dealId: row.dealId,
+    projectId: row.projectId,
+    workstreamId: row.workstreamId
+  };
+  const [options, wantSuggestions, offerSuggestions] = await Promise.all([
+    loadOptions(userId),
+    getTaskCommercialLinkSuggestions({ userId, kind: 'want', context: { ...suggestionContext, selectedId: row.wantId }, limit: 12 }),
+    getTaskCommercialLinkSuggestions({ userId, kind: 'offer', context: { ...suggestionContext, selectedId: row.offerId }, limit: 12 })
+  ]);
 
   return {
     returnTo: String(url.searchParams.get('returnTo') || '/tasks'),
@@ -162,13 +182,17 @@ export const load: PageServerLoad = async ({ params, locals, url }) => {
       dealCompanyId: row.dealCompanyId || '',
       projectId: row.projectId || '',
       workstreamId: row.workstreamId || '',
+      wantId: row.wantId || '',
+      offerId: row.offerId || '',
       assignedToText: safeDecryptTask(row.assignedToTextEnc, 'task.assigned_to_text', ''),
       assignedToContactId: row.assignedToContactId || '',
       waitingOnContactId: row.waitingOnContactId || '',
       createdAt: row.createdAt,
       updatedAt: row.updatedAt
     },
-    options: await loadOptions(userId),
+    options,
+    wantSuggestions,
+    offerSuggestions,
     taskStatuses: TASK_STATUSES,
     taskUrgencies: TASK_URGENCIES,
     taskImportances: TASK_IMPORTANCES,
@@ -193,7 +217,9 @@ export const actions: Actions = {
     let companyId = String(form.get('companyId') || '').trim() || null;
     let dealCompanyId = String(form.get('dealCompanyId') || '').trim() || null;
     let projectId = String(form.get('projectId') || '').trim() || null;
-    const workstreamId = String(form.get('workstreamId') || '').trim() || null;
+    let workstreamId = String(form.get('workstreamId') || '').trim() || null;
+    const wantId = String(form.get('wantId') || '').trim() || null;
+    const offerId = String(form.get('offerId') || '').trim() || null;
     const assignedToContactId = String(form.get('assignedToContactId') || '').trim() || null;
     const waitingOnContactId = String(form.get('waitingOnContactId') || '').trim() || null;
 
@@ -211,6 +237,44 @@ export const actions: Actions = {
       companyId = companyId || link.companyId;
     }
 
+    // IT: A linked Want/Offer can supply missing task context, but never silently override an
+    // explicit conflicting person/company/deal/project/workstream chosen by the user.
+    if (wantId) {
+      const want = await prisma.want.findFirst({
+        where: { id: wantId, userId },
+        select: { id: true, contactId: true, companyId: true, dealId: true, projectId: true, workstreamId: true }
+      });
+      if (!want) return fail(404, { error: 'Selected Want was not found.' });
+      if (contactId && want.contactId && contactId !== want.contactId) return fail(400, { error: 'Selected Want belongs to a different person.' });
+      if (companyId && want.companyId && companyId !== want.companyId) return fail(400, { error: 'Selected Want belongs to a different company.' });
+      if (dealId && want.dealId && dealId !== want.dealId) return fail(400, { error: 'Selected Want belongs to a different deal.' });
+      if (projectId && want.projectId && projectId !== want.projectId) return fail(400, { error: 'Selected Want belongs to a different project.' });
+      if (workstreamId && want.workstreamId && workstreamId !== want.workstreamId) return fail(400, { error: 'Selected Want belongs to a different workstream.' });
+      contactId = contactId || want.contactId;
+      companyId = companyId || want.companyId;
+      dealId = dealId || want.dealId;
+      projectId = projectId || want.projectId;
+      workstreamId = workstreamId || want.workstreamId;
+    }
+
+    if (offerId) {
+      const offer = await prisma.offer.findFirst({
+        where: { id: offerId, userId },
+        select: { id: true, contactId: true, companyId: true, dealId: true, projectId: true, workstreamId: true }
+      });
+      if (!offer) return fail(404, { error: 'Selected Offer was not found.' });
+      if (contactId && offer.contactId && contactId !== offer.contactId) return fail(400, { error: 'Selected Offer belongs to a different person.' });
+      if (companyId && offer.companyId && companyId !== offer.companyId) return fail(400, { error: 'Selected Offer belongs to a different company.' });
+      if (dealId && offer.dealId && dealId !== offer.dealId) return fail(400, { error: 'Selected Offer belongs to a different deal.' });
+      if (projectId && offer.projectId && projectId !== offer.projectId) return fail(400, { error: 'Selected Offer belongs to a different project.' });
+      if (workstreamId && offer.workstreamId && workstreamId !== offer.workstreamId) return fail(400, { error: 'Selected Offer belongs to a different workstream.' });
+      contactId = contactId || offer.contactId;
+      companyId = companyId || offer.companyId;
+      dealId = dealId || offer.dealId;
+      projectId = projectId || offer.projectId;
+      workstreamId = workstreamId || offer.workstreamId;
+    }
+
     if (workstreamId) {
       const workstream = await prisma.projectWorkstream.findFirst({
         where: { id: workstreamId, userId, status: { not: 'ARCHIVED' as any }, project: { status: { not: 'ARCHIVED' as any } } },
@@ -221,15 +285,17 @@ export const actions: Actions = {
       projectId = projectId || workstream.projectId;
     }
 
-    const [contactOk, dealOk, projectOk, companyOk, assignedOk, waitingOk] = await Promise.all([
+    const [contactOk, dealOk, projectOk, companyOk, wantOk, offerOk, assignedOk, waitingOk] = await Promise.all([
       ownedIdExists(userId, 'contact', contactId),
       ownedIdExists(userId, 'deal', dealId),
       ownedIdExists(userId, 'project', projectId),
       ownedIdExists(userId, 'company', companyId),
+      ownedIdExists(userId, 'want', wantId),
+      ownedIdExists(userId, 'offer', offerId),
       ownedIdExists(userId, 'contact', assignedToContactId),
       ownedIdExists(userId, 'contact', waitingOnContactId)
     ]);
-    if (!contactOk || !dealOk || !projectOk || !companyOk || !assignedOk || !waitingOk) return fail(404, { error: 'One of the selected links was not found.' });
+    if (!contactOk || !dealOk || !projectOk || !companyOk || !wantOk || !offerOk || !assignedOk || !waitingOk) return fail(404, { error: 'One of the selected links was not found.' });
 
     const status = normaliseTaskStatus(form.get('status'));
     const notes = String(form.get('notes') || '').trim();
@@ -260,7 +326,9 @@ export const actions: Actions = {
         companyId,
         dealCompanyId,
         projectId,
-        workstreamId
+        workstreamId,
+        wantId,
+        offerId
       }
     });
 

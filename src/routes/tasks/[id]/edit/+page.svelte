@@ -4,6 +4,7 @@
   // SECURITY: Server action validates ownership of every linked record before saving.
 
   import VoiceTextField from '$lib/recording/VoiceTextField.svelte';
+  import TaskCommercialLinkPicker from '$lib/TaskCommercialLinkPicker.svelte';
   import { closeDatePickerOnChange } from '$lib/closeDatePicker';
 
   export let data: any;
@@ -11,6 +12,21 @@
 
   let notes = data.task.notes || '';
   let summary = data.task.summary || '';
+
+  // IT: These context fields stay live so Want/Offer suggestions can re-rank as the task is edited.
+  let contactId = data.task.contactId || '';
+  let companyId = data.task.companyId || '';
+  let dealId = data.task.dealId || '';
+  let projectId = data.task.projectId || '';
+  let workstreamId = data.task.workstreamId || '';
+  let wantId = data.task.wantId || '';
+  let offerId = data.task.offerId || '';
+
+  function syncProjectFromWorkstream() {
+    // IT: A Workstream always belongs to one Project, so keep the two task selectors consistent before save.
+    const selected = data.options.workstreams.find((item: any) => item.id === workstreamId);
+    if (selected?.projectId) projectId = selected.projectId;
+  }
 </script>
 
 <div class="container">
@@ -65,16 +81,16 @@
       <div class="grid two">
         <div class="field">
           <label for="contactId">Attach person</label>
-          <select id="contactId" name="contactId">
+          <select id="contactId" name="contactId" bind:value={contactId}>
             <option value="">No person</option>
-            {#each data.options.contacts as c}<option value={c.id} selected={data.task.contactId === c.id}>{c.name}</option>{/each}
+            {#each data.options.contacts as c}<option value={c.id}>{c.name}</option>{/each}
           </select>
         </div>
         <div class="field">
           <label for="dealId">Attach deal</label>
-          <select id="dealId" name="dealId">
+          <select id="dealId" name="dealId" bind:value={dealId}>
             <option value="">No deal</option>
-            {#each data.options.deals as d}<option value={d.id} selected={data.task.dealId === d.id}>{d.title}</option>{/each}
+            {#each data.options.deals as d}<option value={d.id}>{d.title}</option>{/each}
           </select>
         </div>
       </div>
@@ -82,27 +98,50 @@
       <div class="grid two">
         <div class="field">
           <label for="companyId">Attach company</label>
-          <select id="companyId" name="companyId">
+          <select id="companyId" name="companyId" bind:value={companyId}>
             <option value="">No company</option>
-            {#each data.options.companies as c}<option value={c.id} selected={data.task.companyId === c.id}>{c.name}</option>{/each}
+            {#each data.options.companies as c}<option value={c.id}>{c.name}</option>{/each}
           </select>
         </div>
         <div class="field">
           <label for="projectId">Attach project</label>
-          <select id="projectId" name="projectId">
+          <select id="projectId" name="projectId" bind:value={projectId}>
             <option value="">No project</option>
-            {#each data.options.projects as p}<option value={p.id} selected={data.task.projectId === p.id}>{p.title}</option>{/each}
+            {#each data.options.projects as p}<option value={p.id}>{p.title}</option>{/each}
           </select>
         </div>
       </div>
 
       <div class="field">
         <label for="workstreamId">Attach workstream</label>
-        <select id="workstreamId" name="workstreamId">
+        <select id="workstreamId" name="workstreamId" bind:value={workstreamId} on:change={syncProjectFromWorkstream}>
           <option value="">No workstream</option>
-          {#each data.options.workstreams as ws}<option value={ws.id} selected={data.task.workstreamId === ws.id}>{ws.title}</option>{/each}
+          {#each data.options.workstreams as ws}<option value={ws.id}>{ws.title}</option>{/each}
         </select>
         <p class="hint">Selecting a workstream will automatically attach the task to that workstream's project.</p>
+      </div>
+
+      <div class="grid two commercial-links">
+        <TaskCommercialLinkPicker
+          kind="want"
+          bind:selectedId={wantId}
+          initialSuggestions={data.wantSuggestions}
+          {contactId}
+          {companyId}
+          {dealId}
+          {projectId}
+          {workstreamId}
+        />
+        <TaskCommercialLinkPicker
+          kind="offer"
+          bind:selectedId={offerId}
+          initialSuggestions={data.offerSuggestions}
+          {contactId}
+          {companyId}
+          {dealId}
+          {projectId}
+          {workstreamId}
+        />
       </div>
 
       <div class="grid two">
@@ -180,6 +219,7 @@
   .grid.two { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
   .grid.four { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
   .grid.five { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; }
+  .commercial-links { margin: 4px 0 12px; }
   @media (max-width: 820px) {
     .page-head { flex-direction: column; }
     .grid.two, .grid.four, .grid.five { grid-template-columns: 1fr; }

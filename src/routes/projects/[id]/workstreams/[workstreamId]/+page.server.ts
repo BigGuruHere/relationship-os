@@ -43,6 +43,11 @@ import {
 } from '$lib/tasks';
 
 const ACTIVE_TASK_STATUSES = ['OPEN', 'IN_PROGRESS', 'WAITING', 'SNOOZED'];
+const WORKSTREAM_STATUS_OPTIONS = [
+  { value: 'ACTIVE', label: 'Active' },
+  { value: 'PAUSED', label: 'Paused' },
+  { value: 'COMPLETED', label: 'Completed' }
+] as const;
 const returnTo = (projectId: string, workstreamId: string) => `/projects/${projectId}/workstreams/${workstreamId}`;
 
 function workstreamDisplay(row: any) {
@@ -290,7 +295,9 @@ export const load: PageServerLoad = async ({ params, locals }) => {
         assignedToContact: { select: { id: true, fullNameEnc: true, linkedUserId: true } },
         waitingOnContact: { select: { id: true, fullNameEnc: true, linkedUserId: true } },
         deal: { select: { id: true, titleEnc: true, status: true } },
-        company: { select: { id: true, nameEnc: true, kind: true, status: true } }
+        company: { select: { id: true, nameEnc: true, kind: true, status: true } },
+        want: { select: { id: true, titleEnc: true, status: true } },
+        offer: { select: { id: true, titleEnc: true, status: true } }
       },
       orderBy: [{ focus: 'asc' }, { status: 'asc' }, { dueAt: 'asc' }, { updatedAt: 'desc' }],
       take: 300
@@ -313,6 +320,12 @@ export const load: PageServerLoad = async ({ params, locals }) => {
   ]);
 
   const leads = leadsRaw.map(mapMarketLead);
+
+  // IT: loadWants/loadOffers already apply the legacy ExchangeItem encryption AAD fallbacks.
+  // Reuse those mapped titles for task chips so migrated Wants/Offers display correctly too.
+  const wantById = new Map((wants as any[]).map((want: any) => [want.id, want]));
+  const offerById = new Map((offers as any[]).map((offer: any) => [offer.id, offer]));
+
   const tasks = await Promise.all(tasksRaw.map(async (task: any) => ({
     id: task.id,
     title: safeDecryptTask(task.titleEnc, 'task.title', 'Untitled task'),
@@ -337,7 +350,9 @@ export const load: PageServerLoad = async ({ params, locals }) => {
     assignedToContact: task.assignedToContact ? { id: task.assignedToContact.id, name: await contactDisplayName(task.assignedToContact) } : null,
     waitingOnContact: task.waitingOnContact ? { id: task.waitingOnContact.id, name: await contactDisplayName(task.waitingOnContact) } : null,
     deal: task.deal ? { id: task.deal.id, title: safeDecrypt(task.deal.titleEnc, 'deal.title', 'Untitled deal'), status: task.deal.status } : null,
-    company: task.company ? { id: task.company.id, name: companyDisplay(task.company), status: task.company.status } : null
+    company: task.company ? { id: task.company.id, name: companyDisplay(task.company), status: task.company.status } : null,
+    want: task.want ? { id: task.want.id, title: wantById.get(task.want.id)?.title || 'Untitled want', status: task.want.status } : null,
+    offer: task.offer ? { id: task.offer.id, title: offerById.get(task.offer.id)?.title || 'Untitled offer', status: task.offer.status } : null
   })));
   const notes = notesRaw.map((note: any) => ({
     id: note.id,
@@ -396,6 +411,55 @@ export const load: PageServerLoad = async ({ params, locals }) => {
   }));
 
   const now = new Date();
+
+  // IT: Mission control promotes immediate action and verified relationship context above the
+  // longer operational panels below. Nothing new is persisted here; this is a derived view.
+  const nextActions = tasks
+    .filter((task: any) => ACTIVE_TASK_STATUSES.includes(task.status))
+    .sort((a: any, b: any) => {
+      const aDue = a.dueAt ? new Date(a.dueAt).getTime() : Number.POSITIVE_INFINITY;
+      const bDue = b.dueAt ? new Date(b.dueAt).getTime() : Number.POSITIVE_INFINITY;
+      const aOverdue = a.dueAt && aDue < now.getTime() ? 1 : 0;
+      const bOverdue = b.dueAt && bDue < now.getTime() ? 1 : 0;
+      return bOverdue - aOverdue || aDue - bDue || new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
+    })
+    .slice(0, 6);
+
+  const contactById = new Map(options.contacts.map((item: any) => [item.id, item]));
+  const companyById = new Map(options.companies.map((item: any) => [item.id, item]));
+  const involvedContactMap = new Map<string, any>();
+  const involvedCompanyMap = new Map<string, any>();
+  for (const task of tasks) {
+    if (task.contact?.id) involvedContactMap.set(task.contact.id, task.contact);
+    if (task.company?.id) involvedCompanyMap.set(task.company.id, task.company);
+  }
+  for (const want of wants as any[]) {
+    if (want.contact?.id) involvedContactMap.set(want.contact.id, want.contact);
+    if (want.company?.id) involvedCompanyMap.set(want.company.id, want.company);
+  }
+  for (const offer of offers as any[]) {
+    if (offer.contact?.id) involvedContactMap.set(offer.contact.id, offer.contact);
+    if (offer.company?.id) involvedCompanyMap.set(offer.company.id, offer.company);
+  }
+  for (const lead of leads as any[]) {
+    if (lead.contactId && contactById.get(lead.contactId)) involvedContactMap.set(lead.contactId, contactById.get(lead.contactId));
+    if (lead.companyId && companyById.get(lead.companyId)) involvedCompanyMap.set(lead.companyId, companyById.get(lead.companyId));
+  }
+  const involvedContacts = Array.from(involvedContactMap.values()).slice(0, 20);
+  const involvedCompanies = Array.from(involvedCompanyMap.values()).slice(0, 20);
+
+  const recentActivity = [
+    ...tasks.map((task: any) => ({ kind: 'Task', title: task.title, at: task.updatedAt, href: `/tasks/${task.id}` })),
+    ...leads.map((lead: any) => ({ kind: 'Lead', title: lead.title, at: lead.updatedAt, href: `/leads/${lead.id}` })),
+    ...(wants as any[]).map((want: any) => ({ kind: 'Want', title: want.title, at: want.updatedAt, href: `/wants/${want.id}` })),
+    ...(offers as any[]).map((offer: any) => ({ kind: 'Offer', title: offer.title, at: offer.updatedAt, href: `/offers/${offer.id}` })),
+    ...deals.map((deal: any) => ({ kind: 'Deal', title: deal.title, at: deal.updatedAt || deal.createdAt, href: `/deals/${deal.dealId}` })),
+    ...notes.map((note: any) => ({ kind: 'Note', title: note.summary || note.body.slice(0, 90) || 'Workstream note', at: note.updatedAt || note.occurredAt, href: '' }))
+  ]
+    .filter((item: any) => item.at)
+    .sort((a: any, b: any) => new Date(b.at).getTime() - new Date(a.at).getTime())
+    .slice(0, 10);
+
   const summary = {
     leads: leads.length,
     tasks: tasks.length,
@@ -418,6 +482,10 @@ export const load: PageServerLoad = async ({ params, locals }) => {
     wants,
     offers,
     summary,
+    nextActions,
+    involvedContacts,
+    involvedCompanies,
+    recentActivity,
     options,
     taskDealContactOptions,
     taskDealCompanyOptions,
@@ -427,7 +495,8 @@ export const load: PageServerLoad = async ({ params, locals }) => {
     taskUrgencies: TASK_URGENCIES,
     taskImportances: TASK_IMPORTANCES,
     taskFocusOptions: TASK_FOCUS_OPTIONS,
-    taskTypes: TASK_TYPES
+    taskTypes: TASK_TYPES,
+    workstreamStatusOptions: WORKSTREAM_STATUS_OPTIONS
   };
 };
 
@@ -438,11 +507,13 @@ export const actions: Actions = {
     const form = await request.formData();
     const name = String(form.get('name') || '').trim();
     const description = String(form.get('description') || '').trim();
+    const status = String(form.get('status') || '').trim().toUpperCase();
     if (!name) return fail(400, { error: 'Workstream name is required.' });
+    if (!WORKSTREAM_STATUS_OPTIONS.some((option) => option.value === status)) return fail(400, { error: 'Invalid workstream status.' });
     await assertProjectAndWorkstream(userId, params.id, params.workstreamId);
     await prisma.projectWorkstream.updateMany({
       where: { id: params.workstreamId, userId, projectId: params.id },
-      data: { nameEnc: encrypt(name, 'project_workstream.name'), nameIdx: buildIndexToken(name), descriptionEnc: description ? encrypt(description, 'project_workstream.description') : null }
+      data: { nameEnc: encrypt(name, 'project_workstream.name'), nameIdx: buildIndexToken(name), descriptionEnc: description ? encrypt(description, 'project_workstream.description') : null, status: status as any }
     });
     throw redirect(303, returnTo(params.id, params.workstreamId));
   },

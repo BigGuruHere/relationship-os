@@ -100,7 +100,7 @@
         {#if data.task.dealCompany}<a class="chip" href={`/companies/${data.task.dealCompany.companyId}`}>Deal-company thread: {data.task.dealCompany.companyName} on {data.task.dealCompany.dealTitle}</a>{/if}
         {#if data.task.companyContact}<a class="chip" href={`/companies/${data.task.companyContact.companyId}/contacts/${data.task.companyContact.id}`}>Company-person thread: {data.task.companyContact.contactName} at {data.task.companyContact.companyName}</a>{/if}
         {#if data.task.project}<a class="chip" href={`/projects/${data.task.project.id}`}>Project: {data.task.project.title}</a>{/if}
-        {#if data.task.workstream}<a class="chip" href={`/projects/${data.task.workstream.projectId}`}>Workstream: {data.task.workstream.name}</a>{/if}
+        {#if data.task.workstream}<a class="chip" href={`/projects/${data.task.workstream.projectId}/workstreams/${data.task.workstream.id}`}>Workstream: {data.task.workstream.name}</a>{/if}
         {#if data.task.marketLead}<a class="chip" href={`/leads/${data.task.marketLead.id}`}>Lead: {data.task.marketLead.title}</a>{/if}
         {#if data.task.want}<a class="chip" href={`/wants/${data.task.want.id}`}>Want: {data.task.want.title}</a>{/if}
         {#if data.task.offer}<a class="chip" href={`/offers/${data.task.offer.id}`}>Offer: {data.task.offer.title}</a>{/if}

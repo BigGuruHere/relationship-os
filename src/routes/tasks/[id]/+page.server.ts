@@ -11,6 +11,8 @@ import { contactDisplayName } from '$lib/server/contactDisplay';
 import { marketLeadStatusLabel } from '$lib/marketLeads';
 import { wantStatusLabel } from '$lib/wants';
 import { offerStatusLabel } from '$lib/offers';
+import { loadWant } from '$lib/server/wants';
+import { loadOffer } from '$lib/server/offers';
 import {
   TASK_FOCUS_OPTIONS,
   TASK_STATUSES,
@@ -84,7 +86,7 @@ async function loadTask(userId: string, taskId: string) {
   });
 }
 
-async function mapTask(row: Awaited<ReturnType<typeof loadTask>>) {
+async function mapTask(userId: string, row: Awaited<ReturnType<typeof loadTask>>) {
   if (!row) return null;
 
   const title = safeDecryptTask(row.titleEnc, 'task.title', 'Untitled task');
@@ -92,26 +94,32 @@ async function mapTask(row: Awaited<ReturnType<typeof loadTask>>) {
   const summary = safeDecryptTask(row.summaryEnc, 'task.summary', '');
   const assignedToText = safeDecryptTask(row.assignedToTextEnc, 'task.assigned_to_text', '');
 
+  // IT: load the canonical Want/Offer mapper as well as contact labels. The mapper includes
+  // legacy ExchangeItem AAD fallbacks, so titles copied during Stage 7.3 remain readable.
   const [
     contactName,
     assignedContactName,
     waitingName,
     companyContactContactName,
-    dealContactContactName
+    dealContactContactName,
+    linkedWant,
+    linkedOffer
   ] = await Promise.all([
     row.contact ? contactDisplayName(row.contact) : Promise.resolve(''),
     row.assignedToContact ? contactDisplayName(row.assignedToContact) : Promise.resolve(''),
     row.waitingOnContact ? contactDisplayName(row.waitingOnContact) : Promise.resolve(''),
     row.companyContact?.contact ? contactDisplayName(row.companyContact.contact) : Promise.resolve(''),
-    row.dealContact?.contact ? contactDisplayName(row.dealContact.contact) : Promise.resolve('')
+    row.dealContact?.contact ? contactDisplayName(row.dealContact.contact) : Promise.resolve(''),
+    row.want ? loadWant(userId, row.want.id) : Promise.resolve(null),
+    row.offer ? loadOffer(userId, row.offer.id) : Promise.resolve(null)
   ]);
 
   const dealTitle = row.deal ? safeDecrypt(row.deal.titleEnc, 'deal.title', 'Untitled deal') : '';
   const projectTitle = row.project ? safeDecryptTask(row.project.titleEnc, 'project.title', 'Untitled project') : '';
   const workstreamName = row.workstream ? safeDecryptTask(row.workstream.nameEnc, 'project_workstream.name', 'Untitled workstream') : '';
   const marketLeadTitle = row.marketLead ? safeDecryptTask(row.marketLead.titleEnc, 'market_lead.title', 'Untitled lead') : '';
-  const wantTitle = row.want ? safeDecrypt(row.want.titleEnc, 'want.title', 'Untitled want') : '';
-  const offerTitle = row.offer ? safeDecrypt(row.offer.titleEnc, 'offer.title', 'Untitled offer') : '';
+  const wantTitle = linkedWant?.title || (row.want ? 'Untitled want' : '');
+  const offerTitle = linkedOffer?.title || (row.offer ? 'Untitled offer' : '');
   const companyName = row.company ? companyDisplay(row.company) : '';
   const companyContactTitle = row.companyContact ? safeDecrypt(row.companyContact.titleEnc, 'company_contact.title', '') : '';
   const companyContactCompanyName = row.companyContact?.company ? companyDisplay(row.companyContact.company) : '';
@@ -186,7 +194,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
   if (!row) throw redirect(303, '/tasks');
 
   return {
-    task: await mapTask(row),
+    task: await mapTask(locals.user.id, row),
     taskStatuses: TASK_STATUSES,
     taskFocusOptions: TASK_FOCUS_OPTIONS
   };

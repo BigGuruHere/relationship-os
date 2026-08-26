@@ -30,6 +30,8 @@
   export let marketLeadOptions: any[] = [];
   export let dealContactOptions: any[] = [];
   export let dealCompanyOptions: any[] = [];
+  export let wantOptions: any[] = [];
+  export let offerOptions: any[] = [];
 
   // IT: when set, hides that picker entirely - the real value is supplied server-side via the
   // calling page's own context object passed to createTaskFromForm, not via a hidden input here.
@@ -39,6 +41,8 @@
   export let lockedProjectId = '';
   export let lockedDealContactId = '';
   export let lockedMarketLeadId = '';
+  export let lockedWantId = '';
+  export let lockedOfferId = '';
 
   // IT: unlike the locked*Id props above, this never hides the workstream picker - it only
   // preselects that option by default. The workstream field is always visible and editable, and
@@ -153,6 +157,29 @@
             {/if}
           </div>
 
+          <div class="grid two">
+            {#if !lockedWantId && wantOptions.length > 0}
+              <div class="field">
+                <label for="tp-want">Attach want</label>
+                <select id="tp-want" name="wantId">
+                  <option value="">No want</option>
+                  {#each wantOptions as opt}<option value={opt.id}>{opt.title}{opt.statusLabel ? ` - ${opt.statusLabel}` : ''}</option>{/each}
+                </select>
+                <p class="hint">This list is intentionally scoped by the current page. Use Edit task for full Want search.</p>
+              </div>
+            {/if}
+            {#if !lockedOfferId && offerOptions.length > 0}
+              <div class="field">
+                <label for="tp-offer">Attach offer</label>
+                <select id="tp-offer" name="offerId">
+                  <option value="">No offer</option>
+                  {#each offerOptions as opt}<option value={opt.id}>{opt.title}{opt.statusLabel ? ` - ${opt.statusLabel}` : ''}</option>{/each}
+                </select>
+                <p class="hint">This list is intentionally scoped by the current page. Use Edit task for full Offer search.</p>
+              </div>
+            {/if}
+          </div>
+
           {#if !lockedMarketLeadId}
             <div class="field">
               <label for="tp-lead">Attach lead</label>
@@ -239,6 +266,8 @@
                   {#if project}<a class="chip" href={`/projects/${project.id}`}>Project: {project.title}</a>{/if}
                   {#if task.workstream}<span class="chip">Workstream: {task.workstream.name}</span>{/if}
                   {#if task.marketLead}<a class="chip" href={`/leads/${task.marketLead.id}`}>Lead: {task.marketLead.title}</a>{/if}
+                  {#if task.want}<a class="chip" href={`/wants/${task.want.id}`}>Want: {task.want.title}</a>{/if}
+                  {#if task.offer}<a class="chip" href={`/offers/${task.offer.id}`}>Offer: {task.offer.title}</a>{/if}
                   {#if task.dealContact}<a class="chip" href={`/deals/${task.dealContact.dealId}/relationships/${task.dealContact.id}`}>Person thread: {task.dealContact.contactName}</a>{/if}
                   {#if task.dealCompany}<a class="chip" href={`/companies/${task.dealCompany.companyId}`}>Company thread: {task.dealCompany.companyName}</a>{/if}
                   {#if task.waitingOnContact}<a class="chip" href={`/contacts/${task.waitingOnContact.id}`}>Waiting on: {task.waitingOnContact.name}</a>{/if}

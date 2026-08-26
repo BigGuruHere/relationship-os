@@ -52,7 +52,7 @@
 <div class="container">
   <div class="card header-card">
     <div>
-      <div class="eyebrow">Workstream</div>
+      <div class="eyebrow">Workstream mission control</div>
       <h1>{data.workstream.name}</h1>
       <div class="meta-row">
         <a href={`/projects/${data.project.id}`}>{data.project.title}</a>
@@ -66,6 +66,7 @@
       <button class="btn primary" type="button" on:click={() => (showNewLead = !showNewLead)}>{showNewLead ? 'Cancel lead' : '＋ Lead'}</button>
       <button class="btn" type="button" on:click={() => (showNewNote = !showNewNote)}>{showNewNote ? 'Cancel note' : '＋ Note'}</button>
       <button class="btn" type="button" on:click={() => (showLinkDeal = !showLinkDeal)}>{showLinkDeal ? 'Cancel deal' : 'Link deal'}</button>
+      <a class="btn" href="/workstreams">All workstreams</a>
       <a class="btn" href={`/projects/${data.project.id}`}>Back to project</a>
     </div>
   </div>
@@ -137,12 +138,69 @@
     <div class="card stat"><span>Notes</span><strong>{data.summary.notes}</strong></div>
   </div>
 
+  <section class="mission-grid">
+    <div class="card panel mission-card">
+      <div class="section-head"><h2>Next actions</h2><a class="btn" href={`/tasks?projectId=${data.project.id}&workstreamId=${data.workstream.id}`}>All tasks</a></div>
+      {#if data.nextActions.length === 0}
+        <p class="muted">No open task. Define the next action for this workstream.</p>
+      {:else}
+        <div class="mission-list">
+          {#each data.nextActions as task}
+            <div class="mission-row">
+              <div>
+                <a href={`/tasks/${task.id}/edit?returnTo=/projects/${data.project.id}/workstreams/${data.workstream.id}`}><strong>{task.title}</strong></a>
+                <div class="muted small">{task.statusLabel} · {task.urgencyLabel} · due {fmt(task.dueAt)}</div>
+                <div class="chip-list compact-chips">
+                  {#if task.want}<a class="status-chip" href={`/wants/${task.want.id}`}>Want: {task.want.title}</a>{/if}
+                  {#if task.offer}<a class="status-chip" href={`/offers/${task.offer.id}`}>Offer: {task.offer.title}</a>{/if}
+                </div>
+              </div>
+            </div>
+          {/each}
+        </div>
+      {/if}
+    </div>
+
+    <div class="card panel mission-card">
+      <h2>People and companies</h2>
+      {#if data.involvedContacts.length === 0 && data.involvedCompanies.length === 0}
+        <p class="muted">No verified people or companies are linked to this workstream yet.</p>
+      {:else}
+        {#if data.involvedContacts.length > 0}
+          <div class="muted small group-label">People</div>
+          <div class="chip-list">{#each data.involvedContacts as contact}<a class="status-chip" href={`/contacts/${contact.id}`}>{contact.name}</a>{/each}</div>
+        {/if}
+        {#if data.involvedCompanies.length > 0}
+          <div class="muted small group-label">Companies</div>
+          <div class="chip-list">{#each data.involvedCompanies as company}<a class="status-chip" href={`/companies/${company.id}`}>{company.name}</a>{/each}</div>
+        {/if}
+      {/if}
+    </div>
+
+    <div class="card panel mission-card">
+      <h2>Recent activity</h2>
+      {#if data.recentActivity.length === 0}
+        <p class="muted">No activity recorded yet.</p>
+      {:else}
+        <div class="mission-list">
+          {#each data.recentActivity as item}
+            <div class="activity-row">
+              <span class="status-chip">{item.kind}</span>
+              <div>{#if item.href}<a href={item.href}>{item.title}</a>{:else}<span>{item.title}</span>{/if}<div class="muted tiny">{fmt(item.at)}</div></div>
+            </div>
+          {/each}
+        </div>
+      {/if}
+    </div>
+  </section>
+
   {#if showEdit}
     <section class="card panel">
       <h2>Edit workstream</h2>
       <form method="post" action="?/updateWorkstream" class="grid two">
         <div class="field"><label for="wsName">Name</label><input id="wsName" name="name" required value={data.workstream.name} /></div>
-        <div class="field span2"><label for="wsDescription">Description</label><textarea id="wsDescription" name="description" rows="3">{data.workstream.description}</textarea></div>
+        <div class="field"><label for="wsStatus">Status</label><select id="wsStatus" name="status">{#each data.workstreamStatusOptions as option}<option value={option.value} selected={data.workstream.status === option.value}>{option.label}</option>{/each}</select></div>
+        <div class="field span2"><label for="wsDescription">Objective / context</label><textarea id="wsDescription" name="description" rows="3">{data.workstream.description}</textarea></div>
         <div class="span2"><button class="btn primary" type="submit">Save workstream</button></div>
       </form>
     </section>
@@ -268,6 +326,8 @@
     marketLeadOptions={data.options.workstreamLeads}
     dealContactOptions={data.taskDealContactOptions}
     dealCompanyOptions={data.taskDealCompanyOptions}
+    wantOptions={data.wants}
+    offerOptions={data.offers}
   />
 
   <section class="card panel">
@@ -323,6 +383,14 @@
   .muted { color: var(--muted); }
   .small { font-size: 0.9rem; }
   .summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; margin-bottom: 12px; }
+  .mission-grid { display: grid; grid-template-columns: 1.25fr 1fr 1fr; gap: 10px; margin-bottom: 12px; }
+  .mission-card { margin-bottom: 0; min-width: 0; }
+  .mission-list { display: grid; gap: 7px; }
+  .mission-row, .activity-row { border-top: 1px solid var(--border); padding-top: 7px; }
+  .activity-row { display: flex; gap: 8px; align-items: flex-start; }
+  .group-label { margin: 10px 0 5px; }
+  .compact-chips { margin-top: 5px; }
+  .tiny { font-size: 0.76rem; }
   .stat { padding: 12px; display: grid; gap: 4px; }
   .stat strong { font-size: 1.5rem; }
   .panel, .error-card, .warning-card { padding: 14px; margin-bottom: 12px; }
@@ -341,5 +409,6 @@
   .field { display: grid; gap: 6px; margin-bottom: 10px; }
   input, textarea, select { width: 100%; }
   .btn.danger { background:#b00020; color:#fff; border-color:#b00020; }
-  @media (max-width: 780px) { .header-card, .lead-row, .note-row { flex-direction: column; } .grid.two, .grid.three { grid-template-columns: 1fr; } .span2 { grid-column: auto; } }
+  @media (max-width: 1050px) { .mission-grid { grid-template-columns: 1fr 1fr; } }
+  @media (max-width: 780px) { .header-card, .lead-row, .note-row { flex-direction: column; } .grid.two, .grid.three, .mission-grid { grid-template-columns: 1fr; } .span2 { grid-column: auto; } }
 </style>

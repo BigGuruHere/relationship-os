@@ -240,6 +240,7 @@
         <a class="nav-link" href="/companies">▥ Companies</a>
         <a class="nav-link" href="/tasks">☑ Tasks{#if (data.tasksOpenCount || 0) > 0} <span class="pill">{data.tasksOpenCount}</span>{/if}</a>
         <a class="nav-link" href="/projects">▣ Projects</a>
+        <a class="nav-link" href="/workstreams">▤ Workstreams</a>
         <a class="nav-link" href="/agents">⚙ Agents</a>
       {/if}
       <a class="nav-link" href="/search">Search</a>

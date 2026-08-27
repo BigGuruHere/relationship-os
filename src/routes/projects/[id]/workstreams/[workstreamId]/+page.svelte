@@ -26,10 +26,6 @@
     return d.toLocaleString();
   }
 
-  function money(cents: number | null | undefined, currency = 'AUD') {
-    if (cents === null || cents === undefined) return '';
-    return new Intl.NumberFormat(undefined, { style: 'currency', currency, maximumFractionDigits: 0 }).format(cents / 100);
-  }
 
   $: filteredAttachableLeads = (data.options.attachableLeads || []).filter((lead: any) => {
     const term = attachLeadSearch.trim().toLowerCase();
@@ -350,7 +346,7 @@
       <div class="lead-list">
         {#each data.deals as link}
           <div class="lead-row">
-            <div><strong><a href={`/deals/${link.dealId}`}>{link.title}</a></strong><div class="muted small">{link.status}{link.probability === null || link.probability === undefined ? '' : ` - ${link.probability}% chance`}{#if link.valueCents} - {money(link.valueCents, link.currency)}{/if}</div>{#if link.label}<div class="small">{link.label}</div>{/if}{#if link.notes}<p class="preline small">{link.notes}</p>{/if}</div>
+            <div><strong><a href={`/deals/${link.dealId}`}>{link.title}</a></strong><div class="muted small">{link.status}{link.probability === null || link.probability === undefined ? '' : ` - ${link.probability}% chance`}{#if link.valueLabel} - {link.valueLabel}{/if}</div>{#if link.label}<div class="small">{link.label}</div>{/if}{#if link.notes}<p class="preline small">{link.notes}</p>{/if}</div>
             <form method="post" action="?/removeProjectDeal" on:submit={(event) => { if (!confirm('Remove this deal from this workstream? The deal itself will not be deleted.')) event.preventDefault(); }}><input type="hidden" name="linkId" value={link.id} /><button class="btn" type="submit">Remove</button></form>
           </div>
         {/each}

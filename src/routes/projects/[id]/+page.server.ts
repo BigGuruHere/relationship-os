@@ -7,7 +7,7 @@ import { fail, redirect } from '@sveltejs/kit';
 import { prisma } from '$lib/db';
 import { buildIndexToken, encrypt } from '$lib/crypto';
 import { companyDisplay } from '$lib/companies';
-import { safeDecrypt } from '$lib/deals';
+import { safeDecrypt, formatDealValue } from '$lib/deals';
 import { MARKET_LEAD_STATUSES, MARKET_LEAD_TYPES, marketLeadStatusLabel } from '$lib/marketLeads';
 import { buildLeadSourceOptions, leadFormValues, loadLeadSources, mapMarketLead, marketLeadCreateData, resolveLeadSourceId } from '$lib/server/marketLeads';
 import { contactDisplayName, contactOptionsForRows } from '$lib/server/contactDisplay';
@@ -283,7 +283,8 @@ export const load: PageServerLoad = async ({ params, locals }) => {
     dealId: link.deal.id,
     title: safeDecrypt(link.deal.titleEnc, 'deal.title', 'Untitled deal'),
     status: link.deal.status,
-    valueCents: link.deal.valueCents,
+    valueCents: link.deal.valueCents === null || link.deal.valueCents === undefined ? null : link.deal.valueCents.toString(),
+    valueLabel: link.deal.valueCents === null || link.deal.valueCents === undefined ? '' : formatDealValue(link.deal.valueCents, link.deal.currency),
     currency: link.deal.currency,
     probability: link.deal.probability,
     label: safeDecryptTask(link.labelEnc, 'project_deal.label', ''),

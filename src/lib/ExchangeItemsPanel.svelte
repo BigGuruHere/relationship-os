@@ -127,12 +127,12 @@
 
       <div class="grid four">
         <div class="field">
-          <label for="valueMin">Value min</label>
-          <input id="valueMin" name="valueMin" inputmode="decimal" placeholder="e.g. 1000000" />
+          <label for="valueMin">Minimum value ($m)</label>
+          <input id="valueMin" name="valueMin" type="number" min="0" max="100000000" step="0.00000001" inputmode="decimal" placeholder="e.g. 5" />
         </div>
         <div class="field">
-          <label for="valueMax">Value max</label>
-          <input id="valueMax" name="valueMax" inputmode="decimal" placeholder="e.g. 5000000" />
+          <label for="valueMax">Maximum value ($m)</label>
+          <input id="valueMax" name="valueMax" type="number" min="0" max="100000000" step="0.00000001" inputmode="decimal" placeholder="e.g. 12.5" />
         </div>
         <div class="field">
           <label for="currency">Currency</label>

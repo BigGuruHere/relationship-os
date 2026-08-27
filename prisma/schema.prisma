@@ -647,7 +647,7 @@ model Deal {
   descriptionSummaryEnc String?
 
   // IT: commercial fields. Store value in minor units to avoid float rounding.
-  valueCents        Int?
+  valueCents        BigInt?
   currency          String     @default("AUD")
   status            DealStatus @default(DISCOVERY)
   probability       Int?
@@ -1123,8 +1123,8 @@ model Want {
   timeHorizon ExchangeTimeHorizon @default(ONGOING)
   confidence ExchangeConfidence @default(MEDIUM)
 
-  valueMinCents Int?
-  valueMaxCents Int?
+  valueMinCents BigInt?
+  valueMaxCents BigInt?
   currency      String @default("AUD")
   reviewAt      DateTime?
   expiresAt     DateTime?
@@ -1247,8 +1247,8 @@ model Offer {
   timeHorizon ExchangeTimeHorizon @default(ONGOING)
   confidence ExchangeConfidence @default(MEDIUM)
 
-  valueMinCents Int?
-  valueMaxCents Int?
+  valueMinCents BigInt?
+  valueMaxCents BigInt?
   currency      String @default("AUD")
   reviewAt      DateTime?
   expiresAt     DateTime?
@@ -1398,8 +1398,8 @@ model ExchangeItem {
   confidence ExchangeConfidence @default(MEDIUM)
 
   geographyEnc String?
-  valueMinCents Int?
-  valueMaxCents Int?
+  valueMinCents BigInt?
+  valueMaxCents BigInt?
   currency      String @default("AUD")
   reviewAt      DateTime?
   expiresAt     DateTime?
@@ -1571,8 +1571,8 @@ model MarketLead {
 
   confidence Int @default(50)
   priority   Int @default(3)
-  valueMinCents Int?
-  valueMaxCents Int?
+  valueMinCents BigInt?
+  valueMaxCents BigInt?
   currency      String @default("AUD")
   nextActionEnc String?
   nextActionAt  DateTime?

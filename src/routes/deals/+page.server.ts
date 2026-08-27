@@ -116,7 +116,7 @@ async function mapDealRow(row: DealRow) {
     id: row.id,
     title,
     preview,
-    valueCents: row.valueCents,
+    valueCents: row.valueCents === null || row.valueCents === undefined ? null : row.valueCents.toString(),
     valueLabel: formatDealValue(row.valueCents, row.currency),
     weightedValueLabel: weighted === null ? 'No weighted value' : formatDealValue(weighted, row.currency),
     currency: row.currency,

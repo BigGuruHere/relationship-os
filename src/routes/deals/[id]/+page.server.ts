@@ -25,6 +25,7 @@ import {
   isClosedDealStatus,
   normaliseDealRelationshipType,
   normaliseDealStatus,
+  commercialValueInputError,
   parseMoneyToCents,
   parseOptionalDate,
   parseProbability,
@@ -438,7 +439,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
       title: safeDecrypt(row.titleEnc, 'deal.title', 'Untitled deal'),
       description: safeDecrypt(row.descriptionEnc, 'deal.description', ''),
       descriptionSummary: safeDecrypt(row.descriptionSummaryEnc, 'deal.description_summary', ''),
-      valueCents: row.valueCents,
+      valueCents: row.valueCents === null || row.valueCents === undefined ? null : row.valueCents.toString(),
       valueInput: centsToInputValue(row.valueCents),
       valueLabel: formatDealValue(row.valueCents, row.currency),
       weightedValueLabel: weighted === null ? 'No weighted value' : formatDealValue(weighted, row.currency),
@@ -514,7 +515,10 @@ export const actions: Actions = {
     const form = await request.formData();
     const status = normaliseDealStatus(form.get('status'));
     const probability = parseProbability(form.get('probability'));
-    const valueCents = parseMoneyToCents(form.get('value'));
+    const valueRaw = String(form.get('value') || '').trim();
+    const valueError = commercialValueInputError(valueRaw);
+    if (valueError) return fail(400, { error: `Estimated value: ${valueError}` });
+    const valueCents = parseMoneyToCents(valueRaw);
     const currency = String(form.get('currency') || 'AUD').trim().toUpperCase().slice(0, 3) || 'AUD';
     const expectedCloseDate = parseOptionalDate(form.get('expectedCloseDate'));
     const lostReason = String(form.get('lostReason') || '').trim();

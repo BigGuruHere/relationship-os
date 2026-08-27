@@ -6,7 +6,7 @@ import type { Actions, PageServerLoad } from './$types';
 import { fail, redirect } from '@sveltejs/kit';
 import { prisma } from '$lib/db';
 import { buildIndexToken, encrypt } from '$lib/crypto';
-import { safeDecrypt } from '$lib/deals';
+import { safeDecrypt, formatDealValue } from '$lib/deals';
 import { companyDisplay } from '$lib/companies';
 import {
   MARKET_LEAD_STATUSES,
@@ -368,7 +368,8 @@ export const load: PageServerLoad = async ({ params, locals }) => {
     dealId: link.deal.id,
     title: safeDecrypt(link.deal.titleEnc, 'deal.title', 'Untitled deal'),
     status: link.deal.status,
-    valueCents: link.deal.valueCents,
+    valueCents: link.deal.valueCents === null || link.deal.valueCents === undefined ? null : link.deal.valueCents.toString(),
+    valueLabel: link.deal.valueCents === null || link.deal.valueCents === undefined ? '' : formatDealValue(link.deal.valueCents, link.deal.currency),
     currency: link.deal.currency,
     probability: link.deal.probability,
     label: safeDecryptTask(link.labelEnc, 'project_deal.label', ''),

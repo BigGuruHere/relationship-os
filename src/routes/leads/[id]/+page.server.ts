@@ -6,7 +6,7 @@ import type { Actions, PageServerLoad } from './$types';
 import { fail, redirect } from '@sveltejs/kit';
 import { prisma } from '$lib/db';
 import { buildIndexToken, decrypt, encrypt } from '$lib/crypto';
-import { safeDecrypt } from '$lib/deals';
+import { safeDecrypt, centsToMillionsInputValue } from '$lib/deals';
 import { safeDecryptCompany } from '$lib/companies';
 import {
   COMMUNICATION_METHODS,
@@ -286,8 +286,8 @@ export const load: PageServerLoad = async ({ params, locals }) => {
       ...lead,
       nextActionAtInput: dateToDatetimeLocal(lead.nextActionAt),
       lastContactedAtInput: dateToDatetimeLocal(lead.lastContactedAt),
-      valueMin: typeof lead.valueMinCents === 'number' ? (lead.valueMinCents / 100).toFixed(2) : '',
-      valueMax: typeof lead.valueMaxCents === 'number' ? (lead.valueMaxCents / 100).toFixed(2) : '',
+      valueMin: centsToMillionsInputValue(row.valueMinCents),
+      valueMax: centsToMillionsInputValue(row.valueMaxCents),
       linkedContactName: contactName(row.contact),
       linkedCompanyName: row.company ? safeDecryptCompany(row.company.nameEnc, 'company.name', '') : '',
       linkedDealTitle: row.deal ? safeDecrypt(row.deal.titleEnc, 'deal.title', '') : '',

@@ -83,8 +83,8 @@
           <div class="field"><label for="currency">Currency</label><input id="currency" name="currency" value={form?.values?.currency || 'AUD'} /></div>
         </div>
         <div class="grid two">
-          <div class="field"><label for="valueMin">Value min</label><input id="valueMin" name="valueMin" inputmode="decimal" value={form?.values?.valueMin || ''} /></div>
-          <div class="field"><label for="valueMax">Value max</label><input id="valueMax" name="valueMax" inputmode="decimal" value={form?.values?.valueMax || ''} /></div>
+          <div class="field"><label for="valueMin">Minimum value ($m)</label><input id="valueMin" name="valueMin" type="number" min="0" max="100000000" step="0.00000001" inputmode="decimal" value={form?.values?.valueMin || ''} /></div>
+          <div class="field"><label for="valueMax">Maximum value ($m)</label><input id="valueMax" name="valueMax" type="number" min="0" max="100000000" step="0.00000001" inputmode="decimal" value={form?.values?.valueMax || ''} /></div>
         </div>
         <div class="field"><label for="description">Description</label><textarea id="description" name="description" rows="3">{form?.values?.description || ''}</textarea></div>
         <div class="field"><label for="notes">Notes</label><textarea id="notes" name="notes" rows="3">{form?.values?.notes || ''}</textarea></div>

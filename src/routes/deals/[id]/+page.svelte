@@ -159,7 +159,7 @@
           </div>
         </div>
         <div class="grid two">
-          <div class="field"><label for="value">Estimated value</label><input id="value" name="value" inputmode="decimal" value={data.deal.valueInput} /></div>
+          <div class="field"><label for="value">Estimated value ($m)</label><input id="value" name="value" type="number" min="0" max="100000000" step="0.00000001" inputmode="decimal" value={data.deal.valueInput} /></div>
           <div class="field"><label for="currency">Currency</label><input id="currency" name="currency" maxlength="3" value={data.deal.currency} /></div>
         </div>
         <div class="field"><label for="lostReason">Lost reason</label><input id="lostReason" name="lostReason" placeholder="Only used if state is Lost" value={data.deal.lostReason} /></div>

@@ -13,6 +13,7 @@ import {
   defaultProbabilityForStatus,
   normaliseDealRelationshipType,
   normaliseDealStatus,
+  commercialValueInputError,
   parseMoneyToCents,
   parseOptionalDate,
   parseProbability
@@ -60,7 +61,8 @@ export const actions: Actions = {
     const currency = String(form.get('currency') || 'AUD').trim().toUpperCase().slice(0, 3) || 'AUD';
     const status = normaliseDealStatus(form.get('status'));
     const probability = parseProbability(form.get('probability')) ?? defaultProbabilityForStatus(status);
-    const valueCents = parseMoneyToCents(form.get('value'));
+    const valueRaw = String(form.get('value') || '').trim();
+    const valueCents = parseMoneyToCents(valueRaw);
     const expectedCloseDate = parseOptionalDate(form.get('expectedCloseDate'));
     const firstContactId = String(form.get('firstContactId') || '').trim();
     const projectId = String(form.get('projectId') || '').trim();
@@ -75,7 +77,7 @@ export const actions: Actions = {
       currency,
       status,
       probability,
-      value: String(form.get('value') || '').trim(),
+      value: valueRaw,
       expectedCloseDate: String(form.get('expectedCloseDate') || '').trim(),
       firstContactId,
       projectId,
@@ -86,6 +88,9 @@ export const actions: Actions = {
     if (!title) {
       return fail(400, { error: 'Deal title is required.', values });
     }
+
+    const valueError = commercialValueInputError(valueRaw);
+    if (valueError) return fail(400, { error: `Estimated value: ${valueError}`, values });
 
     const duplicateDeal = await prisma.deal.findFirst({ where: { userId: locals.user.id, titleIdx: buildIndexToken(title) }, select: { id: true } });
     if (duplicateDeal) return fail(409, { error: 'A deal with this title already exists.', values });

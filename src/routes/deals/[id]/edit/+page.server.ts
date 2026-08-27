@@ -11,6 +11,7 @@ import {
   centsToInputValue,
   dateToInputValue,
   normaliseDealStatus,
+  commercialValueInputError,
   parseMoneyToCents,
   parseOptionalDate,
   parseProbability,
@@ -66,7 +67,10 @@ export const actions: Actions = {
     const currency = String(form.get('currency') || 'AUD').trim().toUpperCase().slice(0, 3) || 'AUD';
     const status = normaliseDealStatus(form.get('status'));
     const probability = parseProbability(form.get('probability'));
-    const valueCents = parseMoneyToCents(form.get('value'));
+    const valueRaw = String(form.get('value') || '').trim();
+    const valueError = commercialValueInputError(valueRaw);
+    if (valueError) return fail(400, { error: `Estimated value: ${valueError}` });
+    const valueCents = parseMoneyToCents(valueRaw);
     const expectedCloseDate = parseOptionalDate(form.get('expectedCloseDate'));
     const lostReason = String(form.get('lostReason') || '').trim();
 

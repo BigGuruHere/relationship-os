@@ -6,7 +6,7 @@ import type { Actions, PageServerLoad } from './$types';
 import { fail, redirect } from '@sveltejs/kit';
 import { prisma } from '$lib/db';
 import { buildIndexToken, encrypt } from '$lib/crypto';
-import { safeDecrypt, formatDealValue } from '$lib/deals';
+import { safeDecrypt, centsToMillionsInputValue } from '$lib/deals';
 import { contactDisplayName } from '$lib/server/contactDisplay';
 import { createTaskFromForm } from '$lib/server/tasks';
 import { NOTE_CHANNELS, dateToDatetimeLocal, noteChannelLabel } from '$lib/marketLeads';
@@ -21,9 +21,6 @@ import {
 import { OFFER_CONFIDENCES, OFFER_DIRECTIONS, OFFER_STATUSES, OFFER_TIME_HORIZONS, OFFER_TYPES, OFFER_URGENCIES, dateToInputDate } from '$lib/offers';
 import { TASK_FOCUS_OPTIONS, TASK_STATUSES, TASK_TYPES, taskFocusLabel, taskStatusLabel, taskTypeLabel, safeDecryptTask } from '$lib/tasks';
 
-function fmtMoney(cents: number | null | undefined, currency = 'AUD') {
-  return typeof cents === 'number' ? formatDealValue(cents, currency) : '';
-}
 
 export const load: PageServerLoad = async ({ params, locals }) => {
   if (!locals.user) throw redirect(303, '/auth/login');
@@ -71,8 +68,8 @@ export const load: PageServerLoad = async ({ params, locals }) => {
     editValues: {
       reviewAt: dateToInputDate(offer.reviewAt),
       expiresAt: dateToInputDate(offer.expiresAt),
-      valueMin: fmtMoney(offer.valueMinCents, offer.currency).replace(/[^0-9.]/g, ''),
-      valueMax: fmtMoney(offer.valueMaxCents, offer.currency).replace(/[^0-9.]/g, '')
+      valueMin: centsToMillionsInputValue(offer.valueMinCents),
+      valueMax: centsToMillionsInputValue(offer.valueMaxCents)
     },
     notes: notes.map((note) => ({ ...note, occurredInput: dateToDatetimeLocal(note.occurredAt), channelLabel: noteChannelLabel(note.channel) })),
     tasks,

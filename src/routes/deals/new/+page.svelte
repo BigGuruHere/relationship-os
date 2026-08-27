@@ -89,8 +89,8 @@
 
       <div class="grid two">
         <div class="field">
-          <label for="value">Estimated value</label>
-          <input id="value" name="value" inputmode="decimal" placeholder="25000" value={values.value || ''} />
+          <label for="value">Estimated value ($m)</label>
+          <input id="value" name="value" type="number" min="0" max="100000000" step="0.00000001" inputmode="decimal" placeholder="e.g. 5" value={values.value || ''} />
         </div>
         <div class="field">
           <label for="currency">Currency</label>

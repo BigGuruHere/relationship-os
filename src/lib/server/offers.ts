@@ -6,7 +6,7 @@ import { prisma } from '$lib/db';
 import { validateCommercialEntityLinks, type CommercialEntityLinks } from '$lib/server/commercialEntityLinks';
 import { decrypt, encrypt } from '$lib/crypto';
 import { createEmbeddingForText } from '$lib/embeddings_api';
-import { parseMoneyToCents, formatDealValue, safeDecrypt } from '$lib/deals';
+import { commercialValueInputError, parseMoneyToCents, formatDealValue, safeDecrypt } from '$lib/deals';
 import { companyDisplay } from '$lib/companies';
 import {
   importanceLabel,
@@ -88,7 +88,7 @@ function embeddingText(input: {
     `Time horizon: ${input.timeHorizon}`,
     `Confidence: ${input.confidence}`,
     input.geography ? `Geography: ${input.geography}` : '',
-    input.valueMin || input.valueMax ? `Value range: ${input.valueMin || 'unspecified'} to ${input.valueMax || 'unspecified'} ${input.currency}` : ''
+    input.valueMin || input.valueMax ? `Value range ($m): ${input.valueMin || 'unspecified'} to ${input.valueMax || 'unspecified'} ${input.currency}` : ''
   ].filter(Boolean).join('\n');
 }
 
@@ -122,6 +122,10 @@ export async function createOfferFromForm(params: { userId: string; form: FormDa
   const currency = String(form.get('currency') || 'AUD').trim().toUpperCase() || 'AUD';
   const valueMinRaw = String(form.get('valueMin') || '').trim();
   const valueMaxRaw = String(form.get('valueMax') || '').trim();
+  const valueMinError = commercialValueInputError(valueMinRaw);
+  const valueMaxError = commercialValueInputError(valueMaxRaw);
+  if (valueMinError) throw new Error(`Minimum value: ${valueMinError}`);
+  if (valueMaxError) throw new Error(`Maximum value: ${valueMaxError}`);
 
   const offerType = normaliseOfferType(form.get('offerType'));
   const status = normaliseOfferStatus(form.get('status'));
@@ -209,6 +213,10 @@ export async function updateOfferFromForm(params: { userId: string; offerId: str
   const currency = String(form.get('currency') || 'AUD').trim().toUpperCase() || 'AUD';
   const valueMinRaw = String(form.get('valueMin') || '').trim();
   const valueMaxRaw = String(form.get('valueMax') || '').trim();
+  const valueMinError = commercialValueInputError(valueMinRaw);
+  const valueMaxError = commercialValueInputError(valueMaxRaw);
+  if (valueMinError) throw new Error(`Minimum value: ${valueMinError}`);
+  if (valueMaxError) throw new Error(`Maximum value: ${valueMaxError}`);
   const offerType = normaliseOfferType(form.get('offerType'));
   const status = normaliseOfferStatus(form.get('status'));
   const direction = normaliseOfferDirection(form.get('direction'));
@@ -371,10 +379,10 @@ export function mapOffer(row: any) {
     timeHorizonLabel: offerTimeHorizonLabel(row.timeHorizon),
     confidence: row.confidence,
     confidenceLabel: offerConfidenceLabel(row.confidence),
-    valueMinCents: row.valueMinCents,
-    valueMaxCents: row.valueMaxCents,
-    valueMinLabel: typeof row.valueMinCents === 'number' ? formatDealValue(row.valueMinCents, row.currency) : '',
-    valueMaxLabel: typeof row.valueMaxCents === 'number' ? formatDealValue(row.valueMaxCents, row.currency) : '',
+    valueMinCents: row.valueMinCents === null || row.valueMinCents === undefined ? null : row.valueMinCents.toString(),
+    valueMaxCents: row.valueMaxCents === null || row.valueMaxCents === undefined ? null : row.valueMaxCents.toString(),
+    valueMinLabel: row.valueMinCents === null || row.valueMinCents === undefined ? '' : formatDealValue(row.valueMinCents, row.currency),
+    valueMaxLabel: row.valueMaxCents === null || row.valueMaxCents === undefined ? '' : formatDealValue(row.valueMaxCents, row.currency),
     currency: row.currency || 'AUD',
     reviewAt: row.reviewAt,
     expiresAt: row.expiresAt,

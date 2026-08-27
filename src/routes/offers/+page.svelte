@@ -70,8 +70,8 @@
           <div class="field"><label for="currency">Currency</label><input id="currency" name="currency" value="AUD" maxlength="3" /></div>
         </div>
         <div class="grid four">
-          <div class="field"><label for="valueMin">Value min</label><input id="valueMin" name="valueMin" inputmode="decimal" /></div>
-          <div class="field"><label for="valueMax">Value max</label><input id="valueMax" name="valueMax" inputmode="decimal" /></div>
+          <div class="field"><label for="valueMin">Minimum value ($m)</label><input id="valueMin" name="valueMin" type="number" min="0" max="100000000" step="0.00000001" inputmode="decimal" /></div>
+          <div class="field"><label for="valueMax">Maximum value ($m)</label><input id="valueMax" name="valueMax" type="number" min="0" max="100000000" step="0.00000001" inputmode="decimal" /></div>
           <div class="field"><label for="reviewAt">Review</label><input id="reviewAt" name="reviewAt" type="date" on:change={closeDatePickerOnChange} /></div>
           <div class="field"><label for="expiresAt">Expiry</label><input id="expiresAt" name="expiresAt" type="date" on:change={closeDatePickerOnChange} /></div>
         </div>

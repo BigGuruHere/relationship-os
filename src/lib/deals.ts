@@ -69,31 +69,105 @@ export function parseProbability(value: FormDataEntryValue | null): number | nul
   return Math.min(100, Math.max(0, parsed));
 }
 
-export function parseMoneyToCents(value: FormDataEntryValue | null): number | null {
-  const raw = String(value || '').trim().replace(/,/g, '');
+// IT: Commercial amounts are stored as integer cents in PostgreSQL BIGINT columns.
+// Browser forms use millions of currency units for fast M&A-style entry (5 => $5.0m).
+export type MoneyCents = bigint | number | string | null | undefined;
+
+const CENTS_PER_MILLION = 100_000_000n;
+const MAX_COMMERCIAL_VALUE_CENTS = 10_000_000_000_000_000n; // $100 trillion.
+
+function toCentsBigInt(value: MoneyCents): bigint | null {
+  if (value === null || value === undefined || value === '') return null;
+  if (typeof value === 'bigint') return value;
+  if (typeof value === 'number') {
+    if (!Number.isFinite(value) || !Number.isInteger(value)) return null;
+    return BigInt(value);
+  }
+  const raw = String(value).trim();
+  if (!/^-?\d+$/.test(raw)) return null;
+  try {
+    return BigInt(raw);
+  } catch {
+    return null;
+  }
+}
+
+export function commercialValueInputError(value: FormDataEntryValue | string | null): string | null {
+  const raw = String(value || '').trim().replace(/,/g, '').replace(/^\$/, '').replace(/[mM]$/, '').trim();
   if (!raw) return null;
-  const parsed = Number.parseFloat(raw);
-  if (!Number.isFinite(parsed) || parsed < 0) return null;
-  return Math.round(parsed * 100);
+  if (!/^\d+(?:\.\d{1,8})?$/.test(raw)) return 'Enter the value in millions, for example 5 or 12.5.';
+  const cents = parseMillionsToCents(raw);
+  if (cents === null) return 'Enter a value from 0 up to 100,000,000 ($100 trillion).';
+  return null;
 }
 
-export function centsToInputValue(valueCents: number | null | undefined) {
-  if (typeof valueCents !== 'number') return '';
-  return (valueCents / 100).toFixed(2);
+export function parseMillionsToCents(value: FormDataEntryValue | string | null): bigint | null {
+  const raw = String(value || '').trim().replace(/,/g, '').replace(/^\$/, '').replace(/[mM]$/, '').trim();
+  if (!raw || !/^\d+(?:\.\d{1,8})?$/.test(raw)) return null;
+
+  const [wholeRaw, fractionRaw = ''] = raw.split('.');
+  try {
+    const wholeMillions = BigInt(wholeRaw || '0');
+    const fractionPadded = (fractionRaw + '00000000').slice(0, 8);
+    // IT: one million dollars is exactly 100,000,000 cents, so eight decimal places of $m
+    // gives cent precision without ever converting the user's input through a JS float.
+    const cents = (wholeMillions * CENTS_PER_MILLION) + BigInt(fractionPadded || '0');
+    if (cents < 0n || cents > MAX_COMMERCIAL_VALUE_CENTS) return null;
+    return cents;
+  } catch {
+    return null;
+  }
 }
 
-export function formatDealValue(valueCents: number | null | undefined, currency = 'AUD') {
-  if (typeof valueCents !== 'number') return 'No value set';
-  return new Intl.NumberFormat('en-AU', {
-    style: 'currency',
-    currency: currency || 'AUD',
-    maximumFractionDigits: 0
-  }).format(valueCents / 100);
+export function centsToMillionsInputValue(valueCents: MoneyCents) {
+  const cents = toCentsBigInt(valueCents);
+  if (cents === null) return '';
+  const whole = cents / CENTS_PER_MILLION;
+  const fraction = (cents % CENTS_PER_MILLION).toString().padStart(8, '0').replace(/0+$/, '');
+  return fraction ? `${whole}.${fraction}` : whole.toString();
 }
 
-export function weightedValueCents(valueCents: number | null | undefined, probability: number | null | undefined) {
-  if (typeof valueCents !== 'number' || typeof probability !== 'number') return null;
-  return Math.round((valueCents * probability) / 100);
+// IT: Compatibility names retained for existing call sites. Stage 7.3.4 changes every
+// commercial field using these helpers to an explicitly labelled $m input.
+export const parseMoneyToCents = parseMillionsToCents;
+export const centsToInputValue = centsToMillionsInputValue;
+
+function currencySymbol(currency: string) {
+  switch (String(currency || 'AUD').toUpperCase()) {
+    case 'GBP': return '£';
+    case 'EUR': return '€';
+    case 'JPY': return '¥';
+    default: return '$';
+  }
+}
+
+function roundedOneDecimalUnits(cents: bigint, unitDollars: bigint) {
+  const unitCents = unitDollars * 100n;
+  // IT: calculate tenths with integer rounding so $12.55m displays as $12.6m without floating point.
+  const tenths = ((cents * 10n) + (unitCents / 2n)) / unitCents;
+  return `${tenths / 10n}.${tenths % 10n}`;
+}
+
+export function formatDealValue(valueCents: MoneyCents, currency = 'AUD') {
+  const cents = toCentsBigInt(valueCents);
+  if (cents === null) return 'No value set';
+  const symbol = currencySymbol(currency);
+  const dollars = cents / 100n;
+  const absDollars = dollars < 0n ? -dollars : dollars;
+
+  if (absDollars >= 1_000_000_000_000n) return `${symbol}${roundedOneDecimalUnits(cents, 1_000_000_000_000n)}t`;
+  if (absDollars >= 1_000_000_000n) return `${symbol}${roundedOneDecimalUnits(cents, 1_000_000_000n)}b`;
+  if (absDollars >= 1_000_000n) return `${symbol}${roundedOneDecimalUnits(cents, 1_000_000n)}m`;
+  if (absDollars >= 1_000n) return `${symbol}${roundedOneDecimalUnits(cents, 1_000n)}k`;
+
+  return `${symbol}${dollars.toLocaleString('en-AU')}`;
+}
+
+export function weightedValueCents(valueCents: MoneyCents, probability: number | null | undefined) {
+  const cents = toCentsBigInt(valueCents);
+  if (cents === null || typeof probability !== 'number' || !Number.isFinite(probability)) return null;
+  const pct = BigInt(Math.min(100, Math.max(0, Math.round(probability))));
+  return ((cents * pct) + 50n) / 100n;
 }
 
 export function parseOptionalDate(value: FormDataEntryValue | null): Date | null {

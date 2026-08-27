@@ -55,6 +55,7 @@
         {#if data.task.status === 'CANCELLED'}<div><strong>Cancelled</strong><span>{fmt(data.task.cancelledAt)}</span></div>{/if}
         <div><strong>Created</strong><span>{fmt(data.task.createdAt)}</span></div>
         <div><strong>Updated</strong><span>{fmt(data.task.updatedAt)}</span></div>
+        {#if data.task.recurrenceLabel}<div><strong>Repeat</strong><span>{data.task.recurrenceLabel}</span></div>{/if}
       </div>
 
       {#if data.task.notes}

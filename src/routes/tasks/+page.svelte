@@ -140,6 +140,21 @@
           </div>
         </div>
 
+        <details class="repeat-panel">
+          <summary>Repeat</summary>
+          <div class="field repeat-field">
+            <label for="recurrenceRule">Repeat schedule</label>
+            <select id="recurrenceRule" name="recurrenceRule">
+              <option value="">Never</option>
+              <option value="DAILY">Daily</option>
+              <option value="WEEKLY">Weekly</option>
+              <option value="FORTNIGHTLY">Fortnightly</option>
+              <option value="MONTHLY">Monthly</option>
+            </select>
+            <p class="hint">The due date is the starting point. One open occurrence is kept at a time.</p>
+          </div>
+        </details>
+
         <div class="grid two">
           <div class="field">
             <label for="contactId">Attach person</label>
@@ -361,6 +376,7 @@
             </div>
             <div class="muted small">
               {task.taskTypeLabel} - {task.importanceLabel} importance - due {fmt(task.dueAt)}
+              {#if task.recurrenceRule} - {task.recurrenceRule.toLowerCase()} recurring{/if}
             </div>
             {#if task.taskType === 'CALL'}
               {@const callPhone = task.contact?.phone || task.company?.phone || ''}
@@ -416,6 +432,9 @@
 </div>
 
 <style>
+  .repeat-panel { border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; margin: 4px 0 12px; }
+  .repeat-panel summary { cursor: pointer; font-weight: 700; }
+  .repeat-field { margin-top: 10px; }
   .page-head { display: flex; justify-content: space-between; gap: 16px; align-items: flex-start; margin-bottom: 14px; }
   .head-actions, .filter-row, .context-row, .task-title-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
   .filter-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; align-items: end; }

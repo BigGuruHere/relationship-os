@@ -13,6 +13,7 @@ import { wantStatusLabel } from '$lib/wants';
 import { offerStatusLabel } from '$lib/offers';
 import { loadWant } from '$lib/server/wants';
 import { loadOffer } from '$lib/server/offers';
+import { completeTaskAndAdvanceRecurrence, recurrenceLabel } from '$lib/server/taskRecurrence';
 import {
   TASK_FOCUS_OPTIONS,
   TASK_STATUSES,
@@ -44,6 +45,9 @@ async function loadTask(userId: string, taskId: string) {
       snoozedUntil: true,
       completedAt: true,
       cancelledAt: true,
+      recurrenceRule: true,
+      recurrenceSeriesId: true,
+      recurrenceAnchorAt: true,
       createdAt: true,
       updatedAt: true,
       assignedToTextEnc: true,
@@ -146,6 +150,10 @@ async function mapTask(userId: string, row: Awaited<ReturnType<typeof loadTask>>
     snoozedUntil: row.snoozedUntil,
     completedAt: row.completedAt,
     cancelledAt: row.cancelledAt,
+    recurrenceRule: row.recurrenceRule,
+    recurrenceLabel: recurrenceLabel(row.recurrenceRule),
+    recurrenceSeriesId: row.recurrenceSeriesId,
+    recurrenceAnchorAt: row.recurrenceAnchorAt,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
     assignedToText,
@@ -206,12 +214,14 @@ export const actions: Actions = {
     const form = await request.formData();
     const status = normaliseTaskStatus(form.get('status'));
 
-    const data: any = { status };
-    data.completedAt = status === 'DONE' ? new Date() : null;
-    data.cancelledAt = status === 'CANCELLED' ? new Date() : null;
-
-    const res = await prisma.task.updateMany({ where: { id: params.id, userId: locals.user.id }, data });
-    if (!res.count) return fail(404, { error: 'Task not found.' });
+    if (status === 'DONE') {
+      const result = await completeTaskAndAdvanceRecurrence(locals.user.id, params.id);
+      if (!result.found) return fail(404, { error: 'Task not found.' });
+    } else {
+      const data: any = { status, completedAt: null, cancelledAt: status === 'CANCELLED' ? new Date() : null };
+      const res = await prisma.task.updateMany({ where: { id: params.id, userId: locals.user.id }, data });
+      if (!res.count) return fail(404, { error: 'Task not found.' });
+    }
 
     throw redirect(303, `/tasks/${params.id}`);
   },

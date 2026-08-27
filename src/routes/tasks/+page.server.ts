@@ -11,6 +11,7 @@ import { contactDisplayName, contactOptionsForRows } from '$lib/server/contactDi
 import { safeDecrypt } from '$lib/deals';
 import { marketLeadStatusLabel } from '$lib/marketLeads';
 import { createTaskFromForm } from '$lib/server/tasks';
+import { completeTaskAndAdvanceRecurrence } from '$lib/server/taskRecurrence';
 import {
   PROJECT_STATUSES,
   TASK_IMPORTANCES,
@@ -161,6 +162,9 @@ async function loadTaskRows(userId: string, filters: TaskFilters, sort: TaskSort
       dueAt: true,
       snoozedUntil: true,
       completedAt: true,
+      recurrenceRule: true,
+      recurrenceSeriesId: true,
+      recurrenceAnchorAt: true,
       createdAt: true,
       updatedAt: true,
       assignedToTextEnc: true,
@@ -234,6 +238,9 @@ async function mapTask(row: TaskRow) {
     dueAt: row.dueAt,
     snoozedUntil: row.snoozedUntil,
     completedAt: row.completedAt,
+    recurrenceRule: row.recurrenceRule,
+    recurrenceSeriesId: row.recurrenceSeriesId,
+    recurrenceAnchorAt: row.recurrenceAnchorAt,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
     assignedToText,
@@ -441,8 +448,13 @@ export const actions: Actions = {
     else data.cancelledAt = null;
 
     try {
-      const res = await prisma.task.updateMany({ where: { id: taskId, userId: locals.user.id }, data });
-      if (!res.count) return fail(404, { error: 'Task not found.' });
+      if (status === 'DONE') {
+        const result = await completeTaskAndAdvanceRecurrence(locals.user.id, taskId);
+        if (!result.found) return fail(404, { error: 'Task not found.' });
+      } else {
+        const res = await prisma.task.updateMany({ where: { id: taskId, userId: locals.user.id }, data });
+        if (!res.count) return fail(404, { error: 'Task not found.' });
+      }
     } catch (err) {
       console.error('[tasks:updateStatus] failed', err);
       return fail(500, { error: 'Could not update task.' });

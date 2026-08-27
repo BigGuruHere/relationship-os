@@ -78,6 +78,21 @@
         <div class="field"><label for="snoozedUntil">Snooze until</label><input id="snoozedUntil" name="snoozedUntil" type="datetime-local" value={data.task.snoozedUntilInput} on:change={closeDatePickerOnChange} /></div>
       </div>
 
+      <details class="repeat-panel">
+        <summary>Repeat</summary>
+        <div class="field repeat-field">
+          <label for="recurrenceRule">Repeat schedule</label>
+          <select id="recurrenceRule" name="recurrenceRule">
+            <option value="" selected={!data.task.recurrenceRule}>Never</option>
+            <option value="DAILY" selected={data.task.recurrenceRule === 'DAILY'}>Daily</option>
+            <option value="WEEKLY" selected={data.task.recurrenceRule === 'WEEKLY'}>Weekly</option>
+            <option value="FORTNIGHTLY" selected={data.task.recurrenceRule === 'FORTNIGHTLY'}>Fortnightly</option>
+            <option value="MONTHLY" selected={data.task.recurrenceRule === 'MONTHLY'}>Monthly</option>
+          </select>
+          <p class="hint">The due date is the starting point. One open occurrence is kept at a time.</p>
+        </div>
+      </details>
+
       <div class="grid two">
         <div class="field">
           <label for="contactId">Attach person</label>
@@ -208,6 +223,9 @@
 </div>
 
 <style>
+  .repeat-panel { border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; margin: 4px 0 12px; }
+  .repeat-panel summary { cursor: pointer; font-weight: 700; }
+  .repeat-field { margin-top: 10px; }
   .form-card { padding: 18px; max-width: 900px; margin: 0 auto; }
   .page-head, .actions { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }
   .actions { justify-content: flex-start; margin-top: 14px; }

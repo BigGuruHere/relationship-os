@@ -11,6 +11,7 @@ import { safeDecrypt } from '$lib/deals';
 import { contactDisplayName, contactOptionsForRows } from '$lib/server/contactDisplay';
 import { loadWant } from '$lib/server/wants';
 import { loadOffer } from '$lib/server/offers';
+import { completeTaskAndAdvanceRecurrence, parseRecurrenceRule, recurrenceFields, recurrenceLabel } from '$lib/server/taskRecurrence';
 import {
   TASK_FOCUS_OPTIONS,
   TASK_IMPORTANCES,
@@ -182,6 +183,8 @@ export const load: PageServerLoad = async ({ params, locals, url }) => {
       taskTypeLabel: taskTypeLabel(row.taskType),
       dueAtInput: dateTimeToInputValue(row.dueAt),
       snoozedUntilInput: dateTimeToInputValue(row.snoozedUntil),
+      recurrenceRule: row.recurrenceRule,
+      recurrenceLabel: recurrenceLabel(row.recurrenceRule),
       contactId: row.contactId || '',
       dealId: row.dealId || '',
       dealContactId: row.dealContactId || '',
@@ -305,6 +308,12 @@ export const actions: Actions = {
     if (!contactOk || !dealOk || !projectOk || !companyOk || !wantOk || !offerOk || !assignedOk || !waitingOk) return fail(404, { error: 'One of the selected links was not found.' });
 
     const status = normaliseTaskStatus(form.get('status'));
+    const dueAt = parseDateTime(form.get('dueAt'));
+    const recurrenceRule = parseRecurrenceRule(form.get('recurrenceRule'));
+    if (recurrenceRule && !dueAt) return fail(400, { error: 'A due date is required for a recurring task.' });
+    const existingTask = await prisma.task.findFirst({ where: { id: params.id, userId }, select: { recurrenceSeriesId: true, recurrenceAnchorAt: true } });
+    if (!existingTask) return fail(404, { error: 'Task not found.' });
+    const recurrence = recurrenceFields(recurrenceRule, dueAt, existingTask.recurrenceSeriesId, dueAt || existingTask.recurrenceAnchorAt);
     const notes = String(form.get('notes') || '').trim();
     const summary = String(form.get('summary') || '').trim();
     const assignedToText = String(form.get('assignedToText') || '').trim();
@@ -320,7 +329,8 @@ export const actions: Actions = {
         importance: normaliseTaskImportance(form.get('importance')) as any,
         focus: normaliseTaskFocus(form.get('focus')) as any,
         taskType: normaliseTaskType(form.get('taskType')) as any,
-        dueAt: parseDateTime(form.get('dueAt')),
+        dueAt,
+        ...recurrence,
         snoozedUntil: parseDateTime(form.get('snoozedUntil')),
         completedAt: status === 'DONE' ? new Date() : null,
         cancelledAt: status === 'CANCELLED' ? new Date() : null,
@@ -338,6 +348,26 @@ export const actions: Actions = {
         offerId
       }
     });
+
+    if (!recurrenceRule && existingTask.recurrenceSeriesId) {
+      // IT: Choosing Never means stop the whole series. Keep any already-created future task as a
+      // normal one-off task rather than silently deleting user work.
+      await prisma.task.updateMany({
+        where: {
+          userId,
+          recurrenceSeriesId: existingTask.recurrenceSeriesId,
+          status: { in: ['OPEN', 'IN_PROGRESS', 'WAITING', 'SNOOZED'] as any }
+        },
+        data: { recurrenceRule: null, recurrenceSeriesId: null, recurrenceAnchorAt: null }
+      });
+    }
+
+    if (status === 'DONE') {
+      // IT: The edit action uses the same recurrence engine as the task list/detail quick action.
+      // The task is already marked DONE above, so only create the next occurrence if it did not exist.
+      const completed = await completeTaskAndAdvanceRecurrence(userId, params.id);
+      if (!completed.found) return fail(404, { error: 'Task not found.' });
+    }
 
     if (projectId && dealId) {
       await prisma.projectDeal.upsert({

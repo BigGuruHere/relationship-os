@@ -10,6 +10,7 @@
 
 import { prisma } from '$lib/db';
 import { encrypt } from '$lib/crypto';
+import { parseRecurrenceRule, recurrenceFields } from '$lib/server/taskRecurrence';
 import {
   normaliseTaskFocus,
   normaliseTaskImportance,
@@ -81,6 +82,10 @@ export async function createTaskFromForm(
   let projectId = String(form.get('projectId') || '').trim() || null;
   let workstreamId = String(form.get('workstreamId') || '').trim() || null;
   const assignedToContactId = String(form.get('assignedToContactId') || '').trim() || null;
+  const dueAt = parseDateTime(form.get('dueAt'));
+  const recurrenceRule = parseRecurrenceRule(form.get('recurrenceRule'));
+  if (recurrenceRule && !dueAt) return { ok: false, status: 400, error: 'A due date is required for a recurring task.' };
+  const recurrence = recurrenceFields(recurrenceRule, dueAt);
   const waitingOnContactId = String(form.get('waitingOnContactId') || '').trim() || null;
 
   // IT: hard-override for any field the caller has locked via route context - a submitted form
@@ -243,7 +248,8 @@ export async function createTaskFromForm(
         importance: normaliseTaskImportance(form.get('importance')) as any,
         focus: normaliseTaskFocus(form.get('focus')) as any,
         taskType: normaliseTaskType(form.get('taskType')) as any,
-        dueAt: parseDateTime(form.get('dueAt')),
+        dueAt,
+        ...recurrence,
         snoozedUntil: parseDateTime(form.get('snoozedUntil')),
         assignedToTextEnc: assignedToText ? encrypt(assignedToText, 'task.assigned_to_text') : null,
         assignedToContactId,

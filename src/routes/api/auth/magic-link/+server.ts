@@ -76,7 +76,7 @@ export const POST: RequestHandler = async ({ request, cookies, locals }) => {
     } else {
       // 3b - create a lightweight user record, then set encrypted email fields
       const created = await prisma.user.create({
-        data: {},
+        data: { person: { create: {} } },
         select: { id: true }
       });
       await setUserEmail(created.id, emailNorm);

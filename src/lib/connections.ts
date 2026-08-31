@@ -10,6 +10,7 @@
 
 import { prisma } from '$lib/db';
 import { encrypt, buildIndexToken } from '$lib/crypto';
+import { requireUserPersonId } from '$lib/server/core/identity';
 
 // IT: small helper to fetch a user's best profile for enrichment
 async function getBestProfile(userId: string) {
@@ -27,7 +28,7 @@ async function getBestProfile(userId: string) {
 }
 
 // IT: build a safe contact payload using any available public profile fields
-function buildContactData(ownerId: string, otherUserId: string, prof: Awaited<ReturnType<typeof getBestProfile>> | null) {
+function buildContactData(ownerId: string, otherUserId: string, otherPersonId: string, prof: Awaited<ReturnType<typeof getBestProfile>> | null) {
   const displayName = prof?.displayName?.trim() || '';
   const email = prof?.emailPublic?.trim().toLowerCase() || '';
   const phone = prof?.phonePublic?.trim() || '';
@@ -36,8 +37,9 @@ function buildContactData(ownerId: string, otherUserId: string, prof: Awaited<Re
 
   const data: any = {
     userId: ownerId,
-    // IT: we always link the other user for reciprocity and de-duplication
-    linkedUserId: otherUserId
+    // IT: linkedUserId remains the Stage 7 compatibility bridge; personId is the Stage 8.1 canonical identity link.
+    linkedUserId: otherUserId,
+    personId: otherPersonId
   };
 
   // IT: only set encrypted fields when we have something to store
@@ -84,18 +86,22 @@ export async function createMutualConnection(userAId: string, userBId: string) {
   }
 
   // IT: fetch profiles in parallel - can be null
-  const [profA, profB] = await Promise.all([getBestProfile(userAId), getBestProfile(userBId)]);
+  const [profA, profB, personAId, personBId] = await Promise.all([getBestProfile(userAId), getBestProfile(userBId), requireUserPersonId(userAId), requireUserPersonId(userBId)]);
 
   // IT: run inside a transaction to reduce race windows
   await prisma.$transaction(async (tx) => {
     // A side - does A already have B as a contact
     const aHasB = await tx.contact.findFirst({
       where: { userId: userAId, linkedUserId: userBId },
-      select: { id: true }
+      select: { id: true, personId: true }
     });
 
+    if (aHasB && aHasB.personId !== personBId) {
+      await tx.contact.update({ where: { id: aHasB.id }, data: { personId: personBId } });
+    }
+
     if (!aHasB) {
-      const payloadA = buildContactData(userAId, userBId, profB);
+      const payloadA = buildContactData(userAId, userBId, personBId, profB);
       try {
         await tx.contact.create({ data: payloadA });
       } catch (err: any) {
@@ -112,11 +118,15 @@ export async function createMutualConnection(userAId: string, userBId: string) {
     // B side - does B already have A as a contact
     const bHasA = await tx.contact.findFirst({
       where: { userId: userBId, linkedUserId: userAId },
-      select: { id: true }
+      select: { id: true, personId: true }
     });
 
+    if (bHasA && bHasA.personId !== personAId) {
+      await tx.contact.update({ where: { id: bHasA.id }, data: { personId: personAId } });
+    }
+
     if (!bHasA) {
-      const payloadB = buildContactData(userBId, userAId, profA);
+      const payloadB = buildContactData(userBId, userAId, personAId, profA);
       try {
         await tx.contact.create({ data: payloadB });
       } catch (err: any) {

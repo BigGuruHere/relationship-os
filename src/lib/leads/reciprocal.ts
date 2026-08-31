@@ -1,11 +1,27 @@
-// PURPOSE: when a pending lead is claimed, create a reciprocal Contact in the new user's tenant
+// PURPOSE: when a pending lead is claimed, create or identity-link a reciprocal Contact in the new user's tenant
 // PRIVACY: uses only the owner's public Profile fields - no private data
-// SECURITY: encrypts PII and uses deterministic indexes - tenant scoped by recipient userId
+// SECURITY: encrypts PII, uses deterministic indexes, and preserves tenant ownership by recipient userId
 
 import { prisma } from '$lib/db';
 import { encrypt, buildIndexToken } from '$lib/crypto';
+import { requireUserPersonId } from '$lib/server/core/identity';
 
 export async function createReciprocalContactIfMissing(recipientUserId: string, ownerUserId: string) {
+  // IT: Stage 8.1 canonical identity for the account being represented in this workspace.
+  const ownerPersonId = await requireUserPersonId(ownerUserId);
+
+  // IT: if the explicit account link already exists, make sure its Person bridge is also populated.
+  const linked = await prisma.contact.findFirst({
+    where: { userId: recipientUserId, linkedUserId: ownerUserId },
+    select: { id: true, personId: true }
+  });
+  if (linked) {
+    if (linked.personId !== ownerPersonId) {
+      await prisma.contact.update({ where: { id: linked.id }, data: { personId: ownerPersonId } });
+    }
+    return;
+  }
+
   // IT: fetch owner's default or most recent profile to get public fields
   const prof = await prisma.profile.findFirst({
     where: { userId: ownerUserId },
@@ -29,7 +45,8 @@ export async function createReciprocalContactIfMissing(recipientUserId: string, 
   // IT: if no visible info, skip
   if (!fullName && !email && !phone) return;
 
-  // IT: try to find an existing contact in recipient tenant by deterministic email or phone
+  // IT: try to find an existing contact in recipient tenant by deterministic email or phone.
+  // If found, reuse that workspace Contact and attach the canonical Person instead of creating a duplicate.
   const byEmail = email
     ? await prisma.contact.findFirst({
         where: { userId: recipientUserId, emailIdx: buildIndexToken(email) },
@@ -44,11 +61,20 @@ export async function createReciprocalContactIfMissing(recipientUserId: string, 
       })
     : null;
 
-  if (byEmail || byPhone) return; // already present
+  const existing = byEmail ?? byPhone;
+  if (existing) {
+    await prisma.contact.update({
+      where: { id: existing.id },
+      data: { linkedUserId: ownerUserId, personId: ownerPersonId }
+    });
+    return;
+  }
 
   // IT: create minimal contact in recipient tenant using public fields
   const data: any = {
-    userId: recipientUserId
+    userId: recipientUserId,
+    linkedUserId: ownerUserId,
+    personId: ownerPersonId
   };
 
   if (fullName) {

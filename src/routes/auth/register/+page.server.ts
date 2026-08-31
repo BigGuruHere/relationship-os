@@ -44,7 +44,7 @@ export const actions: Actions = {
     let userId: string;
     try {
       const created = await prisma.user.create({
-        data: { passwordHash },
+        data: { passwordHash, person: { create: {} } },
         select: { id: true }
       });
       userId = created.id;

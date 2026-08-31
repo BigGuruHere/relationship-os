@@ -2,6 +2,8 @@
 // PURPOSE: Read a compact, decrypted Relish entity context for safe agent use.
 
 import { prisma } from '$lib/db';
+import { createAgentCoreAccess, type CoreAccessContext } from '$lib/server/core/accessPolicy';
+import { findCoreCompany, findCoreContact, findCoreDeal, findCoreProject } from '$lib/server/core/relationshipRepository';
 import { decrypt } from '$lib/crypto';
 import { companyDisplay, companyKindLabel, companyRelationshipTypeLabel, companyStatusLabel, safeDecryptCompany } from '$lib/companies';
 import { dealRelationshipLabel, dealStatusLabel, formatDealValue, safeDecrypt } from '$lib/deals';
@@ -84,21 +86,19 @@ function offerForAgent(item: any) {
   };
 }
 
-async function loadFirstClassExchangeContext(userId: string, links: WantEntityLink) {
+async function loadFirstClassExchangeContext(context: CoreAccessContext, links: WantEntityLink) {
   // IT: Stage 7.3.1 agents read the new source-of-truth tables, not legacy ExchangeItem rows.
   const [wantRows, offerRows] = await Promise.all([
-    loadWants({ userId, links, take: 20 }),
-    loadOffers({ userId, links, take: 20 })
+    loadWants({ userId: context.workspaceUserId, links, take: 20 }),
+    loadOffers({ userId: context.workspaceUserId, links, take: 20 })
   ]);
   const wants = wantRows.map(wantForAgent);
   const offers = offerRows.map(offerForAgent);
   return { wants, offers, wantsOffers: [...wants, ...offers] };
 }
 
-async function readContact(userId: string, contactId: string) {
-  const row = await prisma.contact.findFirst({
-    where: { id: contactId, userId },
-    select: {
+async function readContact(context: CoreAccessContext, contactId: string) {
+  const row = await findCoreContact(context, contactId, {
       id: true,
       fullNameEnc: true,
       emailEnc: true,
@@ -145,11 +145,10 @@ async function readContact(userId: string, contactId: string) {
         orderBy: [{ dueAt: 'asc' }, { updatedAt: 'desc' }],
         take: 20
       },
-    }
   });
 
   if (!row) throw new Error('Contact not found.');
-  const exchange = await loadFirstClassExchangeContext(userId, { contactId });
+  const exchange = await loadFirstClassExchangeContext(context, { contactId });
 
   return {
     entityType: 'contact',
@@ -207,10 +206,8 @@ async function readContact(userId: string, contactId: string) {
   };
 }
 
-async function readDeal(userId: string, dealId: string) {
-  const row = await prisma.deal.findFirst({
-    where: { id: dealId, userId },
-    select: {
+async function readDeal(context: CoreAccessContext, dealId: string) {
+  const row = await findCoreDeal(context, dealId, {
       id: true,
       titleEnc: true,
       descriptionEnc: true,
@@ -261,11 +258,10 @@ async function readDeal(userId: string, dealId: string) {
         orderBy: [{ dueAt: 'asc' }, { updatedAt: 'desc' }],
         take: 30
       },
-    }
   });
 
   if (!row) throw new Error('Deal not found.');
-  const exchange = await loadFirstClassExchangeContext(userId, { dealId });
+  const exchange = await loadFirstClassExchangeContext(context, { dealId });
 
   return {
     entityType: 'deal',
@@ -327,10 +323,8 @@ async function readDeal(userId: string, dealId: string) {
   };
 }
 
-async function readCompany(userId: string, companyId: string) {
-  const row = await prisma.company.findFirst({
-    where: { id: companyId, userId },
-    select: {
+async function readCompany(context: CoreAccessContext, companyId: string) {
+  const row = await findCoreCompany(context, companyId, {
       id: true,
       nameEnc: true,
       websiteEnc: true,
@@ -375,11 +369,10 @@ async function readCompany(userId: string, companyId: string) {
         orderBy: [{ dueAt: 'asc' }, { updatedAt: 'desc' }],
         take: 30
       },
-    }
   });
 
   if (!row) throw new Error('Company not found.');
-  const exchange = await loadFirstClassExchangeContext(userId, { companyId });
+  const exchange = await loadFirstClassExchangeContext(context, { companyId });
 
   const relationships = [
     ...row.relationshipsAsA.map((r: any) => ({
@@ -455,10 +448,8 @@ async function readCompany(userId: string, companyId: string) {
   };
 }
 
-async function readProject(userId: string, projectId: string) {
-  const row = await prisma.project.findFirst({
-    where: { id: projectId, userId },
-    select: {
+async function readProject(context: CoreAccessContext, projectId: string) {
+  const row = await findCoreProject(context, projectId, {
       id: true,
       titleEnc: true,
       descriptionEnc: true,
@@ -479,11 +470,10 @@ async function readProject(userId: string, projectId: string) {
         orderBy: [{ status: 'asc' }, { dueAt: 'asc' }, { updatedAt: 'desc' }],
         take: 80
       },
-    }
   });
 
   if (!row) throw new Error('Project not found.');
-  const exchange = await loadFirstClassExchangeContext(userId, { projectId });
+  const exchange = await loadFirstClassExchangeContext(context, { projectId });
 
   const openStatuses = new Set(['OPEN', 'IN_PROGRESS', 'WAITING', 'SNOOZED']);
   const relatedDeals = new Map<string, any>();
@@ -523,14 +513,14 @@ async function readProject(userId: string, projectId: string) {
   };
 }
 
-export async function readEntityContext(input: ReadEntityContextInput, userId: string) {
+export async function readEntityContext(input: ReadEntityContextInput, context: CoreAccessContext) {
   if (!input.entityId) throw new Error('Missing entity id.');
 
   switch (input.entityType) {
-    case 'contact': return readContact(userId, input.entityId);
-    case 'deal': return readDeal(userId, input.entityId);
-    case 'company': return readCompany(userId, input.entityId);
-    case 'project': return readProject(userId, input.entityId);
+    case 'contact': return readContact(context, input.entityId);
+    case 'deal': return readDeal(context, input.entityId);
+    case 'company': return readCompany(context, input.entityId);
+    case 'project': return readProject(context, input.entityId);
     default: throw new Error(`Unsupported entity type: ${(input as any).entityType}`);
   }
 }
@@ -540,7 +530,8 @@ export const readEntityContextTool: ToolDefinition<ReadEntityContextInput, any> 
   description: 'Reads a compact Relish entity context for an agent run.',
   requiresApproval: false,
   execute: async (input, context) => {
-    const result = await readEntityContext(input, context.userId);
+    const access = createAgentCoreAccess({ userId: context.userId, agentDefinitionId: context.agentDefinitionId, purpose: 'read_entity_context' });
+    const result = await readEntityContext(input, access);
 
     // IT: Track which CRM record the run read from.
     await prisma.agentRunEntity.create({

@@ -4,6 +4,8 @@
 import { prisma } from '$lib/db';
 import { encrypt } from '$lib/crypto';
 import type { ToolDefinition } from '$lib/server/agents/types';
+import { createAgentCoreAccess } from '$lib/server/core/accessPolicy';
+import { assertOwnedCanonicalRefs } from '$lib/server/core/relationshipRepository';
 
 type CreateTaskInput = {
   title: string;
@@ -45,6 +47,10 @@ export const createTaskTool: ToolDefinition<CreateTaskInput, CreateTaskOutput> =
   execute: async (input, context) => {
     const title = String(input.title || '').trim();
     if (!title) throw new Error('Task title is required.');
+
+    // IT: Stage 8.1 prevents an agent from attaching a task to another tenant's relationship record.
+    const access = createAgentCoreAccess({ userId: context.userId, agentDefinitionId: context.agentDefinitionId, purpose: 'create_task' });
+    await assertOwnedCanonicalRefs(access, { contactId: input.contactId, companyId: input.companyId, dealId: input.dealId, projectId: input.projectId });
 
     const task = await prisma.task.create({
       data: {

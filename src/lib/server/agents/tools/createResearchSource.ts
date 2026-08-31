@@ -4,6 +4,9 @@
 import { prisma } from '$lib/db';
 import { encrypt } from '$lib/crypto';
 import type { ToolDefinition } from '$lib/server/agents/types';
+import { createAgentCoreAccess } from '$lib/server/core/accessPolicy';
+import { assertOwnedCanonicalRefs } from '$lib/server/core/relationshipRepository';
+import { getOwnedResearchCandidate } from '$lib/server/agents/stagingRepository';
 
 type Input = {
   sourceType?: string;
@@ -40,6 +43,14 @@ export const createResearchSourceTool: ToolDefinition<Input, { id: string; creat
   description: 'Stores a source/evidence row from agent research without importing it as CRM truth.',
   requiresApproval: false,
   execute: async (input, context) => {
+    // IT: Evidence may reference canonical relationship records, but only inside the current workspace.
+    const access = createAgentCoreAccess({ userId: context.userId, agentDefinitionId: context.agentDefinitionId, purpose: 'create_research_source' });
+    await assertOwnedCanonicalRefs(access, { contactId: clean(input.contactId) || null, companyId: clean(input.companyId) || null });
+    if (clean(input.researchCandidateId)) {
+      const candidate = await getOwnedResearchCandidate(context.userId, clean(input.researchCandidateId), context.agentRunId);
+      if (!candidate) throw new Error('Research candidate not found in this agent run.');
+    }
+
     const row = await prisma.researchSource.create({
       data: {
         userId: context.userId,

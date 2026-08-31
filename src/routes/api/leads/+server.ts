@@ -71,7 +71,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
     // Ensure a guest user exists to own the session created by the magic link
     // - If you later key by email, you can upsert here. For now we create a guest user.
     const guest = await prisma.user.create({
-      data: { role: 'guest' }
+      data: { role: 'guest', person: { create: {} } }
     });
 
     // Send the magic link with env-aware origin so the URL is correct on local, dev, and prod

@@ -10,6 +10,7 @@
 import { prisma } from '$lib/db';
 import { buildIndexToken } from '$lib/crypto';
 import { createReciprocalContactIfMissing } from './reciprocal';
+import { requireUserPersonId } from '$lib/server/core/identity';
 
 // IT: tiny helper to canonicalize LinkedIn profile URLs so the index is stable
 function normalizeLinkedInUrl(u: string | undefined | null): string {
@@ -66,6 +67,9 @@ export async function linkLeadsForUserFlexible(
     return { claimedLeadIds: [], touchedContactIds: [], owners: [] };
   }
 
+  // IT: Stage 8.1 links claimed Contacts to the canonical Person for this registered user as well as linkedUserId.
+  const personId = await requireUserPersonId(userId);
+
   // IT: claim leads and link any associated contacts to this user
   const tx: any[] = [];
   for (const lead of leads) {
@@ -79,7 +83,7 @@ export async function linkLeadsForUserFlexible(
       tx.push(
         prisma.contact.update({
           where: { id: lead.contactId },
-          data: { linkedUserId: userId }
+          data: { linkedUserId: userId, personId }
         })
       );
     }

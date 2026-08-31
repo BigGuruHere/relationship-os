@@ -20,7 +20,8 @@
 		"generate": "prisma generate",
 		"postinstall": "prisma generate",
 		"test": "tsx --test \"tests/core/*.test.ts\"",
-		"test:core": "tsx --test \"tests/core/*.test.ts\""
+		"test:core": "tsx --test \"tests/core/*.test.ts\"",
+		"check:stage8.1": "tsx scripts/check-stage8-1-identity.ts"
 	},
 	"engines": {
 		"node": ">=22.13.1 <23"

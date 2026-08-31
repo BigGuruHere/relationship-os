@@ -40,6 +40,10 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  // IT: Stage 8.1 neutral identity bridge. Person carries identity only, not workspace-private CRM facts.
+  personId String? @unique
+  person   Person? @relation(fields: [personId], references: [id], onDelete: SetNull)
+
   // IT: encrypted and indexed email - replaces legacy plaintext email
   email_Enc String? // ciphertext at rest
   email_Idx Bytes?  @unique // deterministic HMAC index for equality search
@@ -114,6 +118,17 @@ model User {
   profiles Profile[]
 
   @@index([createdAt])
+}
+
+// IT: Stage 8.1 canonical identity node.
+// IMPORTANT: Person intentionally stores no global name/email/profile fields. Workspace-private facts remain on Contact and related records.
+model Person {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  accounts User[]
+  contacts Contact[]
 }
 
 // IT: New table to track claimable leads
@@ -314,6 +329,10 @@ model Contact {
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  // IT: Stage 8.1 optional canonical identity link. It does not change Contact tenant ownership.
+  personId String?
+  person   Person? @relation(fields: [personId], references: [id], onDelete: SetNull)
+
   // Encrypted at rest fields
   fullNameEnc String
   emailEnc    String?
@@ -391,6 +410,8 @@ model Contact {
 
   // Indexes for search and tenancy
   @@index([userId])
+  @@index([personId])
+  @@index([userId, personId])
   @@index([fullNameIdx])
   @@index([emailIdx])
   @@index([phoneIdx])

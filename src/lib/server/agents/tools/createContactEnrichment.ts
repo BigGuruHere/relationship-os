@@ -4,6 +4,9 @@
 import { prisma } from '$lib/db';
 import { encrypt } from '$lib/crypto';
 import type { ToolDefinition } from '$lib/server/agents/types';
+import { createAgentCoreAccess } from '$lib/server/core/accessPolicy';
+import { assertOwnedCanonicalRefs } from '$lib/server/core/relationshipRepository';
+import { getOwnedResearchCandidate } from '$lib/server/agents/stagingRepository';
 
 type Input = {
   targetName?: string;
@@ -63,6 +66,15 @@ export const createContactEnrichmentTool: ToolDefinition<Input, { id: string; cr
     if (!proposedValue && !hasLegacyDetail) throw new Error('At least one proposed enrichment detail is required.');
 
     const fieldKey = cleanKey(input.fieldKey);
+
+    // IT: Stage 8.1 validates canonical relationship references before staging enrichment against them.
+    const access = createAgentCoreAccess({ userId: context.userId, agentDefinitionId: context.agentDefinitionId, purpose: 'create_contact_enrichment' });
+    await assertOwnedCanonicalRefs(access, { contactId: clean(input.contactId) || null, companyId: clean(input.companyId) || null });
+    if (clean(input.researchCandidateId)) {
+      const candidate = await getOwnedResearchCandidate(context.userId, clean(input.researchCandidateId), context.agentRunId);
+      if (!candidate) throw new Error('Research candidate not found in this agent run.');
+    }
+
     const conflictStatus = clean(input.conflictStatus || 'NEW').toUpperCase();
     const isApplyable = input.isApplyable !== false && !['VERIFIED_EXISTING', 'INFERRED_ONLY', 'UNSUPPORTED', 'NO_CHANGE'].includes(conflictStatus);
 

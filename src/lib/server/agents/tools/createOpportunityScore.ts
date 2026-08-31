@@ -3,7 +3,9 @@
 
 import { prisma } from '$lib/db';
 import { encrypt } from '$lib/crypto';
-import type { ToolDefinition } from '$lib/server/agents/types';
+import type { ToolDefinition, ToolContext } from '$lib/server/agents/types';
+import { createAgentCoreAccess } from '$lib/server/core/accessPolicy';
+import { assertOwnedCanonicalRefs } from '$lib/server/core/relationshipRepository';
 
 type ScoreFactorInput = {
   criterionKey: string;
@@ -79,16 +81,17 @@ function normalisePriority(totalScore: number, supplied?: string) {
   return 'low';
 }
 
-async function assertOwned(input: CreateOpportunityScoreInput, userId: string) {
-  const checks = [
-    input.researchCandidateId ? prisma.researchCandidate.findFirst({ where: { id: input.researchCandidateId, userId }, select: { id: true } }) : null,
-    input.companyId ? prisma.company.findFirst({ where: { id: input.companyId, userId }, select: { id: true } }) : null,
-    input.contactId ? prisma.contact.findFirst({ where: { id: input.contactId, userId }, select: { id: true } }) : null,
-    input.dealId ? prisma.deal.findFirst({ where: { id: input.dealId, userId }, select: { id: true } }) : null
-  ].filter(Boolean) as Promise<{ id: string } | null>[];
+async function assertOwned(input: CreateOpportunityScoreInput, context: ToolContext) {
+  const access = createAgentCoreAccess({ userId: context.userId, agentDefinitionId: context.agentDefinitionId, purpose: 'create_opportunity_score' });
+  await assertOwnedCanonicalRefs(access, { companyId: input.companyId, contactId: input.contactId, dealId: input.dealId });
 
-  const results = await Promise.all(checks);
-  if (results.some((result) => !result)) throw new Error('One or more score target records were not found.');
+  if (input.researchCandidateId) {
+    const candidate = await prisma.researchCandidate.findFirst({
+      where: { id: input.researchCandidateId, userId: context.userId },
+      select: { id: true }
+    });
+    if (!candidate) throw new Error('Research candidate not found in this workspace.');
+  }
 }
 
 export const createOpportunityScoreTool: ToolDefinition<CreateOpportunityScoreInput, CreateOpportunityScoreOutput> = {
@@ -96,7 +99,7 @@ export const createOpportunityScoreTool: ToolDefinition<CreateOpportunityScoreIn
   description: 'Stores an explainable opportunity scorecard with optional score factors.',
   requiresApproval: false,
   execute: async (input, context) => {
-    await assertOwned(input, context.userId);
+    await assertOwned(input, context);
 
     const totalScore = clamp(input.totalScore);
     const score = await prisma.opportunityScore.create({

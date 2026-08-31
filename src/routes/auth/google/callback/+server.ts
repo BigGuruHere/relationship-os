@@ -178,7 +178,7 @@ export const GET: RequestHandler = async ({ url, cookies, locals, getClientAddre
   // 11c - create user if none found, then set encrypted email fields
   if (!user) {
     const created = await prisma.user.create({
-      data: {},
+      data: { person: { create: {} } },
       select: { id: true }
     });
     await setUserEmail(created.id, email);

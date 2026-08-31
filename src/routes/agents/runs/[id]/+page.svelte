@@ -122,7 +122,7 @@
               {#if item.status !== 'REJECTED' && item.status !== 'APPLIED'}
                 <form method="post" action="?/rejectEnrichment"><input type="hidden" name="enrichmentId" value={item.id} /><button class="btn danger" type="submit">Reject</button></form>
               {/if}
-              {#if item.isApplyable && item.status !== 'APPLIED' && item.status !== 'REJECTED' && item.status !== 'NO_CHANGE'}
+              {#if item.isApplyable && item.status === 'APPROVED'}
                 <form method="post" action="?/applyEnrichment">
                   <input type="hidden" name="enrichmentId" value={item.id} />
                   <label class="inline-check"><input type="checkbox" name="overwrite" /> Overwrite existing fields</label>
@@ -260,7 +260,7 @@
               {#if candidate.status !== 'REJECTED' && candidate.status !== 'IMPORTED'}
                 <form method="post" action="?/rejectCandidate"><input type="hidden" name="candidateId" value={candidate.id} /><button class="btn danger" type="submit">Reject</button></form>
               {/if}
-              {#if candidate.status !== 'IMPORTED' && candidate.status !== 'REJECTED'}
+              {#if candidate.status === 'APPROVED'}
                 <form method="post" action="?/importCandidate"><input type="hidden" name="candidateId" value={candidate.id} /><button class="btn primary" type="submit">Import to CRM</button></form>
               {/if}
               <form method="post" action="?/createReviewTask"><input type="hidden" name="candidateId" value={candidate.id} /><button class="btn" type="submit">Create review task</button></form>

@@ -18,7 +18,9 @@
 		"migrate:dev": "node scripts/safe-migrate-dev.js",
 		"migrate:deploy": "prisma migrate deploy",
 		"generate": "prisma generate",
-		"postinstall": "prisma generate"
+		"postinstall": "prisma generate",
+		"test": "tsx --test \"tests/core/*.test.ts\"",
+		"test:core": "tsx --test \"tests/core/*.test.ts\""
 	},
 	"engines": {
 		"node": ">=22.13.1 <23"

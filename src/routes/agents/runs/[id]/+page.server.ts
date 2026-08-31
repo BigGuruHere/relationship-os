@@ -8,6 +8,12 @@ import { buildIndexToken, encrypt } from '$lib/crypto';
 import { loadAgentArtifacts } from '$lib/server/agents/artifacts';
 import { safeDecryptCompany } from '$lib/companies';
 import { applyCompanyAcquisitionCriteria } from '$lib/server/wants';
+import {
+  getApprovedContactEnrichmentForPromotion,
+  getApprovedResearchCandidateForPromotion,
+  getOwnedResearchCandidate
+} from '$lib/server/agents/stagingRepository';
+import { approvedEnrichmentGroupWhere } from '$lib/server/agents/stagingPolicy';
 
 function dec(payload: string | null | undefined, aad: string, fallback = '') {
   return safeDecryptCompany(payload, aad, fallback);
@@ -369,16 +375,8 @@ function redirectBack(runId: string) {
 }
 
 
-async function getOwnedEnrichment(userId: string, enrichmentId: string, runId: string) {
-  return prisma.contactEnrichment.findFirst({ where: { id: enrichmentId, userId, agentRunId: runId } });
-}
-
 function decryptEnrichmentValue(payload: string | null | undefined, aad: string) {
   return dec(payload, aad, '').trim();
-}
-
-async function getOwnedCandidate(userId: string, candidateId: string, runId: string) {
-  return prisma.researchCandidate.findFirst({ where: { id: candidateId, userId, agentRunId: runId } });
 }
 
 export const actions: Actions = {
@@ -407,8 +405,8 @@ export const actions: Actions = {
     const overwrite = form.get('overwrite') === 'on';
     if (!enrichmentId) return fail(400, { error: 'Missing enrichment id.' });
 
-    const enrichment = await getOwnedEnrichment(locals.user.id, enrichmentId, params.id);
-    if (!enrichment || enrichment.status === 'REJECTED') return fail(404, { error: 'Enrichment not found or rejected.' });
+    const enrichment = await getApprovedContactEnrichmentForPromotion(locals.user.id, enrichmentId, params.id);
+    if (!enrichment) return fail(409, { error: 'Enrichment not found or not approved for application.' });
     if (enrichment.isApplyable === false) return fail(400, { error: 'This enrichment is marked as not applyable. Verify manually instead.' });
 
     const fieldKey = String(enrichment.fieldKey || '').trim();
@@ -512,13 +510,13 @@ export const actions: Actions = {
     let contactId = enrichment.contactId;
     if (!contactId) {
       const groupRows = enrichment.groupKey
-        ? await prisma.contactEnrichment.findMany({ where: { userId: locals.user.id, agentRunId: params.id, groupKey: enrichment.groupKey } })
+        ? await prisma.contactEnrichment.findMany({ where: approvedEnrichmentGroupWhere(locals.user.id, params.id, enrichment.groupKey) })
         : [enrichment];
       const valueFor = (key: string, aad: string) => {
         const row = groupRows.find((item: any) => item.fieldKey === key);
         return row ? decryptEnrichmentValue(row.proposedValueEnc, aad) : '';
       };
-      const fullName = valueFor('contact.fullName', 'contact_enrichment.proposed_value') || decryptEnrichmentValue(enrichment.targetNameEnc, 'contact_enrichment.target_name');
+      const fullName = valueFor('contact.fullName', 'contact_enrichment.proposed_value');
       if (!fullName) return fail(400, { error: 'Cannot create a contact without a proposed name.' });
       const email = valueFor('contact.email', 'contact_enrichment.proposed_value');
       const phone = valueFor('contact.phone', 'contact_enrichment.proposed_value');
@@ -598,8 +596,8 @@ export const actions: Actions = {
     const candidateId = String(form.get('candidateId') || '').trim();
     if (!candidateId) return fail(400, { error: 'Missing candidate id.' });
 
-    const candidate = await getOwnedCandidate(locals.user.id, candidateId, params.id);
-    if (!candidate) return fail(404, { error: 'Candidate not found.' });
+    const candidate = await getApprovedResearchCandidateForPromotion(locals.user.id, candidateId, params.id);
+    if (!candidate) return fail(409, { error: 'Candidate not found or not approved for import.' });
 
     const name = dec(candidate.nameEnc, 'research_candidate.name', '').trim();
     const website = dec(candidate.websiteEnc, 'research_candidate.website', '').trim();
@@ -672,7 +670,7 @@ export const actions: Actions = {
     if (!locals.user) throw redirect(303, '/auth/login');
     const form = await request.formData();
     const candidateId = String(form.get('candidateId') || '').trim();
-    const candidate = await getOwnedCandidate(locals.user.id, candidateId, params.id);
+    const candidate = await getOwnedResearchCandidate(locals.user.id, candidateId, params.id);
     if (!candidate) return fail(404, { error: 'Candidate not found.' });
     const name = dec(candidate.nameEnc, 'research_candidate.name', 'candidate');
 

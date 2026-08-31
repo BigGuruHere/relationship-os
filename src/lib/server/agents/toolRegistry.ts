@@ -12,6 +12,7 @@ import { createTaskTool } from '$lib/server/agents/tools/createTask';
 import { researchWebSearchTool } from '$lib/server/agents/tools/researchWebSearch';
 import { createResearchSourceTool } from '$lib/server/agents/tools/createResearchSource';
 import { createContactEnrichmentTool } from '$lib/server/agents/tools/createContactEnrichment';
+import { needsToolApproval } from '$lib/server/agents/approvalPolicy';
 
 const tools = new Map<string, ToolDefinition<any, any>>();
 
@@ -80,7 +81,11 @@ export async function executeAgentTool<Input, Output>(
     throw new Error(`Agent does not have permission to use tool: ${key}`);
   }
 
-  const needsApproval = tool.requiresApproval || dbTool.requiresApproval || permission.requiresApproval;
+  const needsApproval = needsToolApproval({
+    toolRequiresApproval: tool.requiresApproval,
+    definitionRequiresApproval: dbTool.requiresApproval,
+    permissionRequiresApproval: permission.requiresApproval
+  });
   if (needsApproval) {
     await prisma.approvalRequest.create({
       data: {

@@ -250,7 +250,7 @@ export const load: PageServerLoad = async ({ url, locals }) => {
 
       if (ids.length) {
         const rows: any[] = await prisma.interaction.findMany({
-          where: { id: { in: ids }, userId: locals.user.id },
+          where: { id: { in: ids }, userId: locals.user.id, contactId: { not: null } },
           select: {
             id: true,
             contactId: true,

@@ -22,6 +22,25 @@ export function findCoreProject<T extends Prisma.ProjectSelect>(context: CoreAcc
   return prisma.project.findFirst({ where: workspaceEntityWhere(context, projectId), select });
 }
 
+export function findCoreInteraction<T extends Prisma.InteractionSelect>(context: CoreAccessContext, interactionId: string, select: T) {
+  return prisma.interaction.findFirst({ where: workspaceEntityWhere(context, interactionId), select });
+}
+
+// IT: Person identity is shared, but access remains anchored to this workspace through either
+// the workspace owner's account or a Contact already visible inside the workspace.
+export function findAccessibleCorePerson<T extends Prisma.PersonSelect>(context: CoreAccessContext, personId: string, select: T) {
+  return prisma.person.findFirst({
+    where: {
+      id: personId,
+      OR: [
+        { accounts: { some: { id: context.workspaceUserId } } },
+        { contacts: { some: { userId: context.workspaceUserId } } }
+      ]
+    },
+    select
+  });
+}
+
 type CanonicalRefs = {
   contactId?: string | null;
   companyId?: string | null;

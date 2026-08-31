@@ -34,6 +34,8 @@ import {
 } from '$lib/marketLeads';
 import { createLeadFromContact } from '$lib/server/marketLeads';
 import { createTaskFromForm } from '$lib/server/tasks';
+import { createWorkspaceCoreAccess } from '$lib/server/core/accessPolicy';
+import { loadContactKnowledge, loadContactKnowledgeHistory, loadContactObjectives } from '$lib/server/core/knowledge';
 import {
   DEAL_CONFIDENTIALITY_STAGES,
   DEAL_CONTACT_INTERESTS,
@@ -410,6 +412,12 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 
   const offers = await loadOffers({ userId: locals.user.id, links: { contactId: id } });
   const wants = await loadWants({ userId: locals.user.id, links: { contactId: id } });
+  const coreContext = createWorkspaceCoreAccess(locals.user.id, 'workspace:contact-intelligence');
+  const [objectives, knowledgeClaims, knowledgeHistory] = await Promise.all([
+    loadContactObjectives(coreContext, id),
+    loadContactKnowledge(coreContext, id),
+    loadContactKnowledgeHistory(coreContext, id)
+  ]);
   const agentArtifacts = await loadAgentArtifacts({ userId: locals.user.id, entityType: 'contact', entityId: id });
 
   const projectsRaw = await prisma.project.findMany({
@@ -575,6 +583,9 @@ export const load: PageServerLoad = async ({ params, locals }) => {
     dealContactNotes,
     wants,
     offers,
+    objectives,
+    knowledgeClaims,
+    knowledgeHistory,
     agentArtifacts,
     tasks,
     projectOptions,

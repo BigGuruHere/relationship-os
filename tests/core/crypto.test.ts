@@ -8,7 +8,7 @@ import test from 'node:test';
 process.env.SECRET_MASTER_KEY = '11'.repeat(32);
 
 const cryptoModule = await import('../../src/lib/crypto.ts');
-const { buildIndexToken, buildIndexTokenBytes, decrypt, encrypt } = cryptoModule;
+const { buildIndexToken, buildIndexTokenBytes, buildScopedIndexToken, decrypt, encrypt } = cryptoModule;
 
 test('AES-GCM round trip returns the original plaintext with matching AAD', () => {
   const plaintext = 'Sensitive relationship information';
@@ -45,4 +45,11 @@ test('tampered ciphertext fails authentication instead of returning plaintext', 
 test('wrong AAD fails authentication', () => {
   const encrypted = encrypt('scoped secret', 'correct.scope');
   assert.throws(() => decrypt(encrypted, 'wrong.scope'));
+});
+
+
+test('scoped deterministic hex indexes are stable within a field and separated across fields', () => {
+  const value = 'Same private statement';
+  assert.equal(buildScopedIndexToken(value, 'knowledge:claim:statement'), buildScopedIndexToken('  same private statement  ', 'knowledge:claim:statement'));
+  assert.notEqual(buildScopedIndexToken(value, 'knowledge:claim:statement'), buildScopedIndexToken(value, 'other:field'));
 });

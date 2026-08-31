@@ -98,6 +98,7 @@ export async function createWantFromForm(params: { userId: string; form: FormDat
   // tenant-validated together, including relationship/contact/company consistency.
   const entityLinks = await validateCommercialEntityLinks(userId, {
     contactId: links.contactId || String(form.get('contactId') || '').trim() || null,
+    personId: links.personId || null,
     companyId: links.companyId || String(form.get('companyId') || '').trim() || null,
     dealId: links.dealId || String(form.get('dealId') || '').trim() || null,
     projectId: links.projectId || String(form.get('projectId') || '').trim() || null,
@@ -131,6 +132,7 @@ export async function createWantFromForm(params: { userId: string; form: FormDat
       reviewAt: parseIntentDate(form.get('reviewAt')),
       expiresAt: parseIntentDate(form.get('expiresAt')),
       contactId: entityLinks.contactId,
+      personId: entityLinks.personId,
       companyId: entityLinks.companyId,
       dealId: entityLinks.dealId,
       projectId: entityLinks.projectId,
@@ -163,7 +165,7 @@ export async function createWantFromForm(params: { userId: string; form: FormDat
 
 export async function updateWantFromForm(params: { userId: string; wantId: string; form: FormData }) {
   const { userId, wantId, form } = params;
-  const existing = await prisma.want.findFirst({ where: { id: wantId, userId }, select: { id: true } });
+  const existing = await prisma.want.findFirst({ where: { id: wantId, userId }, select: { id: true, personId: true } });
   if (!existing) throw new Error('Want not found.');
   const title = String(form.get('wantTitle') || form.get('title') || '').trim();
   if (!title) throw new Error('Want title is required.');
@@ -193,8 +195,10 @@ export async function updateWantFromForm(params: { userId: string; wantId: strin
   const importance = parseIntentImportance(form.get('importance'));
 
   // IT: Updates are just as strict as creates. Never rely on dropdown contents as an ownership boundary.
+  const requestedContactId = String(form.get('contactId') || '').trim() || null;
   const entityLinks = await validateCommercialEntityLinks(userId, {
-    contactId: String(form.get('contactId') || '').trim() || null,
+    contactId: requestedContactId,
+    personId: requestedContactId ? null : existing.personId,
     companyId: String(form.get('companyId') || '').trim() || null,
     dealId: String(form.get('dealId') || '').trim() || null,
     projectId: String(form.get('projectId') || '').trim() || null,
@@ -228,6 +232,7 @@ export async function updateWantFromForm(params: { userId: string; wantId: strin
       reviewAt: parseIntentDate(form.get('reviewAt')),
       expiresAt: parseIntentDate(form.get('expiresAt')),
       contactId: entityLinks.contactId,
+      personId: entityLinks.personId,
       companyId: entityLinks.companyId,
       dealId: entityLinks.dealId,
       projectId: entityLinks.projectId,

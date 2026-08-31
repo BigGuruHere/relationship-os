@@ -6,6 +6,7 @@
   import WantsPanel from '$lib/WantsPanel.svelte';
   import AgentBriefingsPanel from '$lib/AgentBriefingsPanel.svelte';
   import TasksPanel from '$lib/TasksPanel.svelte';
+  import RelationshipIntelligencePanel from '$lib/RelationshipIntelligencePanel.svelte';
   import { closeDatePickerOnChange } from '$lib/closeDatePicker';
 
   export let data: any;
@@ -181,6 +182,8 @@
         </div>
       {/if}
     </div>
+
+    <RelationshipIntelligencePanel objectives={data.objectives ?? []} claims={data.knowledgeClaims ?? []} history={data.knowledgeHistory ?? []} contactId={contact.id} />
 
     <WantsPanel items={data.wants ?? []} entityLabel={contact.name} />
 

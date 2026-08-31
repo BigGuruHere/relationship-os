@@ -8,14 +8,12 @@ export const GET: RequestHandler = async ({ locals, params }) => {
 
   // IT: verify note belongs to this user and capture contactId for redirect
   const note = await prisma.interaction.findFirst({
-    where: { id: params.iid, userId: locals.user.id },
+    where: { id: params.iid, contactId: params.id, userId: locals.user.id },
     select: { id: true, contactId: true }
   });
   if (!note) {
     return new Response('Note not found', { status: 404 });
   }
-
-  const contactId = note.contactId;
 
   try {
     // IT: perform the delete
@@ -26,5 +24,5 @@ export const GET: RequestHandler = async ({ locals, params }) => {
   }
 
   // IT: do the redirect outside the try-catch so it is not swallowed
-  throw redirect(303, `/contacts/${contactId}`);
+  throw redirect(303, `/contacts/${params.id}`);
 };

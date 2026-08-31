@@ -90,6 +90,9 @@ model User {
   introductions         Introduction[]
   introductionParticipants IntroductionParticipant[]
   outcomes              Outcome[]
+  objectives            Objective[]
+  knowledgeClaims       KnowledgeClaim[]
+  knowledgeEvidence     KnowledgeEvidence[]
 
   // IT: agent framework records. Agents read/write through Relish services and every run is logged.
   agentDefinitions     AgentDefinition[]
@@ -131,6 +134,11 @@ model Person {
 
   accounts User[]
   contacts Contact[]
+  interactions Interaction[]
+  objectives Objective[]
+  knowledgeClaims KnowledgeClaim[]
+  wants Want[]
+  offers Offer[]
 }
 
 // IT: New table to track claimable leads
@@ -376,6 +384,8 @@ model Contact {
 
   // Relations
   interactions Interaction[]
+  objectives   Objective[]
+  knowledgeClaims KnowledgeClaim[]
   tags         ContactTag[]
   linkedUserId String?
 
@@ -434,16 +444,38 @@ model Contact {
 // ---------------------------------------------------------------------------
 // MODEL: Interaction
 // ---------------------------------------------------------------------------
+// IT: Stage 8.4 makes Interaction channel-neutral source evidence. Existing Contact notes
+// remain valid, while future agents/connectors can ingest against an accessible Person or Company.
+enum InteractionSourceType {
+  WORKSPACE
+  AGENT
+  EMAIL_CONNECTOR
+  CALENDAR_CONNECTOR
+  IMPORT
+  API
+  SYSTEM
+  OTHER
+}
+
 model Interaction {
   id     String @id @default(uuid())
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  contactId String
-  contact   Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  contactId String?
+  contact   Contact? @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  // IT: Person is identity only. This link does not grant cross-workspace access.
+  personId String?
+  person   Person? @relation(fields: [personId], references: [id], onDelete: SetNull)
+
+  companyId String?
+  company   Company? @relation(fields: [companyId], references: [id], onDelete: SetNull)
 
   occurredAt DateTime @default(now())
   channel    String
+  sourceType InteractionSourceType @default(WORKSPACE)
+  externalRef String?
   rawTextEnc String
   summaryEnc String?
 
@@ -452,15 +484,22 @@ model Interaction {
 
   InteractionEmbedding InteractionEmbedding?
 
-  // IT: Stage 8.2 provenance links. An interaction can be the explicit source evidence for later relationship intelligence.
+  // IT: Stage 8.2/8.4 provenance links. An interaction can be explicit source evidence
+  // for structured relationship intelligence and one or more KnowledgeEvidence records.
   sourcedWants         Want[]         @relation("WantSourceInteraction")
   sourcedOffers        Offer[]        @relation("OfferSourceInteraction")
+  sourcedObjectives    Objective[]    @relation("ObjectiveSourceInteraction")
   sourcedIntroductions Introduction[] @relation("IntroductionSourceInteraction")
   sourcedOutcomes      Outcome[]      @relation("OutcomeSourceInteraction")
+  knowledgeEvidence    KnowledgeEvidence[] @relation("KnowledgeEvidenceSourceInteraction")
 
   @@index([userId])
-  @@index([contactId])
+  @@index([userId, contactId])
+  @@index([userId, personId])
+  @@index([userId, companyId])
+  @@index([userId, sourceType, occurredAt])
   @@index([occurredAt])
+  @@unique([userId, sourceType, externalRef])
 }
 
 // IT: InteractionEmbedding - pgvector tracked the same way
@@ -937,6 +976,9 @@ model Company {
   contactEnrichments ContactEnrichment[]
   introductionParticipants IntroductionParticipant[]
   marketLeads        MarketLead[]
+  interactions       Interaction[]
+  objectives         Objective[]
+  knowledgeClaims    KnowledgeClaim[]
 
   @@index([userId, nameIdx])
   @@index([userId, kind])
@@ -1129,6 +1171,144 @@ enum KnowledgeSourceType {
   OTHER
 }
 
+
+// ---------------------------------------------------------------------------
+// STAGE 8.4 KNOWLEDGE + OBJECTIVE MODELS
+// ---------------------------------------------------------------------------
+enum KnowledgeClaimKind {
+  FACT
+  OBJECTIVE
+  WANT
+  OFFER
+  PREFERENCE
+  CONSTRAINT
+  RELATIONSHIP_STATE
+  OTHER
+}
+
+enum KnowledgeClaimStatus {
+  ACTIVE
+  SUPERSEDED
+  REJECTED
+}
+
+enum KnowledgeConfidence {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+// IT: Persistent higher-level outcome a person/company is trying to create.
+// Operational tasks/deals remain Workspace concerns downstream of this object.
+model Objective {
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  status IntentStatus @default(CAPTURED)
+  titleEnc       String
+  descriptionEnc String?
+  importance     Int @default(3)
+  confidence     IntentConfidence @default(MEDIUM)
+
+  authority           KnowledgeAuthority  @default(THIRD_PARTY_REPORTED)
+  sourceType          KnowledgeSourceType @default(MANUAL)
+  sourceInteractionId String?
+  sourceInteraction   Interaction? @relation("ObjectiveSourceInteraction", fields: [sourceInteractionId], references: [id], onDelete: SetNull)
+  sourceNoteEnc       String?
+  confirmedAt         DateTime?
+
+  contactId String?
+  contact   Contact? @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  personId  String?
+  person    Person? @relation(fields: [personId], references: [id], onDelete: SetNull)
+  companyId String?
+  company   Company? @relation(fields: [companyId], references: [id], onDelete: SetNull)
+
+  knowledgeClaims KnowledgeClaim[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, status])
+  @@index([userId, contactId])
+  @@index([userId, personId])
+  @@index([userId, companyId])
+  @@index([userId, sourceInteractionId])
+  @@index([userId, updatedAt])
+}
+
+// IT: One canonical statement about a relationship subject. Evidence is append-only and
+// can confirm the same claim from multiple interactions without duplicating the statement.
+model KnowledgeClaim {
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  kind       KnowledgeClaimKind
+  status     KnowledgeClaimStatus @default(ACTIVE)
+  statementEnc String
+  statementIdx String
+  authority  KnowledgeAuthority @default(WORKSPACE_RECORDED)
+  confidence KnowledgeConfidence @default(MEDIUM)
+
+  contactId String?
+  contact   Contact? @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  personId  String?
+  person    Person? @relation(fields: [personId], references: [id], onDelete: SetNull)
+  companyId String?
+  company   Company? @relation(fields: [companyId], references: [id], onDelete: SetNull)
+
+  objectiveId String?
+  objective   Objective? @relation(fields: [objectiveId], references: [id], onDelete: SetNull)
+  wantId      String?
+  want        Want? @relation(fields: [wantId], references: [id], onDelete: SetNull)
+  offerId     String?
+  offer       Offer? @relation(fields: [offerId], references: [id], onDelete: SetNull)
+
+  evidence KnowledgeEvidence[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, kind, status])
+  @@index([userId, statementIdx])
+  @@index([userId, contactId])
+  @@index([userId, personId])
+  @@index([userId, companyId])
+  @@index([userId, objectiveId])
+  @@index([userId, wantId])
+  @@index([userId, offerId])
+}
+
+// IT: Source evidence for a KnowledgeClaim. Multiple interactions can support the same claim.
+model KnowledgeEvidence {
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  claimId String
+  claim   KnowledgeClaim @relation(fields: [claimId], references: [id], onDelete: Cascade)
+
+  sourceInteractionId String?
+  sourceInteraction   Interaction? @relation("KnowledgeEvidenceSourceInteraction", fields: [sourceInteractionId], references: [id], onDelete: SetNull)
+  sourceType  KnowledgeSourceType @default(INTERACTION)
+  authority   KnowledgeAuthority @default(WORKSPACE_RECORDED)
+  confidence  KnowledgeConfidence @default(MEDIUM)
+  // IT: Evidence can be invalidated independently from the claim it supports.
+  // This lets one stale/incorrect source be retired without silently retiring current knowledge.
+  status      KnowledgeClaimStatus @default(ACTIVE)
+  noteEnc     String?
+  observedAt  DateTime @default(now())
+  createdAt   DateTime @default(now())
+
+  @@index([userId, claimId])
+  @@index([userId, claimId, status])
+  @@index([userId, sourceInteractionId])
+  @@index([userId, sourceType])
+  @@unique([claimId, sourceInteractionId])
+}
+
 enum WantType {
   GENERAL
   ACQUISITION_CRITERIA
@@ -1220,6 +1400,10 @@ model Want {
   contactId String?
   contact   Contact? @relation(fields: [contactId], references: [id], onDelete: SetNull)
 
+  // IT: Stage 8.4 canonical subject identity. userId still controls custody/access.
+  personId String?
+  person   Person? @relation(fields: [personId], references: [id], onDelete: SetNull)
+
   companyId String?
   company   Company? @relation(fields: [companyId], references: [id], onDelete: SetNull)
 
@@ -1242,6 +1426,7 @@ model Want {
   tasks Task[]
   notes WantNote[]
   marketLeads MarketLead[]
+  knowledgeClaims KnowledgeClaim[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1255,6 +1440,7 @@ model Want {
   @@index([userId, sourceType])
   @@index([userId, sourceInteractionId])
   @@index([userId, contactId])
+  @@index([userId, personId])
   @@index([userId, companyId])
   @@index([userId, dealId])
   @@index([userId, projectId])
@@ -1341,6 +1527,10 @@ model Offer {
   contactId String?
   contact   Contact? @relation(fields: [contactId], references: [id], onDelete: SetNull)
 
+  // IT: Stage 8.4 canonical subject identity. userId still controls custody/access.
+  personId String?
+  person   Person? @relation(fields: [personId], references: [id], onDelete: SetNull)
+
   companyId String?
   company   Company? @relation(fields: [companyId], references: [id], onDelete: SetNull)
 
@@ -1363,6 +1553,7 @@ model Offer {
   tasks Task[]
   notes OfferNote[]
   marketLeads MarketLead[]
+  knowledgeClaims KnowledgeClaim[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1376,6 +1567,7 @@ model Offer {
   @@index([userId, sourceType])
   @@index([userId, sourceInteractionId])
   @@index([userId, contactId])
+  @@index([userId, personId])
   @@index([userId, companyId])
   @@index([userId, dealId])
   @@index([userId, projectId])

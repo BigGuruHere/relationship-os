@@ -62,6 +62,12 @@ export function buildIndexToken(input: string) {
   return hmacIndexBytes(norm, 'generic').toString('hex'); // 64 hex chars
 }
 
+// IT: Scoped hex helper for encrypted String + deterministic index pairs outside legacy generic fields.
+export function buildScopedIndexToken(input: string, scope: string) {
+  const norm = normalizeForIndex(input);
+  return hmacIndexBytes(norm, scope || 'generic').toString('hex');
+}
+
 // IT: New generic bytes helper for Prisma Bytes columns.
 export function buildIndexTokenBytes(input: string, scope = 'generic') {
   const norm = normalizeForIndex(input);

@@ -8,10 +8,11 @@
 import { fail, redirect } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import { prisma } from '$lib/db';
-import { encrypt, decrypt } from '$lib/crypto';
+import { decrypt } from '$lib/crypto';
 // IT: we attach tags to the Contact, so we need a helper to resolve or create tag ids
 import { resolveOrCreateTagForTenant } from '$lib/tags';
-import { upsertInteractionEmbedding } from '$lib/embeddings';
+import { createWorkspaceCoreAccess } from '$lib/server/core/accessPolicy';
+import { createCoreInteraction } from '$lib/server/core/interactions';
 import { z } from 'zod';
 
 // Validate inputs coming from the form.
@@ -83,26 +84,19 @@ async function saveImpl({ request, locals, params }: SaveArgs) {
   const occurredAt = parsed.data.occurredAt ? new Date(parsed.data.occurredAt) : null;
   const plaintext = parsed.data.text;
   const summaryPlain = parsed.data.summary?.trim() || '';
-  const rawTextEnc = encrypt(plaintext, 'interaction.raw_text'); // IT: AAD string is stable
-  const summaryEnc = summaryPlain ? encrypt(summaryPlain, 'interaction.raw_text') : undefined;
-
-  let interactionId = '';
   try {
-    // Create interaction under this tenant.
-    const created = await prisma.interaction.create({
-      data: {
-        userId: locals.user!.id,              // IT: tenant scope on create
-        contactId: contact.id,               // IT: link to parent contact
-        channel: parsed.data.channel,
-        ...(occurredAt ? { occurredAt } : {}),
-        rawTextEnc,
-        ...(summaryEnc ? { summaryEnc } : {})
-      },
-      select: { id: true }
+    // IT: Stage 8.4 routes all new relationship interactions through the channel-neutral Core ingestion seam.
+    const context = createWorkspaceCoreAccess(locals.user!.id, 'workspace:contact-interaction');
+    await createCoreInteraction(context, {
+      contactId: contact.id,
+      channel: parsed.data.channel,
+      rawText: plaintext,
+      summary: summaryPlain,
+      occurredAt,
+      sourceType: 'WORKSPACE'
     });
-    interactionId = created.id;
 
-        // IT: bump the contact's lastContactedAt when a new interaction is created
+    // IT: bump the contact's lastContactedAt when a new interaction is created
     try {
       await prisma.contact.updateMany({
         // Tenant guard - only update this user's contact
@@ -156,14 +150,6 @@ async function saveImpl({ request, locals, params }: SaveArgs) {
   } catch (err) {
     console.error('Failed to create interaction:', err);
     return fail(500, { error: 'Failed to save note. Please try again.' });
-  }
-
-  // Best effort embedding - do not block on failures.
-  try {
-    // IT: upsertInteractionEmbedding should compute the vector and write InteractionEmbedding.vec
-    await upsertInteractionEmbedding(locals.user!.id, interactionId, plaintext);
-  } catch (e) {
-    console.error('upsertInteractionEmbedding failed for interaction', interactionId);
   }
 
   // Redirect to the contact page.

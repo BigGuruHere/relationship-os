@@ -94,12 +94,12 @@ export const load: PageServerLoad = async ({ locals, url }) => {
   }
   offers = sortItems(offers, selectedSort, openTasks);
 
-  const openCount = counts.filter((row: any) => !['ARCHIVED', 'CLOSED_INACTIVE', 'CONVERTED_TO_DEAL'].includes(String(row.status))).reduce((sum: number, row: any) => sum + row._count.status, 0);
+  const openCount = counts.filter((row: any) => !['ARCHIVED', 'WITHDRAWN', 'FULFILLED', 'EXPIRED'].includes(String(row.status))).reduce((sum: number, row: any) => sum + row._count.status, 0);
   const summary = {
     openCount,
-    available: counts.find((row: any) => row.status === 'AVAILABLE')?._count.status || 0,
-    watching: counts.find((row: any) => row.status === 'WATCHING_INTEREST')?._count.status || 0,
-    matched: counts.find((row: any) => row.status === 'MATCHED')?._count.status || 0
+    active: counts.find((row: any) => row.status === 'ACTIVE')?._count.status || 0,
+    paused: counts.find((row: any) => row.status === 'PAUSED')?._count.status || 0,
+    fulfilled: counts.find((row: any) => row.status === 'FULFILLED')?._count.status || 0
   };
 
   return {

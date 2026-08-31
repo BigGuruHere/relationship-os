@@ -8,7 +8,7 @@ import { fail, redirect } from '@sveltejs/kit';
 import { attachContactTags, detachContactTag } from '$lib/tags';
 import type { Actions, PageServerLoad } from './$types';
 import { getBestDisplayName } from '$lib/server/names';
-import { createExchangeItemFromForm, deleteExchangeItem, loadExchangeItems } from '$lib/server/exchange';
+import { createOfferFromForm, deleteOffer, loadOffers } from '$lib/server/offers';
 import { createWantFromForm, deleteWant, loadWants } from '$lib/server/wants';
 import { loadAgentArtifacts } from '$lib/server/agents/artifacts';
 import { runOpportunityScoringAgent } from '$lib/server/agents/agents/opportunityScoringAgent';
@@ -408,7 +408,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
     statusLabel: dealStatusLabel(deal.status)
   }));
 
-  const exchangeItems = await loadExchangeItems({ userId: locals.user.id, links: { contactId: id } });
+  const offers = await loadOffers({ userId: locals.user.id, links: { contactId: id } });
   const wants = await loadWants({ userId: locals.user.id, links: { contactId: id } });
   const agentArtifacts = await loadAgentArtifacts({ userId: locals.user.id, entityType: 'contact', entityId: id });
 
@@ -574,7 +574,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
     dealNotes,
     dealContactNotes,
     wants,
-    exchangeItems,
+    offers,
     agentArtifacts,
     tasks,
     projectOptions,
@@ -919,26 +919,26 @@ export const actions: Actions = {
     throw redirect(303, `/contacts/${params.id}`);
   },
 
-  createExchangeItem: async ({ request, params, locals }) => {
+  createOffer: async ({ request, params, locals }) => {
     if (!locals.user) throw redirect(303, '/auth/login');
     const userId = locals.user.id;
     const exists = await prisma.contact.findFirst({ where: { id: params.id, userId }, select: { id: true } });
     if (!exists) return fail(404, { error: 'Contact not found.' });
     try {
-      await createExchangeItemFromForm({ userId, form: await request.formData(), links: { contactId: params.id } });
+      await createOfferFromForm({ userId, form: await request.formData(), links: { contactId: params.id } });
     } catch (err: any) {
-      console.error('[contacts:createExchangeItem] failed', err);
+      console.error('[contacts:createOffer] failed', err);
       return fail(400, { error: err?.message || 'Failed to save want/offer.' });
     }
     throw redirect(303, `/contacts/${params.id}`);
   },
 
-  deleteExchangeItem: async ({ request, params, locals }) => {
+  deleteOffer: async ({ request, params, locals }) => {
     if (!locals.user) throw redirect(303, '/auth/login');
     const form = await request.formData();
-    const exchangeItemId = String(form.get('exchangeItemId') || '').trim();
-    if (!exchangeItemId) return fail(400, { error: 'Missing want/offer id.' });
-    await deleteExchangeItem({ userId: locals.user.id, id: exchangeItemId, links: { contactId: params.id } });
+    const offerId = String(form.get('offerId') || '').trim();
+    if (!offerId) return fail(400, { error: 'Missing want/offer id.' });
+    await deleteOffer({ userId: locals.user.id, id: offerId, links: { contactId: params.id } });
     throw redirect(303, `/contacts/${params.id}`);
   },
 

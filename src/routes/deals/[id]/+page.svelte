@@ -80,7 +80,7 @@
 
   <WantsPanel items={data.wants ?? []} entityLabel={data.deal.title} />
 
-    <OffersPanel items={data.exchangeItems ?? []} createAction="?/createExchangeItem" deleteAction="?/deleteExchangeItem" deleteFieldName="exchangeItemId" entityLabel={data.deal.title} />
+    <OffersPanel items={data.offers ?? []} createAction="?/createOffer" deleteAction="?/deleteOffer" deleteFieldName="offerId" entityLabel={data.deal.title} />
 
   <AgentBriefingsPanel entityType="deal" entityId={data.deal.id} entityLabel={data.deal.title} artifacts={data.agentArtifacts ?? []} />
 

@@ -186,7 +186,7 @@
 
   <WantsPanel items={data.wants ?? []} entityLabel={`${data.relationship.contactName} at ${data.relationship.companyName}`} title="Wants for this relationship" />
 
-  <OffersPanel items={data.exchangeItems ?? []} createAction="?/createExchangeItem" deleteAction="?/deleteExchangeItem" deleteFieldName="exchangeItemId" entityLabel={`${data.relationship.contactName} at ${data.relationship.companyName}`} title="Offers for this relationship" />
+  <OffersPanel items={data.offers ?? []} createAction="?/createOffer" deleteAction="?/deleteOffer" deleteFieldName="offerId" entityLabel={`${data.relationship.contactName} at ${data.relationship.companyName}`} title="Offers for this relationship" />
 </div>
 
 <style>

@@ -4,9 +4,8 @@
 
 import { prisma } from '$lib/db';
 import { validateCommercialEntityLinks, type CommercialEntityLinks } from '$lib/server/commercialEntityLinks';
-import { decrypt, encrypt } from '$lib/crypto';
-import { createEmbeddingForText } from '$lib/embeddings_api';
-import { commercialValueInputError, parseMoneyToCents, formatDealValue, safeDecrypt } from '$lib/deals';
+import { encrypt } from '$lib/crypto';
+import { formatDealValue, safeDecrypt } from '$lib/deals';
 import { companyDisplay, safeDecryptCompany } from '$lib/companies';
 import {
   importanceLabel,
@@ -22,38 +21,9 @@ import {
   wantUrgencyLabel
 } from '$lib/wants';
 import { knowledgeAuthorityLabel, knowledgeSourceTypeLabel, normaliseKnowledgeAuthority, normaliseKnowledgeSourceType } from '$lib/provenance';
+import { parseIntentDate, parseIntentImportance, parseIntentMoney, safeDecryptIntent, storeIntentEmbedding, intentLinkWhere, intentUnlinkData } from '$lib/server/intentCommon';
 
 export type WantEntityLink = CommercialEntityLinks;
-
-function safeDecryptWant(payload: string | null | undefined, aad: string, fallback = '', legacyAad?: string | string[]) {
-  if (!payload) return fallback;
-  const aads = [aad, ...(Array.isArray(legacyAad) ? legacyAad : legacyAad ? [legacyAad] : [])];
-  for (const key of aads) {
-    try {
-      return decrypt(payload, key);
-    } catch {
-      // try next AAD
-    }
-  }
-  return fallback;
-}
-
-function parseImportance(value: FormDataEntryValue | null) {
-  const n = Number.parseInt(String(value || '3'), 10);
-  if (!Number.isFinite(n)) return 3;
-  return Math.min(5, Math.max(1, n));
-}
-
-function parseDate(value: FormDataEntryValue | null): Date | null {
-  const raw = String(value || '').trim();
-  if (!raw) return null;
-  const date = new Date(raw);
-  return Number.isNaN(date.getTime()) ? null : date;
-}
-
-function toPgVectorLiteral(vec: number[]): string {
-  return `[${vec.join(',')}]`;
-}
 
 function embeddingText(input: {
   wantType: string;
@@ -90,20 +60,7 @@ function embeddingText(input: {
 }
 
 export async function storeWantEmbedding(userId: string, wantId: string, text: string) {
-  const input = text.trim();
-  if (!input) return;
-  try {
-    const vec = await createEmbeddingForText(input);
-    if (!Array.isArray(vec) || vec.length === 0) return;
-    await prisma.$executeRawUnsafe(
-      'UPDATE "Want" SET "embedding_vec" = $1::vector WHERE "id" = $2 AND "userId" = $3',
-      toPgVectorLiteral(vec),
-      wantId,
-      userId
-    );
-  } catch (err: any) {
-    console.warn('[wants] failed to store embedding', { wantId, message: err?.message });
-  }
+  return storeIntentEmbedding({ userId, id: wantId, table: 'Want', text, logLabel: 'wants' });
 }
 
 export async function createWantFromForm(params: { userId: string; form: FormData; links?: WantEntityLink }) {
@@ -119,10 +76,7 @@ export async function createWantFromForm(params: { userId: string; form: FormDat
   const currency = String(form.get('currency') || 'AUD').trim().toUpperCase() || 'AUD';
   const valueMinRaw = String(form.get('valueMin') || '').trim();
   const valueMaxRaw = String(form.get('valueMax') || '').trim();
-  const valueMinError = commercialValueInputError(valueMinRaw);
-  const valueMaxError = commercialValueInputError(valueMaxRaw);
-  if (valueMinError) throw new Error(`Minimum value: ${valueMinError}`);
-  if (valueMaxError) throw new Error(`Maximum value: ${valueMaxError}`);
+  const { valueMinCents, valueMaxCents } = parseIntentMoney(form);
 
   const wantType = normaliseWantType(form.get('wantType'));
   const status = normaliseWantStatus(form.get('status'));
@@ -133,12 +87,12 @@ export async function createWantFromForm(params: { userId: string; form: FormDat
   const sourceType = normaliseKnowledgeSourceType(form.get('sourceType'), 'MANUAL');
   const sourceNote = String(form.get('sourceNote') || '').trim();
   const sourceInteractionId = String(form.get('sourceInteractionId') || '').trim() || null;
-  const confirmedAt = parseDate(form.get('confirmedAt'));
+  const confirmedAt = parseIntentDate(form.get('confirmedAt'));
   if (sourceInteractionId) {
     const sourceInteraction = await prisma.interaction.findFirst({ where: { id: sourceInteractionId, userId }, select: { id: true } });
     if (!sourceInteraction) throw new Error('Source interaction not found in this workspace.');
   }
-  const importance = parseImportance(form.get('importance'));
+  const importance = parseIntentImportance(form.get('importance'));
 
   // IT: Route-provided links lock the corresponding browser fields. All resolved links are then
   // tenant-validated together, including relationship/contact/company consistency.
@@ -171,11 +125,11 @@ export async function createWantFromForm(params: { userId: string; form: FormDat
       sourceInteractionId,
       sourceNoteEnc: sourceNote ? encrypt(sourceNote, 'want.source_note') : null,
       confirmedAt,
-      valueMinCents: parseMoneyToCents(valueMinRaw),
-      valueMaxCents: parseMoneyToCents(valueMaxRaw),
+      valueMinCents,
+      valueMaxCents,
       currency,
-      reviewAt: parseDate(form.get('reviewAt')),
-      expiresAt: parseDate(form.get('expiresAt')),
+      reviewAt: parseIntentDate(form.get('reviewAt')),
+      expiresAt: parseIntentDate(form.get('expiresAt')),
       contactId: entityLinks.contactId,
       companyId: entityLinks.companyId,
       dealId: entityLinks.dealId,
@@ -221,10 +175,7 @@ export async function updateWantFromForm(params: { userId: string; wantId: strin
   const currency = String(form.get('currency') || 'AUD').trim().toUpperCase() || 'AUD';
   const valueMinRaw = String(form.get('valueMin') || '').trim();
   const valueMaxRaw = String(form.get('valueMax') || '').trim();
-  const valueMinError = commercialValueInputError(valueMinRaw);
-  const valueMaxError = commercialValueInputError(valueMaxRaw);
-  if (valueMinError) throw new Error(`Minimum value: ${valueMinError}`);
-  if (valueMaxError) throw new Error(`Maximum value: ${valueMaxError}`);
+  const { valueMinCents, valueMaxCents } = parseIntentMoney(form);
   const wantType = normaliseWantType(form.get('wantType'));
   const status = normaliseWantStatus(form.get('status'));
   const urgency = normaliseWantUrgency(form.get('urgency'));
@@ -234,12 +185,12 @@ export async function updateWantFromForm(params: { userId: string; wantId: strin
   const sourceType = normaliseKnowledgeSourceType(form.get('sourceType'), 'MANUAL');
   const sourceNote = String(form.get('sourceNote') || '').trim();
   const sourceInteractionId = String(form.get('sourceInteractionId') || '').trim() || null;
-  const confirmedAt = parseDate(form.get('confirmedAt'));
+  const confirmedAt = parseIntentDate(form.get('confirmedAt'));
   if (sourceInteractionId) {
     const sourceInteraction = await prisma.interaction.findFirst({ where: { id: sourceInteractionId, userId }, select: { id: true } });
     if (!sourceInteraction) throw new Error('Source interaction not found in this workspace.');
   }
-  const importance = parseImportance(form.get('importance'));
+  const importance = parseIntentImportance(form.get('importance'));
 
   // IT: Updates are just as strict as creates. Never rely on dropdown contents as an ownership boundary.
   const entityLinks = await validateCommercialEntityLinks(userId, {
@@ -271,11 +222,11 @@ export async function updateWantFromForm(params: { userId: string; wantId: strin
       sourceInteractionId,
       sourceNoteEnc: sourceNote ? encrypt(sourceNote, 'want.source_note') : null,
       confirmedAt,
-      valueMinCents: parseMoneyToCents(valueMinRaw),
-      valueMaxCents: parseMoneyToCents(valueMaxRaw),
+      valueMinCents,
+      valueMaxCents,
       currency,
-      reviewAt: parseDate(form.get('reviewAt')),
-      expiresAt: parseDate(form.get('expiresAt')),
+      reviewAt: parseIntentDate(form.get('reviewAt')),
+      expiresAt: parseIntentDate(form.get('expiresAt')),
       contactId: entityLinks.contactId,
       companyId: entityLinks.companyId,
       dealId: entityLinks.dealId,
@@ -347,7 +298,7 @@ export async function applyCompanyAcquisitionCriteria(params: {
       userId,
       companyId,
       wantType: 'ACQUISITION_CRITERIA' as any,
-      status: 'WATCHING_MARKET' as any,
+      status: 'PAUSED' as any,
       titleEnc: encrypt(title, 'want.title'),
       criteriaEnc: encrypt(criteria, 'want.criteria'),
       importance: 3,
@@ -365,14 +316,7 @@ export async function applyCompanyAcquisitionCriteria(params: {
 }
 
 export async function loadWants(params: { userId: string; links?: WantEntityLink; take?: number; includeArchived?: boolean }) {
-  const where: any = { userId: params.userId };
-  const links = params.links || {};
-  if (links.contactId) where.contactId = links.contactId;
-  if (links.companyId) where.companyId = links.companyId;
-  if (links.dealId) where.dealId = links.dealId;
-  if (links.projectId) where.projectId = links.projectId;
-  if (links.workstreamId) where.workstreamId = links.workstreamId;
-  if (links.companyContactId) where.companyContactId = links.companyContactId;
+  const where: any = intentLinkWhere(params.userId, params.links || {});
   if (!params.includeArchived) where.status = { not: 'ARCHIVED' as any };
 
   const rows = await prisma.want.findMany({
@@ -415,7 +359,6 @@ export const wantSelect = {
   workstreamId: true,
   companyContactId: true,
   convertedDealId: true,
-  exchangeItemId: true,
   createdAt: true,
   updatedAt: true,
   contact: { select: { id: true, fullNameEnc: true, linkedUserId: true } },
@@ -434,13 +377,13 @@ export const wantSelect = {
 } as const;
 
 export function mapWant(row: any) {
-  const title = safeDecryptWant(row.titleEnc, 'want.title', 'Untitled want', ['exchange.title', 'company.name']);
-  const description = safeDecryptWant(row.descriptionEnc, 'want.description', '', 'exchange.description');
-  const criteria = safeDecryptWant(row.criteriaEnc, 'want.criteria', '', 'company.criteria');
-  const summary = safeDecryptWant(row.summaryEnc, 'want.summary', '', 'exchange.summary');
-  const category = safeDecryptWant(row.categoryEnc, 'want.category', '', 'exchange.category');
-  const geography = safeDecryptWant(row.geographyEnc, 'want.geography', '', 'exchange.geography');
-  const sourceNote = safeDecryptWant(row.sourceNoteEnc, 'want.source_note', '');
+  const title = safeDecryptIntent(row.titleEnc, 'want.title', 'Untitled want', ['exchange.title', 'company.name']);
+  const description = safeDecryptIntent(row.descriptionEnc, 'want.description', '', 'exchange.description');
+  const criteria = safeDecryptIntent(row.criteriaEnc, 'want.criteria', '', 'company.criteria');
+  const summary = safeDecryptIntent(row.summaryEnc, 'want.summary', '', 'exchange.summary');
+  const category = safeDecryptIntent(row.categoryEnc, 'want.category', '', 'exchange.category');
+  const geography = safeDecryptIntent(row.geographyEnc, 'want.geography', '', 'exchange.geography');
+  const sourceNote = safeDecryptIntent(row.sourceNoteEnc, 'want.source_note', '');
   return {
     id: row.id,
     wantType: row.wantType,
@@ -482,17 +425,16 @@ export function mapWant(row: any) {
     workstreamId: row.workstreamId,
     companyContactId: row.companyContactId,
     convertedDealId: row.convertedDealId,
-    exchangeItemId: row.exchangeItemId,
-    contact: row.contact ? { id: row.contact.id, name: safeDecryptWant(row.contact.fullNameEnc, 'contact.full_name', 'Relish user') } : null,
+    contact: row.contact ? { id: row.contact.id, name: safeDecryptIntent(row.contact.fullNameEnc, 'contact.full_name', 'Relish user') } : null,
     company: row.company ? { id: row.company.id, name: companyDisplay(row.company), kind: row.company.kind, status: row.company.status } : null,
     deal: row.deal ? { id: row.deal.id, title: safeDecrypt(row.deal.titleEnc, 'deal.title', 'Untitled deal'), status: row.deal.status } : null,
     project: row.project ? { id: row.project.id, title: safeDecrypt(row.project.titleEnc, 'project.title', 'Untitled project'), status: row.project.status } : null,
     workstream: row.workstream ? { id: row.workstream.id, name: safeDecrypt(row.workstream.nameEnc, 'project_workstream.name', 'Untitled workstream'), projectId: row.workstream.projectId, status: row.workstream.status } : null,
     companyContact: row.companyContact ? {
       id: row.companyContact.id,
-      title: safeDecryptWant(row.companyContact.titleEnc, 'company_contact.title', ''),
+      title: safeDecryptIntent(row.companyContact.titleEnc, 'company_contact.title', ''),
       company: row.companyContact.company ? { id: row.companyContact.company.id, name: safeDecrypt(row.companyContact.company.nameEnc, 'company.name', 'Untitled company') } : null,
-      contact: row.companyContact.contact ? { id: row.companyContact.contact.id, name: safeDecryptWant(row.companyContact.contact.fullNameEnc, 'contact.full_name', 'Relish user') } : null
+      contact: row.companyContact.contact ? { id: row.companyContact.contact.id, name: safeDecryptIntent(row.companyContact.contact.fullNameEnc, 'contact.full_name', 'Relish user') } : null
     } : null,
     descriptionPreview: description ? description.slice(0, 240) : '',
     criteriaPreview: criteria ? criteria.slice(0, 240) : '',
@@ -508,24 +450,12 @@ export async function loadWant(userId: string, wantId: string) {
 
 export async function deleteWant(params: { userId: string; id: string; links?: WantEntityLink }) {
   const links = params.links || {};
-  const where: any = { id: params.id, userId: params.userId };
-  if (links.contactId) where.contactId = links.contactId;
-  if (links.companyId) where.companyId = links.companyId;
-  if (links.dealId) where.dealId = links.dealId;
-  if (links.projectId) where.projectId = links.projectId;
-  if (links.workstreamId) where.workstreamId = links.workstreamId;
-  if (links.companyContactId) where.companyContactId = links.companyContactId;
+  const where: any = { id: params.id, ...intentLinkWhere(params.userId, links) };
 
   // IT: Entity panels mean "remove this link", not "destroy the commercial record". A permanent
   // delete only happens when this helper is deliberately called without a contextual link.
   if (Object.values(links).some(Boolean)) {
-    const data: any = {};
-    if (links.workstreamId) data.workstreamId = null;
-    else if (links.projectId) { data.projectId = null; data.workstreamId = null; }
-    if (links.contactId) { data.contactId = null; data.companyContactId = null; }
-    if (links.companyId) { data.companyId = null; data.companyContactId = null; }
-    if (links.dealId) data.dealId = null;
-    if (links.companyContactId) data.companyContactId = null;
+    const data = intentUnlinkData(links);
     return prisma.want.updateMany({ where, data });
   }
 
@@ -543,7 +473,7 @@ export async function createWantNote(userId: string, wantId: string, form: FormD
     data: {
       userId,
       wantId,
-      occurredAt: parseDate(form.get('occurredAt')) || new Date(),
+      occurredAt: parseIntentDate(form.get('occurredAt')) || new Date(),
       channel,
       bodyEnc: encrypt(body, 'want_note.body'),
       summaryEnc: summary ? encrypt(summary, 'want_note.summary') : null
@@ -561,7 +491,7 @@ export async function updateWantNote(userId: string, noteId: string, form: FormD
   await prisma.wantNote.updateMany({
     where: { id: noteId, userId },
     data: {
-      occurredAt: parseDate(form.get('occurredAt')) || new Date(),
+      occurredAt: parseIntentDate(form.get('occurredAt')) || new Date(),
       channel,
       bodyEnc: encrypt(body, 'want_note.body'),
       summaryEnc: summary ? encrypt(summary, 'want_note.summary') : null
@@ -581,8 +511,8 @@ export async function loadWantNotes(userId: string, wantId: string) {
     id: row.id,
     occurredAt: row.occurredAt,
     channel: row.channel || 'note',
-    body: safeDecryptWant(row.bodyEnc, 'want_note.body', ''),
-    summary: safeDecryptWant(row.summaryEnc, 'want_note.summary', ''),
+    body: safeDecryptIntent(row.bodyEnc, 'want_note.body', ''),
+    summary: safeDecryptIntent(row.summaryEnc, 'want_note.summary', ''),
     createdAt: row.createdAt,
     updatedAt: row.updatedAt
   }));

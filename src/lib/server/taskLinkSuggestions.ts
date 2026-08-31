@@ -34,8 +34,8 @@ export type TaskCommercialLinkSuggestion = {
   updatedAt: Date | string;
 };
 
-const ACTIVE_WANT_STATUSES = new Set(['NEW', 'CLARIFYING_CRITERIA', 'ACTIVE_MANDATE', 'WATCHING_MARKET', 'MATCHED']);
-const ACTIVE_OFFER_STATUSES = new Set(['NEW', 'CLARIFYING_SUPPLY', 'AVAILABLE', 'WATCHING_INTEREST', 'MATCHED']);
+const ACTIVE_WANT_STATUSES = new Set(['CAPTURED', 'CLARIFYING', 'ACTIVE', 'PAUSED']);
+const ACTIVE_OFFER_STATUSES = new Set(['CAPTURED', 'CLARIFYING', 'ACTIVE', 'PAUSED']);
 
 function clean(value: string | null | undefined) {
   return String(value || '').trim();

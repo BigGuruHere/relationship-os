@@ -32,9 +32,9 @@
 
   <div class="summary-grid">
     <a class="card stat" href="/offers"><span>Open</span><strong>{data.summary.openCount}</strong></a>
-    <a class="card stat" href="/offers?status=AVAILABLE"><span>Available</span><strong>{data.summary.available}</strong></a>
-    <a class="card stat" href="/offers?status=WATCHING_INTEREST"><span>Watching interest</span><strong>{data.summary.watching}</strong></a>
-    <a class="card stat" href="/offers?status=MATCHED"><span>Matched</span><strong>{data.summary.matched}</strong></a>
+    <a class="card stat" href="/offers?status=ACTIVE"><span>Active</span><strong>{data.summary.active}</strong></a>
+    <a class="card stat" href="/offers?status=PAUSED"><span>Paused</span><strong>{data.summary.paused}</strong></a>
+    <a class="card stat" href="/offers?status=FULFILLED"><span>Fulfilled</span><strong>{data.summary.fulfilled}</strong></a>
   </div>
 
   {#if showCreate}

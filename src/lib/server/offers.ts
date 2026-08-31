@@ -4,9 +4,8 @@
 
 import { prisma } from '$lib/db';
 import { validateCommercialEntityLinks, type CommercialEntityLinks } from '$lib/server/commercialEntityLinks';
-import { decrypt, encrypt } from '$lib/crypto';
-import { createEmbeddingForText } from '$lib/embeddings_api';
-import { commercialValueInputError, parseMoneyToCents, formatDealValue, safeDecrypt } from '$lib/deals';
+import { encrypt } from '$lib/crypto';
+import { formatDealValue, safeDecrypt } from '$lib/deals';
 import { companyDisplay } from '$lib/companies';
 import {
   importanceLabel,
@@ -24,38 +23,9 @@ import {
   offerUrgencyLabel
 } from '$lib/offers';
 import { knowledgeAuthorityLabel, knowledgeSourceTypeLabel, normaliseKnowledgeAuthority, normaliseKnowledgeSourceType } from '$lib/provenance';
+import { parseIntentDate, parseIntentImportance, parseIntentMoney, safeDecryptIntent, storeIntentEmbedding, intentLinkWhere, intentUnlinkData } from '$lib/server/intentCommon';
 
 export type OfferEntityLink = CommercialEntityLinks;
-
-function safeDecryptOffer(payload: string | null | undefined, aad: string, fallback = '', legacyAad?: string | string[]) {
-  if (!payload) return fallback;
-  const aads = [aad, ...(Array.isArray(legacyAad) ? legacyAad : legacyAad ? [legacyAad] : [])];
-  for (const key of aads) {
-    try {
-      return decrypt(payload, key);
-    } catch {
-      // try next AAD
-    }
-  }
-  return fallback;
-}
-
-function parseImportance(value: FormDataEntryValue | null) {
-  const n = Number.parseInt(String(value || '3'), 10);
-  if (!Number.isFinite(n)) return 3;
-  return Math.min(5, Math.max(1, n));
-}
-
-function parseDate(value: FormDataEntryValue | null): Date | null {
-  const raw = String(value || '').trim();
-  if (!raw) return null;
-  const date = new Date(raw);
-  return Number.isNaN(date.getTime()) ? null : date;
-}
-
-function toPgVectorLiteral(vec: number[]): string {
-  return `[${vec.join(',')}]`;
-}
 
 function embeddingText(input: {
   offerType: string;
@@ -94,20 +64,7 @@ function embeddingText(input: {
 }
 
 export async function storeOfferEmbedding(userId: string, offerId: string, text: string) {
-  const input = text.trim();
-  if (!input) return;
-  try {
-    const vec = await createEmbeddingForText(input);
-    if (!Array.isArray(vec) || vec.length === 0) return;
-    await prisma.$executeRawUnsafe(
-      'UPDATE "Offer" SET "embedding_vec" = $1::vector WHERE "id" = $2 AND "userId" = $3',
-      toPgVectorLiteral(vec),
-      offerId,
-      userId
-    );
-  } catch (err: any) {
-    console.warn('[offers] failed to store embedding', { offerId, message: err?.message });
-  }
+  return storeIntentEmbedding({ userId, id: offerId, table: 'Offer', text, logLabel: 'offers' });
 }
 
 export async function createOfferFromForm(params: { userId: string; form: FormData; links?: OfferEntityLink }) {
@@ -123,10 +80,7 @@ export async function createOfferFromForm(params: { userId: string; form: FormDa
   const currency = String(form.get('currency') || 'AUD').trim().toUpperCase() || 'AUD';
   const valueMinRaw = String(form.get('valueMin') || '').trim();
   const valueMaxRaw = String(form.get('valueMax') || '').trim();
-  const valueMinError = commercialValueInputError(valueMinRaw);
-  const valueMaxError = commercialValueInputError(valueMaxRaw);
-  if (valueMinError) throw new Error(`Minimum value: ${valueMinError}`);
-  if (valueMaxError) throw new Error(`Maximum value: ${valueMaxError}`);
+  const { valueMinCents, valueMaxCents } = parseIntentMoney(form);
 
   const offerType = normaliseOfferType(form.get('offerType'));
   const status = normaliseOfferStatus(form.get('status'));
@@ -138,12 +92,12 @@ export async function createOfferFromForm(params: { userId: string; form: FormDa
   const sourceType = normaliseKnowledgeSourceType(form.get('sourceType'), 'MANUAL');
   const sourceNote = String(form.get('sourceNote') || '').trim();
   const sourceInteractionId = String(form.get('sourceInteractionId') || '').trim() || null;
-  const confirmedAt = parseDate(form.get('confirmedAt'));
+  const confirmedAt = parseIntentDate(form.get('confirmedAt'));
   if (sourceInteractionId) {
     const sourceInteraction = await prisma.interaction.findFirst({ where: { id: sourceInteractionId, userId }, select: { id: true } });
     if (!sourceInteraction) throw new Error('Source interaction not found in this workspace.');
   }
-  const importance = parseImportance(form.get('importance'));
+  const importance = parseIntentImportance(form.get('importance'));
 
   // IT: Route-provided links lock the corresponding browser fields. All resolved links are then
   // tenant-validated together, including relationship/contact/company consistency.
@@ -177,11 +131,11 @@ export async function createOfferFromForm(params: { userId: string; form: FormDa
       sourceInteractionId,
       sourceNoteEnc: sourceNote ? encrypt(sourceNote, 'offer.source_note') : null,
       confirmedAt,
-      valueMinCents: parseMoneyToCents(valueMinRaw),
-      valueMaxCents: parseMoneyToCents(valueMaxRaw),
+      valueMinCents,
+      valueMaxCents,
       currency,
-      reviewAt: parseDate(form.get('reviewAt')),
-      expiresAt: parseDate(form.get('expiresAt')),
+      reviewAt: parseIntentDate(form.get('reviewAt')),
+      expiresAt: parseIntentDate(form.get('expiresAt')),
       contactId: entityLinks.contactId,
       companyId: entityLinks.companyId,
       dealId: entityLinks.dealId,
@@ -228,10 +182,7 @@ export async function updateOfferFromForm(params: { userId: string; offerId: str
   const currency = String(form.get('currency') || 'AUD').trim().toUpperCase() || 'AUD';
   const valueMinRaw = String(form.get('valueMin') || '').trim();
   const valueMaxRaw = String(form.get('valueMax') || '').trim();
-  const valueMinError = commercialValueInputError(valueMinRaw);
-  const valueMaxError = commercialValueInputError(valueMaxRaw);
-  if (valueMinError) throw new Error(`Minimum value: ${valueMinError}`);
-  if (valueMaxError) throw new Error(`Maximum value: ${valueMaxError}`);
+  const { valueMinCents, valueMaxCents } = parseIntentMoney(form);
   const offerType = normaliseOfferType(form.get('offerType'));
   const status = normaliseOfferStatus(form.get('status'));
   const direction = normaliseOfferDirection(form.get('direction'));
@@ -242,12 +193,12 @@ export async function updateOfferFromForm(params: { userId: string; offerId: str
   const sourceType = normaliseKnowledgeSourceType(form.get('sourceType'), 'MANUAL');
   const sourceNote = String(form.get('sourceNote') || '').trim();
   const sourceInteractionId = String(form.get('sourceInteractionId') || '').trim() || null;
-  const confirmedAt = parseDate(form.get('confirmedAt'));
+  const confirmedAt = parseIntentDate(form.get('confirmedAt'));
   if (sourceInteractionId) {
     const sourceInteraction = await prisma.interaction.findFirst({ where: { id: sourceInteractionId, userId }, select: { id: true } });
     if (!sourceInteraction) throw new Error('Source interaction not found in this workspace.');
   }
-  const importance = parseImportance(form.get('importance'));
+  const importance = parseIntentImportance(form.get('importance'));
 
   // IT: Updates are just as strict as creates. Never rely on dropdown contents as an ownership boundary.
   const entityLinks = await validateCommercialEntityLinks(userId, {
@@ -280,11 +231,11 @@ export async function updateOfferFromForm(params: { userId: string; offerId: str
       sourceInteractionId,
       sourceNoteEnc: sourceNote ? encrypt(sourceNote, 'offer.source_note') : null,
       confirmedAt,
-      valueMinCents: parseMoneyToCents(valueMinRaw),
-      valueMaxCents: parseMoneyToCents(valueMaxRaw),
+      valueMinCents,
+      valueMaxCents,
       currency,
-      reviewAt: parseDate(form.get('reviewAt')),
-      expiresAt: parseDate(form.get('expiresAt')),
+      reviewAt: parseIntentDate(form.get('reviewAt')),
+      expiresAt: parseIntentDate(form.get('expiresAt')),
       contactId: entityLinks.contactId,
       companyId: entityLinks.companyId,
       dealId: entityLinks.dealId,
@@ -315,14 +266,7 @@ export async function updateOfferFromForm(params: { userId: string; offerId: str
 }
 
 export async function loadOffers(params: { userId: string; links?: OfferEntityLink; take?: number; includeArchived?: boolean }) {
-  const where: any = { userId: params.userId };
-  const links = params.links || {};
-  if (links.contactId) where.contactId = links.contactId;
-  if (links.companyId) where.companyId = links.companyId;
-  if (links.dealId) where.dealId = links.dealId;
-  if (links.projectId) where.projectId = links.projectId;
-  if (links.workstreamId) where.workstreamId = links.workstreamId;
-  if (links.companyContactId) where.companyContactId = links.companyContactId;
+  const where: any = intentLinkWhere(params.userId, params.links || {});
   if (!params.includeArchived) where.status = { not: 'ARCHIVED' as any };
 
   const rows = await prisma.offer.findMany({
@@ -366,7 +310,6 @@ export const offerSelect = {
   workstreamId: true,
   companyContactId: true,
   convertedDealId: true,
-  exchangeItemId: true,
   createdAt: true,
   updatedAt: true,
   contact: { select: { id: true, fullNameEnc: true, linkedUserId: true } },
@@ -385,13 +328,13 @@ export const offerSelect = {
 } as const;
 
 export function mapOffer(row: any) {
-  const title = safeDecryptOffer(row.titleEnc, 'offer.title', 'Untitled offer', ['exchange.title', 'company.name']);
-  const description = safeDecryptOffer(row.descriptionEnc, 'offer.description', '', 'exchange.description');
-  const terms = safeDecryptOffer(row.termsEnc, 'offer.terms', '', 'company.terms');
-  const summary = safeDecryptOffer(row.summaryEnc, 'offer.summary', '', 'exchange.summary');
-  const category = safeDecryptOffer(row.categoryEnc, 'offer.category', '', 'exchange.category');
-  const geography = safeDecryptOffer(row.geographyEnc, 'offer.geography', '', 'exchange.geography');
-  const sourceNote = safeDecryptOffer(row.sourceNoteEnc, 'offer.source_note', '');
+  const title = safeDecryptIntent(row.titleEnc, 'offer.title', 'Untitled offer', ['exchange.title', 'company.name']);
+  const description = safeDecryptIntent(row.descriptionEnc, 'offer.description', '', 'exchange.description');
+  const terms = safeDecryptIntent(row.termsEnc, 'offer.terms', '', 'company.terms');
+  const summary = safeDecryptIntent(row.summaryEnc, 'offer.summary', '', 'exchange.summary');
+  const category = safeDecryptIntent(row.categoryEnc, 'offer.category', '', 'exchange.category');
+  const geography = safeDecryptIntent(row.geographyEnc, 'offer.geography', '', 'exchange.geography');
+  const sourceNote = safeDecryptIntent(row.sourceNoteEnc, 'offer.source_note', '');
   return {
     id: row.id,
     offerType: row.offerType,
@@ -435,17 +378,16 @@ export function mapOffer(row: any) {
     workstreamId: row.workstreamId,
     companyContactId: row.companyContactId,
     convertedDealId: row.convertedDealId,
-    exchangeItemId: row.exchangeItemId,
-    contact: row.contact ? { id: row.contact.id, name: safeDecryptOffer(row.contact.fullNameEnc, 'contact.full_name', 'Relish user') } : null,
+    contact: row.contact ? { id: row.contact.id, name: safeDecryptIntent(row.contact.fullNameEnc, 'contact.full_name', 'Relish user') } : null,
     company: row.company ? { id: row.company.id, name: companyDisplay(row.company), kind: row.company.kind, status: row.company.status } : null,
     deal: row.deal ? { id: row.deal.id, title: safeDecrypt(row.deal.titleEnc, 'deal.title', 'Untitled deal'), status: row.deal.status } : null,
     project: row.project ? { id: row.project.id, title: safeDecrypt(row.project.titleEnc, 'project.title', 'Untitled project'), status: row.project.status } : null,
     workstream: row.workstream ? { id: row.workstream.id, name: safeDecrypt(row.workstream.nameEnc, 'project_workstream.name', 'Untitled workstream'), projectId: row.workstream.projectId, status: row.workstream.status } : null,
     companyContact: row.companyContact ? {
       id: row.companyContact.id,
-      title: safeDecryptOffer(row.companyContact.titleEnc, 'company_contact.title', ''),
+      title: safeDecryptIntent(row.companyContact.titleEnc, 'company_contact.title', ''),
       company: row.companyContact.company ? { id: row.companyContact.company.id, name: safeDecrypt(row.companyContact.company.nameEnc, 'company.name', 'Untitled company') } : null,
-      contact: row.companyContact.contact ? { id: row.companyContact.contact.id, name: safeDecryptOffer(row.companyContact.contact.fullNameEnc, 'contact.full_name', 'Relish user') } : null
+      contact: row.companyContact.contact ? { id: row.companyContact.contact.id, name: safeDecryptIntent(row.companyContact.contact.fullNameEnc, 'contact.full_name', 'Relish user') } : null
     } : null,
     descriptionPreview: description ? description.slice(0, 240) : '',
     termsPreview: terms ? terms.slice(0, 240) : '',
@@ -461,24 +403,12 @@ export async function loadOffer(userId: string, offerId: string) {
 
 export async function deleteOffer(params: { userId: string; id: string; links?: OfferEntityLink }) {
   const links = params.links || {};
-  const where: any = { id: params.id, userId: params.userId };
-  if (links.contactId) where.contactId = links.contactId;
-  if (links.companyId) where.companyId = links.companyId;
-  if (links.dealId) where.dealId = links.dealId;
-  if (links.projectId) where.projectId = links.projectId;
-  if (links.workstreamId) where.workstreamId = links.workstreamId;
-  if (links.companyContactId) where.companyContactId = links.companyContactId;
+  const where: any = { id: params.id, ...intentLinkWhere(params.userId, links) };
 
   // IT: Entity panels mean "remove this link", not "destroy the commercial record". A permanent
   // delete only happens when this helper is deliberately called without a contextual link.
   if (Object.values(links).some(Boolean)) {
-    const data: any = {};
-    if (links.workstreamId) data.workstreamId = null;
-    else if (links.projectId) { data.projectId = null; data.workstreamId = null; }
-    if (links.contactId) { data.contactId = null; data.companyContactId = null; }
-    if (links.companyId) { data.companyId = null; data.companyContactId = null; }
-    if (links.dealId) data.dealId = null;
-    if (links.companyContactId) data.companyContactId = null;
+    const data = intentUnlinkData(links);
     return prisma.offer.updateMany({ where, data });
   }
 
@@ -496,7 +426,7 @@ export async function createOfferNote(userId: string, offerId: string, form: For
     data: {
       userId,
       offerId,
-      occurredAt: parseDate(form.get('occurredAt')) || new Date(),
+      occurredAt: parseIntentDate(form.get('occurredAt')) || new Date(),
       channel,
       bodyEnc: encrypt(body, 'offer_note.body'),
       summaryEnc: summary ? encrypt(summary, 'offer_note.summary') : null
@@ -514,7 +444,7 @@ export async function updateOfferNote(userId: string, noteId: string, form: Form
   await prisma.offerNote.updateMany({
     where: { id: noteId, userId },
     data: {
-      occurredAt: parseDate(form.get('occurredAt')) || new Date(),
+      occurredAt: parseIntentDate(form.get('occurredAt')) || new Date(),
       channel,
       bodyEnc: encrypt(body, 'offer_note.body'),
       summaryEnc: summary ? encrypt(summary, 'offer_note.summary') : null
@@ -534,8 +464,8 @@ export async function loadOfferNotes(userId: string, offerId: string) {
     id: row.id,
     occurredAt: row.occurredAt,
     channel: row.channel || 'note',
-    body: safeDecryptOffer(row.bodyEnc, 'offer_note.body', ''),
-    summary: safeDecryptOffer(row.summaryEnc, 'offer_note.summary', ''),
+    body: safeDecryptIntent(row.bodyEnc, 'offer_note.body', ''),
+    summary: safeDecryptIntent(row.summaryEnc, 'offer_note.summary', ''),
     createdAt: row.createdAt,
     updatedAt: row.updatedAt
   }));

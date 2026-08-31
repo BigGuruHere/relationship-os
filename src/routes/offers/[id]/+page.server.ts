@@ -167,7 +167,7 @@ export const actions: Actions = {
     if (offerRow.contactId) await prisma.dealContact.create({ data: { userId, dealId: deal.id, contactId: offerRow.contactId, label: 'offer contact', relationshipType: 'SELLER' as any } }).catch(() => null);
     if (offerRow.companyId) await prisma.dealCompany.create({ data: { userId, dealId: deal.id, companyId: offerRow.companyId, label: 'offer company', relationshipType: 'SELLER' as any } }).catch(() => null);
     if (offerRow.projectId) await prisma.projectDeal.upsert({ where: { projectId_dealId: { projectId: offerRow.projectId, dealId: deal.id } }, update: offerRow.workstreamId ? { workstreamId: offerRow.workstreamId } : {}, create: { userId, projectId: offerRow.projectId, dealId: deal.id, workstreamId: offerRow.workstreamId || null } }).catch(() => null);
-    await prisma.offer.updateMany({ where: { id: params.id, userId }, data: { dealId: deal.id, convertedDealId: deal.id, status: 'CONVERTED_TO_DEAL' as any } });
+    await prisma.offer.updateMany({ where: { id: params.id, userId }, data: { dealId: deal.id, convertedDealId: deal.id, status: 'ACTIVE' as any } });
     await prisma.task.updateMany({ where: { userId, offerId: params.id, dealId: null }, data: { dealId: deal.id } }).catch(() => null);
     throw redirect(303, `/deals/${deal.id}`);
   }

@@ -18,7 +18,7 @@ function modelBlock(name: string) {
 
 test('authority is a separate enum from existing confidence', () => {
   assert.match(schema, /enum KnowledgeAuthority \{[\s\S]*SELF_DECLARED[\s\S]*THIRD_PARTY_REPORTED[\s\S]*PUBLIC_SOURCE[\s\S]*INFERRED[\s\S]*SYSTEM_DERIVED[\s\S]*\}/);
-  assert.match(schema, /confidence ExchangeConfidence/);
+  assert.match(schema, /confidence IntentConfidence/);
   assert.match(modelBlock('Want'), /authority\s+KnowledgeAuthority/);
   assert.match(modelBlock('Offer'), /authority\s+KnowledgeAuthority/);
 });

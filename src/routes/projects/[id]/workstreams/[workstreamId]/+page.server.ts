@@ -112,7 +112,6 @@ function marketLeadSelect() {
     projectId: true,
     workstreamId: true,
     workstream: { select: { id: true, nameEnc: true, projectId: true, status: true } },
-    exchangeItemId: true,
     convertedAt: true,
     createdAt: true,
     updatedAt: true

@@ -26,7 +26,7 @@ import {
   convertLeadToCompany,
   convertLeadToContact,
   convertLeadToDeal,
-  convertLeadToExchangeItem,
+  convertLeadToIntent,
   leadFormValues,
   loadLeadSources,
   mapMarketLead,
@@ -206,15 +206,13 @@ export const load: PageServerLoad = async ({ params, locals }) => {
       projectId: true,
       workstreamId: true,
       workstream: { select: { id: true, nameEnc: true, projectId: true, status: true } },
-      exchangeItemId: true,
       convertedAt: true,
       createdAt: true,
       updatedAt: true,
       contact: { select: { id: true, fullNameEnc: true } },
       company: { select: { id: true, nameEnc: true } },
       deal: { select: { id: true, titleEnc: true } },
-      project: { select: { id: true, titleEnc: true } },
-      exchangeItem: { select: { id: true, titleEnc: true, type: true } }
+      project: { select: { id: true, titleEnc: true } }
     }
   });
 
@@ -295,7 +293,6 @@ export const load: PageServerLoad = async ({ params, locals }) => {
       linkedWorkstreamTitle: row.workstream ? safeDecryptTask(row.workstream.nameEnc, 'project_workstream.name', '') : '',
       linkedWantTitle: row.want ? safeDecrypt(row.want.titleEnc, 'want.title', '') : '',
       linkedOfferTitle: row.offer ? safeDecrypt(row.offer.titleEnc, 'offer.title', '') : '',
-      linkedExchangeTitle: row.exchangeItem ? safeDecrypt(row.exchangeItem.titleEnc, 'exchange.title', '') : ''
     },
     leadNotes: leadNotesRaw.map(mapLeadNote),
     leadTasks: await Promise.all(leadTasksRaw.map(mapLeadTask)),
@@ -508,7 +505,7 @@ export const actions: Actions = {
   convertToWant: async ({ params, locals }) => {
     if (!locals.user) throw redirect(303, '/auth/login');
     try {
-      const wantId = await convertLeadToExchangeItem(locals.user.id, params.id, 'WANT');
+      const wantId = await convertLeadToIntent(locals.user.id, params.id, 'WANT');
       throw redirect(303, `/wants/${wantId}`);
     } catch (err: any) {
       if (err?.status) throw err;
@@ -519,7 +516,7 @@ export const actions: Actions = {
   convertToOffer: async ({ params, locals }) => {
     if (!locals.user) throw redirect(303, '/auth/login');
     try {
-      const offerId = await convertLeadToExchangeItem(locals.user.id, params.id, 'OFFER');
+      const offerId = await convertLeadToIntent(locals.user.id, params.id, 'OFFER');
       throw redirect(303, `/offers/${offerId}`);
     } catch (err: any) {
       if (err?.status) throw err;

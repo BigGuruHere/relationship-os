@@ -83,7 +83,6 @@ model User {
   companyNotes          CompanyNote[]
   dealCompanies         DealCompany[]
   companyRelationships  CompanyRelationship[]
-  exchangeItems         ExchangeItem[]
   wants                 Want[]
   wantNotes             WantNote[]
   offers                Offer[]
@@ -402,7 +401,6 @@ model Contact {
 
   // IT: company memberships/employment history. A person can belong to more than one company over time.
   companyLinks      CompanyContact[]
-  exchangeItems     ExchangeItem[]
   wants             Want[]
   offers            Offer[]
   opportunityScores OpportunityScore[]
@@ -696,7 +694,6 @@ model Deal {
   dealContactNotes DealContactNote[]
   tasks    Task[]
   projects ProjectDeal[]
-  exchangeItems ExchangeItem[]
   wants         Want[]
   offers        Offer[]
   opportunityScores OpportunityScore[]
@@ -932,7 +929,6 @@ model Company {
   tasks            Task[]
   relationshipsAsA CompanyRelationship[] @relation("CompanyAsA")
   relationshipsAsB CompanyRelationship[] @relation("CompanyAsB")
-  exchangeItems     ExchangeItem[]
   wants             Want[]
   offers            Offer[]
   opportunityScores OpportunityScore[]
@@ -993,7 +989,6 @@ model CompanyContact {
   endDate   DateTime?
 
   dealContacts  DealContact[]
-  exchangeItems ExchangeItem[]
   wants         Want[]
   offers        Offer[]
   notes         CompanyContactNote[]
@@ -1111,7 +1106,7 @@ model CompanyRelationship {
 // ---------------------------------------------------------------------------
 // IT: Want is the demand-side object for buyer mandates, acquisition criteria,
 // search briefs, and "keep an eye out" requests. Stage 7.3 also promoted Offers to a
-// first-class model; legacy ExchangeItem rows remain only for migration/history compatibility.
+// Stage 8.3 keeps Want and Offer as the canonical Core intent models; the legacy ExchangeItem model is retired.
 // IT: Stage 8.2 separates where relationship intelligence came from from how confident we are in it.
 // IT: WORKSPACE_RECORDED is for events/facts directly recorded by the current workspace rather than statements by the subject.
 enum KnowledgeAuthority {
@@ -1147,15 +1142,45 @@ enum WantType {
   OTHER
 }
 
-enum WantStatus {
-  NEW
-  CLARIFYING_CRITERIA
-  ACTIVE_MANDATE
-  WATCHING_MARKET
-  MATCHED
-  CONVERTED_TO_DEAL
-  CLOSED_INACTIVE
+enum IntentStatus {
+  CAPTURED
+  CLARIFYING
+  ACTIVE
+  PAUSED
+  FULFILLED
+  WITHDRAWN
+  EXPIRED
   ARCHIVED
+}
+
+enum IntentUrgency {
+  LOW
+  NORMAL
+  HIGH
+  IMMEDIATE
+}
+
+enum IntentTimeHorizon {
+  NOW
+  NEXT_30_DAYS
+  NEXT_90_DAYS
+  THIS_YEAR
+  LATER
+  ONGOING
+}
+
+enum IntentConfidence {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum OfferDirection {
+  SEEKING
+  OFFERING
+  OPEN_TO
+  NOT_INTERESTED_IN
+  OTHER
 }
 
 model Want {
@@ -1164,7 +1189,7 @@ model Want {
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   wantType WantType @default(GENERAL)
-  status   WantStatus @default(NEW)
+  status   IntentStatus @default(CAPTURED)
 
   titleEnc       String
   descriptionEnc String?
@@ -1174,9 +1199,9 @@ model Want {
   geographyEnc   String?
 
   importance Int @default(3)
-  urgency    ExchangeUrgency @default(NORMAL)
-  timeHorizon ExchangeTimeHorizon @default(ONGOING)
-  confidence ExchangeConfidence @default(MEDIUM)
+  urgency    IntentUrgency @default(NORMAL)
+  timeHorizon IntentTimeHorizon @default(ONGOING)
+  confidence IntentConfidence @default(MEDIUM)
 
   // IT: Stage 8.2 provenance is a separate axis from confidence. Existing rows are deliberately marked legacy/unspecified.
   authority           KnowledgeAuthority  @default(LEGACY_UNSPECIFIED)
@@ -1209,9 +1234,6 @@ model Want {
 
   companyContactId String?
   companyContact   CompanyContact? @relation(fields: [companyContactId], references: [id], onDelete: SetNull)
-
-  exchangeItemId String? @unique
-  exchangeItem   ExchangeItem? @relation(fields: [exchangeItemId], references: [id], onDelete: SetNull)
 
   convertedDealId String?
 
@@ -1281,25 +1303,14 @@ enum OfferType {
   OTHER
 }
 
-enum OfferStatus {
-  NEW
-  CLARIFYING_SUPPLY
-  AVAILABLE
-  WATCHING_INTEREST
-  MATCHED
-  CONVERTED_TO_DEAL
-  CLOSED_INACTIVE
-  ARCHIVED
-}
-
 model Offer {
   id     String @id @default(uuid())
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   offerType OfferType @default(GENERAL)
-  status    OfferStatus @default(NEW)
-  direction ExchangeDirection @default(OFFERING)
+  status    IntentStatus @default(CAPTURED)
+  direction OfferDirection @default(OFFERING)
 
   titleEnc       String
   descriptionEnc String?
@@ -1309,9 +1320,9 @@ model Offer {
   geographyEnc   String?
 
   importance Int @default(3)
-  urgency    ExchangeUrgency @default(NORMAL)
-  timeHorizon ExchangeTimeHorizon @default(ONGOING)
-  confidence ExchangeConfidence @default(MEDIUM)
+  urgency    IntentUrgency @default(NORMAL)
+  timeHorizon IntentTimeHorizon @default(ONGOING)
+  confidence IntentConfidence @default(MEDIUM)
 
   // IT: Stage 8.2 provenance is a separate axis from confidence. Existing rows are deliberately marked legacy/unspecified.
   authority           KnowledgeAuthority  @default(LEGACY_UNSPECIFIED)
@@ -1344,9 +1355,6 @@ model Offer {
 
   companyContactId String?
   companyContact   CompanyContact? @relation(fields: [companyContactId], references: [id], onDelete: SetNull)
-
-  exchangeItemId String? @unique
-  exchangeItem   ExchangeItem? @relation(fields: [exchangeItemId], references: [id], onDelete: SetNull)
 
   convertedDealId String?
 
@@ -1539,127 +1547,6 @@ model Outcome {
 }
 
 // ---------------------------------------------------------------------------
-// LEGACY EXCHANGEITEM COMPATIBILITY MODEL
-// ---------------------------------------------------------------------------
-// IT: Historical WANT/OFFER rows are preserved here for rollback/audit compatibility. New UI
-// writes use first-class Want and Offer models and Stage 7.4 matching should use those tables.
-// IT: Whether the legacy exchange item represents a need/want or something available to offer.
-enum ExchangeItemType {
-  WANT
-  OFFER
-}
-
-// IT: How soon this want/offer matters.
-enum ExchangeUrgency {
-  LOW
-  NORMAL
-  HIGH
-  IMMEDIATE
-}
-
-// IT: When the want/offer is relevant.
-enum ExchangeTimeHorizon {
-  NOW
-  NEXT_30_DAYS
-  NEXT_90_DAYS
-  THIS_YEAR
-  LATER
-  ONGOING
-}
-
-// IT: Lifecycle state to keep stale wants/offers out of future matching.
-enum ExchangeStatus {
-  ACTIVE
-  PAUSED
-  FULFILLED
-  EXPIRED
-  ARCHIVED
-}
-
-// IT: Confidence in whether this want/offer was explicitly stated or inferred.
-enum ExchangeConfidence {
-  LOW
-  MEDIUM
-  HIGH
-}
-
-// IT: Direction gives more nuance than type alone while still keeping wants/offers simple.
-enum ExchangeDirection {
-  SEEKING
-  OFFERING
-  OPEN_TO
-  NOT_INTERESTED_IN
-  OTHER
-}
-
-// IT: A relationship value item attached to a person, company, deal, or project.
-// IT: Embedding is stored for future matching, but no matching/search algorithm is required yet.
-model ExchangeItem {
-  id     String @id @default(uuid())
-  userId String
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  type      ExchangeItemType
-  direction ExchangeDirection @default(OTHER)
-  categoryEnc String?
-
-  titleEnc       String
-  descriptionEnc String?
-  summaryEnc     String?
-
-  importance Int @default(3)
-  urgency    ExchangeUrgency    @default(NORMAL)
-  timeHorizon ExchangeTimeHorizon @default(ONGOING)
-  status     ExchangeStatus     @default(ACTIVE)
-  confidence ExchangeConfidence @default(MEDIUM)
-
-  geographyEnc String?
-  valueMinCents BigInt?
-  valueMaxCents BigInt?
-  currency      String @default("AUD")
-  reviewAt      DateTime?
-  expiresAt     DateTime?
-
-  contactId String?
-  contact   Contact? @relation(fields: [contactId], references: [id], onDelete: Cascade)
-
-  companyId String?
-  company   Company? @relation(fields: [companyId], references: [id], onDelete: Cascade)
-
-  dealId String?
-  deal   Deal? @relation(fields: [dealId], references: [id], onDelete: Cascade)
-
-  projectId String?
-  project   Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
-
-  companyContactId String?
-  companyContact   CompanyContact? @relation(fields: [companyContactId], references: [id], onDelete: SetNull)
-
-  embeddingVec Unsupported("vector")? @map("embedding_vec")
-
-  marketLeads MarketLead[]
-  migratedWant Want?
-  migratedOffer Offer?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([userId, type])
-  @@index([userId, status])
-  @@index([userId, urgency])
-  @@index([userId, timeHorizon])
-  @@index([userId, confidence])
-  @@index([userId, reviewAt])
-  @@index([userId, expiresAt])
-  @@index([userId, contactId])
-  @@index([userId, companyId])
-  @@index([userId, dealId])
-  @@index([userId, projectId])
-  @@index([userId, companyContactId])
-}
-
-
-// ---------------------------------------------------------------------------
 // STAGE 6 MARKET LEADS
 // ---------------------------------------------------------------------------
 // IT: Channel preference for contacts and leads. This is workflow metadata used
@@ -1811,9 +1698,6 @@ model MarketLead {
   tasks Task[]
   notes MarketLeadNote[]
 
-  exchangeItemId String?
-  exchangeItem   ExchangeItem? @relation(fields: [exchangeItemId], references: [id], onDelete: SetNull)
-
   wantId String?
   want   Want? @relation(fields: [wantId], references: [id], onDelete: SetNull)
 
@@ -1840,7 +1724,6 @@ model MarketLead {
   @@index([userId, dealId])
   @@index([userId, projectId])
   @@index([userId, workstreamId])
-  @@index([userId, exchangeItemId])
   @@index([userId, wantId])
   @@index([userId, offerId])
   @@index([titleIdx])
@@ -1963,7 +1846,6 @@ model Project {
   tasks Task[]
   notes ProjectNote[]
   deals ProjectDeal[]
-  exchangeItems ExchangeItem[]
   wants         Want[]
   offers        Offer[]
   marketLeads   MarketLead[]

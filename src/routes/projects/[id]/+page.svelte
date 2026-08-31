@@ -69,7 +69,7 @@
 
   <div id="project-wants"><WantsPanel items={data.wants ?? []} entityLabel={data.project.title} /></div>
 
-    <div id="project-offers"><OffersPanel items={data.exchangeItems ?? []} createAction="?/createExchangeItem" deleteAction="?/deleteExchangeItem" deleteFieldName="exchangeItemId" entityLabel={data.project.title} /></div>
+    <div id="project-offers"><OffersPanel items={data.offers ?? []} createAction="?/createOffer" deleteAction="?/deleteOffer" deleteFieldName="offerId" entityLabel={data.project.title} /></div>
 
   <AgentBriefingsPanel entityType="project" entityId={data.project.id} entityLabel={data.project.title} artifacts={data.agentArtifacts ?? []} />
 

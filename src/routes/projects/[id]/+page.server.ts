@@ -11,7 +11,7 @@ import { safeDecrypt, formatDealValue } from '$lib/deals';
 import { MARKET_LEAD_STATUSES, MARKET_LEAD_TYPES, marketLeadStatusLabel } from '$lib/marketLeads';
 import { buildLeadSourceOptions, leadFormValues, loadLeadSources, mapMarketLead, marketLeadCreateData, resolveLeadSourceId } from '$lib/server/marketLeads';
 import { contactDisplayName, contactOptionsForRows } from '$lib/server/contactDisplay';
-import { createExchangeItemFromForm, deleteExchangeItem, loadExchangeItems } from '$lib/server/exchange';
+import { createOfferFromForm, deleteOffer, loadOffers } from '$lib/server/offers';
 import { createWantFromForm, deleteWant, loadWants } from '$lib/server/wants';
 import { loadAgentArtifacts } from '$lib/server/agents/artifacts';
 import { createTaskFromForm } from '$lib/server/tasks';
@@ -152,7 +152,7 @@ function marketLeadSelect() {
     projectId: true,
     workstreamId: true,
     workstream: { select: { id: true, nameEnc: true, projectId: true, status: true } },
-    exchangeItemId: true,
+    offerId: true,
     convertedAt: true,
     createdAt: true,
     updatedAt: true
@@ -295,7 +295,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
   }));
   const linkedDealIds = new Set(linkedDeals.map((deal: any) => deal.dealId));
 
-  const exchangeItems = await loadExchangeItems({ userId, links: { projectId: project.id } });
+  const offers = await loadOffers({ userId, links: { projectId: project.id } });
   const wants = await loadWants({ userId, links: { projectId: project.id } });
   const agentArtifacts = await loadAgentArtifacts({ userId, entityType: 'project', entityId: project.id });
   const projectNotesRaw = await prisma.projectNote.findMany({
@@ -374,7 +374,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
     relatedPeople: [...peopleMap.values()],
     relatedCompanies: [...companyMap.values()],
     wants,
-    exchangeItems,
+    offers,
     agentArtifacts,
     projectNotes,
     projectLeads,
@@ -458,7 +458,6 @@ export const actions: Actions = {
     await prisma.$transaction(async (tx: any) => {
       await tx.task.updateMany({ where: { userId, projectId: params.id }, data: { projectId: null, workstreamId: null } });
       await tx.marketLead.updateMany({ where: { userId, projectId: params.id }, data: { projectId: null, workstreamId: null } });
-      await tx.exchangeItem.updateMany({ where: { userId, projectId: params.id }, data: { projectId: null } });
       await tx.project.deleteMany({ where: { id: params.id, userId } });
     });
     throw redirect(303, '/projects');
@@ -589,26 +588,26 @@ export const actions: Actions = {
     throw redirect(303, `/projects/${params.id}`);
   },
 
-  createExchangeItem: async ({ request, params, locals }) => {
+  createOffer: async ({ request, params, locals }) => {
     if (!locals.user) throw redirect(303, '/auth/login');
     const userId = locals.user.id;
     const exists = await prisma.project.findFirst({ where: { id: params.id, userId }, select: { id: true } });
     if (!exists) return fail(404, { error: 'Project not found.' });
     try {
-      await createExchangeItemFromForm({ userId, form: await request.formData(), links: { projectId: params.id } });
+      await createOfferFromForm({ userId, form: await request.formData(), links: { projectId: params.id } });
     } catch (err: any) {
-      console.error('[projects:createExchangeItem] failed', err);
+      console.error('[projects:createOffer] failed', err);
       return fail(400, { error: err?.message || 'Failed to save want/offer.' });
     }
     throw redirect(303, `/projects/${params.id}`);
   },
 
-  deleteExchangeItem: async ({ request, params, locals }) => {
+  deleteOffer: async ({ request, params, locals }) => {
     if (!locals.user) throw redirect(303, '/auth/login');
     const form = await request.formData();
-    const exchangeItemId = String(form.get('exchangeItemId') || '').trim();
-    if (!exchangeItemId) return fail(400, { error: 'Missing want/offer id.' });
-    await deleteExchangeItem({ userId: locals.user.id, id: exchangeItemId, links: { projectId: params.id } });
+    const offerId = String(form.get('offerId') || '').trim();
+    if (!offerId) return fail(400, { error: 'Missing want/offer id.' });
+    await deleteOffer({ userId: locals.user.id, id: offerId, links: { projectId: params.id } });
     throw redirect(303, `/projects/${params.id}`);
   },
 

@@ -184,7 +184,7 @@
 
     <WantsPanel items={data.wants ?? []} entityLabel={contact.name} />
 
-    <OffersPanel items={data.exchangeItems ?? []} createAction="?/createExchangeItem" deleteAction="?/deleteExchangeItem" deleteFieldName="exchangeItemId" entityLabel={contact.name} />
+    <OffersPanel items={data.offers ?? []} createAction="?/createOffer" deleteAction="?/deleteOffer" deleteFieldName="offerId" entityLabel={contact.name} />
 
     <AgentBriefingsPanel entityType="contact" entityId={contact.id} entityLabel={contact.name} artifacts={data.agentArtifacts ?? []} />
 

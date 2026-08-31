@@ -257,7 +257,6 @@ export function mapMarketLead(row: any) {
     projectId: row.projectId,
     workstreamId: row.workstreamId,
     workstream: row.workstream ? { id: row.workstream.id, name: safeDecryptLead(row.workstream.nameEnc, 'project_workstream.name', 'Untitled workstream'), projectId: row.workstream.projectId, status: row.workstream.status } : null,
-    exchangeItemId: row.exchangeItemId,
     wantId: row.wantId,
     offerId: row.offerId,
     convertedAt: row.convertedAt,
@@ -268,8 +267,7 @@ export function mapMarketLead(row: any) {
     deal: row.deal,
     project: row.project,
     want: row.want,
-    offer: row.offer,
-    exchangeItem: row.exchangeItem
+    offer: row.offer
   };
 }
 
@@ -604,7 +602,7 @@ export async function convertLeadToDeal(userId: string, leadId: string) {
   return deal.id;
 }
 
-export async function convertLeadToExchangeItem(userId: string, leadId: string, type: 'WANT' | 'OFFER') {
+export async function convertLeadToIntent(userId: string, leadId: string, type: 'WANT' | 'OFFER') {
   const lead = await prisma.marketLead.findFirst({ where: { id: leadId, userId } });
   if (!lead) throw new Error('Lead not found.');
   const display = mapMarketLead(lead);
@@ -616,7 +614,7 @@ export async function convertLeadToExchangeItem(userId: string, leadId: string, 
       data: {
         userId,
         wantType: display.type === 'BUYER' || display.type === 'POTENTIAL_BUYER' || display.type === 'MANDATE' ? 'BUYER_MANDATE' as any : 'GENERAL' as any,
-        status: 'NEW' as any,
+        status: 'CAPTURED' as any,
         titleEnc: encrypt(title, 'want.title'),
         descriptionEnc: body ? encrypt(body, 'want.description') : null,
         categoryEnc: display.type ? encrypt(marketLeadTypeLabel(display.type), 'want.category') : null,
@@ -647,7 +645,7 @@ export async function convertLeadToExchangeItem(userId: string, leadId: string, 
     data: {
       userId,
       offerType: display.type === 'SELLER' || display.type === 'POTENTIAL_SELLER' || display.type === 'ASSET' ? 'SELLER_OPPORTUNITY' as any : 'GENERAL' as any,
-      status: 'NEW' as any,
+      status: 'CAPTURED' as any,
       direction: 'OFFERING' as any,
       titleEnc: encrypt(title, 'offer.title'),
       descriptionEnc: body ? encrypt(body, 'offer.description') : null,

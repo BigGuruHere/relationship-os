@@ -8,7 +8,7 @@ import { prisma } from '$lib/db';
 import { buildIndexToken, encrypt } from '$lib/crypto';
 import { resolveOrCreateTagForTenant } from '$lib/tags';
 import { contactDisplayName, contactOptionsForRows } from '$lib/server/contactDisplay';
-import { createExchangeItemFromForm, deleteExchangeItem, loadExchangeItems } from '$lib/server/exchange';
+import { createOfferFromForm, deleteOffer, loadOffers } from '$lib/server/offers';
 import { createWantFromForm, deleteWant, loadWants } from '$lib/server/wants';
 import { loadAgentArtifacts } from '$lib/server/agents/artifacts';
 import { ensureCoreAgentSetup } from '$lib/server/agents/agentSetup';
@@ -140,15 +140,14 @@ const marketLeadSelect = {
   projectId: true,
   workstreamId: true,
   workstream: { select: { id: true, nameEnc: true, projectId: true, status: true } },
-  exchangeItemId: true,
+  offerId: true,
   convertedAt: true,
   createdAt: true,
   updatedAt: true,
   contact: { select: { id: true, fullNameEnc: true } },
   company: { select: { id: true, nameEnc: true } },
   deal: { select: { id: true, titleEnc: true } },
-  project: { select: { id: true, titleEnc: true } },
-  exchangeItem: { select: { id: true, titleEnc: true, type: true } }
+  project: { select: { id: true, titleEnc: true } }
 };
 
 export const load: PageServerLoad = async ({ params, locals }) => {
@@ -343,7 +342,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
   });
   const companyNotes = companyNotesRaw.map(mapCompanyNote);
 
-  const exchangeItems = await loadExchangeItems({ userId, links: { companyId: row.id } });
+  const offers = await loadOffers({ userId, links: { companyId: row.id } });
   const wants = await loadWants({ userId, links: { companyId: row.id } });
   const agentArtifacts = await loadAgentArtifacts({ userId, entityType: 'company', entityId: row.id });
 
@@ -435,7 +434,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
     linkedLeads,
     leadOptions,
     wants,
-    exchangeItems,
+    offers,
     agentArtifacts,
     contactOptions: contactOptions.filter((contact: any) => !attachedContactIds.has(contact.id)),
     allContactOptions: contactOptions,
@@ -709,26 +708,26 @@ export const actions: Actions = {
     throw redirect(303, `/companies/${params.id}`);
   },
 
-  createExchangeItem: async ({ request, params, locals }) => {
+  createOffer: async ({ request, params, locals }) => {
     if (!locals.user) throw redirect(303, '/auth/login');
     const userId = locals.user.id;
     const exists = await ensureCompany(userId, params.id);
     if (!exists) return fail(404, { error: 'Company not found.' });
     try {
-      await createExchangeItemFromForm({ userId, form: await request.formData(), links: { companyId: params.id } });
+      await createOfferFromForm({ userId, form: await request.formData(), links: { companyId: params.id } });
     } catch (err: any) {
-      console.error('[companies:createExchangeItem] failed', err);
+      console.error('[companies:createOffer] failed', err);
       return fail(400, { error: err?.message || 'Failed to save want/offer.' });
     }
     throw redirect(303, `/companies/${params.id}`);
   },
 
-  deleteExchangeItem: async ({ request, params, locals }) => {
+  deleteOffer: async ({ request, params, locals }) => {
     if (!locals.user) throw redirect(303, '/auth/login');
     const form = await request.formData();
-    const exchangeItemId = String(form.get('exchangeItemId') || '').trim();
-    if (!exchangeItemId) return fail(400, { error: 'Missing want/offer id.' });
-    await deleteExchangeItem({ userId: locals.user.id, id: exchangeItemId, links: { companyId: params.id } });
+    const offerId = String(form.get('offerId') || '').trim();
+    if (!offerId) return fail(400, { error: 'Missing want/offer id.' });
+    await deleteOffer({ userId: locals.user.id, id: offerId, links: { companyId: params.id } });
     throw redirect(303, `/companies/${params.id}`);
   },
 

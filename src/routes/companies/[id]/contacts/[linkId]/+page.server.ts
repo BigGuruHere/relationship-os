@@ -7,7 +7,7 @@ import { fail, redirect } from '@sveltejs/kit';
 import { prisma } from '$lib/db';
 import { encrypt } from '$lib/crypto';
 import { contactDisplayName } from '$lib/server/contactDisplay';
-import { createExchangeItemFromForm, deleteExchangeItem, loadExchangeItems } from '$lib/server/exchange';
+import { createOfferFromForm, deleteOffer, loadOffers } from '$lib/server/offers';
 import { createWantFromForm, deleteWant, loadWants } from '$lib/server/wants';
 import { companyContactStatusLabel, companyDisplay, COMPANY_CONTACT_STATUSES, normaliseCompanyContactStatus, safeDecryptCompany } from '$lib/companies';
 import { safeDecrypt, dealRelationshipLabel, normaliseDealRelationshipType, DEAL_RELATIONSHIP_TYPES, dealStatusLabel } from '$lib/deals';
@@ -132,7 +132,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
   const contactName = await contactDisplayName(relationship.contact);
   const companyName = safeDecryptCompany(relationship.company.nameEnc, 'company.name', 'Untitled company');
 
-  const [notes, tasks, dealContacts, wants, exchangeItems, dealOptions, projectOptions] = await Promise.all([
+  const [notes, tasks, dealContacts, wants, offers, dealOptions, projectOptions] = await Promise.all([
     prisma.companyContactNote.findMany({
       where: { userId, companyContactId: linkId },
       orderBy: [{ occurredAt: 'desc' }, { createdAt: 'desc' }],
@@ -177,7 +177,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
       take: 100
     }),
     loadWants({ userId, links: { companyContactId: linkId }, take: 50 }),
-    loadExchangeItems({ userId, links: { companyContactId: linkId }, take: 50 }),
+    loadOffers({ userId, links: { companyContactId: linkId }, take: 50 }),
     prisma.deal.findMany({ where: { userId }, select: { id: true, titleEnc: true, status: true }, orderBy: { updatedAt: 'desc' }, take: 300 }),
     prisma.project.findMany({ where: { userId, status: { not: 'ARCHIVED' } }, select: { id: true, titleEnc: true }, orderBy: { updatedAt: 'desc' }, take: 200 })
   ]);
@@ -256,7 +256,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
     tasks: tasks.map(mapTask),
     dealContacts: dealContacts.map(mapDealContact),
     wants,
-    exchangeItems,
+    offers,
     dealOptions: dealOptions.map((d: any) => ({ id: d.id, title: safeDecrypt(d.titleEnc, 'deal.title', 'Untitled deal'), status: d.status, statusLabel: dealStatusLabel(d.status) })),
     projectOptions: projectOptions.map((p: any) => ({ id: p.id, title: safeDecryptTask(p.titleEnc, 'project.title', 'Untitled project') })),
     taskContactOptions,
@@ -472,13 +472,13 @@ export const actions: Actions = {
     throw redirect(303, `/companies/${params.id}/contacts/${params.linkId}`);
   },
 
-  createExchangeItem: async ({ params, request, locals }) => {
+  createOffer: async ({ params, request, locals }) => {
     if (!locals.user) throw redirect(303, '/auth/login');
     const userId = locals.user.id;
     const relationship = await loadRelationship(userId, params.id, params.linkId);
     if (!relationship) return fail(404, { error: 'Relationship not found.' });
     const form = await request.formData();
-    await createExchangeItemFromForm({
+    await createOfferFromForm({
       userId,
       form,
       links: { companyContactId: relationship.id, companyId: relationship.company.id, contactId: relationship.contact.id }
@@ -486,12 +486,12 @@ export const actions: Actions = {
     throw redirect(303, `/companies/${params.id}/contacts/${params.linkId}`);
   },
 
-  deleteExchangeItem: async ({ params, request, locals }) => {
+  deleteOffer: async ({ params, request, locals }) => {
     if (!locals.user) throw redirect(303, '/auth/login');
     const form = await request.formData();
-    await deleteExchangeItem({
+    await deleteOffer({
       userId: locals.user.id,
-      id: String(form.get('exchangeItemId') || ''),
+      id: String(form.get('offerId') || ''),
       links: { companyContactId: params.linkId }
     });
     throw redirect(303, `/companies/${params.id}/contacts/${params.linkId}`);

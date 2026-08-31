@@ -9,7 +9,7 @@
   export let items: any[] = [];
   export let entityLabel = 'this record';
   export let title = 'Offers';
-  // IT: Older entity pages keep their Stage 7.3 compatibility action names while still reading/writing Offer.
+  // IT: Entity pages use the canonical Offer actions directly after Stage 8.3 retirement of ExchangeItem.
   export let createAction = '?/createOffer';
   export let deleteAction = '?/deleteOffer';
   export let deleteFieldName = 'offerId';

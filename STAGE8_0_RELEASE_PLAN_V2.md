@@ -123,18 +123,47 @@ Goals:
 
 Dorian is not required for this stage.
 
-## 8.6 - Consent / disclosure foundation
+## 8.5.1 - Relevance layer exploration (not required in migration lineage)
+
+The purpose/domain relevance work remains useful as an attention/retrieval layer, but it is not the custody boundary. The 8.5.1 package was not installed on the active development lineage and is superseded as a required stage. Reintroduce useful relevance/sensitivity classification only after ContextSpace custody is structurally explicit.
+
+## 8.5.2 - Agent access hardening + behavioural isolation tests
+
+Goals:
+
+- remove broad-read/post-query agent filtering,
+- build entity selects from data policy before canonical reads,
+- keep one tenant-scoped repository predicate for canonical agent reads,
+- add executable behavioural isolation tests,
+- add a real transactional Postgres isolation check,
+- record and verify retirement of the fail-open compatibility implementation.
+
+No schema migration is required.
+
+## 8.6 - ContextSpace custody foundation
+
+Goals:
+
+- add ContextSpace as the explicit custody/trust-context primitive,
+- retain User/Account ownership separately from ContextSpace custody,
+- create one default ContextSpace for every existing User,
+- backfill Core relationship knowledge to that default ContextSpace,
+- require `(userId, contextSpaceId)` for Core custody-scoped reads,
+- add subject-integrity constraints for important Core knowledge records,
+- no cross-context grants, disclosure, matching or new end-user workflow yet.
+
+## 8.7 - Consent / disclosure foundation
 
 Goals:
 
 - standing/default sharing policy where useful,
 - specific DisclosureGrant,
-- recipient/audience + purpose + scope + stage,
+- source ContextSpace + recipient/audience + purpose + scope + stage,
 - source consent evidence,
 - revocation,
 - future agents may request consent conversationally but cannot expand their own authority.
 
-## 8.7 - Manual PotentialMatch
+## 8.8 - Manual PotentialMatch
 
 Goals:
 
@@ -142,9 +171,9 @@ Goals:
 - domain/policy version,
 - manual matches first,
 - learn from Introduction/Outcome history,
-- no raw cross-tenant record visibility.
+- no raw cross-context record visibility.
 
-## 8.8 - Progressive bilateral disclosure
+## 8.9 - Progressive bilateral disclosure
 
 Goals:
 
@@ -153,7 +182,7 @@ Goals:
 - explicit introduction permission,
 - asymmetric disclosure where domain requires it.
 
-## 8.9 - Matchable projections
+## 8.10 - Matchable projections
 
 Goals:
 

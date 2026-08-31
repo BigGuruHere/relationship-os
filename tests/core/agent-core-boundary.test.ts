@@ -6,24 +6,29 @@ import { readFileSync, readdirSync } from 'node:fs';
 import test from 'node:test';
 
 const relationshipRepo = readFileSync('src/lib/server/core/relationshipRepository.ts', 'utf8');
+const scopedRepo = readFileSync('src/lib/server/core/scopedRepository.ts', 'utf8');
 const readContext = readFileSync('src/lib/server/agents/tools/readEntityContext.ts', 'utf8');
+const entityProjection = readFileSync('src/lib/server/core/agentEntityProjection.ts', 'utf8');
 const createTask = readFileSync('src/lib/server/agents/tools/createTask.ts', 'utf8');
 const createEnrichment = readFileSync('src/lib/server/agents/tools/createContactEnrichment.ts', 'utf8');
 const createResearchSource = readFileSync('src/lib/server/agents/tools/createResearchSource.ts', 'utf8');
 const createScore = readFileSync('src/lib/server/agents/tools/createOpportunityScore.ts', 'utf8');
 
-test('Core relationship repository applies workspace scoping to canonical entity reads', () => {
-  assert.match(relationshipRepo, /workspaceEntityWhere\(context, contactId\)/);
-  assert.match(relationshipRepo, /workspaceEntityWhere\(context, companyId\)/);
-  assert.match(relationshipRepo, /workspaceEntityWhere\(context, dealId\)/);
-  assert.match(relationshipRepo, /workspaceEntityWhere\(context, projectId\)/);
+test('Core relationship repository applies workspace scoping through one shared primitive', () => {
+  assert.match(relationshipRepo, /createScopedRelationshipRepository/);
+  assert.match(scopedRepo, /userId: required\(context\.workspaceUserId/);
+  assert.match(scopedRepo, /findContact:/);
+  assert.match(scopedRepo, /findCompany:/);
+  assert.match(scopedRepo, /findDeal:/);
+  assert.match(scopedRepo, /findProject:/);
 });
 
-test('read_entity_context uses scoped Core repositories rather than direct canonical Prisma reads', () => {
-  assert.match(readContext, /findCoreContact\(/);
-  assert.match(readContext, /findCoreCompany\(/);
-  assert.match(readContext, /findCoreDeal\(/);
-  assert.match(readContext, /findCoreProject\(/);
+test('read_entity_context delegates to a fail-closed Core projection backed by scoped repositories', () => {
+  assert.match(readContext, /buildAgentEntityContextProjection/);
+  assert.match(entityProjection, /findCoreContact\(/);
+  assert.match(entityProjection, /findCoreCompany\(/);
+  assert.match(entityProjection, /findCoreDeal\(/);
+  assert.match(entityProjection, /findCoreProject\(/);
   assert.doesNotMatch(readContext, /prisma\.(contact|company|deal|project)\.(findFirst|findUnique|findMany)/);
 });
 

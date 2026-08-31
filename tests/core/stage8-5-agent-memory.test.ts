@@ -62,18 +62,15 @@ test('future built-in agent setup persists both agent profile and data-access po
   assert.match(setup, /scopeKey: 'workspace_visible'/);
 });
 
-test('existing read_entity_context now checks data policy as well as tool permission', () => {
+test('existing read_entity_context loads policy and delegates to the fail-closed entity projection', () => {
   assert.match(readContext, /loadAgentAccessProfile\(access\)/);
-  assert.match(readContext, /assertAgentMayReadEntity\(policy/);
-  assert.match(readContext, /filterEntityContextForAgentPolicy\(raw, policy\)/);
+  assert.match(readContext, /buildAgentEntityContextProjection/);
+  assert.doesNotMatch(readContext, /filterEntityContextForAgentPolicy/);
 });
 
-test('compatibility filtering removes sections the current agent is not allowed to receive', () => {
-  assert.match(access, /if \(!policy\.allowContactMethods\)/);
-  assert.match(access, /if \(!policy\.allowInteractions\)/);
-  assert.match(access, /if \(!policy\.allowTasks\)/);
-  assert.match(access, /if \(!policy\.allowWants\) delete result\.wants/);
-  assert.match(access, /if \(!policy\.allowOffers\) delete result\.offers/);
+test('legacy post-query compatibility filtering has been retired', () => {
+  assert.doesNotMatch(access, /filterEntityContextForAgentPolicy/);
+  assert.match(readContext, /No post-query filtering/);
 });
 
 test('MemoryProjection is derived rather than persisted as another source-of-truth model', () => {

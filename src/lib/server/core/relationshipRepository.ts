@@ -1,29 +1,48 @@
 // src/lib/server/core/relationshipRepository.ts
 // PURPOSE: Scoped repository for canonical relationship records used by agents/Core services.
-// SECURITY: Callers provide a CoreAccessContext; this module always adds workspace userId to canonical entity predicates.
+// SECURITY: Tenant-owned records are only read through the shared scoped repository primitive.
 
 import type { Prisma } from '@prisma/client';
 import { prisma } from '$lib/db';
-import { workspaceEntityWhere, type CoreAccessContext } from '$lib/server/core/accessPolicy';
+import type { CoreAccessContext } from '$lib/server/core/accessPolicy';
+import { createScopedRelationshipRepository } from '$lib/server/core/scopedRepository';
+
+const scoped = createScopedRelationshipRepository(prisma as any);
 
 export function findCoreContact<T extends Prisma.ContactSelect>(context: CoreAccessContext, contactId: string, select: T) {
-  return prisma.contact.findFirst({ where: workspaceEntityWhere(context, contactId), select });
+  return scoped.findContact(context, contactId, select);
 }
 
 export function findCoreCompany<T extends Prisma.CompanySelect>(context: CoreAccessContext, companyId: string, select: T) {
-  return prisma.company.findFirst({ where: workspaceEntityWhere(context, companyId), select });
+  return scoped.findCompany(context, companyId, select);
 }
 
 export function findCoreDeal<T extends Prisma.DealSelect>(context: CoreAccessContext, dealId: string, select: T) {
-  return prisma.deal.findFirst({ where: workspaceEntityWhere(context, dealId), select });
+  return scoped.findDeal(context, dealId, select);
 }
 
 export function findCoreProject<T extends Prisma.ProjectSelect>(context: CoreAccessContext, projectId: string, select: T) {
-  return prisma.project.findFirst({ where: workspaceEntityWhere(context, projectId), select });
+  return scoped.findProject(context, projectId, select);
 }
 
 export function findCoreInteraction<T extends Prisma.InteractionSelect>(context: CoreAccessContext, interactionId: string, select: T) {
-  return prisma.interaction.findFirst({ where: workspaceEntityWhere(context, interactionId), select });
+  return scoped.findInteraction(context, interactionId, select);
+}
+
+export function findCoreWant<T extends Prisma.WantSelect>(context: CoreAccessContext, wantId: string, select: T) {
+  return scoped.findWant(context, wantId, select);
+}
+
+export function findCoreOffer<T extends Prisma.OfferSelect>(context: CoreAccessContext, offerId: string, select: T) {
+  return scoped.findOffer(context, offerId, select);
+}
+
+export function findCoreObjective<T extends Prisma.ObjectiveSelect>(context: CoreAccessContext, objectiveId: string, select: T) {
+  return scoped.findObjective(context, objectiveId, select);
+}
+
+export function findCoreKnowledgeClaim<T extends Prisma.KnowledgeClaimSelect>(context: CoreAccessContext, claimId: string, select: T) {
+  return scoped.findKnowledgeClaim(context, claimId, select);
 }
 
 // IT: Person identity is shared, but access remains anchored to this workspace through either

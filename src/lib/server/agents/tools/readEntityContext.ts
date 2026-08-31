@@ -4,6 +4,7 @@
 import { prisma } from '$lib/db';
 import { createAgentCoreAccess, type CoreAccessContext } from '$lib/server/core/accessPolicy';
 import { findCoreCompany, findCoreContact, findCoreDeal, findCoreProject } from '$lib/server/core/relationshipRepository';
+import { assertAgentMayReadEntity, filterEntityContextForAgentPolicy, loadAgentAccessProfile } from '$lib/server/core/agentDataAccess';
 import { decrypt } from '$lib/crypto';
 import { companyDisplay, companyKindLabel, companyRelationshipTypeLabel, companyStatusLabel, safeDecryptCompany } from '$lib/companies';
 import { dealRelationshipLabel, dealStatusLabel, formatDealValue, safeDecrypt } from '$lib/deals';
@@ -531,7 +532,10 @@ export const readEntityContextTool: ToolDefinition<ReadEntityContextInput, any> 
   requiresApproval: false,
   execute: async (input, context) => {
     const access = createAgentCoreAccess({ userId: context.userId, agentDefinitionId: context.agentDefinitionId, purpose: 'read_entity_context' });
-    const result = await readEntityContext(input, access);
+    const { policy } = await loadAgentAccessProfile(access);
+    assertAgentMayReadEntity(policy, input.entityType as 'contact' | 'company' | 'deal' | 'project');
+    const raw = await readEntityContext(input, access);
+    const result = filterEntityContextForAgentPolicy(raw, policy);
 
     // IT: Track which CRM record the run read from.
     await prisma.agentRunEntity.create({

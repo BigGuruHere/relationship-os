@@ -50,6 +50,7 @@ export function parseIntentMoney(form: FormData) {
 export function intentLinkWhere(userId: string, links: CommercialEntityLinks = {}) {
   const where: any = { userId };
   if (links.contactId) where.contactId = links.contactId;
+  if (links.personId) where.personId = links.personId;
   if (links.companyId) where.companyId = links.companyId;
   if (links.dealId) where.dealId = links.dealId;
   if (links.projectId) where.projectId = links.projectId;
@@ -61,6 +62,7 @@ export function intentLinkWhere(userId: string, links: CommercialEntityLinks = {
 export function intentUnlinkData(links: CommercialEntityLinks = {}) {
   const data: any = {};
   if (links.contactId) data.contactId = null;
+  if (links.personId) data.personId = null;
   if (links.companyId) {
     data.companyId = null;
     data.companyContactId = null;

@@ -4,6 +4,7 @@
 import { prisma } from '$lib/db';
 import type { ToolContext, ToolDefinition } from '$lib/server/agents/types';
 import { readEntityContextTool } from '$lib/server/agents/tools/readEntityContext';
+import { readAgentMemoryTool } from '$lib/server/agents/tools/readAgentMemory';
 import { createAgentArtifactTool } from '$lib/server/agents/tools/createArtifact';
 import { createResearchCandidateTool } from '$lib/server/agents/tools/createResearchCandidate';
 import { createOpportunityScoreTool } from '$lib/server/agents/tools/createOpportunityScore';
@@ -23,6 +24,7 @@ export function registerAgentTool<Input, Output>(tool: ToolDefinition<Input, Out
 function ensureRegistered() {
   if (tools.size > 0) return;
   registerAgentTool(readEntityContextTool);
+  registerAgentTool(readAgentMemoryTool);
   registerAgentTool(createAgentArtifactTool);
   registerAgentTool(createResearchCandidateTool);
   registerAgentTool(createOpportunityScoreTool);

@@ -225,6 +225,17 @@ const AGENTS = [
     name: 'Broker Brief Agent',
     description: 'Creates a structured broker briefing from Relish CRM context.',
     category: 'briefing',
+    personaKey: 'broker_analyst',
+    purposeKey: 'broker_briefing',
+    deploymentScope: 'workspace_internal',
+    authorityLevel: 'advisory',
+    dataPolicy: {
+      allowContacts: true, allowCompanies: true, allowDeals: true, allowProjects: true, allowPeople: true,
+      allowIdentity: true, allowContactMethods: true, allowInteractions: true, allowKnowledgeClaims: true,
+      allowObjectives: true, allowWants: true, allowOffers: true, allowRelationships: true,
+      allowIntroductions: true, allowOutcomes: true, allowTasks: true,
+      maxRecentInteractions: 8, maxKnowledgeClaims: 20, maxObjectives: 12, maxWants: 12, maxOffers: 12
+    },
     systemPrompt: BROKER_BRIEF_SYSTEM_PROMPT,
     instructions: BROKER_BRIEF_INSTRUCTIONS,
     outputSchemaJson: BROKER_BRIEF_OUTPUT_SCHEMA,
@@ -236,6 +247,17 @@ const AGENTS = [
     name: 'Opportunity Scoring Agent',
     description: 'Creates explainable scorecards for candidates, companies, contacts, and deals.',
     category: 'scoring',
+    personaKey: 'opportunity_analyst',
+    purposeKey: 'opportunity_scoring',
+    deploymentScope: 'workspace_internal',
+    authorityLevel: 'advisory',
+    dataPolicy: {
+      allowContacts: true, allowCompanies: true, allowDeals: true, allowProjects: false, allowPeople: true,
+      allowIdentity: true, allowContactMethods: false, allowInteractions: true, allowKnowledgeClaims: true,
+      allowObjectives: true, allowWants: true, allowOffers: true, allowRelationships: true,
+      allowIntroductions: true, allowOutcomes: true, allowTasks: false,
+      maxRecentInteractions: 8, maxKnowledgeClaims: 20, maxObjectives: 12, maxWants: 12, maxOffers: 12
+    },
     systemPrompt: OPPORTUNITY_SCORING_SYSTEM_PROMPT,
     instructions: OPPORTUNITY_SCORING_INSTRUCTIONS,
     outputSchemaJson: OPPORTUNITY_SCORING_OUTPUT_SCHEMA,
@@ -248,6 +270,17 @@ const AGENTS = [
     name: 'Contact Enrichment Agent',
     description: 'Stages public contact details with source evidence before CRM update.',
     category: 'enrichment',
+    personaKey: 'relationship_researcher',
+    purposeKey: 'contact_enrichment',
+    deploymentScope: 'workspace_internal',
+    authorityLevel: 'propose_only',
+    dataPolicy: {
+      allowContacts: true, allowCompanies: true, allowDeals: false, allowProjects: false, allowPeople: false,
+      allowIdentity: true, allowContactMethods: true, allowInteractions: false, allowKnowledgeClaims: false,
+      allowObjectives: false, allowWants: false, allowOffers: false, allowRelationships: true,
+      allowIntroductions: false, allowOutcomes: false, allowTasks: false,
+      maxRecentInteractions: 4, maxKnowledgeClaims: 8, maxObjectives: 6, maxWants: 6, maxOffers: 6
+    },
     systemPrompt: CONTACT_ENRICHMENT_SYSTEM_PROMPT,
     instructions: CONTACT_ENRICHMENT_INSTRUCTIONS,
     outputSchemaJson: CONTACT_ENRICHMENT_OUTPUT_SCHEMA,
@@ -259,6 +292,17 @@ const AGENTS = [
     name: 'Outreach Agent',
     description: 'Stages outreach candidates, scores opportunities, drafts outreach, requests approval, and creates next actions.',
     category: 'outreach',
+    personaKey: 'broker_outreach_assistant',
+    purposeKey: 'broker_outreach',
+    deploymentScope: 'workspace_internal',
+    authorityLevel: 'propose_and_operational',
+    dataPolicy: {
+      allowContacts: true, allowCompanies: true, allowDeals: true, allowProjects: true, allowPeople: true,
+      allowIdentity: true, allowContactMethods: true, allowInteractions: true, allowKnowledgeClaims: true,
+      allowObjectives: true, allowWants: true, allowOffers: true, allowRelationships: true,
+      allowIntroductions: true, allowOutcomes: true, allowTasks: true,
+      maxRecentInteractions: 8, maxKnowledgeClaims: 20, maxObjectives: 12, maxWants: 12, maxOffers: 12
+    },
     systemPrompt: OUTREACH_SYSTEM_PROMPT,
     instructions: OUTREACH_INSTRUCTIONS,
     outputSchemaJson: OUTREACH_OUTPUT_SCHEMA,
@@ -275,6 +319,14 @@ const CORE_TOOLS = [
     toolType: 'read',
     requiresApproval: false,
     agents: ['broker_brief_agent', 'outreach_agent', 'opportunity_scoring_agent', 'contact_enrichment_agent']
+  },
+  {
+    key: 'read_agent_memory',
+    name: 'Read agent memory',
+    description: 'Builds a purpose-scoped derived memory projection from permitted Relish Core records.',
+    toolType: 'read',
+    requiresApproval: false,
+    agents: ['broker_brief_agent', 'outreach_agent', 'opportunity_scoring_agent']
   },
   {
     key: 'create_agent_artifact',
@@ -354,6 +406,10 @@ export async function ensureCoreAgentSetup(userId: string) {
         description: cfg.description,
         category: cfg.category,
         status: 'active',
+        personaKey: cfg.personaKey,
+        purposeKey: cfg.purposeKey,
+        deploymentScope: cfg.deploymentScope,
+        authorityLevel: cfg.authorityLevel,
         defaultModelProvider: 'openai',
         defaultModelName: process.env.AGENT_DEFAULT_MODEL || 'gpt-4o-mini',
         systemPrompt: cfg.systemPrompt,
@@ -368,6 +424,10 @@ export async function ensureCoreAgentSetup(userId: string) {
         description: cfg.description,
         category: cfg.category,
         status: 'active',
+        personaKey: cfg.personaKey,
+        purposeKey: cfg.purposeKey,
+        deploymentScope: cfg.deploymentScope,
+        authorityLevel: cfg.authorityLevel,
         defaultModelProvider: 'openai',
         defaultModelName: process.env.AGENT_DEFAULT_MODEL || 'gpt-4o-mini',
         systemPrompt: cfg.systemPrompt,
@@ -377,6 +437,21 @@ export async function ensureCoreAgentSetup(userId: string) {
       }
     });
     createdAgents.set(cfg.key, { id: agent.id });
+
+    await prisma.agentDataAccessPolicy.upsert({
+      where: { agentDefinitionId: agent.id },
+      update: {
+        userId,
+        scopeKey: 'workspace_visible',
+        ...cfg.dataPolicy
+      },
+      create: {
+        userId,
+        agentDefinitionId: agent.id,
+        scopeKey: 'workspace_visible',
+        ...cfg.dataPolicy
+      }
+    });
 
     await prisma.agentPromptVersion.upsert({
       where: { agentDefinitionId_version: { agentDefinitionId: agent.id, version: cfg.promptVersion } },

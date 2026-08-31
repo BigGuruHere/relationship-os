@@ -25,7 +25,8 @@
     "check:stage8.2": "tsx scripts/check-stage8-2-provenance.ts",
     "check:stage8.3": "tsx scripts/check-stage8-3-consolidation.ts",
     "check:stage8.4": "tsx scripts/check-stage8-4-knowledge.ts",
-    "check:stage8.4.3": "tsx scripts/check-stage8-4-3-knowledge-ux.ts"
+    "check:stage8.4.3": "tsx scripts/check-stage8-4-3-knowledge-ux.ts",
+    "check:stage8.5": "tsx scripts/check-stage8-5-agent-memory.ts"
   },
   "engines": {
     "node": ">=22.13.1 <23"

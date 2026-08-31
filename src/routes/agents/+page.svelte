@@ -24,6 +24,7 @@
       <a class="btn" href="/agents/outreach/new">Start outreach</a>
       <a class="btn" href="/agents/scoring/new">Score opportunity</a>
       <a class="btn" href="/agents/enrichment/new">Enrich contacts</a>
+      <a class="btn" href="/agents/memory">Preview memory</a>
       <a class="btn" href="/agents/runs">All runs</a>
     </div>
   </div>
@@ -42,6 +43,8 @@
               <div class="meta">
                 <span>{agent.category}</span>
                 <span>{agent.status}</span>
+                <span>purpose: {agent.purposeKey}</span>
+                <span>authority: {agent.authorityLevel}</span>
                 <span>{agent.defaultModelProvider} / {agent.defaultModelName}</span>
                 <span>{agent._count?.runs ?? 0} runs</span>
               </div>

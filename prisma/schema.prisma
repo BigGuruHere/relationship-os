@@ -96,6 +96,7 @@ model User {
 
   // IT: agent framework records. Agents read/write through Relish services and every run is logged.
   agentDefinitions     AgentDefinition[]
+  agentDataAccessPolicies AgentDataAccessPolicy[]
   agentPromptVersions  AgentPromptVersion[]
   agentToolDefinitions AgentToolDefinition[]
   agentRuns            AgentRun[]
@@ -2515,6 +2516,14 @@ model AgentDefinition {
   description             String?
   category                String   @default("general")
   status                  String   @default("active")
+
+  // IT: Stage 8.5 separates who the agent presents as, why it exists, where it is deployed,
+  // and how much autonomous authority it has. These do not themselves grant data/tool access.
+  personaKey              String   @default("assistant")
+  purposeKey              String   @default("general")
+  deploymentScope         String   @default("workspace_internal")
+  authorityLevel          String   @default("advisory")
+
   defaultModelProvider    String   @default("openai")
   defaultModelName        String   @default("gpt-4o-mini")
   systemPrompt            String
@@ -2528,10 +2537,55 @@ model AgentDefinition {
   promptVersions          AgentPromptVersion[]
   runs                    AgentRun[]
   toolPermissions         AgentToolPermission[]
+  dataAccessPolicy        AgentDataAccessPolicy?
 
   @@unique([userId, key])
   @@index([userId, status])
   @@index([userId, category])
+}
+
+// IT: Stage 8.5 data permission is separate from tool/action permission.
+// A tool may be executable while the agent is still denied specific relationship data.
+// Defaults fail closed; ensureCoreAgentSetup installs explicit policies for built-in agents.
+model AgentDataAccessPolicy {
+  id                String   @id @default(uuid())
+  userId            String
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  agentDefinitionId String   @unique
+  agentDefinition   AgentDefinition @relation(fields: [agentDefinitionId], references: [id], onDelete: Cascade)
+
+  scopeKey          String   @default("workspace_visible")
+
+  allowContacts     Boolean  @default(false)
+  allowCompanies    Boolean  @default(false)
+  allowDeals        Boolean  @default(false)
+  allowProjects     Boolean  @default(false)
+  allowPeople       Boolean  @default(false)
+
+  allowIdentity         Boolean @default(false)
+  allowContactMethods   Boolean @default(false)
+  allowInteractions     Boolean @default(false)
+  allowKnowledgeClaims  Boolean @default(false)
+  allowObjectives       Boolean @default(false)
+  allowWants            Boolean @default(false)
+  allowOffers           Boolean @default(false)
+  allowRelationships    Boolean @default(false)
+  allowIntroductions    Boolean @default(false)
+  allowOutcomes         Boolean @default(false)
+  allowTasks            Boolean @default(false)
+
+  maxRecentInteractions Int @default(8)
+  maxKnowledgeClaims    Int @default(20)
+  maxObjectives         Int @default(12)
+  maxWants              Int @default(12)
+  maxOffers             Int @default(12)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([userId, scopeKey])
 }
 
 // IT: Prompt versions let you audit which prompt produced which run.

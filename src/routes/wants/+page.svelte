@@ -68,6 +68,12 @@
           <div class="field"><label for="geography">Geography</label><input id="geography" name="geography" placeholder="e.g. Victoria" /></div>
           <div class="field"><label for="currency">Currency</label><input id="currency" name="currency" value="AUD" maxlength="3" /></div>
         </div>
+        <div class="grid three provenance-grid">
+          <div class="field"><label for="authority">Authority</label><select id="authority" name="authority">{#each data.knowledgeAuthorities as opt}<option value={opt.value} selected={opt.value === 'THIRD_PARTY_REPORTED'}>{opt.label}</option>{/each}</select></div>
+          <div class="field"><label for="sourceType">Source</label><select id="sourceType" name="sourceType">{#each data.knowledgeSourceTypes as opt}<option value={opt.value} selected={opt.value === 'MANUAL'}>{opt.label}</option>{/each}</select></div>
+          <div class="field"><label for="confirmedAt">Last confirmed</label><input id="confirmedAt" name="confirmedAt" type="date" /></div>
+        </div>
+        <div class="field"><label for="sourceNote">Source / provenance note</label><input id="sourceNote" name="sourceNote" placeholder="e.g. Stated by Eric on a call; public company website; inferred from notes" /></div>
         <div class="grid four">
           <div class="field"><label for="valueMin">Minimum value ($m)</label><input id="valueMin" name="valueMin" type="number" min="0" max="100000000" step="0.00000001" inputmode="decimal" /></div>
           <div class="field"><label for="valueMax">Maximum value ($m)</label><input id="valueMax" name="valueMax" type="number" min="0" max="100000000" step="0.00000001" inputmode="decimal" /></div>
@@ -99,7 +105,7 @@
         <a class="card want-card" href={`/wants/${want.id}`}>
           <div class="topline">
             <div><h2>{want.title}</h2><div class="muted small">{want.wantTypeLabel} - {want.statusLabel} - {want.urgencyLabel} - {want.timeHorizonLabel}</div></div>
-            <div class="chip-row"><span class="status-chip">Importance {want.importance}/5</span><span class="status-chip">{want.confidenceLabel}</span></div>
+            <div class="chip-row"><span class="status-chip">Importance {want.importance}/5</span><span class="status-chip">{want.confidenceLabel}</span><span class="status-chip">{want.authorityLabel}</span></div>
           </div>
           <div class="muted small">{want.contact?.name || ''}{want.contact && want.company ? ' - ' : ''}{want.company?.name || ''}</div>
           {#if want.project || want.workstream}<div class="muted small">{want.project?.title || ''}{want.workstream ? ` - ${want.workstream.name}` : ''}</div>{/if}

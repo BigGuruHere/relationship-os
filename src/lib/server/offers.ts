@@ -23,6 +23,7 @@ import {
   offerTypeLabel,
   offerUrgencyLabel
 } from '$lib/offers';
+import { knowledgeAuthorityLabel, knowledgeSourceTypeLabel, normaliseKnowledgeAuthority, normaliseKnowledgeSourceType } from '$lib/provenance';
 
 export type OfferEntityLink = CommercialEntityLinks;
 
@@ -133,6 +134,15 @@ export async function createOfferFromForm(params: { userId: string; form: FormDa
   const urgency = normaliseOfferUrgency(form.get('urgency'));
   const timeHorizon = normaliseOfferTimeHorizon(form.get('timeHorizon'));
   const confidence = normaliseOfferConfidence(form.get('confidence'));
+  const authority = normaliseKnowledgeAuthority(form.get('authority'), 'THIRD_PARTY_REPORTED');
+  const sourceType = normaliseKnowledgeSourceType(form.get('sourceType'), 'MANUAL');
+  const sourceNote = String(form.get('sourceNote') || '').trim();
+  const sourceInteractionId = String(form.get('sourceInteractionId') || '').trim() || null;
+  const confirmedAt = parseDate(form.get('confirmedAt'));
+  if (sourceInteractionId) {
+    const sourceInteraction = await prisma.interaction.findFirst({ where: { id: sourceInteractionId, userId }, select: { id: true } });
+    if (!sourceInteraction) throw new Error('Source interaction not found in this workspace.');
+  }
   const importance = parseImportance(form.get('importance'));
 
   // IT: Route-provided links lock the corresponding browser fields. All resolved links are then
@@ -162,6 +172,11 @@ export async function createOfferFromForm(params: { userId: string; form: FormDa
       urgency: urgency as any,
       timeHorizon: timeHorizon as any,
       confidence: confidence as any,
+      authority: authority as any,
+      sourceType: sourceType as any,
+      sourceInteractionId,
+      sourceNoteEnc: sourceNote ? encrypt(sourceNote, 'offer.source_note') : null,
+      confirmedAt,
       valueMinCents: parseMoneyToCents(valueMinRaw),
       valueMaxCents: parseMoneyToCents(valueMaxRaw),
       currency,
@@ -223,6 +238,15 @@ export async function updateOfferFromForm(params: { userId: string; offerId: str
   const urgency = normaliseOfferUrgency(form.get('urgency'));
   const timeHorizon = normaliseOfferTimeHorizon(form.get('timeHorizon'));
   const confidence = normaliseOfferConfidence(form.get('confidence'));
+  const authority = normaliseKnowledgeAuthority(form.get('authority'), 'THIRD_PARTY_REPORTED');
+  const sourceType = normaliseKnowledgeSourceType(form.get('sourceType'), 'MANUAL');
+  const sourceNote = String(form.get('sourceNote') || '').trim();
+  const sourceInteractionId = String(form.get('sourceInteractionId') || '').trim() || null;
+  const confirmedAt = parseDate(form.get('confirmedAt'));
+  if (sourceInteractionId) {
+    const sourceInteraction = await prisma.interaction.findFirst({ where: { id: sourceInteractionId, userId }, select: { id: true } });
+    if (!sourceInteraction) throw new Error('Source interaction not found in this workspace.');
+  }
   const importance = parseImportance(form.get('importance'));
 
   // IT: Updates are just as strict as creates. Never rely on dropdown contents as an ownership boundary.
@@ -251,6 +275,11 @@ export async function updateOfferFromForm(params: { userId: string; offerId: str
       urgency: urgency as any,
       timeHorizon: timeHorizon as any,
       confidence: confidence as any,
+      authority: authority as any,
+      sourceType: sourceType as any,
+      sourceInteractionId,
+      sourceNoteEnc: sourceNote ? encrypt(sourceNote, 'offer.source_note') : null,
+      confirmedAt,
       valueMinCents: parseMoneyToCents(valueMinRaw),
       valueMaxCents: parseMoneyToCents(valueMaxRaw),
       currency,
@@ -320,6 +349,11 @@ export const offerSelect = {
   urgency: true,
   timeHorizon: true,
   confidence: true,
+  authority: true,
+  sourceType: true,
+  sourceInteractionId: true,
+  sourceNoteEnc: true,
+  confirmedAt: true,
   valueMinCents: true,
   valueMaxCents: true,
   currency: true,
@@ -357,6 +391,7 @@ export function mapOffer(row: any) {
   const summary = safeDecryptOffer(row.summaryEnc, 'offer.summary', '', 'exchange.summary');
   const category = safeDecryptOffer(row.categoryEnc, 'offer.category', '', 'exchange.category');
   const geography = safeDecryptOffer(row.geographyEnc, 'offer.geography', '', 'exchange.geography');
+  const sourceNote = safeDecryptOffer(row.sourceNoteEnc, 'offer.source_note', '');
   return {
     id: row.id,
     offerType: row.offerType,
@@ -379,6 +414,13 @@ export function mapOffer(row: any) {
     timeHorizonLabel: offerTimeHorizonLabel(row.timeHorizon),
     confidence: row.confidence,
     confidenceLabel: offerConfidenceLabel(row.confidence),
+    authority: row.authority,
+    authorityLabel: knowledgeAuthorityLabel(row.authority),
+    sourceType: row.sourceType,
+    sourceTypeLabel: knowledgeSourceTypeLabel(row.sourceType),
+    sourceInteractionId: row.sourceInteractionId,
+    sourceNote,
+    confirmedAt: row.confirmedAt,
     valueMinCents: row.valueMinCents === null || row.valueMinCents === undefined ? null : row.valueMinCents.toString(),
     valueMaxCents: row.valueMaxCents === null || row.valueMaxCents === undefined ? null : row.valueMaxCents.toString(),
     valueMinLabel: row.valueMinCents === null || row.valueMinCents === undefined ? '' : formatDealValue(row.valueMinCents, row.currency),

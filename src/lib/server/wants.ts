@@ -21,6 +21,7 @@ import {
   wantTypeLabel,
   wantUrgencyLabel
 } from '$lib/wants';
+import { knowledgeAuthorityLabel, knowledgeSourceTypeLabel, normaliseKnowledgeAuthority, normaliseKnowledgeSourceType } from '$lib/provenance';
 
 export type WantEntityLink = CommercialEntityLinks;
 
@@ -128,6 +129,15 @@ export async function createWantFromForm(params: { userId: string; form: FormDat
   const urgency = normaliseWantUrgency(form.get('urgency'));
   const timeHorizon = normaliseWantTimeHorizon(form.get('timeHorizon'));
   const confidence = normaliseWantConfidence(form.get('confidence'));
+  const authority = normaliseKnowledgeAuthority(form.get('authority'), 'THIRD_PARTY_REPORTED');
+  const sourceType = normaliseKnowledgeSourceType(form.get('sourceType'), 'MANUAL');
+  const sourceNote = String(form.get('sourceNote') || '').trim();
+  const sourceInteractionId = String(form.get('sourceInteractionId') || '').trim() || null;
+  const confirmedAt = parseDate(form.get('confirmedAt'));
+  if (sourceInteractionId) {
+    const sourceInteraction = await prisma.interaction.findFirst({ where: { id: sourceInteractionId, userId }, select: { id: true } });
+    if (!sourceInteraction) throw new Error('Source interaction not found in this workspace.');
+  }
   const importance = parseImportance(form.get('importance'));
 
   // IT: Route-provided links lock the corresponding browser fields. All resolved links are then
@@ -156,6 +166,11 @@ export async function createWantFromForm(params: { userId: string; form: FormDat
       urgency: urgency as any,
       timeHorizon: timeHorizon as any,
       confidence: confidence as any,
+      authority: authority as any,
+      sourceType: sourceType as any,
+      sourceInteractionId,
+      sourceNoteEnc: sourceNote ? encrypt(sourceNote, 'want.source_note') : null,
+      confirmedAt,
       valueMinCents: parseMoneyToCents(valueMinRaw),
       valueMaxCents: parseMoneyToCents(valueMaxRaw),
       currency,
@@ -215,6 +230,15 @@ export async function updateWantFromForm(params: { userId: string; wantId: strin
   const urgency = normaliseWantUrgency(form.get('urgency'));
   const timeHorizon = normaliseWantTimeHorizon(form.get('timeHorizon'));
   const confidence = normaliseWantConfidence(form.get('confidence'));
+  const authority = normaliseKnowledgeAuthority(form.get('authority'), 'THIRD_PARTY_REPORTED');
+  const sourceType = normaliseKnowledgeSourceType(form.get('sourceType'), 'MANUAL');
+  const sourceNote = String(form.get('sourceNote') || '').trim();
+  const sourceInteractionId = String(form.get('sourceInteractionId') || '').trim() || null;
+  const confirmedAt = parseDate(form.get('confirmedAt'));
+  if (sourceInteractionId) {
+    const sourceInteraction = await prisma.interaction.findFirst({ where: { id: sourceInteractionId, userId }, select: { id: true } });
+    if (!sourceInteraction) throw new Error('Source interaction not found in this workspace.');
+  }
   const importance = parseImportance(form.get('importance'));
 
   // IT: Updates are just as strict as creates. Never rely on dropdown contents as an ownership boundary.
@@ -242,6 +266,11 @@ export async function updateWantFromForm(params: { userId: string; wantId: strin
       urgency: urgency as any,
       timeHorizon: timeHorizon as any,
       confidence: confidence as any,
+      authority: authority as any,
+      sourceType: sourceType as any,
+      sourceInteractionId,
+      sourceNoteEnc: sourceNote ? encrypt(sourceNote, 'want.source_note') : null,
+      confirmedAt,
       valueMinCents: parseMoneyToCents(valueMinRaw),
       valueMaxCents: parseMoneyToCents(valueMaxRaw),
       currency,
@@ -306,7 +335,7 @@ export async function applyCompanyAcquisitionCriteria(params: {
     // the working source of truth, although the old column remains for migration compatibility.
     await prisma.want.updateMany({
       where: { id: existing.id, userId },
-      data: { criteriaEnc: encrypt(criteria, 'want.criteria') }
+      data: { criteriaEnc: encrypt(criteria, 'want.criteria'), authority: 'SYSTEM_DERIVED' as any, sourceType: 'AGENT' as any, confirmedAt: new Date() }
     });
     await storeWantEmbedding(userId, existing.id, `Acquisition criteria for ${companyName}\n${criteria}`);
     return { id: existing.id, changed: true };
@@ -324,7 +353,10 @@ export async function applyCompanyAcquisitionCriteria(params: {
       importance: 3,
       urgency: 'NORMAL' as any,
       timeHorizon: 'ONGOING' as any,
-      confidence: 'MEDIUM' as any
+      confidence: 'MEDIUM' as any,
+      authority: 'SYSTEM_DERIVED' as any,
+      sourceType: 'AGENT' as any,
+      confirmedAt: new Date()
     },
     select: { id: true }
   });
@@ -366,6 +398,11 @@ export const wantSelect = {
   urgency: true,
   timeHorizon: true,
   confidence: true,
+  authority: true,
+  sourceType: true,
+  sourceInteractionId: true,
+  sourceNoteEnc: true,
+  confirmedAt: true,
   valueMinCents: true,
   valueMaxCents: true,
   currency: true,
@@ -403,6 +440,7 @@ export function mapWant(row: any) {
   const summary = safeDecryptWant(row.summaryEnc, 'want.summary', '', 'exchange.summary');
   const category = safeDecryptWant(row.categoryEnc, 'want.category', '', 'exchange.category');
   const geography = safeDecryptWant(row.geographyEnc, 'want.geography', '', 'exchange.geography');
+  const sourceNote = safeDecryptWant(row.sourceNoteEnc, 'want.source_note', '');
   return {
     id: row.id,
     wantType: row.wantType,
@@ -423,6 +461,13 @@ export function mapWant(row: any) {
     timeHorizonLabel: wantTimeHorizonLabel(row.timeHorizon),
     confidence: row.confidence,
     confidenceLabel: wantConfidenceLabel(row.confidence),
+    authority: row.authority,
+    authorityLabel: knowledgeAuthorityLabel(row.authority),
+    sourceType: row.sourceType,
+    sourceTypeLabel: knowledgeSourceTypeLabel(row.sourceType),
+    sourceInteractionId: row.sourceInteractionId,
+    sourceNote,
+    confirmedAt: row.confirmedAt,
     valueMinCents: row.valueMinCents === null || row.valueMinCents === undefined ? null : row.valueMinCents.toString(),
     valueMaxCents: row.valueMaxCents === null || row.valueMaxCents === undefined ? null : row.valueMaxCents.toString(),
     valueMinLabel: row.valueMinCents === null || row.valueMinCents === undefined ? '' : formatDealValue(row.valueMinCents, row.currency),

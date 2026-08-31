@@ -9,6 +9,7 @@ import { safeDecrypt } from '$lib/deals';
 import { contactDisplayName } from '$lib/server/contactDisplay';
 import { createOfferFromForm, mapOffer, offerSelect } from '$lib/server/offers';
 import { OFFER_CONFIDENCES, OFFER_DIRECTIONS, OFFER_STATUSES, OFFER_TIME_HORIZONS, OFFER_TYPES, OFFER_URGENCIES } from '$lib/offers';
+import { KNOWLEDGE_AUTHORITIES, KNOWLEDGE_SOURCE_TYPES } from '$lib/provenance';
 
 
 const SORT_OPTIONS = [
@@ -116,6 +117,8 @@ export const load: PageServerLoad = async ({ locals, url }) => {
     offerUrgencies: OFFER_URGENCIES,
     offerTimeHorizons: OFFER_TIME_HORIZONS,
     offerConfidences: OFFER_CONFIDENCES,
+    knowledgeAuthorities: KNOWLEDGE_AUTHORITIES,
+    knowledgeSourceTypes: KNOWLEDGE_SOURCE_TYPES,
     offerDirections: OFFER_DIRECTIONS,
     projects: projectsRaw.map((p: any) => ({ id: p.id, title: safeDecrypt(p.titleEnc, 'project.title', 'Untitled project') })),
     workstreams: workstreamsRaw.map((ws: any) => ({ id: ws.id, projectId: ws.projectId, name: safeDecrypt(ws.nameEnc, 'project_workstream.name', 'Untitled workstream'), projectTitle: safeDecrypt(ws.project?.titleEnc, 'project.title', 'Untitled project') })),

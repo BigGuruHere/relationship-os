@@ -58,9 +58,13 @@
       <div><strong>Value</strong></div><div>{valueRange(data.offer)}</div>
       <div><strong>Geography</strong></div><div>{data.offer.geography || ' - '}</div>
       <div><strong>Review</strong></div><div>{fmt(data.offer.reviewAt)}</div>
+      <div><strong>Authority</strong></div><div>{data.offer.authorityLabel}</div>
+      <div><strong>Source</strong></div><div>{data.offer.sourceTypeLabel}</div>
+      <div><strong>Last confirmed</strong></div><div>{fmt(data.offer.confirmedAt)}</div>
     </div>
     {#if data.offer.description}<div class="text-block"><h3>Description</h3><p>{data.offer.description}</p></div>{/if}
     {#if data.offer.terms}<div class="text-block"><h3>Terms</h3><p>{data.offer.terms}</p></div>{/if}
+    {#if data.offer.sourceNote}<div class="text-block"><h3>Source / provenance</h3><p>{data.offer.sourceNote}</p></div>{/if}
   </section>
 
   {#if showEdit}
@@ -84,6 +88,12 @@
         <div class="grid two"><div class="field"><label for="projectId">Project</label><select id="projectId" name="projectId"><option value="">No project</option>{#each data.projects as p}<option value={p.id} selected={data.offer.projectId === p.id}>{p.title}</option>{/each}</select></div><div class="field"><label for="workstreamId">Workstream</label><select id="workstreamId" name="workstreamId"><option value="">No workstream</option>{#each data.workstreams as ws}<option value={ws.id} selected={data.offer.workstreamId === ws.id}>{ws.projectTitle} - {ws.name}</option>{/each}</select></div></div>
         <div class="grid three"><div class="field"><label for="importance">Importance</label><input id="importance" name="importance" type="number" min="1" max="5" value={data.offer.importance} /></div><div class="field"><label for="urgency">Urgency</label><select id="urgency" name="urgency">{#each data.offerUrgencies as opt}<option value={opt.value} selected={data.offer.urgency === opt.value}>{opt.label}</option>{/each}</select></div><div class="field"><label for="timeHorizon">Time horizon</label><select id="timeHorizon" name="timeHorizon">{#each data.offerTimeHorizons as opt}<option value={opt.value} selected={data.offer.timeHorizon === opt.value}>{opt.label}</option>{/each}</select></div></div>
         <div class="grid three"><div class="field"><label for="confidence">Confidence</label><select id="confidence" name="confidence">{#each data.offerConfidences as opt}<option value={opt.value} selected={data.offer.confidence === opt.value}>{opt.label}</option>{/each}</select></div><div class="field"><label for="geography">Geography</label><input id="geography" name="geography" value={data.offer.geography || ''} /></div><div class="field"><label for="currency">Currency</label><input id="currency" name="currency" value={data.offer.currency || 'AUD'} /></div></div>
+        <div class="grid three">
+          <div class="field"><label for="authority">Authority</label><select id="authority" name="authority">{#each data.knowledgeAuthorities as opt}<option value={opt.value} selected={data.offer.authority === opt.value}>{opt.label}</option>{/each}</select></div>
+          <div class="field"><label for="sourceType">Source</label><select id="sourceType" name="sourceType">{#each data.knowledgeSourceTypes as opt}<option value={opt.value} selected={data.offer.sourceType === opt.value}>{opt.label}</option>{/each}</select></div>
+          <div class="field"><label for="confirmedAt">Last confirmed</label><input id="confirmedAt" name="confirmedAt" type="date" value={data.editValues.confirmedAt} /></div>
+        </div>
+        <div class="field"><label for="sourceNote">Source / provenance note</label><input id="sourceNote" name="sourceNote" value={data.offer.sourceNote || ''} /></div>
         <div class="grid four"><div class="field"><label for="valueMin">Minimum value ($m)</label><input id="valueMin" name="valueMin" type="number" min="0" max="100000000" step="0.00000001" inputmode="decimal" value={data.editValues.valueMin || ''} /></div><div class="field"><label for="valueMax">Maximum value ($m)</label><input id="valueMax" name="valueMax" type="number" min="0" max="100000000" step="0.00000001" inputmode="decimal" value={data.editValues.valueMax || ''} /></div><div class="field"><label for="reviewAt">Review</label><input id="reviewAt" name="reviewAt" type="date" value={data.editValues.reviewAt} on:change={closeDatePickerOnChange} /></div><div class="field"><label for="expiresAt">Expiry</label><input id="expiresAt" name="expiresAt" type="date" value={data.editValues.expiresAt} on:change={closeDatePickerOnChange} /></div></div>
         <button class="btn primary" type="submit">Save changes</button>
       </form>

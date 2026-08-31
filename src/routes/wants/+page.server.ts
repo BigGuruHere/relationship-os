@@ -9,6 +9,7 @@ import { safeDecrypt } from '$lib/deals';
 import { contactDisplayName } from '$lib/server/contactDisplay';
 import { createWantFromForm, mapWant, wantSelect } from '$lib/server/wants';
 import { WANT_CONFIDENCES, WANT_STATUSES, WANT_TIME_HORIZONS, WANT_TYPES, WANT_URGENCIES } from '$lib/wants';
+import { KNOWLEDGE_AUTHORITIES, KNOWLEDGE_SOURCE_TYPES } from '$lib/provenance';
 
 
 const SORT_OPTIONS = [
@@ -116,6 +117,8 @@ export const load: PageServerLoad = async ({ locals, url }) => {
     wantUrgencies: WANT_URGENCIES,
     wantTimeHorizons: WANT_TIME_HORIZONS,
     wantConfidences: WANT_CONFIDENCES,
+    knowledgeAuthorities: KNOWLEDGE_AUTHORITIES,
+    knowledgeSourceTypes: KNOWLEDGE_SOURCE_TYPES,
     projects: projectsRaw.map((p: any) => ({ id: p.id, title: safeDecrypt(p.titleEnc, 'project.title', 'Untitled project') })),
     workstreams: workstreamsRaw.map((ws: any) => ({ id: ws.id, projectId: ws.projectId, name: safeDecrypt(ws.nameEnc, 'project_workstream.name', 'Untitled workstream'), projectTitle: safeDecrypt(ws.project?.titleEnc, 'project.title', 'Untitled project') })),
     contacts: await Promise.all(contactsRaw.map(async (c: any) => ({ id: c.id, name: await contactDisplayName(c) }))),

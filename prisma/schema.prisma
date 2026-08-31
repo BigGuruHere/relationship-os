@@ -88,6 +88,9 @@ model User {
   wantNotes             WantNote[]
   offers                Offer[]
   offerNotes            OfferNote[]
+  introductions         Introduction[]
+  introductionParticipants IntroductionParticipant[]
+  outcomes              Outcome[]
 
   // IT: agent framework records. Agents read/write through Relish services and every run is logged.
   agentDefinitions     AgentDefinition[]
@@ -407,6 +410,8 @@ model Contact {
   researchSources   ResearchSource[]
   contactEnrichments ContactEnrichment[]
   marketLeads        MarketLead[]
+  introductionParticipants IntroductionParticipant[]
+  facilitatedIntroductions Introduction[] @relation("IntroductionFacilitator")
 
   // Indexes for search and tenancy
   @@index([userId])
@@ -448,6 +453,12 @@ model Interaction {
   updatedAt DateTime @updatedAt
 
   InteractionEmbedding InteractionEmbedding?
+
+  // IT: Stage 8.2 provenance links. An interaction can be the explicit source evidence for later relationship intelligence.
+  sourcedWants         Want[]         @relation("WantSourceInteraction")
+  sourcedOffers        Offer[]        @relation("OfferSourceInteraction")
+  sourcedIntroductions Introduction[] @relation("IntroductionSourceInteraction")
+  sourcedOutcomes      Outcome[]      @relation("OutcomeSourceInteraction")
 
   @@index([userId])
   @@index([contactId])
@@ -928,6 +939,7 @@ model Company {
   opportunityScoreFactors OpportunityScoreFactor[]
   researchSources   ResearchSource[]
   contactEnrichments ContactEnrichment[]
+  introductionParticipants IntroductionParticipant[]
   marketLeads        MarketLead[]
 
   @@index([userId, nameIdx])
@@ -1100,6 +1112,28 @@ model CompanyRelationship {
 // IT: Want is the demand-side object for buyer mandates, acquisition criteria,
 // search briefs, and "keep an eye out" requests. Stage 7.3 also promoted Offers to a
 // first-class model; legacy ExchangeItem rows remain only for migration/history compatibility.
+// IT: Stage 8.2 separates where relationship intelligence came from from how confident we are in it.
+// IT: WORKSPACE_RECORDED is for events/facts directly recorded by the current workspace rather than statements by the subject.
+enum KnowledgeAuthority {
+  LEGACY_UNSPECIFIED
+  SELF_DECLARED
+  THIRD_PARTY_REPORTED
+  WORKSPACE_RECORDED
+  PUBLIC_SOURCE
+  INFERRED
+  SYSTEM_DERIVED
+}
+
+enum KnowledgeSourceType {
+  MANUAL
+  INTERACTION
+  PUBLIC_RESEARCH
+  AGENT
+  IMPORT
+  SYSTEM
+  OTHER
+}
+
 enum WantType {
   GENERAL
   ACQUISITION_CRITERIA
@@ -1144,6 +1178,14 @@ model Want {
   timeHorizon ExchangeTimeHorizon @default(ONGOING)
   confidence ExchangeConfidence @default(MEDIUM)
 
+  // IT: Stage 8.2 provenance is a separate axis from confidence. Existing rows are deliberately marked legacy/unspecified.
+  authority           KnowledgeAuthority  @default(LEGACY_UNSPECIFIED)
+  sourceType          KnowledgeSourceType @default(MANUAL)
+  sourceInteractionId String?
+  sourceInteraction   Interaction? @relation("WantSourceInteraction", fields: [sourceInteractionId], references: [id], onDelete: SetNull)
+  sourceNoteEnc       String?
+  confirmedAt         DateTime?
+
   valueMinCents BigInt?
   valueMaxCents BigInt?
   currency      String @default("AUD")
@@ -1187,6 +1229,9 @@ model Want {
   @@index([userId, urgency])
   @@index([userId, timeHorizon])
   @@index([userId, confidence])
+  @@index([userId, authority])
+  @@index([userId, sourceType])
+  @@index([userId, sourceInteractionId])
   @@index([userId, contactId])
   @@index([userId, companyId])
   @@index([userId, dealId])
@@ -1268,6 +1313,14 @@ model Offer {
   timeHorizon ExchangeTimeHorizon @default(ONGOING)
   confidence ExchangeConfidence @default(MEDIUM)
 
+  // IT: Stage 8.2 provenance is a separate axis from confidence. Existing rows are deliberately marked legacy/unspecified.
+  authority           KnowledgeAuthority  @default(LEGACY_UNSPECIFIED)
+  sourceType          KnowledgeSourceType @default(MANUAL)
+  sourceInteractionId String?
+  sourceInteraction   Interaction? @relation("OfferSourceInteraction", fields: [sourceInteractionId], references: [id], onDelete: SetNull)
+  sourceNoteEnc       String?
+  confirmedAt         DateTime?
+
   valueMinCents BigInt?
   valueMaxCents BigInt?
   currency      String @default("AUD")
@@ -1311,6 +1364,9 @@ model Offer {
   @@index([userId, urgency])
   @@index([userId, timeHorizon])
   @@index([userId, confidence])
+  @@index([userId, authority])
+  @@index([userId, sourceType])
+  @@index([userId, sourceInteractionId])
   @@index([userId, contactId])
   @@index([userId, companyId])
   @@index([userId, dealId])
@@ -1342,6 +1398,145 @@ model OfferNote {
   @@index([userId, createdAt])
 }
 
+
+// ---------------------------------------------------------------------------
+// STAGE 8.2 INTRODUCTION + OUTCOME MODELS
+// ---------------------------------------------------------------------------
+// IT: Introduction records a real connection event. It is intentionally independent of PotentialMatch,
+// which does not exist yet, so real introductions can teach the later matching design.
+enum IntroductionStatus {
+  PLANNED
+  PROPOSED
+  INTRODUCED
+  CONNECTED
+  DECLINED
+  CLOSED
+}
+
+enum IntroductionSide {
+  A
+  B
+}
+
+enum OutcomeStatus {
+  UNKNOWN
+  NO_RESPONSE
+  DECLINED
+  CONNECTED
+  CONTINUING
+  SUCCESSFUL
+  ENDED
+}
+
+enum OutcomeCommerciality {
+  UNKNOWN
+  NON_COMMERCIAL
+  COMMERCIAL
+}
+
+model Introduction {
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  status     IntroductionStatus @default(INTRODUCED)
+  occurredAt DateTime           @default(now())
+
+  reasonEnc   String?
+  notesEnc    String?
+  evidenceEnc String?
+
+  // IT: provenance of the introduction record itself. Authority remains distinct from source and confidence.
+  authority           KnowledgeAuthority  @default(WORKSPACE_RECORDED)
+  sourceType          KnowledgeSourceType @default(MANUAL)
+  sourceInteractionId String?
+  sourceInteraction   Interaction? @relation("IntroductionSourceInteraction", fields: [sourceInteractionId], references: [id], onDelete: SetNull)
+
+  // IT: Optional linked facilitator when somebody other than the workspace owner made the introduction.
+  facilitatorContactId String?
+  facilitatorContact   Contact? @relation("IntroductionFacilitator", fields: [facilitatorContactId], references: [id], onDelete: SetNull)
+
+  participants IntroductionParticipant[]
+  outcomes     Outcome[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, status])
+  @@index([userId, occurredAt])
+  @@index([userId, authority])
+  @@index([userId, sourceType])
+  @@index([userId, sourceInteractionId])
+  @@index([userId, facilitatorContactId])
+}
+
+// IT: Exactly two sides are used in Stage 8.2. A side can be a Contact, Company, or both
+// (for example, a named person representing a company). Tenant ownership is duplicated here deliberately
+// so every participant query can fail closed without traversing the parent first.
+model IntroductionParticipant {
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  introductionId String
+  introduction   Introduction @relation(fields: [introductionId], references: [id], onDelete: Cascade)
+
+  side IntroductionSide
+
+  contactId String?
+  contact   Contact? @relation(fields: [contactId], references: [id], onDelete: SetNull)
+
+  companyId String?
+  company   Company? @relation(fields: [companyId], references: [id], onDelete: SetNull)
+
+  roleEnc String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([introductionId, side])
+  @@index([userId, contactId])
+  @@index([userId, companyId])
+}
+
+// IT: Outcomes are appendable observations over time rather than one mutable final field.
+// This lets early "spoke" or "continuing" evidence coexist with a later commercial or non-commercial result.
+model Outcome {
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  introductionId String
+  introduction   Introduction @relation(fields: [introductionId], references: [id], onDelete: Cascade)
+
+  status        OutcomeStatus        @default(UNKNOWN)
+  commerciality OutcomeCommerciality @default(UNKNOWN)
+  useful        Boolean?
+  continued     Boolean?
+
+  valueCents BigInt?
+  currency   String @default("AUD")
+
+  resultEnc   String?
+  notesEnc    String?
+  evidenceEnc String?
+
+  authority           KnowledgeAuthority  @default(WORKSPACE_RECORDED)
+  sourceType          KnowledgeSourceType @default(MANUAL)
+  sourceInteractionId String?
+  sourceInteraction   Interaction? @relation("OutcomeSourceInteraction", fields: [sourceInteractionId], references: [id], onDelete: SetNull)
+
+  occurredAt DateTime @default(now())
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([userId, introductionId, occurredAt])
+  @@index([userId, status])
+  @@index([userId, commerciality])
+  @@index([userId, authority])
+  @@index([userId, sourceType])
+  @@index([userId, sourceInteractionId])
+}
 
 // ---------------------------------------------------------------------------
 // LEGACY EXCHANGEITEM COMPATIBILITY MODEL

@@ -69,6 +69,12 @@
           <div class="field"><label for="geography">Geography</label><input id="geography" name="geography" placeholder="e.g. Victoria" /></div>
           <div class="field"><label for="currency">Currency</label><input id="currency" name="currency" value="AUD" maxlength="3" /></div>
         </div>
+        <div class="grid three provenance-grid">
+          <div class="field"><label for="authority">Authority</label><select id="authority" name="authority">{#each data.knowledgeAuthorities as opt}<option value={opt.value} selected={opt.value === 'THIRD_PARTY_REPORTED'}>{opt.label}</option>{/each}</select></div>
+          <div class="field"><label for="sourceType">Source</label><select id="sourceType" name="sourceType">{#each data.knowledgeSourceTypes as opt}<option value={opt.value} selected={opt.value === 'MANUAL'}>{opt.label}</option>{/each}</select></div>
+          <div class="field"><label for="confirmedAt">Last confirmed</label><input id="confirmedAt" name="confirmedAt" type="date" /></div>
+        </div>
+        <div class="field"><label for="sourceNote">Source / provenance note</label><input id="sourceNote" name="sourceNote" placeholder="e.g. Stated by Eric on a call; public company website; inferred from notes" /></div>
         <div class="grid four">
           <div class="field"><label for="valueMin">Minimum value ($m)</label><input id="valueMin" name="valueMin" type="number" min="0" max="100000000" step="0.00000001" inputmode="decimal" /></div>
           <div class="field"><label for="valueMax">Maximum value ($m)</label><input id="valueMax" name="valueMax" type="number" min="0" max="100000000" step="0.00000001" inputmode="decimal" /></div>
@@ -100,7 +106,7 @@
         <a class="card offer-card" href={`/offers/${offer.id}`}>
           <div class="topline">
             <div><h2>{offer.title}</h2><div class="muted small">{offer.offerTypeLabel} - {offer.statusLabel} - {offer.directionLabel} - {offer.urgencyLabel} - {offer.timeHorizonLabel}</div></div>
-            <div class="chip-row"><span class="status-chip">Importance {offer.importance}/5</span><span class="status-chip">{offer.confidenceLabel}</span></div>
+            <div class="chip-row"><span class="status-chip">Importance {offer.importance}/5</span><span class="status-chip">{offer.confidenceLabel}</span><span class="status-chip">{offer.authorityLabel}</span></div>
           </div>
           <div class="muted small">{offer.contact?.name || ''}{offer.contact && offer.company ? ' - ' : ''}{offer.company?.name || ''}</div>
           {#if offer.project || offer.workstream}<div class="muted small">{offer.project?.title || ''}{offer.workstream ? ` - ${offer.workstream.name}` : ''}</div>{/if}

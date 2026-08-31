@@ -20,6 +20,7 @@ import {
 } from '$lib/server/wants';
 import { WANT_CONFIDENCES, WANT_STATUSES, WANT_TIME_HORIZONS, WANT_TYPES, WANT_URGENCIES, dateToInputDate } from '$lib/wants';
 import { TASK_FOCUS_OPTIONS, TASK_STATUSES, TASK_TYPES, taskFocusLabel, taskStatusLabel, taskTypeLabel, safeDecryptTask } from '$lib/tasks';
+import { KNOWLEDGE_AUTHORITIES, KNOWLEDGE_SOURCE_TYPES } from '$lib/provenance';
 
 
 export const load: PageServerLoad = async ({ params, locals }) => {
@@ -68,6 +69,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
     editValues: {
       reviewAt: dateToInputDate(want.reviewAt),
       expiresAt: dateToInputDate(want.expiresAt),
+      confirmedAt: dateToInputDate(want.confirmedAt),
       valueMin: centsToMillionsInputValue(want.valueMinCents),
       valueMax: centsToMillionsInputValue(want.valueMaxCents)
     },
@@ -82,6 +84,8 @@ export const load: PageServerLoad = async ({ params, locals }) => {
     wantUrgencies: WANT_URGENCIES,
     wantTimeHorizons: WANT_TIME_HORIZONS,
     wantConfidences: WANT_CONFIDENCES,
+    knowledgeAuthorities: KNOWLEDGE_AUTHORITIES,
+    knowledgeSourceTypes: KNOWLEDGE_SOURCE_TYPES,
     contacts: await Promise.all(contactsRaw.map(async (c: any) => ({ id: c.id, name: await contactDisplayName(c) }))),
     companies: companiesRaw.map((c: any) => ({ id: c.id, name: safeDecrypt(c.nameEnc, 'company.name', 'Untitled company') })),
     deals: dealsRaw.map((d: any) => ({ id: d.id, title: safeDecrypt(d.titleEnc, 'deal.title', 'Untitled deal'), status: d.status })),

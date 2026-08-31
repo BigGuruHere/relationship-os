@@ -21,7 +21,8 @@
 		"postinstall": "prisma generate",
 		"test": "tsx --test \"tests/core/*.test.ts\"",
 		"test:core": "tsx --test \"tests/core/*.test.ts\"",
-		"check:stage8.1": "tsx scripts/check-stage8-1-identity.ts"
+		"check:stage8.1": "tsx scripts/check-stage8-1-identity.ts",
+		"check:stage8.2": "tsx scripts/check-stage8-2-provenance.ts"
 	},
 	"engines": {
 		"node": ">=22.13.1 <23"

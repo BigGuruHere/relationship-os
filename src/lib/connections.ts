@@ -1,19 +1,24 @@
 // src/lib/connections.ts
-// PURPOSE: create a mutual connection between two users by inserting contacts on both sides
+// PURPOSE: create a mutual connection between two users by inserting contacts on both sides.
 // SECURITY:
-// - All PII written to Contact uses AES-256-GCM encrypt() helpers
-// - Equality lookups use deterministic HMAC buildIndexToken()
+// - All PII written to Contact uses AES-256-GCM encrypt() helpers.
+// - Equality lookups use deterministic HMAC buildIndexToken().
+// - Stage 8.7 permits the profile-owner write only through a named cross-custody boundary.
 // BEHAVIOR:
-// - Does not require profiles to exist. Falls back to minimal linked contact.
+// - Does not require profiles to exist. Falls back to a minimal linked contact.
 // - Idempotent: if a contact already exists with linkedUserId it will not create a duplicate.
 // - Best effort enrichment from the other user's default profile if present.
 
 import { prisma } from '$lib/db';
 import { encrypt, buildIndexToken } from '$lib/crypto';
 import { requireUserPersonId } from '$lib/server/core/identity';
-import { contextSpaceIdForOwner } from '$lib/server/core/contextSpace';
+import {
+  currentWorkspaceCustody,
+  requireSingleContextSpaceIdForOwner,
+  runWithCrossOwnerWorkspaceCustody
+} from '$lib/server/core/contextSpace';
 
-// IT: small helper to fetch a user's best profile for enrichment
+// IT: small helper to fetch a user's best profile for enrichment.
 async function getBestProfile(userId: string) {
   return prisma.profile.findFirst({
     where: { userId },
@@ -28,8 +33,14 @@ async function getBestProfile(userId: string) {
   });
 }
 
-// IT: build a safe contact payload using any available public profile fields
-function buildContactData(ownerId: string, otherUserId: string, otherPersonId: string, prof: Awaited<ReturnType<typeof getBestProfile>> | null) {
+// IT: Build a safe Contact payload using only the other user's public profile fields.
+function buildContactData(
+  ownerId: string,
+  ownerContextSpaceId: string,
+  otherUserId: string,
+  otherPersonId: string,
+  prof: Awaited<ReturnType<typeof getBestProfile>> | null
+) {
   const displayName = prof?.displayName?.trim() || '';
   const email = prof?.emailPublic?.trim().toLowerCase() || '';
   const phone = prof?.phonePublic?.trim() || '';
@@ -38,19 +49,16 @@ function buildContactData(ownerId: string, otherUserId: string, otherPersonId: s
 
   const data: any = {
     userId: ownerId,
-    // SECURITY: Mutual connection is a known cross-owner flow. Stage 8.6 targets each owner's default/current custody explicitly.
-    contextSpaceId: contextSpaceIdForOwner(ownerId),
-    // IT: linkedUserId remains the Stage 7 compatibility bridge; personId is the Stage 8.1 canonical identity link.
+    contextSpaceId: ownerContextSpaceId,
+    // IT: linkedUserId remains the Stage 7 compatibility bridge; personId is canonical identity.
     linkedUserId: otherUserId,
     personId: otherPersonId
   };
 
-  // IT: only set encrypted fields when we have something to store
   if (displayName) {
     data.fullNameEnc = encrypt(displayName, 'contact.full_name');
     data.fullNameIdx = buildIndexToken(displayName);
   } else {
-    // IT: minimal placeholder name to avoid empty UI cards
     data.fullNameEnc = encrypt('New connection', 'contact.full_name');
     data.fullNameIdx = buildIndexToken('New connection');
   }
@@ -59,17 +67,14 @@ function buildContactData(ownerId: string, otherUserId: string, otherPersonId: s
     data.emailEnc = encrypt(email, 'contact.email');
     data.emailIdx = buildIndexToken(email);
   }
-
   if (phone) {
     data.phoneEnc = encrypt(phone, 'contact.phone');
     data.phoneIdx = buildIndexToken(phone);
   }
-
   if (company) {
     data.companyEnc = encrypt(company, 'contact.company');
     data.companyIdx = buildIndexToken(company);
   }
-
   if (title) {
     data.positionEnc = encrypt(title, 'contact.position');
     data.positionIdx = buildIndexToken(title);
@@ -78,72 +83,103 @@ function buildContactData(ownerId: string, otherUserId: string, otherPersonId: s
   return data;
 }
 
+async function ensureLinkedContact(
+  tx: any,
+  ownerId: string,
+  ownerContextSpaceId: string,
+  otherUserId: string,
+  otherPersonId: string,
+  prof: Awaited<ReturnType<typeof getBestProfile>> | null
+) {
+  const existing = await tx.contact.findFirst({
+    where: { userId: ownerId, contextSpaceId: ownerContextSpaceId, linkedUserId: otherUserId },
+    select: { id: true, personId: true }
+  });
+
+  if (existing) {
+    if (existing.personId !== otherPersonId) {
+      await tx.contact.update({
+        where: { id: existing.id, userId: ownerId, contextSpaceId: ownerContextSpaceId },
+        data: { personId: otherPersonId }
+      });
+    }
+    return false;
+  }
+
+  try {
+    await tx.contact.create({
+      data: buildContactData(ownerId, ownerContextSpaceId, otherUserId, otherPersonId, prof)
+    });
+    return true;
+  } catch (err: any) {
+    if (err?.code !== 'P2002') throw err;
+    const again = await tx.contact.findFirst({
+      where: { userId: ownerId, contextSpaceId: ownerContextSpaceId, linkedUserId: otherUserId },
+      select: { id: true }
+    });
+    if (!again) throw err;
+    return false;
+  }
+}
+
 /**
- * IT: Create mutual contacts for A and B. Idempotent and profile-agnostic.
- * - For A: create a Contact where userId = A and linkedUserId = B if missing.
- * - For B: create a Contact where userId = B and linkedUserId = A if missing.
+ * IT: Create mutual contacts after a logged-in user connects from another user's public profile.
+ * The initiating user's side stays in active custody. The profile owner's side is the one deliberate
+ * cross-owner write and is wrapped by PUBLIC_PROFILE_CONNECTION authority.
  */
-export async function createMutualConnection(userAId: string, userBId: string) {
-  if (!userAId || !userBId || userAId === userBId) {
+export async function createMutualConnection(profileOwnerUserId: string, initiatingUserId: string) {
+  if (!profileOwnerUserId || !initiatingUserId || profileOwnerUserId === initiatingUserId) {
     throw new Error('Invalid user ids for mutual connection');
   }
 
-  // IT: fetch profiles in parallel - can be null
-  const [profA, profB, personAId, personBId] = await Promise.all([getBestProfile(userAId), getBestProfile(userBId), requireUserPersonId(userAId), requireUserPersonId(userBId)]);
+  const source = currentWorkspaceCustody();
+  if (!source || source.userId !== initiatingUserId) {
+    throw new Error('Mutual connection must run inside the initiating user workspace custody.');
+  }
 
-  // SECURITY: Make the temporary Stage 8.6 cross-owner custody assumption visible rather than relying on implicit scoping.
-  const contextAId = contextSpaceIdForOwner(userAId);
-  const contextBId = contextSpaceIdForOwner(userBId);
+  const [profileOwnerProfile, initiatingProfile, profileOwnerPersonId, initiatingPersonId, profileOwnerContextSpaceId] = await Promise.all([
+    getBestProfile(profileOwnerUserId),
+    getBestProfile(initiatingUserId),
+    requireUserPersonId(profileOwnerUserId),
+    requireUserPersonId(initiatingUserId),
+    requireSingleContextSpaceIdForOwner(prisma as any, profileOwnerUserId)
+  ]);
 
-  // IT: run inside a transaction to reduce race windows
-  await prisma.$transaction(async (tx) => {
-    // A side - does A already have B as a contact
-    const aHasB = await tx.contact.findFirst({
-      where: { userId: userAId, contextSpaceId: contextAId, linkedUserId: userBId },
-      select: { id: true, personId: true }
-    });
+  // SECURITY: Once a profile owner has more than one ContextSpace this compatibility flow fails
+  // before writing anything, because Stage 8.7 deliberately refuses to guess the destination.
+  const initiatingContextSpaceId = source.contextSpaceId;
 
-    if (aHasB && aHasB.personId !== personBId) {
-      await tx.contact.update({ where: { id: aHasB.id, userId: userAId, contextSpaceId: contextAId }, data: { personId: personBId } });
-    }
+  return prisma.$transaction(async (tx) => {
+    const createdForProfileOwner = await runWithCrossOwnerWorkspaceCustody(
+      {
+        sourceUserId: initiatingUserId,
+        targetUserId: profileOwnerUserId,
+        targetContextSpaceId: profileOwnerContextSpaceId,
+        reason: 'PUBLIC_PROFILE_CONNECTION'
+      },
+      () => ensureLinkedContact(
+        tx,
+        profileOwnerUserId,
+        profileOwnerContextSpaceId,
+        initiatingUserId,
+        initiatingPersonId,
+        initiatingProfile
+      )
+    );
 
-    if (!aHasB) {
-      const payloadA = buildContactData(userAId, userBId, personBId, profB);
-      try {
-        await tx.contact.create({ data: payloadA });
-      } catch (err: any) {
-        // IT: tolerate unique collisions on emailIdx or phoneIdx by re-checking the linkedUserId pair
-        if (err?.code !== 'P2002') throw err;
-        const again = await tx.contact.findFirst({
-          where: { userId: userAId, contextSpaceId: contextAId, linkedUserId: userBId },
-          select: { id: true }
-        });
-        if (!again) throw err;
-      }
-    }
+    const createdForInitiator = await ensureLinkedContact(
+      tx,
+      initiatingUserId,
+      initiatingContextSpaceId,
+      profileOwnerUserId,
+      profileOwnerPersonId,
+      profileOwnerProfile
+    );
 
-    // B side - does B already have A as a contact
-    const bHasA = await tx.contact.findFirst({
-      where: { userId: userBId, contextSpaceId: contextBId, linkedUserId: userAId },
-      select: { id: true, personId: true }
-    });
-
-    if (bHasA && bHasA.personId !== personAId) {
-      await tx.contact.update({ where: { id: bHasA.id, userId: userBId, contextSpaceId: contextBId }, data: { personId: personAId } });
-    }
-
-    if (!bHasA) {
-      const payloadB = buildContactData(userBId, userAId, personAId, profA);
-      try {
-        await tx.contact.create({ data: payloadB });
-      } catch (err: any) {
-        if (err?.code !== 'P2002') throw err;
-        const again = await tx.contact.findFirst({
-          where: { userId: userBId, contextSpaceId: contextBId, linkedUserId: userAId },
-          select: { id: true }
-        });
-        if (!again) throw err;
-      }
-    }
+    return {
+      createdAny: createdForProfileOwner || createdForInitiator,
+      createdForProfileOwner,
+      createdForInitiator
+    };
   });
 }

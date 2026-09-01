@@ -10,7 +10,10 @@ import { encrypt, buildIndexToken } from '$lib/crypto';
 import { fail, redirect } from '@sveltejs/kit';
 import { createInviteToken } from '$lib/server/tokens';
 import { resolveOwnerFromSlug } from '$lib/server/owner';
-import { contextSpaceIdForOwner } from '$lib/server/core/contextSpace';
+import {
+  requireSingleContextSpaceIdForOwner,
+  runWithExternalWorkspaceCustody
+} from '$lib/server/core/contextSpace';
 
 
 // IT: resolve the profile owner by slug and return only fields we actually have
@@ -63,89 +66,102 @@ export const actions: Actions = {
       return fail(400, { errors, values });
     }
 
-    // Build encrypted contact payload scoped to the owner
-    const data: any = {
-      userId: owner.id,
-      // SECURITY: Public lead capture deliberately targets the profile owner's default custody.
-      contextSpaceId: contextSpaceIdForOwner(owner.id),
-      fullNameEnc: encrypt(name, 'contact.full_name'),
-      fullNameIdx: buildIndexToken(name),
-      emailEnc: encrypt(email, 'contact.email'),
-      emailIdx: buildIndexToken(email),
-      phoneEnc: encrypt(phone, 'contact.phone'),
-      phoneIdx: buildIndexToken(phone)
-    };
+    // SECURITY: Public lead capture is unauthenticated ingress into another person's Workspace.
+    // Resolve the only available destination first and enter it through the named external boundary.
+    const ownerContextSpaceId = await requireSingleContextSpaceIdForOwner(prisma as any, owner.id);
 
-    // Create or find an existing contact in case of unique collisions
-    let contactId: string | null = null;
-    try {
-      const created = await prisma.contact.create({
-        data,
-        select: { id: true }
-      });
-      contactId = created.id;
-    } catch (err: any) {
-      if (err?.code === 'P2002') {
-        // Prefer lookup by emailIdx then phoneIdx within the same owner tenant
-        const existingByEmail = await prisma.contact.findFirst({
-          where: { userId: owner.id, emailIdx: buildIndexToken(email) },
+    return runWithExternalWorkspaceCustody(
+      {
+        targetUserId: owner.id,
+        targetContextSpaceId: ownerContextSpaceId,
+        reason: 'PUBLIC_LEAD_CAPTURE'
+      },
+      async () => {
+      // Build encrypted contact payload scoped to the owner
+      const data: any = {
+        userId: owner.id,
+        // SECURITY: Destination was explicitly resolved as the owner's only current ContextSpace.
+        contextSpaceId: ownerContextSpaceId,
+        fullNameEnc: encrypt(name, 'contact.full_name'),
+        fullNameIdx: buildIndexToken(name),
+        emailEnc: encrypt(email, 'contact.email'),
+        emailIdx: buildIndexToken(email),
+        phoneEnc: encrypt(phone, 'contact.phone'),
+        phoneIdx: buildIndexToken(phone)
+      };
+      
+      // Create or find an existing contact in case of unique collisions
+      let contactId: string | null = null;
+      try {
+        const created = await prisma.contact.create({
+          data,
           select: { id: true }
         });
-        if (existingByEmail) {
-          contactId = existingByEmail.id;
-        } else {
-          const existingByPhone = await prisma.contact.findFirst({
-            where: { userId: owner.id, phoneIdx: buildIndexToken(phone) },
+        contactId = created.id;
+      } catch (err: any) {
+        if (err?.code === 'P2002') {
+          // Prefer lookup by emailIdx then phoneIdx within the same owner tenant
+          const existingByEmail = await prisma.contact.findFirst({
+            where: { userId: owner.id, emailIdx: buildIndexToken(email) },
             select: { id: true }
           });
-          if (existingByPhone) contactId = existingByPhone.id;
+          if (existingByEmail) {
+            contactId = existingByEmail.id;
+          } else {
+            const existingByPhone = await prisma.contact.findFirst({
+              where: { userId: owner.id, phoneIdx: buildIndexToken(phone) },
+              select: { id: true }
+            });
+            if (existingByPhone) contactId = existingByPhone.id;
+          }
+        } else {
+          console.error('lead contact create failed:', err);
+          return fail(500, { error: 'Could not save details', values });
         }
-      } else {
-        console.error('lead contact create failed:', err);
-        return fail(500, { error: 'Could not save details', values });
       }
-    }
-
-    // Create a Lead that we can claim later when this person signs up
-    try {
-      const hasLeadAPI =
-        (prisma as any).lead && typeof (prisma as any).lead.create === 'function';
-
-      if (hasLeadAPI) {
-        const emailIdx = buildIndexToken(email);
-        const phoneIdx = buildIndexToken(phone);
-
-        const lead = await (prisma as any).lead.create({
-          data: {
-            ownerId: owner.id,
-            contactId: contactId || '',
-            emailIdx,
-            phoneIdx,
-            status: 'PENDING'
-          },
-          select: { id: true }
-        });
-
-        // Optional - create a short lived invite token for follow ups
-        try {
-          await createInviteToken({
-            ownerId: owner.id,
-            ttlMinutes: 60,
-            meta: { leadId: lead.id, emailIdx }
+      
+      // Create a Lead that we can claim later when this person signs up
+      try {
+        const hasLeadAPI =
+          (prisma as any).lead && typeof (prisma as any).lead.create === 'function';
+      
+        if (hasLeadAPI) {
+          const emailIdx = buildIndexToken(email);
+          const phoneIdx = buildIndexToken(phone);
+      
+          const lead = await (prisma as any).lead.create({
+            data: {
+              ownerId: owner.id,
+              contactId: contactId || '',
+              emailIdx,
+              phoneIdx,
+              status: 'PENDING'
+            },
+            select: { id: true }
           });
-        } catch (e) {
-          console.warn('lead invite token creation failed:', e);
+      
+          // Optional - create a short lived invite token for follow ups
+          try {
+            await createInviteToken({
+              ownerId: owner.id,
+              ttlMinutes: 60,
+              meta: { leadId: lead.id, emailIdx }
+            });
+          } catch (e) {
+            console.warn('lead invite token creation failed:', e);
+          }
         }
+      } catch (e) {
+        console.error('lead create failed:', e);
+        // Non-fatal - we still captured a contact for the owner
       }
-    } catch (e) {
-      console.error('lead create failed:', e);
-      // Non-fatal - we still captured a contact for the owner
-    }
-
-    // Success - redirect to thank-you
-    throw redirect(
-      303,
-      `/thank-you?ref=${encodeURIComponent(owner.publicSlug || params.slug)}`
+      
+      // Success - redirect to thank-you
+      throw redirect(
+        303,
+        `/thank-you?ref=${encodeURIComponent(owner.publicSlug || params.slug)}`
+      );
+      }
     );
   }
 };

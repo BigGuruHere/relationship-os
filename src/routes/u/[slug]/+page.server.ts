@@ -115,11 +115,12 @@ export const load: PageServerLoad = async ({ params, url, locals }) => {
   if (isVisitorLoggedIn && ownerId) {
     // Don't connect to yourself
     if (visitorUserId !== ownerId) {
-      // Check if owner already has visitor as a contact
+      // SECURITY: Check the visitor's own Contact representation. Reading the profile owner's
+      // private Contact table from the visitor's custody would cross the Stage 8.7 boundary.
       const existingContact = await prisma.contact.findFirst({
         where: {
-          userId: ownerId,
-          linkedUserId: visitorUserId
+          userId: visitorUserId,
+          linkedUserId: ownerId
         },
         select: { id: true }
       });
@@ -235,21 +236,13 @@ connectUsers: async ({ locals, params }) => {
     return fail(400, { error: 'Cannot connect to yourself' });
   }
 
-  // IT: check if already connected
-  const existing = await prisma.contact.findFirst({
-    where: {
-      userId: resolved.id,
-      linkedUserId: locals.user.id
-    },
-    select: { id: true }
-  });
-  if (existing) {
-    return fail(400, { error: 'Already connected' });
-  }
-
-  // IT: create bidirectional contacts
+  // IT: Stage 8.7 moves the profile-owner duplicate check inside the named cross-custody
+  // boundary. The route itself must not read another owner's private Contact table.
   try {
-    await createMutualConnection(resolved.id, locals.user.id);
+    const result = await createMutualConnection(resolved.id, locals.user.id);
+    if (!result.createdAny) {
+      return fail(400, { error: 'Already connected' });
+    }
   } catch (err) {
     console.error('Failed to create mutual connection:', err);
     return fail(500, { error: 'Failed to connect' });

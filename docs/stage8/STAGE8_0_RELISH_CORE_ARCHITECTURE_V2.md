@@ -614,27 +614,47 @@ Tests and small fixes only around encryption, tenant isolation and staging/appro
 - all relationship-data reads move toward scoped Core context,
 - derive agent memory from permitted Core records.
 
-### 8.6 - Consent/disclosure foundation
+### 8.6 - ContextSpace custody foundation
+
+- explicit custody/trust context separate from User ownership,
+- one deterministic default ContextSpace for existing users,
+- contextual Core records scoped by owner + ContextSpace,
+- database and Prisma fail-closed isolation,
+- no consent/disclosure or matching.
+
+### 8.7 - Cross-custody execution boundary
+
+- active custody cannot implicitly resolve or query another owner's ContextSpace,
+- nested custody cannot silently impersonate another owner,
+- existing cross-owner/public-ingress flows use named target-specific execution boundaries,
+- each boundary is operation-minimised,
+- compatibility flows fail closed once an owner has more than one ContextSpace.
+
+This stage is system execution authority only. It is not consent, disclosure permission or a standing grant.
+
+### 8.8 - Consent/disclosure foundation - gated by real use
+
+When a real second-person or cross-ContextSpace case exists:
 
 - standing policies plus specific grants,
 - recipient/purpose/stage scope,
 - source consent evidence and revocation.
 
-### 8.7 - Manual PotentialMatch
+### 8.9 - Manual PotentialMatch - gated by real use
 
 - PotentialMatch + participants,
 - domain/policy version,
 - manual first,
 - learn from existing Introduction/Outcome history.
 
-### 8.8 - Progressive bilateral disclosure
+### 8.10 - Progressive bilateral disclosure
 
 - per-side disclosure state,
 - match-specific grants,
 - explicit introduction permission,
 - conversational consent requests supported by future agents.
 
-### 8.9 - Matchable projections
+### 8.11 - Matchable projections
 
 - explicit matching participation scope,
 - permission-minimised projection,

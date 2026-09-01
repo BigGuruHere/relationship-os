@@ -120,9 +120,11 @@ test('same-owner explicit userId inherits the active non-default ContextSpace', 
   assert.equal(args.where.contextSpaceId, 'context-b');
 });
 
-test('an explicit different owner is narrowed to that other owners default space', () => {
-  const args: any = scopeContextPrismaArgs('Contact', 'findMany', { where: { userId: 'user-b' } }, { userId: 'user-a', contextSpaceId: 'context-a' });
-  assert.deepEqual(args.where, { userId: 'user-b', contextSpaceId: 'user-b' });
+test('Stage 8.7 blocks explicit different-owner access inside active custody', () => {
+  assert.throws(
+    () => scopeContextPrismaArgs('Contact', 'findMany', { where: { userId: 'user-b' } }, { userId: 'user-a', contextSpaceId: 'context-a' }),
+    /cross-owner context-scoped Prisma access requires an explicit Stage 8\.7 custody boundary/i
+  );
 });
 
 test('a request cannot smuggle a different ContextSpace into a scoped query', () => {

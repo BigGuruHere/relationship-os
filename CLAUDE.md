@@ -22,9 +22,12 @@ npm run format              # prettier --write .
 npm run generate            # prisma generate
 npm run migrate:dev          # scripts/safe-migrate-dev.js -> guarded `prisma migrate dev`
 npm run migrate:deploy        # prisma migrate deploy (safe for prod)
+npm test                     # node:test Core behavioural suite via tsx
+npm run check:stage8.6       # real Postgres ContextSpace verification
+npm run check:stage8.7       # real Postgres cross-custody verification
 ```
 
-There is no test runner configured (no vitest/jest in package.json). `scripts/test-tags.ts` and similar `scripts/*.ts` files are ad hoc scripts run directly with `tsx`, not a test suite — e.g. `npx tsx scripts/test-tags.ts`.
+Core behavioural tests live under `tests/core/*.test.ts` and run through `tsx --test`. Stage-specific scripts under `scripts/check-stage8-*.ts` add real PostgreSQL verification where the invariant depends on Prisma/database behaviour.
 
 `npm run dev` binds Vite's default port; the app treats `http://localhost:5173` as the canonical local origin (see Environments below), so keep dev running there when testing auth/cookie flows.
 
@@ -50,7 +53,8 @@ PII fields (email, names, deal titles, etc.) are stored encrypted at rest with p
 
 Rules enforced by convention (see comments in `src/hooks.server.ts`, `src/lib/crypto.ts`, route files):
 - Decrypt only in server-side load functions or actions, never send ciphertext-adjacent secrets to the client unnecessarily.
-- Every server query for user-owned data is expected to be tenant-scoped by `userId` (see `src/routes/deals/+page.server.ts`, `src/routes/companies/+page.server.ts` — look for the `SECURITY:` header comment at the top of route files).
+- Contextual Core/Workspace data is scoped by both `userId` ownership and `contextSpaceId` custody. Do not treat `userId` alone as a sufficient Core boundary.
+- Stage 8.7 forbids an active Workspace from implicitly resolving or querying another owner. Existing public-profile connection, lead-claim, and public lead-ingress flows must use the named cross-custody helpers in `src/lib/server/core/contextSpace.ts`.
 - Comments prefixed `IT:` mark implementation-tricky/security-relevant lines — a convention used throughout `src/lib` and `src/lib/server`; preserve this pattern when editing nearby code.
 
 ### Data model (`prisma/schema.prisma`)
@@ -59,9 +63,9 @@ Core CRM: `User`, `Contact`, `Company`, `Deal` (+ `DealContact`, `DealCompany`, 
 
 Leads: there are **two distinct lead concepts** — don't confuse them:
 - `Lead` — the older model, used for public claim/invite flows (QR/vCard sharing, guest onboarding).
-- `MarketLead` (+ `MarketLeadNote`, `LeadSource`) — the newer market-making staging layer (buyer/seller/company/contact/mandate/asset/referrer), shown in the UI simply as "Leads" (`/leads`). It converts into a real `Contact`, `Company`, `Deal`, or `ExchangeItem` (want/offer) while keeping a link back to the originating lead. Server logic lives in `src/lib/server/marketLeads.ts` and `src/lib/leads/` (`link.ts`, `reciprocal.ts`).
+- `MarketLead` (+ `MarketLeadNote`, `LeadSource`) — the newer market-making staging layer (buyer/seller/company/contact/mandate/asset/referrer), shown in the UI simply as "Leads" (`/leads`). It converts into real `Contact`, `Company`, `Deal`, `Want`, or `Offer` records while keeping a link back to the originating lead. Server logic lives in `src/lib/server/marketLeads.ts` and `src/lib/leads/` (`link.ts`, `reciprocal.ts`).
 
-Exchange: `ExchangeItem` models "wants"/"offers" used for market-making/deal matching, surfaced via `src/lib/exchange.ts` / `src/lib/ExchangeItemsPanel.svelte`.
+Relationship intent: `Want` and `Offer` are separate first-class Core concepts. Legacy `ExchangeItem` authority has been retired and must not be reintroduced as a generic Intent table without a new architectural decision.
 
 AI agent system: `AgentDefinition`/`AgentPromptVersion`/`AgentToolDefinition`/`AgentToolPermission` (config, versioned prompts, per-agent tool allowlist), `AgentRun`/`AgentStep`/`AgentToolCall`/`ModelInvocation`/`AgentArtifact` (durable execution log — every run, step, tool call and model call is persisted), `ApprovalRequest` (human-in-the-loop gate for tools flagged as requiring approval), `AgentRunEntity` (links a run back to the CRM entities it touched). Also `ResearchCandidate`/`ResearchSource`, `ContactEnrichment`, `OpportunityScore`/`OpportunityScoreFactor` — structured outputs the agents write.
 

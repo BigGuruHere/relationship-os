@@ -11,7 +11,11 @@ import { prisma } from '$lib/db';
 import { buildIndexToken } from '$lib/crypto';
 import { createReciprocalContactIfMissing } from './reciprocal';
 import { requireUserPersonId } from '$lib/server/core/identity';
-import { contextSpaceIdForOwner, runWithWorkspaceCustody } from '$lib/server/core/contextSpace';
+import {
+  requireSingleContextSpaceIdForOwner,
+  runWithCrossOwnerWorkspaceCustody,
+  runWithWorkspaceCustody
+} from '$lib/server/core/contextSpace';
 
 // IT: tiny helper to canonicalize LinkedIn profile URLs so the index is stable
 function normalizeLinkedInUrl(u: string | undefined | null): string {
@@ -41,7 +45,7 @@ export async function linkLeadsForUserFlexible(
 ): Promise<{ claimedLeadIds: string[]; touchedContactIds: string[]; owners: string[] }> {
   // SECURITY: Authentication callbacks can begin without request custody and only establish the
   // user during the request. Enter the claimant's current/default ContextSpace explicitly here.
-  const contextSpaceId = contextSpaceIdForOwner(userId);
+  const contextSpaceId = await requireSingleContextSpaceIdForOwner(prisma as any, userId);
   return runWithWorkspaceCustody({ userId, contextSpaceId }, () => linkLeadsForUserFlexibleInCustody(userId, opts));
 }
 
@@ -81,31 +85,48 @@ async function linkLeadsForUserFlexibleInCustody(
   // IT: Stage 8.1 links claimed Contacts to the canonical Person for this registered user as well as linkedUserId.
   const personId = await requireUserPersonId(userId);
 
-  // IT: claim leads and link any associated contacts to this user
-  const tx: any[] = [];
-  for (const lead of leads) {
-    tx.push(
-      prisma.lead.update({
+  // IT: Resolve every destination before changing claim state. Stage 8.7 refuses to guess if
+  // any prior lead owner has more than one ContextSpace.
+  const owners = Array.from(new Set(leads.map((l) => l.ownerId)));
+  const ownerContextEntries = await Promise.all(owners.map(async (ownerId) => [
+    ownerId,
+    await requireSingleContextSpaceIdForOwner(prisma as any, ownerId)
+  ] as const));
+  const ownerContextIds = new Map(ownerContextEntries);
+
+  // SECURITY: Lead itself is account-level claim bookkeeping. Updating the prior owner's Contact is
+  // contextual and therefore enters that owner's custody only through the LEAD_CLAIM boundary.
+  await prisma.$transaction(async (tx) => {
+    for (const lead of leads) {
+      await tx.lead.update({
         where: { id: lead.id },
         data: { status: 'CLAIMED', claimedByUserId: userId }
-      })
-    );
-    if (lead.contactId) {
-      tx.push(
-        prisma.contact.update({
-          where: { id: lead.contactId, userId: lead.ownerId, contextSpaceId: contextSpaceIdForOwner(lead.ownerId) },
-          data: { linkedUserId: userId, personId }
-        })
-      );
+      });
+
+      if (lead.contactId) {
+        const targetContextSpaceId = ownerContextIds.get(lead.ownerId);
+        if (!targetContextSpaceId) throw new Error(`Missing resolved ContextSpace for lead owner ${lead.ownerId}.`);
+
+        await runWithCrossOwnerWorkspaceCustody(
+          {
+            sourceUserId: userId,
+            targetUserId: lead.ownerId,
+            targetContextSpaceId,
+            reason: 'LEAD_CLAIM'
+          },
+          () => tx.contact.update({
+            where: { id: lead.contactId, userId: lead.ownerId, contextSpaceId: targetContextSpaceId },
+            data: { linkedUserId: userId, personId }
+          })
+        );
+      }
     }
-  }
-  await prisma.$transaction(tx);
+  });
 
   const claimedLeadIds = leads.map((l) => l.id);
   const touchedContactIds = leads.map((l) => l.contactId).filter(Boolean) as string[];
 
-  // IT: dedupe owners and create reciprocal contact once per owner
-  const owners = Array.from(new Set(leads.map((l) => l.ownerId)));
+  // IT: create a reciprocal Contact once per owner in the claimant's active custody.
   for (const ownerId of owners) {
     try {
       await createReciprocalContactIfMissing(userId, ownerId);

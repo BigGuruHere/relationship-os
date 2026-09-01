@@ -149,25 +149,40 @@ Goals:
 - create one default ContextSpace for every existing User,
 - backfill Core relationship knowledge to that default ContextSpace,
 - require `(userId, contextSpaceId)` for Core custody-scoped reads,
-- add subject-integrity constraints for important Core knowledge records,
-- bind agent runs and inherited bookkeeping to one custody context,
-- audit raw SQL and account-level nested reads that bypass normal model scoping,
-- no cross-context grants, disclosure, matching or new end-user workflow yet.
+- bind agent runs and contextual operational data to custody,
+- fail closed on missing or mismatched custody,
+- no consent, disclosure, matching or new end-user workflow yet.
 
-## 8.7 - Consent / disclosure foundation
+## 8.7 - Cross-custody execution boundary
 
 Goals:
+
+- prevent an active Workspace from resolving or querying another owner's ContextSpace implicitly,
+- prevent nested `runWithWorkspaceCustody` from silently impersonating another owner,
+- require named, target-specific execution boundaries for the existing public-profile connection and lead-claim flows,
+- require named external-ingress custody for public and invite-token lead capture,
+- restrict each boundary to the minimum contextual model/operations it needs,
+- fail closed instead of choosing a destination once an owner has more than one ContextSpace,
+- no consent, disclosure, matching or Dorian v2.
+
+## 8.8 - Consent / disclosure foundation - deliberately gated
+
+Do not build this stage from imagination. Start only when a real second-person or cross-ContextSpace case makes the required consent/disclosure decision concrete.
+
+Likely goals when grounded by real use:
 
 - standing/default sharing policy where useful,
 - specific DisclosureGrant,
 - source ContextSpace + recipient/audience + purpose + scope + stage,
 - source consent evidence,
 - revocation,
-- future agents may request consent conversationally but cannot expand their own authority.
+- agents may request consent conversationally but cannot expand their own authority.
 
-## 8.8 - Manual PotentialMatch
+## 8.9 - Manual PotentialMatch - deliberately gated
 
-Goals:
+Matching remains deferred until real manual matching usage provides enough evidence to design the neutral Core object.
+
+Likely goals:
 
 - PotentialMatch + MatchParticipant,
 - domain/policy version,
@@ -175,18 +190,18 @@ Goals:
 - learn from Introduction/Outcome history,
 - no raw cross-context record visibility.
 
-## 8.9 - Progressive bilateral disclosure
+## 8.10 - Progressive bilateral disclosure
 
-Goals:
+Goals when 8.8 and real use justify it:
 
 - per-side disclosure state,
 - recipient-specific grants,
 - explicit introduction permission,
 - asymmetric disclosure where domain requires it.
 
-## 8.10 - Matchable projections
+## 8.11 - Matchable projections
 
-Goals:
+Goals when matching is activated:
 
 - explicit MatchParticipation scope,
 - permitted projection fields only,

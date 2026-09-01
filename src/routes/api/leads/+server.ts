@@ -13,7 +13,10 @@ import { prisma } from '$lib/db';
 import { encrypt, buildIndexToken } from '$lib/crypto';
 import { verifyInviteToken } from '$lib/server/tokens';
 import { sendMagicLink } from '$lib/server/magic';
-import { contextSpaceIdForOwner } from '$lib/server/core/contextSpace';
+import {
+  requireSingleContextSpaceIdForOwner,
+  runWithExternalWorkspaceCustody
+} from '$lib/server/core/contextSpace';
 
 export const POST: RequestHandler = async ({ request, locals }) => {
   // Parse body - expects inviteToken plus at least one of email or phone
@@ -30,57 +33,70 @@ export const POST: RequestHandler = async ({ request, locals }) => {
     return new Response(JSON.stringify({ error: 'Invalid or expired invite' }), { status: 400 });
   }
 
-  // Build encrypted contact payload
-  const data: any = {
-    userId: invite.ownerId,
-    // SECURITY: This public ingress has no active owner custody, so target custody is explicit.
-    contextSpaceId: contextSpaceIdForOwner(invite.ownerId),
-    fullNameEnc: encrypt((name || '').trim() || 'New contact', 'contact.full_name'),
-    fullNameIdx: buildIndexToken((name || '').trim() || 'New contact')
-  };
-  if (email) {
-    data.emailEnc = encrypt(String(email).trim(), 'contact.email');
-    data.emailIdx = buildIndexToken(String(email).trim());
-  }
-  if (phone) {
-    data.phoneEnc = encrypt(String(phone).trim(), 'contact.phone');
-    data.phoneIdx = buildIndexToken(String(phone).trim());
-  }
+  // SECURITY: Invite-token lead capture is external ingress into the invite owner's custody.
+  // Refuse to guess the destination once an owner has more than one ContextSpace.
+  const ownerContextSpaceId = await requireSingleContextSpaceIdForOwner(prisma as any, invite.ownerId);
 
-  // Create the Contact - tolerate duplicate email index by falling back to a lookup
-  let contactId: string | null = null;
-  try {
-    const created = await prisma.contact.create({ data, select: { id: true } });
-    contactId = created.id;
-  } catch (err: any) {
-    // If unique constraint on emailIdx, try to find the existing contact and proceed
-    if (err?.code === 'P2002' && Array.isArray(err?.meta?.target) && err.meta.target.includes('emailIdx') && email) {
-      const found = await prisma.contact.findFirst({
-        where: { userId: invite.ownerId, emailIdx: buildIndexToken(String(email).trim()) },
-        select: { id: true }
-      });
-      contactId = found?.id || null;
-    } else {
-      console.error('[lead] failed to create contact', err);
+  return runWithExternalWorkspaceCustody(
+    {
+      targetUserId: invite.ownerId,
+      targetContextSpaceId: ownerContextSpaceId,
+      reason: 'PUBLIC_LEAD_CAPTURE'
+    },
+    async () => {
+      // Build encrypted contact payload
+      const data: any = {
+        userId: invite.ownerId,
+        // SECURITY: This public ingress has no active owner custody, so target custody is explicit.
+        contextSpaceId: ownerContextSpaceId,
+        fullNameEnc: encrypt((name || '').trim() || 'New contact', 'contact.full_name'),
+        fullNameIdx: buildIndexToken((name || '').trim() || 'New contact')
+      };
+      if (email) {
+        data.emailEnc = encrypt(String(email).trim(), 'contact.email');
+        data.emailIdx = buildIndexToken(String(email).trim());
+      }
+      if (phone) {
+        data.phoneEnc = encrypt(String(phone).trim(), 'contact.phone');
+        data.phoneIdx = buildIndexToken(String(phone).trim());
+      }
+    
+      // Create the Contact - tolerate duplicate email index by falling back to a lookup
+      let contactId: string | null = null;
+      try {
+        const created = await prisma.contact.create({ data, select: { id: true } });
+        contactId = created.id;
+      } catch (err: any) {
+        // If unique constraint on emailIdx, try to find the existing contact and proceed
+        if (err?.code === 'P2002' && Array.isArray(err?.meta?.target) && err.meta.target.includes('emailIdx') && email) {
+          const found = await prisma.contact.findFirst({
+            where: { userId: invite.ownerId, emailIdx: buildIndexToken(String(email).trim()) },
+            select: { id: true }
+          });
+          contactId = found?.id || null;
+        } else {
+          console.error('[lead] failed to create contact', err);
+        }
+      }
+    
+      // Decide destination for the magic link
+      // - Prefer email if provided
+      // - If textMe is true and phone is present, use phone for an SMS flow your sender supports
+      const destination = (email && String(email).trim()) || (textMe && phone && String(phone).trim()) || null;
+    
+      if (destination) {
+        // Ensure a guest user exists to own the session created by the magic link
+        // - If you later key by email, you can upsert here. For now we create a guest user.
+        const guest = await prisma.user.create({
+          data: { role: 'guest', person: { create: {} } }
+        });
+    
+        // Send the magic link with env-aware origin so the URL is correct on local, dev, and prod
+        // - Next step will update sendMagicLink to accept { origin } and build the URL accordingly
+        await sendMagicLink({ userId: guest.id, to: destination, origin: locals.appOrigin });
+      }
+    
+      return new Response(JSON.stringify({ ok: true, contactId }), { status: 200 });
     }
-  }
-
-  // Decide destination for the magic link
-  // - Prefer email if provided
-  // - If textMe is true and phone is present, use phone for an SMS flow your sender supports
-  const destination = (email && String(email).trim()) || (textMe && phone && String(phone).trim()) || null;
-
-  if (destination) {
-    // Ensure a guest user exists to own the session created by the magic link
-    // - If you later key by email, you can upsert here. For now we create a guest user.
-    const guest = await prisma.user.create({
-      data: { role: 'guest', person: { create: {} } }
-    });
-
-    // Send the magic link with env-aware origin so the URL is correct on local, dev, and prod
-    // - Next step will update sendMagicLink to accept { origin } and build the URL accordingly
-    await sendMagicLink({ userId: guest.id, to: destination, origin: locals.appOrigin });
-  }
-
-  return new Response(JSON.stringify({ ok: true, contactId }), { status: 200 });
+  );
 };

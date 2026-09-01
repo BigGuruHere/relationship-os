@@ -10,7 +10,8 @@ import { contextSpaceIdForOwner } from '$lib/server/core/contextSpace';
 export async function createReciprocalContactIfMissing(recipientUserId: string, ownerUserId: string) {
   // IT: Stage 8.1 canonical identity for the account being represented in this workspace.
   const ownerPersonId = await requireUserPersonId(ownerUserId);
-  // SECURITY: This is an explicit inter-user flow. In 8.6 the recipient's current/default ContextSpace is the target.
+  // SECURITY: Stage 8.7 requires this helper to run in the recipient's active custody. The other
+  // user's Profile is account-level public data, while all Contact reads/writes stay with the recipient.
   const recipientContextSpaceId = contextSpaceIdForOwner(recipientUserId);
 
   // IT: if the explicit account link already exists, make sure its Person bridge is also populated.

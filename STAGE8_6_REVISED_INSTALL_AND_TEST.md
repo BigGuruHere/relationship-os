@@ -1,4 +1,4 @@
-# Stage 8.6 revised v4 - install and verification
+# Stage 8.6 revised v5 - install and verification
 
 This version accounts for the fact that the main Stage 8.6 migration has now been applied to the development database. Do not edit that applied migration and do not reset the database.
 
@@ -13,7 +13,7 @@ In PowerShell, from the project root:
 Get-ChildItem prisma\migrations\*stage8_6_context_space_default_alignment | Remove-Item -Recurse -Force
 ```
 
-Do not delete `20260901073000_stage8_6_context_space_custody_foundation`. It is already applied and remains unchanged in v3.
+Do not delete `20260901073000_stage8_6_context_space_custody_foundation`. It is already applied and remains unchanged.
 
 ## What v3 changed
 
@@ -40,9 +40,18 @@ This is a runtime-only correction. **There are no new or changed migrations in v
 
 The new regression test was mutation-tested and the source-level suite passes **120/120**, including **24/24 Stage 8.6 tests**.
 
+
+## What v5 changes
+
+The PostgreSQL trigger mutation harness now supplies `CURRENT_TIMESTAMP` for `Contact.updatedAt` in its raw SQL insert. Prisma normally manages `@updatedAt`, but raw SQL bypasses that client-side behaviour. Without the explicit timestamp, PostgreSQL rejected the temporary Contact with `23502 NOT NULL` before the deliberately weakened custody trigger could be tested.
+
+The harness still deliberately omits `contextSpaceId`, still mutates the trigger only inside one transaction, and still forces rollback of both the temporary trigger definition and all test data. A regression assertion was added and mutation-tested.
+
+This is test-harness-only. **There are no schema, application-runtime, or migration changes in v5.** The source-level suite passes **121/121**, including **25/25 Stage 8.6 tests**.
+
 ## Development continuation
 
-After copying v3 into the project and deleting the unapplied broad generated migration, run:
+After copying v5 into the project, run:
 
 ```powershell
 # Validate the corrected Prisma data model first.

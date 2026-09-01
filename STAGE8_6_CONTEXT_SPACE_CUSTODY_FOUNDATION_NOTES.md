@@ -287,3 +287,14 @@ A real development `npm run check:stage8.6` run exposed a runtime edge in `runWi
 A behavioural regression test now uses a deliberately lazy thenable to prove custody is present at execution time and absent afterward. The invariant was mutation-tested by temporarily restoring direct-return behaviour: the new test failed as intended, then passed after the hardened helper was restored. The complete source-level Core suite now passes **120/120**, including **24/24** Stage 8.6 tests.
 
 This correction changes runtime TypeScript only. It does **not** modify either Stage 8.6 migration and requires no additional database migration.
+
+
+## Trigger mutation harness correction - raw SQL `updatedAt`
+
+A real development `npm run check:stage8.6:mutation` run exposed a test-harness issue rather than a custody failure. The mutation harness intentionally inserts a `Contact` with raw SQL so that it can omit `contextSpaceId` and observe the deliberately weakened trigger. `Contact.updatedAt` is Prisma-managed with `@updatedAt`; it has no PostgreSQL default. Because raw SQL bypasses Prisma Client, the harness also omitted that required column and PostgreSQL raised `23502 NOT NULL` before the custody trigger mutation could be meaningfully exercised.
+
+The harness now supplies `CURRENT_TIMESTAMP` for `Contact.updatedAt` while continuing to omit `contextSpaceId`. This leaves the row otherwise valid and isolates the exact invariant under mutation: whether a missing/sentinel ContextSpace is silently rewritten to the owner default. The whole trigger mutation and all temporary rows still run inside one transaction and are force-rolled back.
+
+A source regression test now verifies that the raw Contact insert supplies `updatedAt`. The test was mutation-tested by temporarily removing that field, which caused the Stage 8.6 suite to fail on the intended assertion. After restoration, the source-level Core suite passes **121/121**, including **25/25** Stage 8.6 tests.
+
+This correction changes only the mutation-test harness and its regression test. It does **not** modify application runtime code, `schema.prisma`, or either Stage 8.6 migration.

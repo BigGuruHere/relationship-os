@@ -8,6 +8,7 @@ import { createScopedRelationshipRepository } from '../../src/lib/server/core/sc
 
 const schema = readFileSync('prisma/schema.prisma', 'utf8');
 const migration = readFileSync('prisma/migrations/20260901073000_stage8_6_context_space_custody_foundation/migration.sql', 'utf8');
+const mutationHarness = readFileSync('scripts/mutate-stage8-6-context-trigger.ts', 'utf8');
 
 function delegateFor(rows: any[]) {
   return {
@@ -222,6 +223,16 @@ test('contextSpaceId sentinel defaults use Prisma static string defaults rather 
     assert.doesNotMatch(match[1], /dbgenerated/);
   }
   assert.equal(schema.split(staticSentinel).length - 1, 44);
+});
+
+test('trigger mutation harness supplies Prisma-managed required fields when bypassing Prisma with raw SQL', () => {
+  // IT: @updatedAt is populated by Prisma Client, not by a PostgreSQL default. The mutation
+  // harness uses raw SQL intentionally, so it must provide updatedAt itself or PostgreSQL
+  // will reject the row before the custody-trigger mutation is exercised.
+  assert.match(
+    mutationHarness,
+    /INSERT INTO "Contact" \("id", "userId", "fullNameEnc", "fullNameIdx", "updatedAt"\) VALUES \(\$1, \$2, \$3, \$4, CURRENT_TIMESTAMP\)/
+  );
 });
 
 test('migration backfills one deterministic default ContextSpace and has no destructive user-data statements', () => {

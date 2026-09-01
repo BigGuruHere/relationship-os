@@ -51,7 +51,9 @@ async function main() {
       // MUTATION EXPECTATION: With the vulnerable function installed, omitting contextSpaceId is
       // silently converted to userId. If this does not succeed, the intended mutation was not active.
       await tx.$executeRawUnsafe(
-        'INSERT INTO "Contact" ("id", "userId", "fullNameEnc", "fullNameIdx") VALUES ($1, $2, $3, $4)',
+        // IT: Raw SQL bypasses Prisma's @updatedAt handling, so provide updatedAt explicitly.
+        // All other required Contact fields either appear here or have database defaults.
+        'INSERT INTO "Contact" ("id", "userId", "fullNameEnc", "fullNameIdx", "updatedAt") VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP)',
         contactId,
         userId,
         'stage86-mutation-contact',

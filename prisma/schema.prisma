@@ -123,6 +123,9 @@ model User {
 
   profiles Profile[]
 
+  // IT: Stage 8.6 custody containers owned by this account.
+  contextSpaces ContextSpace[]
+
   @@index([createdAt])
 }
 
@@ -140,6 +143,75 @@ model Person {
   knowledgeClaims KnowledgeClaim[]
   wants Want[]
   offers Offer[]
+}
+
+
+// IT: Stage 8.6 custody boundary. User owns spaces; records live inside exactly one space.
+enum ContextSpaceKind {
+  WORKSPACE
+  AGENT_RELATIONSHIP
+  OTHER
+}
+
+model ContextSpace {
+  // IT: Default Workspace ids are supplied explicitly as User.id; future non-default spaces get independent UUIDs.
+  id          String @id @default(uuid())
+  ownerUserId String
+  owner       User   @relation(fields: [ownerUserId], references: [id], onDelete: Cascade)
+
+  kind      ContextSpaceKind @default(WORKSPACE)
+  isDefault Boolean          @default(false)
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+
+  contacts Contact[]
+  // IT: Context-local metadata inverse relations required by Prisma for direct ContextSpace custody links.
+  tags Tag[]
+  companyTags CompanyTag[]
+  leadSources LeadSource[]
+  interactions Interaction[]
+  reminders Reminder[]
+  contactRelationships ContactRelationship[]
+  deals Deal[]
+  dealNotes DealNote[]
+  dealContacts DealContact[]
+  dealContactNotes DealContactNote[]
+  companies Company[]
+  companyNotes CompanyNote[]
+  companyContacts CompanyContact[]
+  companyContactNotes CompanyContactNote[]
+  dealCompanies DealCompany[]
+  companyRelationships CompanyRelationship[]
+  objectives Objective[]
+  knowledgeClaims KnowledgeClaim[]
+  knowledgeEvidence KnowledgeEvidence[]
+  wants Want[]
+  wantNotes WantNote[]
+  offers Offer[]
+  offerNotes OfferNote[]
+  introductions Introduction[]
+  introductionParticipants IntroductionParticipant[]
+  outcomes Outcome[]
+  marketLeads MarketLead[]
+  marketLeadNotes MarketLeadNote[]
+  projects Project[]
+  projectWorkstreams ProjectWorkstream[]
+  projectDeals ProjectDeal[]
+  projectNotes ProjectNote[]
+  tasks Task[]
+  researchCandidates ResearchCandidate[]
+  researchSources ResearchSource[]
+  contactEnrichments ContactEnrichment[]
+  opportunityScores OpportunityScore[]
+  opportunityScoreFactors OpportunityScoreFactor[]
+  agentRuns AgentRun[]
+  agentToolCalls AgentToolCall[]
+  modelInvocations ModelInvocation[]
+  agentArtifacts AgentArtifact[]
+  approvalRequests ApprovalRequest[]
+
+  @@index([ownerUserId])
+  @@index([ownerUserId, kind])
 }
 
 // IT: New table to track claimable leads
@@ -292,6 +364,10 @@ model Tag {
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  // IT: Stage 8.6 tags are context-local relationship metadata, not account-global knowledge.
+  contextSpaceId String @default("00000000-0000-0000-0000-000000000000")
+  contextSpace   ContextSpace @relation(fields: [contextSpaceId], references: [id], onDelete: Cascade)
+
   name      String
   slug      String
   createdBy CreatedBy
@@ -308,8 +384,9 @@ model Tag {
   contacts ContactTag[]
   companies CompanyTag[]
 
-  @@unique([userId, name])
-  @@unique([userId, slug])
+  @@unique([userId, contextSpaceId, name])
+  @@unique([userId, contextSpaceId, slug])
+  @@index([userId, contextSpaceId])
   @@index([userId, createdBy, createdAt])
   @@map("Tag")
 }
@@ -339,6 +416,10 @@ model Contact {
   // Tenant ownership
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // IT: Stage 8.6 custody scope. Legacy/default writes use the owner User id via DB trigger.
+  contextSpaceId String @default("00000000-0000-0000-0000-000000000000")
+  contextSpace   ContextSpace @relation(fields: [contextSpaceId], references: [id], onDelete: Cascade)
 
   // IT: Stage 8.1 optional canonical identity link. It does not change Contact tenant ownership.
   personId String?
@@ -439,7 +520,8 @@ model Contact {
   @@index([userId, sellerStatus])
 
     // IT: new - one contact per owner-user pair; multiple NULLs are allowed by Postgres
-  @@unique([userId, linkedUserId])
+  @@index([userId, contextSpaceId])
+  @@unique([userId, contextSpaceId, linkedUserId])
 }
 
 // ---------------------------------------------------------------------------
@@ -462,6 +544,10 @@ model Interaction {
   id     String @id @default(uuid())
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // IT: Stage 8.6 custody scope. Legacy/default writes use the owner User id via DB trigger.
+  contextSpaceId String @default("00000000-0000-0000-0000-000000000000")
+  contextSpace   ContextSpace @relation(fields: [contextSpaceId], references: [id], onDelete: Cascade)
 
   contactId String?
   contact   Contact? @relation(fields: [contactId], references: [id], onDelete: Cascade)
@@ -500,7 +586,8 @@ model Interaction {
   @@index([userId, companyId])
   @@index([userId, sourceType, occurredAt])
   @@index([occurredAt])
-  @@unique([userId, sourceType, externalRef])
+  @@index([userId, contextSpaceId])
+  @@unique([userId, contextSpaceId, sourceType, externalRef])
 }
 
 // IT: InteractionEmbedding - pgvector tracked the same way
@@ -536,6 +623,9 @@ model CompanyTag {
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  contextSpaceId String @default("00000000-0000-0000-0000-000000000000")
+  contextSpace   ContextSpace @relation(fields: [contextSpaceId], references: [id], onDelete: Cascade)
+
   companyId String
   company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
 
@@ -547,6 +637,7 @@ model CompanyTag {
 
   @@unique([companyId, tagId])
   @@index([userId])
+  @@index([userId, contextSpaceId])
   @@index([companyId])
   @@index([tagId])
 }
@@ -556,6 +647,10 @@ model Reminder {
   id     String @id @default(uuid())
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // IT: Stage 8.6 custody scope. Legacy/default writes use the owner User id via DB trigger.
+  contextSpaceId String @default("00000000-0000-0000-0000-000000000000")
+  contextSpace   ContextSpace @relation(fields: [contextSpaceId], references: [id], onDelete: Cascade)
 
   contactId String
   contact   Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
@@ -567,6 +662,7 @@ model Reminder {
   createdAt DateTime @default(now())
 
   @@index([userId, dueAt])
+  @@index([userId, contextSpaceId])
   @@index([userId, contactId, dueAt])
 }
 
@@ -639,11 +735,16 @@ model ContactRelationship {
   contactA  Contact @relation("ContactAsA", fields: [contactAId], references: [id], onDelete: Cascade)
   contactB  Contact @relation("ContactAsB", fields: [contactBId], references: [id], onDelete: Cascade)
   user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // IT: Stage 8.6 custody scope. Legacy/default writes use the owner User id via DB trigger.
+  contextSpaceId String @default("00000000-0000-0000-0000-000000000000")
+  contextSpace   ContextSpace @relation(fields: [contextSpaceId], references: [id], onDelete: Cascade)
   
   // IT: allow multiple relationships between same contacts with different types
   @@unique([userId, contactAId, contactBId, relationshipType, label])
   @@index([userId, contactAId])
   @@index([userId, contactBId])
+  @@index([userId, contextSpaceId])
   @@index([userId, relationshipType])
 }
 
@@ -710,6 +811,10 @@ model Deal {
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  // IT: Stage 8.6 custody scope. Legacy/default writes use the owner User id via DB trigger.
+  contextSpaceId String @default("00000000-0000-0000-0000-000000000000")
+  contextSpace   ContextSpace @relation(fields: [contextSpaceId], references: [id], onDelete: Cascade)
+
   // IT: encrypted title and optional notes. titleIdx supports exact lookup.
   titleEnc              String
   titleIdx              String
@@ -743,6 +848,7 @@ model Deal {
   @@index([userId, status])
   @@index([userId, expectedCloseDate])
   @@index([userId, createdAt])
+  @@index([userId, contextSpaceId])
   @@index([titleIdx])
 }
 
@@ -752,6 +858,10 @@ model DealNote {
   id     String @id @default(uuid())
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // IT: Stage 8.6 custody scope. Legacy/default writes use the owner User id via DB trigger.
+  contextSpaceId String @default("00000000-0000-0000-0000-000000000000")
+  contextSpace   ContextSpace @relation(fields: [contextSpaceId], references: [id], onDelete: Cascade)
 
   dealId String
   deal   Deal   @relation(fields: [dealId], references: [id], onDelete: Cascade)
@@ -768,6 +878,7 @@ model DealNote {
   updatedAt DateTime @updatedAt
 
   @@index([userId, dealId, occurredAt])
+  @@index([userId, contextSpaceId])
   @@index([userId, contactId, occurredAt])
 }
 
@@ -815,6 +926,10 @@ model DealContact {
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  // IT: Stage 8.6 custody scope. Legacy/default writes use the owner User id via DB trigger.
+  contextSpaceId String @default("00000000-0000-0000-0000-000000000000")
+  contextSpace   ContextSpace @relation(fields: [contextSpaceId], references: [id], onDelete: Cascade)
+
   dealId String
   deal   Deal   @relation(fields: [dealId], references: [id], onDelete: Cascade)
 
@@ -854,6 +969,7 @@ model DealContact {
   @@index([userId, relationshipType])
   @@index([userId, stage])
   @@index([userId, interestLevel])
+  @@index([userId, contextSpaceId])
   @@index([userId, nextFollowUpAt])
 }
 
@@ -863,6 +979,10 @@ model DealContactNote {
   id     String @id @default(uuid())
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // IT: Stage 8.6 custody scope. Legacy/default writes use the owner User id via DB trigger.
+  contextSpaceId String @default("00000000-0000-0000-0000-000000000000")
+  contextSpace   ContextSpace @relation(fields: [contextSpaceId], references: [id], onDelete: Cascade)
 
   dealContactId String
   dealContact   DealContact @relation(fields: [dealContactId], references: [id], onDelete: Cascade)
@@ -883,6 +1003,7 @@ model DealContactNote {
 
   @@index([userId, dealContactId, occurredAt])
   @@index([userId, dealId, occurredAt])
+  @@index([userId, contextSpaceId])
   @@index([userId, contactId, occurredAt])
 }
 
@@ -943,6 +1064,10 @@ model Company {
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  // IT: Stage 8.6 custody scope. Legacy/default writes use the owner User id via DB trigger.
+  contextSpaceId String @default("00000000-0000-0000-0000-000000000000")
+  contextSpace   ContextSpace @relation(fields: [contextSpaceId], references: [id], onDelete: Cascade)
+
   nameEnc        String
   nameIdx        String
   websiteEnc     String?
@@ -986,6 +1111,7 @@ model Company {
   @@index([userId, status])
   @@index([nameIdx])
   @@index([websiteIdx])
+  @@index([userId, contextSpaceId])
   @@index([phoneIdx])
 }
 
@@ -994,6 +1120,10 @@ model CompanyNote {
   id String @id @default(uuid())
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // IT: Stage 8.6 custody scope. Legacy/default writes use the owner User id via DB trigger.
+  contextSpaceId String @default("00000000-0000-0000-0000-000000000000")
+  contextSpace   ContextSpace @relation(fields: [contextSpaceId], references: [id], onDelete: Cascade)
 
   companyId String
   company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
@@ -1007,6 +1137,7 @@ model CompanyNote {
   updatedAt DateTime @updatedAt
 
   @@index([userId, companyId, occurredAt])
+  @@index([userId, contextSpaceId])
   @@index([userId, companyId, createdAt])
 }
 
@@ -1015,6 +1146,10 @@ model CompanyContact {
   id     String @id @default(uuid())
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // IT: Stage 8.6 custody scope. Legacy/default writes use the owner User id via DB trigger.
+  contextSpaceId String @default("00000000-0000-0000-0000-000000000000")
+  contextSpace   ContextSpace @relation(fields: [contextSpaceId], references: [id], onDelete: Cascade)
 
   companyId String
   company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
@@ -1043,6 +1178,7 @@ model CompanyContact {
   @@unique([companyId, contactId])
   @@index([userId, companyId])
   @@index([userId, contactId])
+  @@index([userId, contextSpaceId])
   @@index([userId, status])
 }
 
@@ -1051,6 +1187,10 @@ model CompanyContactNote {
   id String @id @default(uuid())
   userId String
   user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // IT: Stage 8.6 custody scope. Legacy/default writes use the owner User id via DB trigger.
+  contextSpaceId String @default("00000000-0000-0000-0000-000000000000")
+  contextSpace   ContextSpace @relation(fields: [contextSpaceId], references: [id], onDelete: Cascade)
 
   companyContactId String
   companyContact   CompanyContact @relation(fields: [companyContactId], references: [id], onDelete: Cascade)
@@ -1071,6 +1211,7 @@ model CompanyContactNote {
 
   @@index([userId, companyContactId, occurredAt])
   @@index([userId, companyId, occurredAt])
+  @@index([userId, contextSpaceId])
   @@index([userId, contactId, occurredAt])
 }
 
@@ -1079,6 +1220,10 @@ model DealCompany {
   id     String @id @default(uuid())
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // IT: Stage 8.6 custody scope. Legacy/default writes use the owner User id via DB trigger.
+  contextSpaceId String @default("00000000-0000-0000-0000-000000000000")
+  contextSpace   ContextSpace @relation(fields: [contextSpaceId], references: [id], onDelete: Cascade)
 
   dealId String
   deal   Deal   @relation(fields: [dealId], references: [id], onDelete: Cascade)
@@ -1113,6 +1258,7 @@ model DealCompany {
   @@index([userId, relationshipType])
   @@index([userId, stage])
   @@index([userId, interestLevel])
+  @@index([userId, contextSpaceId])
   @@index([userId, nextFollowUpAt])
 }
 
@@ -1121,6 +1267,10 @@ model CompanyRelationship {
   id     String @id @default(uuid())
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // IT: Stage 8.6 custody scope. Legacy/default writes use the owner User id via DB trigger.
+  contextSpaceId String @default("00000000-0000-0000-0000-000000000000")
+  contextSpace   ContextSpace @relation(fields: [contextSpaceId], references: [id], onDelete: Cascade)
 
   companyAId String
   companyBId String
@@ -1139,6 +1289,7 @@ model CompanyRelationship {
   @@unique([userId, companyAId, companyBId, relationshipType, label])
   @@index([userId, companyAId])
   @@index([userId, companyBId])
+  @@index([userId, contextSpaceId])
   @@index([userId, relationshipType])
 }
 
@@ -1206,6 +1357,10 @@ model Objective {
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  // IT: Stage 8.6 custody scope. Legacy/default writes use the owner User id via DB trigger.
+  contextSpaceId String @default("00000000-0000-0000-0000-000000000000")
+  contextSpace   ContextSpace @relation(fields: [contextSpaceId], references: [id], onDelete: Cascade)
+
   status IntentStatus @default(CAPTURED)
   titleEnc       String
   descriptionEnc String?
@@ -1236,6 +1391,7 @@ model Objective {
   @@index([userId, personId])
   @@index([userId, companyId])
   @@index([userId, sourceInteractionId])
+  @@index([userId, contextSpaceId])
   @@index([userId, updatedAt])
 }
 
@@ -1245,6 +1401,10 @@ model KnowledgeClaim {
   id     String @id @default(uuid())
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // IT: Stage 8.6 custody scope. Legacy/default writes use the owner User id via DB trigger.
+  contextSpaceId String @default("00000000-0000-0000-0000-000000000000")
+  contextSpace   ContextSpace @relation(fields: [contextSpaceId], references: [id], onDelete: Cascade)
 
   kind       KnowledgeClaimKind
   status     KnowledgeClaimStatus @default(ACTIVE)
@@ -1279,6 +1439,7 @@ model KnowledgeClaim {
   @@index([userId, companyId])
   @@index([userId, objectiveId])
   @@index([userId, wantId])
+  @@index([userId, contextSpaceId])
   @@index([userId, offerId])
 }
 
@@ -1287,6 +1448,10 @@ model KnowledgeEvidence {
   id     String @id @default(uuid())
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // IT: Stage 8.6 custody scope. Legacy/default writes use the owner User id via DB trigger.
+  contextSpaceId String @default("00000000-0000-0000-0000-000000000000")
+  contextSpace   ContextSpace @relation(fields: [contextSpaceId], references: [id], onDelete: Cascade)
 
   claimId String
   claim   KnowledgeClaim @relation(fields: [claimId], references: [id], onDelete: Cascade)
@@ -1307,6 +1472,7 @@ model KnowledgeEvidence {
   @@index([userId, claimId, status])
   @@index([userId, sourceInteractionId])
   @@index([userId, sourceType])
+  @@index([userId, contextSpaceId])
   @@unique([claimId, sourceInteractionId])
 }
 
@@ -1368,6 +1534,10 @@ model Want {
   id     String @id @default(uuid())
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // IT: Stage 8.6 custody scope. Legacy/default writes use the owner User id via DB trigger.
+  contextSpaceId String @default("00000000-0000-0000-0000-000000000000")
+  contextSpace   ContextSpace @relation(fields: [contextSpaceId], references: [id], onDelete: Cascade)
 
   wantType WantType @default(GENERAL)
   status   IntentStatus @default(CAPTURED)
@@ -1449,6 +1619,7 @@ model Want {
   @@index([userId, companyContactId])
   @@index([userId, reviewAt])
   @@index([userId, expiresAt])
+  @@index([userId, contextSpaceId])
   @@index([userId, createdAt])
 }
 
@@ -1456,6 +1627,10 @@ model WantNote {
   id String @id @default(uuid())
   userId String
   user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // IT: Stage 8.6 custody scope. Legacy/default writes use the owner User id via DB trigger.
+  contextSpaceId String @default("00000000-0000-0000-0000-000000000000")
+  contextSpace   ContextSpace @relation(fields: [contextSpaceId], references: [id], onDelete: Cascade)
 
   wantId String
   want   Want @relation(fields: [wantId], references: [id], onDelete: Cascade)
@@ -1469,6 +1644,7 @@ model WantNote {
   updatedAt DateTime @updatedAt
 
   @@index([userId, wantId, occurredAt])
+  @@index([userId, contextSpaceId])
   @@index([userId, createdAt])
 }
 
@@ -1494,6 +1670,10 @@ model Offer {
   id     String @id @default(uuid())
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // IT: Stage 8.6 custody scope. Legacy/default writes use the owner User id via DB trigger.
+  contextSpaceId String @default("00000000-0000-0000-0000-000000000000")
+  contextSpace   ContextSpace @relation(fields: [contextSpaceId], references: [id], onDelete: Cascade)
 
   offerType OfferType @default(GENERAL)
   status    IntentStatus @default(CAPTURED)
@@ -1576,6 +1756,7 @@ model Offer {
   @@index([userId, companyContactId])
   @@index([userId, reviewAt])
   @@index([userId, expiresAt])
+  @@index([userId, contextSpaceId])
   @@index([userId, createdAt])
 }
 
@@ -1583,6 +1764,10 @@ model OfferNote {
   id String @id @default(uuid())
   userId String
   user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // IT: Stage 8.6 custody scope. Legacy/default writes use the owner User id via DB trigger.
+  contextSpaceId String @default("00000000-0000-0000-0000-000000000000")
+  contextSpace   ContextSpace @relation(fields: [contextSpaceId], references: [id], onDelete: Cascade)
 
   offerId String
   offer   Offer @relation(fields: [offerId], references: [id], onDelete: Cascade)
@@ -1596,6 +1781,7 @@ model OfferNote {
   updatedAt DateTime @updatedAt
 
   @@index([userId, offerId, occurredAt])
+  @@index([userId, contextSpaceId])
   @@index([userId, createdAt])
 }
 
@@ -1640,6 +1826,10 @@ model Introduction {
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  // IT: Stage 8.6 custody scope. Legacy/default writes use the owner User id via DB trigger.
+  contextSpaceId String @default("00000000-0000-0000-0000-000000000000")
+  contextSpace   ContextSpace @relation(fields: [contextSpaceId], references: [id], onDelete: Cascade)
+
   status     IntroductionStatus @default(INTRODUCED)
   occurredAt DateTime           @default(now())
 
@@ -1668,6 +1858,7 @@ model Introduction {
   @@index([userId, authority])
   @@index([userId, sourceType])
   @@index([userId, sourceInteractionId])
+  @@index([userId, contextSpaceId])
   @@index([userId, facilitatorContactId])
 }
 
@@ -1678,6 +1869,10 @@ model IntroductionParticipant {
   id     String @id @default(uuid())
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // IT: Stage 8.6 custody scope. Legacy/default writes use the owner User id via DB trigger.
+  contextSpaceId String @default("00000000-0000-0000-0000-000000000000")
+  contextSpace   ContextSpace @relation(fields: [contextSpaceId], references: [id], onDelete: Cascade)
 
   introductionId String
   introduction   Introduction @relation(fields: [introductionId], references: [id], onDelete: Cascade)
@@ -1697,6 +1892,7 @@ model IntroductionParticipant {
 
   @@unique([introductionId, side])
   @@index([userId, contactId])
+  @@index([userId, contextSpaceId])
   @@index([userId, companyId])
 }
 
@@ -1706,6 +1902,10 @@ model Outcome {
   id     String @id @default(uuid())
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // IT: Stage 8.6 custody scope. Legacy/default writes use the owner User id via DB trigger.
+  contextSpaceId String @default("00000000-0000-0000-0000-000000000000")
+  contextSpace   ContextSpace @relation(fields: [contextSpaceId], references: [id], onDelete: Cascade)
 
   introductionId String
   introduction   Introduction @relation(fields: [introductionId], references: [id], onDelete: Cascade)
@@ -1736,6 +1936,7 @@ model Outcome {
   @@index([userId, commerciality])
   @@index([userId, authority])
   @@index([userId, sourceType])
+  @@index([userId, contextSpaceId])
   @@index([userId, sourceInteractionId])
 }
 
@@ -1807,6 +2008,9 @@ model LeadSource {
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  contextSpaceId String @default("00000000-0000-0000-0000-000000000000")
+  contextSpace   ContextSpace @relation(fields: [contextSpaceId], references: [id], onDelete: Cascade)
+
   nameEnc String
   nameIdx String
 
@@ -1816,7 +2020,8 @@ model LeadSource {
   marketLeads MarketLead[]
   contacts    Contact[]
 
-  @@unique([userId, nameIdx])
+  @@unique([userId, contextSpaceId, nameIdx])
+  @@index([userId, contextSpaceId])
   @@index([userId, updatedAt])
   @@index([nameIdx])
 }
@@ -1827,6 +2032,10 @@ model MarketLead {
   id     String @id @default(uuid())
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // IT: Stage 8.6 custody scope. Legacy/default writes use the owner User id via DB trigger.
+  contextSpaceId String @default("00000000-0000-0000-0000-000000000000")
+  contextSpace   ContextSpace @relation(fields: [contextSpaceId], references: [id], onDelete: Cascade)
 
   type   MarketLeadType   @default(OTHER)
   status MarketLeadStatus @default(NEW)
@@ -1926,6 +2135,7 @@ model MarketLead {
   @@index([phoneIdx])
   @@index([websiteIdx])
   @@index([linkedinIdx])
+  @@index([userId, contextSpaceId])
   @@index([addressIdx])
 }
 
@@ -1935,6 +2145,10 @@ model MarketLeadNote {
   id String @id @default(uuid())
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // IT: Stage 8.6 custody scope. Legacy/default writes use the owner User id via DB trigger.
+  contextSpaceId String @default("00000000-0000-0000-0000-000000000000")
+  contextSpace   ContextSpace @relation(fields: [contextSpaceId], references: [id], onDelete: Cascade)
 
   marketLeadId String
   marketLead   MarketLead @relation(fields: [marketLeadId], references: [id], onDelete: Cascade)
@@ -1948,6 +2162,7 @@ model MarketLeadNote {
   updatedAt DateTime @updatedAt
 
   @@index([userId, marketLeadId, occurredAt])
+  @@index([userId, contextSpaceId])
   @@index([userId, marketLeadId, createdAt])
 }
 
@@ -2028,6 +2243,10 @@ model Project {
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  // IT: Stage 8.6 custody scope. Legacy/default writes use the owner User id via DB trigger.
+  contextSpaceId String @default("00000000-0000-0000-0000-000000000000")
+  contextSpace   ContextSpace @relation(fields: [contextSpaceId], references: [id], onDelete: Cascade)
+
   titleEnc       String
   titleIdx       String
   descriptionEnc String?
@@ -2045,6 +2264,7 @@ model Project {
   workstreams   ProjectWorkstream[]
 
   @@index([userId, status])
+  @@index([userId, contextSpaceId])
   @@index([titleIdx])
 }
 
@@ -2054,6 +2274,10 @@ model ProjectWorkstream {
   id     String @id @default(uuid())
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // IT: Stage 8.6 custody scope. Legacy/default writes use the owner User id via DB trigger.
+  contextSpaceId String @default("00000000-0000-0000-0000-000000000000")
+  contextSpace   ContextSpace @relation(fields: [contextSpaceId], references: [id], onDelete: Cascade)
 
   projectId String
   project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
@@ -2077,6 +2301,7 @@ model ProjectWorkstream {
   @@unique([projectId, nameIdx])
   @@index([userId, projectId, status])
   @@index([userId, status])
+  @@index([userId, contextSpaceId])
   @@index([nameIdx])
 }
 
@@ -2086,6 +2311,10 @@ model ProjectDeal {
   id     String @id @default(uuid())
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // IT: Stage 8.6 custody scope. Legacy/default writes use the owner User id via DB trigger.
+  contextSpaceId String @default("00000000-0000-0000-0000-000000000000")
+  contextSpace   ContextSpace @relation(fields: [contextSpaceId], references: [id], onDelete: Cascade)
 
   projectId String
   project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
@@ -2106,6 +2335,7 @@ model ProjectDeal {
   @@index([userId, projectId])
   @@index([userId, workstreamId])
   @@index([userId, dealId])
+  @@index([userId, contextSpaceId])
   @@index([userId, createdAt])
 }
 
@@ -2114,6 +2344,10 @@ model ProjectNote {
   id String @id @default(uuid())
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // IT: Stage 8.6 custody scope. Legacy/default writes use the owner User id via DB trigger.
+  contextSpaceId String @default("00000000-0000-0000-0000-000000000000")
+  contextSpace   ContextSpace @relation(fields: [contextSpaceId], references: [id], onDelete: Cascade)
 
   projectId String
   project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
@@ -2130,6 +2364,7 @@ model ProjectNote {
   updatedAt DateTime @updatedAt
 
   @@index([userId, projectId, createdAt])
+  @@index([userId, contextSpaceId])
   @@index([userId, workstreamId, createdAt])
 }
 
@@ -2138,6 +2373,10 @@ model Task {
   id     String @id @default(uuid())
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // IT: Stage 8.6 custody scope. Legacy/default writes use the owner User id via DB trigger.
+  contextSpaceId String @default("00000000-0000-0000-0000-000000000000")
+  contextSpace   ContextSpace @relation(fields: [contextSpaceId], references: [id], onDelete: Cascade)
 
   titleEnc   String
   notesEnc   String?
@@ -2221,6 +2460,7 @@ model Task {
   @@index([userId, companyContactId])
   @@index([userId, dealCompanyId])
   @@index([userId, waitingOnContactId])
+  @@index([userId, contextSpaceId])
   @@index([userId, recurrenceSeriesId, status])
 }
 
@@ -2258,6 +2498,10 @@ model ResearchCandidate {
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  // IT: Stage 8.6 custody scope. Legacy/default writes use the owner User id via DB trigger.
+  contextSpaceId String @default("00000000-0000-0000-0000-000000000000")
+  contextSpace   ContextSpace @relation(fields: [contextSpaceId], references: [id], onDelete: Cascade)
+
   agentRunId String?
   run        AgentRun? @relation(fields: [agentRunId], references: [id], onDelete: SetNull)
 
@@ -2289,6 +2533,7 @@ model ResearchCandidate {
   @@index([userId, status])
   @@index([userId, entityType])
   @@index([userId, nameIdx])
+  @@index([userId, contextSpaceId])
   @@index([agentRunId])
 }
 
@@ -2299,6 +2544,10 @@ model ResearchSource {
   id     String @id @default(uuid())
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // IT: Stage 8.6 custody scope. Legacy/default writes use the owner User id via DB trigger.
+  contextSpaceId String @default("00000000-0000-0000-0000-000000000000")
+  contextSpace   ContextSpace @relation(fields: [contextSpaceId], references: [id], onDelete: Cascade)
 
   agentRunId String?
   run        AgentRun? @relation(fields: [agentRunId], references: [id], onDelete: SetNull)
@@ -2333,6 +2582,7 @@ model ResearchSource {
   @@index([userId, companyId])
   @@index([userId, contactId])
   @@index([userId, researchCandidateId])
+  @@index([userId, contextSpaceId])
   @@index([agentRunId])
 }
 
@@ -2342,6 +2592,10 @@ model ContactEnrichment {
   id     String @id @default(uuid())
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // IT: Stage 8.6 custody scope. Legacy/default writes use the owner User id via DB trigger.
+  contextSpaceId String @default("00000000-0000-0000-0000-000000000000")
+  contextSpace   ContextSpace @relation(fields: [contextSpaceId], references: [id], onDelete: Cascade)
 
   agentRunId String?
   run        AgentRun? @relation(fields: [agentRunId], references: [id], onDelete: SetNull)
@@ -2398,6 +2652,7 @@ model ContactEnrichment {
   @@index([agentRunId])
   @@index([userId, fieldKey])
   @@index([agentRunId, groupKey])
+  @@index([userId, contextSpaceId])
   @@index([userId, conflictStatus])
 }
 
@@ -2406,6 +2661,10 @@ model OpportunityScore {
   id     String @id @default(uuid())
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // IT: Stage 8.6 custody scope. Legacy/default writes use the owner User id via DB trigger.
+  contextSpaceId String @default("00000000-0000-0000-0000-000000000000")
+  contextSpace   ContextSpace @relation(fields: [contextSpaceId], references: [id], onDelete: Cascade)
 
   agentRunId String?
   run        AgentRun? @relation(fields: [agentRunId], references: [id], onDelete: SetNull)
@@ -2455,6 +2714,7 @@ model OpportunityScore {
   @@index([userId, contactId])
   @@index([userId, dealId])
   @@index([userId, researchCandidateId])
+  @@index([userId, contextSpaceId])
   @@index([agentRunId])
 }
 
@@ -2463,6 +2723,10 @@ model OpportunityScoreFactor {
   id     String @id @default(uuid())
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // IT: Stage 8.6 custody scope. Legacy/default writes use the owner User id via DB trigger.
+  contextSpaceId String @default("00000000-0000-0000-0000-000000000000")
+  contextSpace   ContextSpace @relation(fields: [contextSpaceId], references: [id], onDelete: Cascade)
 
   opportunityScoreId String
   opportunityScore   OpportunityScore @relation(fields: [opportunityScoreId], references: [id], onDelete: Cascade)
@@ -2498,6 +2762,7 @@ model OpportunityScoreFactor {
   @@index([userId, researchCandidateId])
   @@index([userId, companyId])
   @@index([userId, contactId])
+  @@index([userId, contextSpaceId])
   @@index([userId, dealId])
 }
 
@@ -2661,6 +2926,10 @@ model AgentRun {
   userId               String
   user                 User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  // IT: Stage 8.6 custody scope. Legacy/default writes use the owner User id via DB trigger.
+  contextSpaceId String @default("00000000-0000-0000-0000-000000000000")
+  contextSpace   ContextSpace @relation(fields: [contextSpaceId], references: [id], onDelete: Cascade)
+
   agentDefinitionId    String
   agentDefinition      AgentDefinition @relation(fields: [agentDefinitionId], references: [id], onDelete: Cascade)
 
@@ -2695,6 +2964,7 @@ model AgentRun {
   @@index([userId, status])
   @@index([userId, agentDefinitionId])
   @@index([triggerEntityType, triggerEntityId])
+  @@index([userId, contextSpaceId])
   @@index([createdAt])
 }
 
@@ -2727,6 +2997,10 @@ model AgentToolCall {
   userId            String
   user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  // IT: Stage 8.6 custody scope. Legacy/default writes use the owner User id via DB trigger.
+  contextSpaceId String @default("00000000-0000-0000-0000-000000000000")
+  contextSpace   ContextSpace @relation(fields: [contextSpaceId], references: [id], onDelete: Cascade)
+
   agentRunId         String
   run               AgentRun @relation(fields: [agentRunId], references: [id], onDelete: Cascade)
 
@@ -2748,6 +3022,7 @@ model AgentToolCall {
 
   @@index([userId, toolKey])
   @@index([agentRunId])
+  @@index([userId, contextSpaceId])
   @@index([agentStepId])
 }
 
@@ -2756,6 +3031,10 @@ model ModelInvocation {
   id                   String   @id @default(uuid())
   userId               String
   user                 User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // IT: Stage 8.6 custody scope. Legacy/default writes use the owner User id via DB trigger.
+  contextSpaceId String @default("00000000-0000-0000-0000-000000000000")
+  contextSpace   ContextSpace @relation(fields: [contextSpaceId], references: [id], onDelete: Cascade)
 
   agentRunId            String?
   run                  AgentRun? @relation(fields: [agentRunId], references: [id], onDelete: SetNull)
@@ -2781,6 +3060,7 @@ model ModelInvocation {
 
   @@index([userId, provider])
   @@index([agentRunId])
+  @@index([userId, contextSpaceId])
   @@index([agentStepId])
 }
 
@@ -2789,6 +3069,10 @@ model AgentArtifact {
   id             String   @id @default(uuid())
   userId         String
   user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // IT: Stage 8.6 custody scope. Legacy/default writes use the owner User id via DB trigger.
+  contextSpaceId String @default("00000000-0000-0000-0000-000000000000")
+  contextSpace   ContextSpace @relation(fields: [contextSpaceId], references: [id], onDelete: Cascade)
 
   agentRunId      String?
   run            AgentRun? @relation(fields: [agentRunId], references: [id], onDelete: SetNull)
@@ -2808,6 +3092,7 @@ model AgentArtifact {
 
   @@index([userId, artifactType])
   @@index([userId, entityType, entityId])
+  @@index([userId, contextSpaceId])
   @@index([agentRunId])
 }
 
@@ -2816,6 +3101,10 @@ model ApprovalRequest {
   id                 String   @id @default(uuid())
   userId             String
   user               User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // IT: Stage 8.6 custody scope. Legacy/default writes use the owner User id via DB trigger.
+  contextSpaceId String @default("00000000-0000-0000-0000-000000000000")
+  contextSpace   ContextSpace @relation(fields: [contextSpaceId], references: [id], onDelete: Cascade)
 
   agentRunId          String?
   run                AgentRun? @relation(fields: [agentRunId], references: [id], onDelete: SetNull)
@@ -2838,6 +3127,7 @@ model ApprovalRequest {
 
   @@index([userId, status])
   @@index([agentRunId])
+  @@index([userId, contextSpaceId])
   @@index([entityType, entityId])
 }
 

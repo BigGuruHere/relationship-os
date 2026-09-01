@@ -102,12 +102,12 @@ test('the compatibility tool now delegates to a pre-query Core projection and ha
 
 test('real repository primitive enforces userId for same id lookups', async () => {
   const rows = [
-    { id: 'contact-a', userId: 'user-a', label: 'A' },
-    { id: 'contact-b', userId: 'user-b', label: 'B' }
+    { id: 'contact-a', userId: 'user-a', contextSpaceId: 'context-a', label: 'A' },
+    { id: 'contact-b', userId: 'user-b', contextSpaceId: 'context-b', label: 'B' }
   ];
   const delegate = {
     async findFirst({ where, select }: any) {
-      const row = rows.find((candidate) => candidate.id === where.id && candidate.userId === where.userId) || null;
+      const row = rows.find((candidate) => candidate.id === where.id && candidate.userId === where.userId && candidate.contextSpaceId === where.contextSpaceId) || null;
       if (!row) return null;
       return Object.fromEntries(Object.keys(select).filter((key) => select[key]).map((key) => [key, (row as any)[key]]));
     }
@@ -117,19 +117,19 @@ test('real repository primitive enforces userId for same id lookups', async () =
     want: delegate, offer: delegate, objective: delegate, knowledgeClaim: delegate
   });
 
-  assert.deepEqual(await repo.findContact({ workspaceUserId: 'user-a' }, 'contact-a', { id: true }), { id: 'contact-a' });
-  assert.equal(await repo.findContact({ workspaceUserId: 'user-b' }, 'contact-a', { id: true }), null);
-  assert.equal(await repo.findContact({ workspaceUserId: 'user-a' }, 'contact-b', { id: true }), null);
+  assert.deepEqual(await repo.findContact({ workspaceUserId: 'user-a', contextSpaceId: 'context-a' }, 'contact-a', { id: true }), { id: 'contact-a' });
+  assert.equal(await repo.findContact({ workspaceUserId: 'user-b', contextSpaceId: 'context-b' }, 'contact-a', { id: true }), null);
+  assert.equal(await repo.findContact({ workspaceUserId: 'user-a', contextSpaceId: 'context-a' }, 'contact-b', { id: true }), null);
 });
 
 test('tenant predicate also protects Want and KnowledgeClaim repository reads', async () => {
   const rows = [
-    { id: 'want-a', userId: 'user-a' },
-    { id: 'claim-a', userId: 'user-a' }
+    { id: 'want-a', userId: 'user-a', contextSpaceId: 'context-a' },
+    { id: 'claim-a', userId: 'user-a', contextSpaceId: 'context-a' }
   ];
   const delegate = {
     async findFirst({ where }: any) {
-      return rows.find((candidate) => candidate.id === where.id && candidate.userId === where.userId) || null;
+      return rows.find((candidate) => candidate.id === where.id && candidate.userId === where.userId && candidate.contextSpaceId === where.contextSpaceId) || null;
     }
   };
   const repo = createScopedRelationshipRepository({
@@ -137,10 +137,10 @@ test('tenant predicate also protects Want and KnowledgeClaim repository reads', 
     want: delegate, offer: delegate, objective: delegate, knowledgeClaim: delegate
   });
 
-  assert.equal((await repo.findWant({ workspaceUserId: 'user-a' }, 'want-a', { id: true }))?.id, 'want-a');
-  assert.equal(await repo.findWant({ workspaceUserId: 'user-b' }, 'want-a', { id: true }), null);
-  assert.equal((await repo.findKnowledgeClaim({ workspaceUserId: 'user-a' }, 'claim-a', { id: true }))?.id, 'claim-a');
-  assert.equal(await repo.findKnowledgeClaim({ workspaceUserId: 'user-b' }, 'claim-a', { id: true }), null);
+  assert.equal((await repo.findWant({ workspaceUserId: 'user-a', contextSpaceId: 'context-a' }, 'want-a', { id: true }))?.id, 'want-a');
+  assert.equal(await repo.findWant({ workspaceUserId: 'user-b', contextSpaceId: 'context-b' }, 'want-a', { id: true }), null);
+  assert.equal((await repo.findKnowledgeClaim({ workspaceUserId: 'user-a', contextSpaceId: 'context-a' }, 'claim-a', { id: true }))?.id, 'claim-a');
+  assert.equal(await repo.findKnowledgeClaim({ workspaceUserId: 'user-b', contextSpaceId: 'context-b' }, 'claim-a', { id: true }), null);
 });
 
 test('retirement register names and closes the fail-open post-query filtering authority', () => {

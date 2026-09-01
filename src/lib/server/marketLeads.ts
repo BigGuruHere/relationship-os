@@ -7,6 +7,7 @@ import { buildIndexToken, decrypt, encrypt } from '$lib/crypto';
 import { parseMoneyToCents } from '$lib/deals';
 import { storeWantEmbedding } from '$lib/server/wants';
 import { storeOfferEmbedding } from '$lib/server/offers';
+import { contextSpaceIdForOwner } from '$lib/server/core/contextSpace';
 import {
   MARKET_LEAD_SOURCES,
   clampInt,
@@ -280,8 +281,9 @@ export async function resolveLeadSourceId(userId: string, leadSourceId: string, 
   const name = String(newLeadSource || '').trim();
   if (!name) return null;
   const nameIdx = buildIndexToken(name);
+  const contextSpaceId = contextSpaceIdForOwner(userId);
   const row = await prisma.leadSource.upsert({
-    where: { userId_nameIdx: { userId, nameIdx } },
+    where: { userId_contextSpaceId_nameIdx: { userId, contextSpaceId, nameIdx } },
     update: { nameEnc: encrypt(name, 'lead_source.name') },
     create: { userId, nameEnc: encrypt(name, 'lead_source.name'), nameIdx },
     select: { id: true }

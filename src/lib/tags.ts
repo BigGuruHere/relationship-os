@@ -8,6 +8,7 @@
 
 import { prisma } from '$lib/db';
 import { createEmbeddingForText } from './embeddings_api';
+import { contextSpaceIdForOwner } from '$lib/server/core/contextSpace';
 
 // Toggle verbose logs for tag flows - set to false when done debugging
 const DEBUG_TAGS = true;
@@ -25,6 +26,7 @@ export function slugifyTag(input: string): string {
 // Best effort - compute and store pgvector for a tag's label
 async function ensureTagEmbeddingVec(tagId: string, userId: string, label: string) {
   try {
+    const contextSpaceId = contextSpaceIdForOwner(userId);
     const vec = await createEmbeddingForText(label);
     if (!Array.isArray(vec) || vec.length === 0) {
       if (DEBUG_TAGS) console.warn('[tags] ensureTagEmbeddingVec - empty vector', { tagId, label });
@@ -32,10 +34,11 @@ async function ensureTagEmbeddingVec(tagId: string, userId: string, label: strin
     }
     const literal = `[${vec.join(',')}]`;
     await prisma.$executeRawUnsafe(
-      'UPDATE "Tag" SET "embedding_vec" = $1::vector WHERE "id" = $2 AND "userId" = $3',
+      'UPDATE "Tag" SET "embedding_vec" = $1::vector WHERE "id" = $2 AND "userId" = $3 AND "contextSpaceId" = $4',
       literal,
       tagId,
-      userId
+      userId,
+      contextSpaceId
     );
     if (DEBUG_TAGS) console.log('[tags] ensureTagEmbeddingVec - stored vector', { tagId });
   } catch (e: any) {
@@ -56,6 +59,7 @@ export async function resolveOrCreateTagForTenant(
 ): Promise<{ id: string; slug: string; name: string }> {
   const slug = slugifyTag(name);
   if (!slug) throw new Error('Empty tag');
+  const contextSpaceId = contextSpaceIdForOwner(userId);
 
   if (DEBUG_TAGS) console.log('[tags] resolveOrCreateTagForTenant start', { userId, name, slug, provenance });
 
@@ -71,7 +75,7 @@ export async function resolveOrCreateTagForTenant(
 
   // Alias lookup - tenant scoped via related Tag
   const aliasRow = await prisma.tagAlias.findFirst({
-    where: { slug, tag: { userId } },
+    where: { slug, tag: { userId, contextSpaceId } },
     select: { tag: { select: { id: true, slug: true, name: true } } }
   });
   if (aliasRow?.tag) {
@@ -132,12 +136,14 @@ export async function resolveOrCreateTagForTenant(
                GREATEST(0, LEAST(1, 1 - (t."embedding_vec" <=> $1::vector))) AS score
         FROM "Tag" t
         WHERE t."userId" = $2
+          AND t."contextSpaceId" = $3
           AND t."embedding_vec" IS NOT NULL
         ORDER BY t."embedding_vec" <=> $1::vector ASC
         LIMIT 1
         `,
         literal,
-        userId
+        userId,
+        contextSpaceId
       );
 
       const best = rows?.[0];
@@ -187,6 +193,7 @@ export async function attachContactTags(params: {
   provenance?: 'user' | 'ai';
 }): Promise<void> {
   const { userId, contactId } = params;
+  const contextSpaceId = contextSpaceIdForOwner(userId);
   const provenance = params.provenance ?? 'user';
 
   const names = Array.from(
@@ -241,7 +248,7 @@ export async function attachContactTags(params: {
   // Final check - log what the DB now has for this contact
   try {
     const linked = await prisma.contactTag.findMany({
-      where: { contactId },
+      where: { contactId, contact: { userId, contextSpaceId } },
       select: { tag: { select: { id: true, name: true, slug: true } } },
       orderBy: { tagId: 'asc' }
     });
@@ -259,6 +266,7 @@ export async function detachContactTag(
 ): Promise<void> {
   const clean = slugifyTag(slug);
   if (!clean) return;
+  const contextSpaceId = contextSpaceIdForOwner(userId);
 
   const tag = await prisma.tag.findFirst({
     where: { userId, slug: clean },
@@ -267,7 +275,7 @@ export async function detachContactTag(
   if (!tag) return;
 
   await prisma.contactTag.deleteMany({
-    where: { contactId, tagId: tag.id }
+    where: { contactId, tagId: tag.id, contact: { userId, contextSpaceId } }
   });
 
   if (DEBUG_TAGS) console.log('[tags] detachContactTag done', { contactId, slug: clean });

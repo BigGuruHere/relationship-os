@@ -39,6 +39,7 @@ export const createResearchCandidateTool: ToolDefinition<CreateResearchCandidate
     const candidate = await prisma.researchCandidate.create({
       data: {
         userId: context.userId,
+        contextSpaceId: context.contextSpaceId || context.userId,
         agentRunId: context.agentRunId,
         entityType: input.entityType === 'CONTACT' ? 'CONTACT' : 'COMPANY',
         status: 'CANDIDATE',

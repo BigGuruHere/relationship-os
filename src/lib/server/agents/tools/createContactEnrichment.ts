@@ -68,7 +68,7 @@ export const createContactEnrichmentTool: ToolDefinition<Input, { id: string; cr
     const fieldKey = cleanKey(input.fieldKey);
 
     // IT: Stage 8.1 validates canonical relationship references before staging enrichment against them.
-    const access = createAgentCoreAccess({ userId: context.userId, agentDefinitionId: context.agentDefinitionId, purpose: 'create_contact_enrichment' });
+    const access = createAgentCoreAccess({ userId: context.userId, contextSpaceId: context.contextSpaceId || context.userId, agentDefinitionId: context.agentDefinitionId, purpose: 'create_contact_enrichment' });
     await assertOwnedCanonicalRefs(access, { contactId: clean(input.contactId) || null, companyId: clean(input.companyId) || null });
     if (clean(input.researchCandidateId)) {
       const candidate = await getOwnedResearchCandidate(context.userId, clean(input.researchCandidateId), context.agentRunId);
@@ -81,6 +81,7 @@ export const createContactEnrichmentTool: ToolDefinition<Input, { id: string; cr
     const row = await prisma.contactEnrichment.create({
       data: {
         userId: context.userId,
+        contextSpaceId: context.contextSpaceId || context.userId,
         agentRunId: context.agentRunId,
         researchCandidateId: clean(input.researchCandidateId) || null,
         companyId: clean(input.companyId) || null,

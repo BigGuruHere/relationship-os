@@ -3,9 +3,11 @@
 
 import { prisma } from '$lib/db';
 import { ensureCoreAgentSetup } from '$lib/server/agents/agentSetup';
+import { contextSpaceIdForOwner } from '$lib/server/core/contextSpace';
 
 type StartAgentRunInput = {
   userId: string;
+  contextSpaceId?: string;
   agentKey: string;
   triggerType?: string;
   triggerEntityType?: string;
@@ -42,6 +44,7 @@ export async function startAgentRun(input: StartAgentRunInput) {
   const run = await prisma.agentRun.create({
     data: {
       userId: input.userId,
+      contextSpaceId: input.contextSpaceId ?? contextSpaceIdForOwner(input.userId),
       agentDefinitionId: agent.id,
       promptVersionId: activePrompt?.id ?? null,
       status: 'running',

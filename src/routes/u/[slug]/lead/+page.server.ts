@@ -10,6 +10,7 @@ import { encrypt, buildIndexToken } from '$lib/crypto';
 import { fail, redirect } from '@sveltejs/kit';
 import { createInviteToken } from '$lib/server/tokens';
 import { resolveOwnerFromSlug } from '$lib/server/owner';
+import { contextSpaceIdForOwner } from '$lib/server/core/contextSpace';
 
 
 // IT: resolve the profile owner by slug and return only fields we actually have
@@ -65,6 +66,8 @@ export const actions: Actions = {
     // Build encrypted contact payload scoped to the owner
     const data: any = {
       userId: owner.id,
+      // SECURITY: Public lead capture deliberately targets the profile owner's default custody.
+      contextSpaceId: contextSpaceIdForOwner(owner.id),
       fullNameEnc: encrypt(name, 'contact.full_name'),
       fullNameIdx: buildIndexToken(name),
       emailEnc: encrypt(email, 'contact.email'),

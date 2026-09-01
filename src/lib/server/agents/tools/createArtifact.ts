@@ -32,6 +32,7 @@ export const createAgentArtifactTool: ToolDefinition<CreateAgentArtifactInput, C
     const artifact = await prisma.agentArtifact.create({
       data: {
         userId: context.userId,
+        contextSpaceId: context.contextSpaceId || context.userId,
         agentRunId: context.agentRunId,
         agentStepId: context.agentStepId ?? null,
         artifactType: input.artifactType,

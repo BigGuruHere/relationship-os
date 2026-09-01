@@ -3,6 +3,7 @@
 // SECURITY: Never trust ids submitted by the browser. Every non-null id is resolved inside the current tenant.
 
 import { prisma } from '$lib/db';
+import { contextSpaceIdForOwner } from '$lib/server/core/contextSpace';
 
 export type CommercialEntityLinks = {
   contactId?: string | null;
@@ -40,12 +41,13 @@ export async function validateCommercialEntityLinks(
   let projectId = cleanId(input.projectId);
   const workstreamId = cleanId(input.workstreamId);
   const companyContactId = cleanId(input.companyContactId);
+  const contextSpaceId = contextSpaceIdForOwner(userId);
 
-  // IT: Resolve all supplied ids in parallel, scoped to this user. A crafted foreign-tenant id
+  // IT: Resolve all supplied ids in parallel, scoped to this user and current custody context. A crafted foreign-tenant id
   // therefore fails before any Want/Offer row can be written with it.
   const [contact, person, company, deal, project, workstream, companyContact] = await Promise.all([
     contactId ? prisma.contact.findFirst({ where: { id: contactId, userId }, select: { id: true, personId: true } }) : null,
-    personId ? prisma.person.findFirst({ where: { id: personId, OR: [{ accounts: { some: { id: userId } } }, { contacts: { some: { userId } } }] }, select: { id: true } }) : null,
+    personId ? prisma.person.findFirst({ where: { id: personId, OR: [{ accounts: { some: { id: userId } } }, { contacts: { some: { userId, contextSpaceId } } }] }, select: { id: true } }) : null,
     companyId ? prisma.company.findFirst({ where: { id: companyId, userId }, select: { id: true } }) : null,
     dealId ? prisma.deal.findFirst({ where: { id: dealId, userId }, select: { id: true } }) : null,
     projectId ? prisma.project.findFirst({ where: { id: projectId, userId }, select: { id: true } }) : null,

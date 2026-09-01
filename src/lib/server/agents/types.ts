@@ -5,6 +5,7 @@ export type AgentEntityType = 'contact' | 'company' | 'deal' | 'project' | 'rese
 
 export type ToolContext = {
   userId: string;
+  contextSpaceId?: string;
   agentRunId: string;
   agentStepId?: string;
   agentDefinitionId?: string;

@@ -82,7 +82,7 @@ function normalisePriority(totalScore: number, supplied?: string) {
 }
 
 async function assertOwned(input: CreateOpportunityScoreInput, context: ToolContext) {
-  const access = createAgentCoreAccess({ userId: context.userId, agentDefinitionId: context.agentDefinitionId, purpose: 'create_opportunity_score' });
+  const access = createAgentCoreAccess({ userId: context.userId, contextSpaceId: context.contextSpaceId || context.userId, agentDefinitionId: context.agentDefinitionId, purpose: 'create_opportunity_score' });
   await assertOwnedCanonicalRefs(access, { companyId: input.companyId, contactId: input.contactId, dealId: input.dealId });
 
   if (input.researchCandidateId) {
@@ -105,6 +105,7 @@ export const createOpportunityScoreTool: ToolDefinition<CreateOpportunityScoreIn
     const score = await prisma.opportunityScore.create({
       data: {
         userId: context.userId,
+        contextSpaceId: context.contextSpaceId || context.userId,
         agentRunId: context.agentRunId,
         researchCandidateId: input.researchCandidateId ?? null,
         companyId: input.companyId ?? null,
@@ -135,6 +136,7 @@ export const createOpportunityScoreTool: ToolDefinition<CreateOpportunityScoreIn
       await prisma.opportunityScoreFactor.createMany({
         data: factors.map((factor) => ({
           userId: context.userId,
+          contextSpaceId: context.contextSpaceId || context.userId,
           opportunityScoreId: score.id,
           researchCandidateId: input.researchCandidateId ?? null,
           companyId: input.companyId ?? null,

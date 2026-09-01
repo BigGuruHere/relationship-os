@@ -15,6 +15,7 @@ import { prisma } from '$lib/db';
 import { decrypt } from '$lib/crypto';
 import { summarizeText } from '$lib/ai';
 import { createEmbeddingForText } from '$lib/embeddings_api';
+import { contextSpaceIdForOwner } from '$lib/server/core/contextSpace';
 
 import {
   DEFAULT_TAG_MIN_SCORE,
@@ -28,6 +29,7 @@ function toVecLiteral(vec: number[]) {
 
 export const POST: RequestHandler = async ({ locals, request }) => {
   if (!locals.user) throw redirect(303, '/auth/login');
+  const contextSpaceId = locals.contextSpaceId || contextSpaceIdForOwner(locals.user.id);
 
   // parse body
   let body: any = {};
@@ -86,12 +88,14 @@ export const POST: RequestHandler = async ({ locals, request }) => {
                GREATEST(0, LEAST(1, 1 - (t."embedding_vec" <=> $1::vector))) AS score
         FROM "Tag" t
         WHERE t."userId" = $2
+          AND t."contextSpaceId" = $3
           AND t."embedding_vec" IS NOT NULL
         ORDER BY t."embedding_vec" <=> $1::vector ASC
         LIMIT ${DEFAULT_TAG_SUGGESTION_LIMIT}
         `,
         literal,
-        locals.user.id
+        locals.user.id,
+        contextSpaceId
       );
 
 // IT: Use caller-supplied threshold if provided, otherwise use the app-wide default.

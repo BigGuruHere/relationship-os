@@ -6,6 +6,7 @@ declare global {
 		appOrigin: string;
 		sessionCookie: import('$lib/cookies').CookieConfig;
 		user?: { id: string; email?: string; role?: 'owner' | 'guest' };
+		contextSpaceId?: string; // Stage 8.6 active custody context
 		sessionId?: string; // used by logout
 	  }
 	}

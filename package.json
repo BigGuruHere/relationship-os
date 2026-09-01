@@ -27,7 +27,9 @@
     "check:stage8.4": "tsx scripts/check-stage8-4-knowledge.ts",
     "check:stage8.4.3": "tsx scripts/check-stage8-4-3-knowledge-ux.ts",
     "check:stage8.5": "tsx scripts/check-stage8-5-agent-memory.ts",
-    "check:stage8.5.2": "tsx scripts/check-stage8-5-2-isolation.ts"
+    "check:stage8.5.2": "tsx scripts/check-stage8-5-2-isolation.ts",
+    "check:stage8.6": "tsx scripts/check-stage8-6-context-space.ts",
+    "check:stage8.6:mutation": "tsx scripts/mutate-stage8-6-context-trigger.ts"
   },
   "engines": {
     "node": ">=22.13.1 <23"

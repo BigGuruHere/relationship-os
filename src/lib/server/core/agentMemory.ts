@@ -102,7 +102,7 @@ async function resolveSubject(
   const person = await findAccessibleCorePerson(context, subjectId, {
     id: true,
     contacts: {
-      where: { userId: context.workspaceUserId },
+      where: { userId: context.workspaceUserId, contextSpaceId: context.contextSpaceId },
       select: contactSelect,
       orderBy: { updatedAt: 'desc' },
       take: 10

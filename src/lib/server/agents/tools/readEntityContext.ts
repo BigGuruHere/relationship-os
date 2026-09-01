@@ -20,6 +20,7 @@ export const readEntityContextTool: ToolDefinition<ReadEntityContextInput, any> 
   execute: async (input, context) => {
     const access = createAgentCoreAccess({
       userId: context.userId,
+      contextSpaceId: context.contextSpaceId || context.userId,
       agentDefinitionId: context.agentDefinitionId,
       purpose: 'read_entity_context'
     });

@@ -4,7 +4,8 @@
 // SAFETY: Single INSERT ... ON CONFLICT keeps it idempotent. Tenant scoped by userId.
 
 import { prisma } from '$lib/db';
-import { createEmbeddingForText } from '$lib/embeddings_api'; // IT: your existing OpenAI helper
+import { createEmbeddingForText } from '$lib/embeddings_api';
+import { contextSpaceIdForOwner } from '$lib/server/core/contextSpace'; // IT: your existing OpenAI helper
 
 /** IT: Convert number[] to a pgvector text literal like [0.12,-0.3,1.0] */
 function toPgVectorLiteral(vec: number[]): string {
@@ -24,6 +25,7 @@ export async function upsertInteractionEmbedding(
   // IT: guard empty input
   const text = (plaintext || '').trim();
   if (!text) return;
+  const contextSpaceId = contextSpaceIdForOwner(userId);
 
   // IT: call your embedding provider and get a number[] of length 1536
   const vec = await createEmbeddingForText(text);
@@ -36,20 +38,29 @@ export async function upsertInteractionEmbedding(
   await prisma.$executeRawUnsafe(
     `
     INSERT INTO "InteractionEmbedding" ("interactionId")
-    VALUES ($1)
+    SELECT i."id" FROM "Interaction" i
+    WHERE i."id" = $1 AND i."userId" = $2 AND i."contextSpaceId" = $3
     ON CONFLICT ("interactionId") DO NOTHING
     `,
-    interactionId
+    interactionId,
+    userId,
+    contextSpaceId
   );
 
   await prisma.$executeRawUnsafe(
     `
-    UPDATE "InteractionEmbedding"
+    UPDATE "InteractionEmbedding" ie
     SET "vec" = $1::vector
-    WHERE "interactionId" = $2
+    FROM "Interaction" i
+    WHERE ie."interactionId" = $2
+      AND i."id" = ie."interactionId"
+      AND i."userId" = $3
+      AND i."contextSpaceId" = $4
     `,
     literal,
-    interactionId
+    interactionId,
+    userId,
+    contextSpaceId
   );
 }
 
@@ -64,6 +75,7 @@ export async function semanticSearchInteractions(params: {
   minScore?: number;
 }): Promise<Array<{ interactionId: string; score: number }>> {
   const { userId } = params;
+  const contextSpaceId = contextSpaceIdForOwner(userId);
   const query = (params.query || '').trim();
   const topK = Math.max(1, params.topK ?? 20);
   const minScore = params.minScore ?? 0.2;
@@ -89,12 +101,14 @@ export async function semanticSearchInteractions(params: {
     FROM "InteractionEmbedding" ie
     JOIN "Interaction" i ON i."id" = ie."interactionId"
     WHERE i."userId" = $2
+      AND i."contextSpaceId" = $3
       AND ie."vec" IS NOT NULL
     ORDER BY ie."vec" <=> $1::vector ASC
-    LIMIT $3
+    LIMIT $4
     `,
     literal,
     userId,
+    contextSpaceId,
     topK
   );
 

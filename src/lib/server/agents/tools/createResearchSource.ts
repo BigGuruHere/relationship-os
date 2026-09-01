@@ -44,7 +44,7 @@ export const createResearchSourceTool: ToolDefinition<Input, { id: string; creat
   requiresApproval: false,
   execute: async (input, context) => {
     // IT: Evidence may reference canonical relationship records, but only inside the current workspace.
-    const access = createAgentCoreAccess({ userId: context.userId, agentDefinitionId: context.agentDefinitionId, purpose: 'create_research_source' });
+    const access = createAgentCoreAccess({ userId: context.userId, contextSpaceId: context.contextSpaceId || context.userId, agentDefinitionId: context.agentDefinitionId, purpose: 'create_research_source' });
     await assertOwnedCanonicalRefs(access, { contactId: clean(input.contactId) || null, companyId: clean(input.companyId) || null });
     if (clean(input.researchCandidateId)) {
       const candidate = await getOwnedResearchCandidate(context.userId, clean(input.researchCandidateId), context.agentRunId);
@@ -54,6 +54,7 @@ export const createResearchSourceTool: ToolDefinition<Input, { id: string; creat
     const row = await prisma.researchSource.create({
       data: {
         userId: context.userId,
+        contextSpaceId: context.contextSpaceId || context.userId,
         agentRunId: context.agentRunId,
         researchCandidateId: clean(input.researchCandidateId) || null,
         companyId: clean(input.companyId) || null,

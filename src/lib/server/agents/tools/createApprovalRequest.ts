@@ -28,6 +28,7 @@ export const createApprovalRequestTool: ToolDefinition<CreateApprovalRequestInpu
     const approval = await prisma.approvalRequest.create({
       data: {
         userId: context.userId,
+        contextSpaceId: context.contextSpaceId || context.userId,
         agentRunId: context.agentRunId,
         agentStepId: context.agentStepId ?? null,
         actionType: input.actionType.trim(),

@@ -5,19 +5,22 @@
 import { prisma } from '$lib/db';
 import { encrypt, buildIndexToken } from '$lib/crypto';
 import { requireUserPersonId } from '$lib/server/core/identity';
+import { contextSpaceIdForOwner } from '$lib/server/core/contextSpace';
 
 export async function createReciprocalContactIfMissing(recipientUserId: string, ownerUserId: string) {
   // IT: Stage 8.1 canonical identity for the account being represented in this workspace.
   const ownerPersonId = await requireUserPersonId(ownerUserId);
+  // SECURITY: This is an explicit inter-user flow. In 8.6 the recipient's current/default ContextSpace is the target.
+  const recipientContextSpaceId = contextSpaceIdForOwner(recipientUserId);
 
   // IT: if the explicit account link already exists, make sure its Person bridge is also populated.
   const linked = await prisma.contact.findFirst({
-    where: { userId: recipientUserId, linkedUserId: ownerUserId },
+    where: { userId: recipientUserId, contextSpaceId: recipientContextSpaceId, linkedUserId: ownerUserId },
     select: { id: true, personId: true }
   });
   if (linked) {
     if (linked.personId !== ownerPersonId) {
-      await prisma.contact.update({ where: { id: linked.id }, data: { personId: ownerPersonId } });
+      await prisma.contact.update({ where: { id: linked.id, userId: recipientUserId, contextSpaceId: recipientContextSpaceId }, data: { personId: ownerPersonId } });
     }
     return;
   }
@@ -49,14 +52,14 @@ export async function createReciprocalContactIfMissing(recipientUserId: string, 
   // If found, reuse that workspace Contact and attach the canonical Person instead of creating a duplicate.
   const byEmail = email
     ? await prisma.contact.findFirst({
-        where: { userId: recipientUserId, emailIdx: buildIndexToken(email) },
+        where: { userId: recipientUserId, contextSpaceId: recipientContextSpaceId, emailIdx: buildIndexToken(email) },
         select: { id: true }
       })
     : null;
 
   const byPhone = !byEmail && phone
     ? await prisma.contact.findFirst({
-        where: { userId: recipientUserId, phoneIdx: buildIndexToken(phone) },
+        where: { userId: recipientUserId, contextSpaceId: recipientContextSpaceId, phoneIdx: buildIndexToken(phone) },
         select: { id: true }
       })
     : null;
@@ -64,7 +67,7 @@ export async function createReciprocalContactIfMissing(recipientUserId: string, 
   const existing = byEmail ?? byPhone;
   if (existing) {
     await prisma.contact.update({
-      where: { id: existing.id },
+      where: { id: existing.id, userId: recipientUserId, contextSpaceId: recipientContextSpaceId },
       data: { linkedUserId: ownerUserId, personId: ownerPersonId }
     });
     return;
@@ -73,6 +76,7 @@ export async function createReciprocalContactIfMissing(recipientUserId: string, 
   // IT: create minimal contact in recipient tenant using public fields
   const data: any = {
     userId: recipientUserId,
+    contextSpaceId: recipientContextSpaceId,
     linkedUserId: ownerUserId,
     personId: ownerPersonId
   };

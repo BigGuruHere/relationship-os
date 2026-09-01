@@ -9,6 +9,7 @@ import { ensureCoreAgentSetup } from '$lib/server/agents/agentSetup';
 export const load: PageServerLoad = async ({ locals }) => {
   if (!locals.user) throw redirect(303, '/auth/login');
   const userId = locals.user.id;
+  const contextSpaceId = locals.contextSpaceId || userId;
 
   await ensureCoreAgentSetup(userId);
 
@@ -28,8 +29,9 @@ export const load: PageServerLoad = async ({ locals }) => {
       defaultModelProvider: true,
       defaultModelName: true,
       updatedAt: true,
-      _count: { select: { runs: true } },
+      _count: { select: { runs: { where: { contextSpaceId } } } },
       runs: {
+        where: { contextSpaceId },
         select: { id: true, status: true, createdAt: true, completedAt: true, triggerEntityType: true, triggerEntityId: true },
         orderBy: { createdAt: 'desc' },
         take: 1

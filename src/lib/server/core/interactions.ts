@@ -62,6 +62,7 @@ export async function createCoreInteraction(context: CoreAccessContext, input: C
   const created = await prisma.interaction.create({
     data: {
       userId: context.workspaceUserId,
+      contextSpaceId: context.contextSpaceId,
       contactId,
       personId,
       companyId,

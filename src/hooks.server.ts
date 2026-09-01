@@ -14,6 +14,7 @@ import type { Handle } from '@sveltejs/kit';
 import { inferEnvFromHost, resolveOrigin } from '$lib/env';
 import { sessionCookieConfig } from '$lib/cookies';
 import { readSessionToken, getSessionFromCookie } from '$lib/auth';
+import { defaultContextSpaceIdForUser, runWithWorkspaceCustody } from '$lib/server/core/contextSpace';
 
 export const handle: Handle = async ({ event, resolve }) => {
   // 1 - infer environment from Host header
@@ -44,6 +45,7 @@ export const handle: Handle = async ({ event, resolve }) => {
     if (result) {
       // IT - attach only the user id - do not attach email here
       event.locals.user = { id: result.user.id };
+      event.locals.contextSpaceId = defaultContextSpaceIdForUser(result.user.id);
       sessionId = result.session.id;
     }
   }
@@ -54,6 +56,10 @@ export const handle: Handle = async ({ event, resolve }) => {
   // @ts-expect-error - allow dynamic attach if not in your App.Locals type yet
   event.locals.sessionId = sessionId;
 
-  // 6 - continue to route handling
+  // 6 - continue to route handling inside the current default custody context.
+  // Future context selection can change locals.contextSpaceId without changing downstream query APIs.
+  if (event.locals.user?.id && event.locals.contextSpaceId) {
+    return runWithWorkspaceCustody({ userId: event.locals.user.id, contextSpaceId: event.locals.contextSpaceId }, () => resolve(event));
+  }
   return resolve(event);
 };

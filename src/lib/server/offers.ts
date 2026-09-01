@@ -270,8 +270,9 @@ export async function updateOfferFromForm(params: { userId: string; offerId: str
   }));
 }
 
-export async function loadOffers(params: { userId: string; links?: OfferEntityLink; take?: number; includeArchived?: boolean }) {
+export async function loadOffers(params: { userId: string; contextSpaceId?: string; links?: OfferEntityLink; take?: number; includeArchived?: boolean }) {
   const where: any = intentLinkWhere(params.userId, params.links || {});
+  if (params.contextSpaceId) where.contextSpaceId = params.contextSpaceId;
   if (!params.includeArchived) where.status = { not: 'ARCHIVED' as any };
 
   const rows = await prisma.offer.findMany({

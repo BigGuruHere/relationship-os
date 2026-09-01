@@ -320,8 +320,9 @@ export async function applyCompanyAcquisitionCriteria(params: {
   return { id: created.id, changed: true };
 }
 
-export async function loadWants(params: { userId: string; links?: WantEntityLink; take?: number; includeArchived?: boolean }) {
+export async function loadWants(params: { userId: string; contextSpaceId?: string; links?: WantEntityLink; take?: number; includeArchived?: boolean }) {
   const where: any = intentLinkWhere(params.userId, params.links || {});
+  if (params.contextSpaceId) where.contextSpaceId = params.contextSpaceId;
   if (!params.includeArchived) where.status = { not: 'ARCHIVED' as any };
 
   const rows = await prisma.want.findMany({

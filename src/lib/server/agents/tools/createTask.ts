@@ -49,12 +49,13 @@ export const createTaskTool: ToolDefinition<CreateTaskInput, CreateTaskOutput> =
     if (!title) throw new Error('Task title is required.');
 
     // IT: Stage 8.1 prevents an agent from attaching a task to another tenant's relationship record.
-    const access = createAgentCoreAccess({ userId: context.userId, agentDefinitionId: context.agentDefinitionId, purpose: 'create_task' });
+    const access = createAgentCoreAccess({ userId: context.userId, contextSpaceId: context.contextSpaceId || context.userId, agentDefinitionId: context.agentDefinitionId, purpose: 'create_task' });
     await assertOwnedCanonicalRefs(access, { contactId: input.contactId, companyId: input.companyId, dealId: input.dealId, projectId: input.projectId });
 
     const task = await prisma.task.create({
       data: {
         userId: context.userId,
+        contextSpaceId: context.contextSpaceId || context.userId,
         titleEnc: encrypt(title, 'task.title'),
         notesEnc: input.notes?.trim() ? encrypt(input.notes.trim(), 'task.notes') : null,
         status: STATUSES.has(String(input.status || '').toUpperCase()) ? String(input.status).toUpperCase() as any : 'OPEN',

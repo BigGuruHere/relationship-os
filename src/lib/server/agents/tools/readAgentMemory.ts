@@ -18,6 +18,7 @@ export const readAgentMemoryTool: ToolDefinition<ReadAgentMemoryInput, any> = {
   execute: async (input, context) => {
     const access = createAgentCoreAccess({
       userId: context.userId,
+      contextSpaceId: context.contextSpaceId || context.userId,
       agentDefinitionId: context.agentDefinitionId,
       purpose: 'read_agent_memory'
     });

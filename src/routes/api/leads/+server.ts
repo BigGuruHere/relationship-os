@@ -13,6 +13,7 @@ import { prisma } from '$lib/db';
 import { encrypt, buildIndexToken } from '$lib/crypto';
 import { verifyInviteToken } from '$lib/server/tokens';
 import { sendMagicLink } from '$lib/server/magic';
+import { contextSpaceIdForOwner } from '$lib/server/core/contextSpace';
 
 export const POST: RequestHandler = async ({ request, locals }) => {
   // Parse body - expects inviteToken plus at least one of email or phone
@@ -32,6 +33,8 @@ export const POST: RequestHandler = async ({ request, locals }) => {
   // Build encrypted contact payload
   const data: any = {
     userId: invite.ownerId,
+    // SECURITY: This public ingress has no active owner custody, so target custody is explicit.
+    contextSpaceId: contextSpaceIdForOwner(invite.ownerId),
     fullNameEnc: encrypt((name || '').trim() || 'New contact', 'contact.full_name'),
     fullNameIdx: buildIndexToken((name || '').trim() || 'New contact')
   };

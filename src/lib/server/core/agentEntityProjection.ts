@@ -96,8 +96,8 @@ async function loadExchangeContext(
 ) {
   const limits = exchangeReadLimits(policy);
   const [wantRows, offerRows] = await Promise.all([
-    policy.allowWants ? loadWants({ userId: context.workspaceUserId, links, take: limits.wants }) : Promise.resolve([]),
-    policy.allowOffers ? loadOffers({ userId: context.workspaceUserId, links, take: limits.offers }) : Promise.resolve([])
+    policy.allowWants ? loadWants({ userId: context.workspaceUserId, contextSpaceId: context.contextSpaceId, links, take: limits.wants }) : Promise.resolve([]),
+    policy.allowOffers ? loadOffers({ userId: context.workspaceUserId, contextSpaceId: context.contextSpaceId, links, take: limits.offers }) : Promise.resolve([])
   ]);
   const wants = wantRows.map(wantForAgent);
   const offers = offerRows.map(offerForAgent);

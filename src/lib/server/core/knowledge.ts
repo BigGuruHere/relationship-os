@@ -61,7 +61,7 @@ export async function captureKnowledgeFromInteraction(params: {
 
   const existing = await prisma.knowledgeClaim.findFirst({
     where: {
-      userId: context.workspaceUserId,
+      userId: context.workspaceUserId, contextSpaceId: context.contextSpaceId,
       kind: kind as any,
       status: 'ACTIVE' as any,
       statementIdx,
@@ -72,13 +72,13 @@ export async function captureKnowledgeFromInteraction(params: {
 
   if (existing) {
     const priorEvidence = await prisma.knowledgeEvidence.findFirst({
-      where: { userId: context.workspaceUserId, claimId: existing.id, sourceInteractionId: interaction.id },
+      where: { userId: context.workspaceUserId, contextSpaceId: context.contextSpaceId, claimId: existing.id, sourceInteractionId: interaction.id },
       select: { id: true, status: true }
     });
     if (!priorEvidence) {
       await prisma.knowledgeEvidence.create({
         data: {
-          userId: context.workspaceUserId,
+          userId: context.workspaceUserId, contextSpaceId: context.contextSpaceId,
           claimId: existing.id,
           sourceInteractionId: interaction.id,
           sourceType: 'INTERACTION' as any,
@@ -91,13 +91,13 @@ export async function captureKnowledgeFromInteraction(params: {
     } else if (priorEvidence.status !== 'ACTIVE') {
       // IT: Re-capturing the same statement from the same source explicitly restores that evidence.
       await prisma.knowledgeEvidence.updateMany({
-        where: { id: priorEvidence.id, userId: context.workspaceUserId, claimId: existing.id },
+        where: { id: priorEvidence.id, userId: context.workspaceUserId, contextSpaceId: context.contextSpaceId, claimId: existing.id },
         data: { status: 'ACTIVE' as any, authority: authority as any, confidence: confidence as any }
       });
     }
     // IT: Claim-level fields are the current assessment; evidence history retains each source-specific assessment.
     await prisma.knowledgeClaim.updateMany({
-      where: { id: existing.id, userId: context.workspaceUserId },
+      where: { id: existing.id, userId: context.workspaceUserId, contextSpaceId: context.contextSpaceId },
       data: { authority: authority as any, confidence: confidence as any }
     });
     return { claimId: existing.id, created: false, evidenceAdded: !priorEvidence, evidenceRestored: Boolean(priorEvidence && priorEvidence.status !== 'ACTIVE') };
@@ -105,7 +105,7 @@ export async function captureKnowledgeFromInteraction(params: {
 
   const created = await prisma.knowledgeClaim.create({
     data: {
-      userId: context.workspaceUserId,
+      userId: context.workspaceUserId, contextSpaceId: context.contextSpaceId,
       kind: kind as any,
       status: 'ACTIVE' as any,
       statementEnc: encrypt(statement, 'knowledge.claim_statement'),
@@ -115,7 +115,7 @@ export async function captureKnowledgeFromInteraction(params: {
       ...subject,
       evidence: {
         create: {
-          userId: context.workspaceUserId,
+          userId: context.workspaceUserId, contextSpaceId: context.contextSpaceId,
           sourceInteractionId: interaction.id,
           sourceType: 'INTERACTION' as any,
           authority: authority as any,
@@ -155,7 +155,7 @@ export async function captureAndPromoteKnowledgeFromInteraction(params: {
 
 async function loadClaimForPromotion(context: CoreAccessContext, claimId: string) {
   const row = await prisma.knowledgeClaim.findFirst({
-    where: { id: claimId, userId: context.workspaceUserId, status: 'ACTIVE' as any },
+    where: { id: claimId, userId: context.workspaceUserId, contextSpaceId: context.contextSpaceId, status: 'ACTIVE' as any },
     select: {
       id: true,
       kind: true,
@@ -196,7 +196,7 @@ export async function promoteKnowledgeClaim(params: {
     if (claim.objectiveId) return { targetId: claim.objectiveId, created: false };
     const objective = await prisma.objective.create({
       data: {
-        userId: params.context.workspaceUserId,
+        userId: params.context.workspaceUserId, contextSpaceId: params.context.contextSpaceId,
         status: 'CAPTURED' as any,
         titleEnc: encrypt(title, 'objective.title'),
         descriptionEnc: claim.statement ? encrypt(claim.statement, 'objective.description') : null,
@@ -212,7 +212,7 @@ export async function promoteKnowledgeClaim(params: {
       select: { id: true }
     });
     await prisma.knowledgeClaim.updateMany({
-      where: { id: claim.id, userId: params.context.workspaceUserId },
+      where: { id: claim.id, userId: params.context.workspaceUserId, contextSpaceId: params.context.contextSpaceId },
       data: { objectiveId: objective.id }
     });
     return { targetId: objective.id, created: true };
@@ -231,27 +231,27 @@ export async function promoteKnowledgeClaim(params: {
   if (params.target === 'WANT') {
     if (claim.wantId) return { targetId: claim.wantId, created: false };
     const created = await createWantFromForm({
-      userId: params.context.workspaceUserId,
+      userId: params.context.workspaceUserId, contextSpaceId: params.context.contextSpaceId,
       form,
       links: { contactId: claim.contactId, personId: claim.personId, companyId: claim.companyId }
     });
-    await prisma.knowledgeClaim.updateMany({ where: { id: claim.id, userId: params.context.workspaceUserId }, data: { wantId: created.id } });
+    await prisma.knowledgeClaim.updateMany({ where: { id: claim.id, userId: params.context.workspaceUserId, contextSpaceId: params.context.contextSpaceId }, data: { wantId: created.id } });
     return { targetId: created.id, created: true };
   }
 
   if (claim.offerId) return { targetId: claim.offerId, created: false };
   const created = await createOfferFromForm({
-    userId: params.context.workspaceUserId,
+    userId: params.context.workspaceUserId, contextSpaceId: params.context.contextSpaceId,
     form,
     links: { contactId: claim.contactId, personId: claim.personId, companyId: claim.companyId }
   });
-  await prisma.knowledgeClaim.updateMany({ where: { id: claim.id, userId: params.context.workspaceUserId }, data: { offerId: created.id } });
+  await prisma.knowledgeClaim.updateMany({ where: { id: claim.id, userId: params.context.workspaceUserId, contextSpaceId: params.context.contextSpaceId }, data: { offerId: created.id } });
   return { targetId: created.id, created: true };
 }
 
 export async function setKnowledgeClaimStatus(context: CoreAccessContext, claimId: string, status: 'ACTIVE' | 'SUPERSEDED' | 'REJECTED') {
   const result = await prisma.knowledgeClaim.updateMany({
-    where: { id: claimId, userId: context.workspaceUserId },
+    where: { id: claimId, userId: context.workspaceUserId, contextSpaceId: context.contextSpaceId },
     data: { status: status as any }
   });
   if (result.count === 0) throw new Error('Knowledge claim not found in this workspace.');
@@ -266,7 +266,7 @@ export async function setKnowledgeEvidenceStatus(
   // IT: Evidence status is independent of Claim status. Removing the last active evidence
   // deliberately does not silently retire the Claim; the UI surfaces the unsupported state.
   const result = await prisma.knowledgeEvidence.updateMany({
-    where: { id: evidenceId, claimId, userId: context.workspaceUserId },
+    where: { id: evidenceId, claimId, userId: context.workspaceUserId, contextSpaceId: context.contextSpaceId },
     data: { status: status as any }
   });
   if (result.count === 0) throw new Error('Knowledge evidence not found in this workspace.');
@@ -318,7 +318,7 @@ const claimSelect = {
 
 export async function loadClaimsForInteraction(context: CoreAccessContext, interactionId: string) {
   const evidence = await prisma.knowledgeEvidence.findMany({
-    where: { userId: context.workspaceUserId, sourceInteractionId: interactionId },
+    where: { userId: context.workspaceUserId, contextSpaceId: context.contextSpaceId, sourceInteractionId: interactionId },
     select: { claim: { select: claimSelect } },
     orderBy: { observedAt: 'desc' }
   });
@@ -327,7 +327,7 @@ export async function loadClaimsForInteraction(context: CoreAccessContext, inter
 
 export async function loadContactKnowledge(context: CoreAccessContext, contactId: string, take = 20) {
   const rows = await prisma.knowledgeClaim.findMany({
-    where: { userId: context.workspaceUserId, contactId, status: 'ACTIVE' as any },
+    where: { userId: context.workspaceUserId, contextSpaceId: context.contextSpaceId, contactId, status: 'ACTIVE' as any },
     select: claimSelect,
     orderBy: { updatedAt: 'desc' },
     take
@@ -337,7 +337,7 @@ export async function loadContactKnowledge(context: CoreAccessContext, contactId
 
 export async function loadContactKnowledgeHistory(context: CoreAccessContext, contactId: string, take = 20) {
   const rows = await prisma.knowledgeClaim.findMany({
-    where: { userId: context.workspaceUserId, contactId, status: { not: 'ACTIVE' as any } },
+    where: { userId: context.workspaceUserId, contextSpaceId: context.contextSpaceId, contactId, status: { not: 'ACTIVE' as any } },
     select: claimSelect,
     orderBy: { updatedAt: 'desc' },
     take
@@ -347,7 +347,7 @@ export async function loadContactKnowledgeHistory(context: CoreAccessContext, co
 
 export async function loadContactObjectives(context: CoreAccessContext, contactId: string, take = 20) {
   const rows = await prisma.objective.findMany({
-    where: { userId: context.workspaceUserId, contactId, status: { not: 'ARCHIVED' as any } },
+    where: { userId: context.workspaceUserId, contextSpaceId: context.contextSpaceId, contactId, status: { not: 'ARCHIVED' as any } },
     select: {
       id: true,
       status: true,
@@ -388,7 +388,7 @@ export async function loadContactObjectives(context: CoreAccessContext, contactI
 
 export async function loadObjective(context: CoreAccessContext, objectiveId: string) {
   const row = await prisma.objective.findFirst({
-    where: { id: objectiveId, userId: context.workspaceUserId },
+    where: { id: objectiveId, userId: context.workspaceUserId, contextSpaceId: context.contextSpaceId },
     select: {
       id: true,
       status: true,
@@ -447,7 +447,7 @@ export async function loadObjective(context: CoreAccessContext, objectiveId: str
 
 export async function loadKnowledgeClaim(context: CoreAccessContext, claimId: string) {
   const row = await prisma.knowledgeClaim.findFirst({
-    where: { id: claimId, userId: context.workspaceUserId },
+    where: { id: claimId, userId: context.workspaceUserId, contextSpaceId: context.contextSpaceId },
     select: {
       ...claimSelect,
       contactId: true,
@@ -496,7 +496,7 @@ export async function loadKnowledgeClaim(context: CoreAccessContext, claimId: st
 }
 
 export async function updateObjectiveFromForm(context: CoreAccessContext, objectiveId: string, form: FormData) {
-  const existing = await prisma.objective.findFirst({ where: { id: objectiveId, userId: context.workspaceUserId }, select: { id: true } });
+  const existing = await prisma.objective.findFirst({ where: { id: objectiveId, userId: context.workspaceUserId, contextSpaceId: context.contextSpaceId }, select: { id: true } });
   if (!existing) throw new Error('Objective not found in this workspace.');
   const title = String(form.get('title') || '').trim();
   if (!title) throw new Error('Objective title is required.');
@@ -506,7 +506,7 @@ export async function updateObjectiveFromForm(context: CoreAccessContext, object
   const status = allowed.has(statusRaw) ? statusRaw : 'CAPTURED';
   const importance = Math.max(1, Math.min(5, Math.round(Number(form.get('importance') || 3))));
   await prisma.objective.updateMany({
-    where: { id: objectiveId, userId: context.workspaceUserId },
+    where: { id: objectiveId, userId: context.workspaceUserId, contextSpaceId: context.contextSpaceId },
     data: {
       titleEnc: encrypt(title, 'objective.title'),
       descriptionEnc: description ? encrypt(description, 'objective.description') : null,

@@ -11,6 +11,7 @@
 import { prisma } from '$lib/db';
 import { encrypt, buildIndexToken } from '$lib/crypto';
 import { requireUserPersonId } from '$lib/server/core/identity';
+import { contextSpaceIdForOwner } from '$lib/server/core/contextSpace';
 
 // IT: small helper to fetch a user's best profile for enrichment
 async function getBestProfile(userId: string) {
@@ -37,6 +38,8 @@ function buildContactData(ownerId: string, otherUserId: string, otherPersonId: s
 
   const data: any = {
     userId: ownerId,
+    // SECURITY: Mutual connection is a known cross-owner flow. Stage 8.6 targets each owner's default/current custody explicitly.
+    contextSpaceId: contextSpaceIdForOwner(ownerId),
     // IT: linkedUserId remains the Stage 7 compatibility bridge; personId is the Stage 8.1 canonical identity link.
     linkedUserId: otherUserId,
     personId: otherPersonId
@@ -88,16 +91,20 @@ export async function createMutualConnection(userAId: string, userBId: string) {
   // IT: fetch profiles in parallel - can be null
   const [profA, profB, personAId, personBId] = await Promise.all([getBestProfile(userAId), getBestProfile(userBId), requireUserPersonId(userAId), requireUserPersonId(userBId)]);
 
+  // SECURITY: Make the temporary Stage 8.6 cross-owner custody assumption visible rather than relying on implicit scoping.
+  const contextAId = contextSpaceIdForOwner(userAId);
+  const contextBId = contextSpaceIdForOwner(userBId);
+
   // IT: run inside a transaction to reduce race windows
   await prisma.$transaction(async (tx) => {
     // A side - does A already have B as a contact
     const aHasB = await tx.contact.findFirst({
-      where: { userId: userAId, linkedUserId: userBId },
+      where: { userId: userAId, contextSpaceId: contextAId, linkedUserId: userBId },
       select: { id: true, personId: true }
     });
 
     if (aHasB && aHasB.personId !== personBId) {
-      await tx.contact.update({ where: { id: aHasB.id }, data: { personId: personBId } });
+      await tx.contact.update({ where: { id: aHasB.id, userId: userAId, contextSpaceId: contextAId }, data: { personId: personBId } });
     }
 
     if (!aHasB) {
@@ -108,7 +115,7 @@ export async function createMutualConnection(userAId: string, userBId: string) {
         // IT: tolerate unique collisions on emailIdx or phoneIdx by re-checking the linkedUserId pair
         if (err?.code !== 'P2002') throw err;
         const again = await tx.contact.findFirst({
-          where: { userId: userAId, linkedUserId: userBId },
+          where: { userId: userAId, contextSpaceId: contextAId, linkedUserId: userBId },
           select: { id: true }
         });
         if (!again) throw err;
@@ -117,12 +124,12 @@ export async function createMutualConnection(userAId: string, userBId: string) {
 
     // B side - does B already have A as a contact
     const bHasA = await tx.contact.findFirst({
-      where: { userId: userBId, linkedUserId: userAId },
+      where: { userId: userBId, contextSpaceId: contextBId, linkedUserId: userAId },
       select: { id: true, personId: true }
     });
 
     if (bHasA && bHasA.personId !== personAId) {
-      await tx.contact.update({ where: { id: bHasA.id }, data: { personId: personAId } });
+      await tx.contact.update({ where: { id: bHasA.id, userId: userBId, contextSpaceId: contextBId }, data: { personId: personAId } });
     }
 
     if (!bHasA) {
@@ -132,7 +139,7 @@ export async function createMutualConnection(userAId: string, userBId: string) {
       } catch (err: any) {
         if (err?.code !== 'P2002') throw err;
         const again = await tx.contact.findFirst({
-          where: { userId: userBId, linkedUserId: userAId },
+          where: { userId: userBId, contextSpaceId: contextBId, linkedUserId: userAId },
           select: { id: true }
         });
         if (!again) throw err;

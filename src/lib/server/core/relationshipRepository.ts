@@ -53,7 +53,7 @@ export function findAccessibleCorePerson<T extends Prisma.PersonSelect>(context:
       id: personId,
       OR: [
         { accounts: { some: { id: context.workspaceUserId } } },
-        { contacts: { some: { userId: context.workspaceUserId } } }
+        { contacts: { some: { userId: context.workspaceUserId, contextSpaceId: context.contextSpaceId } } }
       ]
     },
     select

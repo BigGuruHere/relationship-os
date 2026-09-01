@@ -11,6 +11,7 @@ import { prisma } from '$lib/db';
 import { buildIndexToken } from '$lib/crypto';
 import { createReciprocalContactIfMissing } from './reciprocal';
 import { requireUserPersonId } from '$lib/server/core/identity';
+import { contextSpaceIdForOwner, runWithWorkspaceCustody } from '$lib/server/core/contextSpace';
 
 // IT: tiny helper to canonicalize LinkedIn profile URLs so the index is stable
 function normalizeLinkedInUrl(u: string | undefined | null): string {
@@ -35,6 +36,16 @@ function normalizeLinkedInUrl(u: string | undefined | null): string {
  * - Creates reciprocal contacts for each distinct owner
  */
 export async function linkLeadsForUserFlexible(
+  userId: string,
+  opts: { email?: string; phone?: string; linkedinUrl?: string }
+): Promise<{ claimedLeadIds: string[]; touchedContactIds: string[]; owners: string[] }> {
+  // SECURITY: Authentication callbacks can begin without request custody and only establish the
+  // user during the request. Enter the claimant's current/default ContextSpace explicitly here.
+  const contextSpaceId = contextSpaceIdForOwner(userId);
+  return runWithWorkspaceCustody({ userId, contextSpaceId }, () => linkLeadsForUserFlexibleInCustody(userId, opts));
+}
+
+async function linkLeadsForUserFlexibleInCustody(
   userId: string,
   opts: { email?: string; phone?: string; linkedinUrl?: string }
 ): Promise<{ claimedLeadIds: string[]; touchedContactIds: string[]; owners: string[] }> {
@@ -82,7 +93,7 @@ export async function linkLeadsForUserFlexible(
     if (lead.contactId) {
       tx.push(
         prisma.contact.update({
-          where: { id: lead.contactId },
+          where: { id: lead.contactId, userId: lead.ownerId, contextSpaceId: contextSpaceIdForOwner(lead.ownerId) },
           data: { linkedUserId: userId, personId }
         })
       );

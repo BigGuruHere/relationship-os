@@ -49,7 +49,7 @@ export async function executeAgentTool<Input, Output>(
 
   const run = await prisma.agentRun.findFirst({
     where: { id: context.agentRunId, userId: context.userId },
-    select: { id: true, agentDefinitionId: true }
+    select: { id: true, agentDefinitionId: true, contextSpaceId: true }
   });
 
   if (!run) {
@@ -92,6 +92,7 @@ export async function executeAgentTool<Input, Output>(
     await prisma.approvalRequest.create({
       data: {
         userId: context.userId,
+        contextSpaceId: run.contextSpaceId,
         agentRunId: context.agentRunId,
         agentStepId: context.agentStepId ?? null,
         actionType: `tool:${key}`,
@@ -105,6 +106,7 @@ export async function executeAgentTool<Input, Output>(
   const call = await prisma.agentToolCall.create({
     data: {
       userId: context.userId,
+      contextSpaceId: run.contextSpaceId,
       agentRunId: context.agentRunId,
       agentStepId: context.agentStepId ?? null,
       toolKey: key,
@@ -115,7 +117,7 @@ export async function executeAgentTool<Input, Output>(
   });
 
   try {
-    const output = await tool.execute(input, { ...context, agentDefinitionId: run.agentDefinitionId });
+    const output = await tool.execute(input, { ...context, contextSpaceId: run.contextSpaceId, agentDefinitionId: run.agentDefinitionId });
     const created = output as any;
 
     await prisma.agentToolCall.update({

@@ -51,6 +51,7 @@ export const load: PageServerLoad = async ({ locals, url }) => {
     try {
       const access = createAgentCoreAccess({
         userId,
+        contextSpaceId: locals.contextSpaceId || userId,
         agentDefinitionId: selectedAgent.id,
         purpose: 'workspace_memory_preview'
       });

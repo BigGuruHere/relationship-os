@@ -150,6 +150,8 @@ Goals:
 - backfill Core relationship knowledge to that default ContextSpace,
 - require `(userId, contextSpaceId)` for Core custody-scoped reads,
 - add subject-integrity constraints for important Core knowledge records,
+- bind agent runs and inherited bookkeeping to one custody context,
+- audit raw SQL and account-level nested reads that bypass normal model scoping,
 - no cross-context grants, disclosure, matching or new end-user workflow yet.
 
 ## 8.7 - Consent / disclosure foundation

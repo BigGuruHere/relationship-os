@@ -16,6 +16,7 @@ export const DEFAULT_TAG_MIN_SCORE = 0.4;
 export const DEFAULT_TAG_SUGGESTION_LIMIT = 4;
 
 import { prisma } from '$lib/db';
+import { contextSpaceIdForOwner } from '$lib/server/core/contextSpace';
 
 export type TagSuggestion = {
   id: string;
@@ -39,6 +40,7 @@ export async function suggestTagsForInteraction({
 }: Params): Promise<TagSuggestion[]> {
   // IT: guard inputs
   if (!userId || !interactionId) return [];
+  const contextSpaceId = contextSpaceIdForOwner(userId);
 
   // IT: SQL plan
   // 1) Pull the interaction vector for this interaction and user
@@ -55,6 +57,7 @@ export async function suggestTagsForInteraction({
       JOIN "Interaction" i ON i."id" = ie."interactionId"
       WHERE ie."interactionId" = $1
         AND i."userId" = $2
+        AND i."contextSpaceId" = $3
         AND ie."vec" IS NOT NULL
       LIMIT 1
     )
@@ -63,12 +66,14 @@ export async function suggestTagsForInteraction({
            GREATEST(0, LEAST(1, 1 - (t."embedding_vec" <=> q.v))) AS score
     FROM "Tag" t, q
     WHERE t."userId" = $2
+      AND t."contextSpaceId" = $3
       AND t."embedding_vec" IS NOT NULL
     ORDER BY score DESC
-    LIMIT $3
+    LIMIT $4
     `,
     interactionId,
     userId,
+    contextSpaceId,
     Math.max(1, topK)
   );
 

@@ -25,15 +25,17 @@ try {
     await tx.user.createMany({ data: [{ id: userA }, { id: userB }] });
     await tx.contact.createMany({
       data: [
-        { id: contactA, userId: userA, fullNameEnc: `test-${tag}-a`, fullNameIdx: `test-${tag}-a` },
-        { id: contactB, userId: userB, fullNameEnc: `test-${tag}-b`, fullNameIdx: `test-${tag}-b` }
+        { id: contactA, userId: userA, contextSpaceId: userA, fullNameEnc: `test-${tag}-a`, fullNameIdx: `test-${tag}-a` },
+        { id: contactB, userId: userB, contextSpaceId: userB, fullNameEnc: `test-${tag}-b`, fullNameIdx: `test-${tag}-b` }
       ]
     });
-    await tx.want.create({ data: { id: wantA, userId: userA, titleEnc: `test-${tag}` } });
+    await tx.want.create({ data: { id: wantA, userId: userA, contextSpaceId: userA, titleEnc: `test-${tag}` } });
     await tx.knowledgeClaim.create({
       data: {
         id: claimA,
         userId: userA,
+        // SECURITY: Stage 8.6 no longer permits implicit custody on context-scoped writes.
+        contextSpaceId: userA,
         kind: 'FACT',
         statementEnc: `test-${tag}`,
         statementIdx: `test-${tag}`,

@@ -7,6 +7,7 @@ import { decrypt } from '$lib/crypto';
 import { createEmbeddingForText } from '$lib/embeddings_api';
 import { commercialValueInputError, parseMoneyToCents } from '$lib/deals';
 import type { CommercialEntityLinks } from '$lib/server/commercialEntityLinks';
+import { contextSpaceIdForOwner } from '$lib/server/core/contextSpace';
 
 export function safeDecryptIntent(payload: string | null | undefined, aad: string, fallback = '', legacyAad?: string | string[]) {
   if (!payload) return fallback;
@@ -90,15 +91,17 @@ export async function storeIntentEmbedding(params: {
 }) {
   const input = params.text.trim();
   if (!input) return;
+  const contextSpaceId = contextSpaceIdForOwner(params.userId);
   try {
     const vec = await createEmbeddingForText(input);
     if (!Array.isArray(vec) || vec.length === 0) return;
     // IT: Table name is constrained by the union above. Values remain positional query parameters.
     await prisma.$executeRawUnsafe(
-      `UPDATE "${params.table}" SET "embedding_vec" = $1::vector WHERE "id" = $2 AND "userId" = $3`,
+      `UPDATE "${params.table}" SET "embedding_vec" = $1::vector WHERE "id" = $2 AND "userId" = $3 AND "contextSpaceId" = $4`,
       toPgVectorLiteral(vec),
       params.id,
-      params.userId
+      params.userId,
+      contextSpaceId
     );
   } catch (err: any) {
     console.warn(`[${params.logLabel}] failed to store embedding`, { id: params.id, message: err?.message });

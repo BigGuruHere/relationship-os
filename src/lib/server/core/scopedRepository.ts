@@ -1,8 +1,8 @@
 // src/lib/server/core/scopedRepository.ts
-// PURPOSE: Dependency-injectable tenant-scoped repository primitives used by Relish Core.
-// SECURITY: Every canonical tenant-owned lookup is constructed with both entity id and workspace user id.
+// PURPOSE: Dependency-injectable ContextSpace-scoped repository primitives used by Relish Core.
+// SECURITY: Every canonical lookup is constructed with entity id + owner user id + custody context id.
 
-export type WorkspaceScopedContext = { workspaceUserId: string };
+export type WorkspaceScopedContext = { workspaceUserId: string; contextSpaceId: string };
 
 function required(value: string | null | undefined, label: string) {
   const clean = String(value ?? '').trim();
@@ -13,7 +13,8 @@ function required(value: string | null | undefined, label: string) {
 export function scopedEntityWhere(context: WorkspaceScopedContext, entityId: string) {
   return {
     id: required(entityId, 'entity id'),
-    userId: required(context.workspaceUserId, 'workspace user id')
+    userId: required(context.workspaceUserId, 'workspace user id'),
+    contextSpaceId: required(context.contextSpaceId, 'context space id')
   };
 }
 

@@ -25,7 +25,10 @@
       <h1>Leads</h1>
       <p class="muted">Capture unconfirmed buyers, sellers, companies, contacts, mandates, assets, and referrers before they become CRM truth.</p>
     </div>
-    <button class="btn primary" type="button" on:click={() => (showCreate = !showCreate)}>{showCreate ? 'Close' : 'New lead'}</button>
+    <div class="head-actions">
+      <a class="btn" href="/leads/import">Import leads</a>
+      <button class="btn primary" type="button" on:click={() => (showCreate = !showCreate)}>{showCreate ? 'Close' : 'New lead'}</button>
+    </div>
   </header>
 
   {#if form?.error}<div class="card error-card">{form.error}</div>{/if}
@@ -134,8 +137,9 @@
 
 <style>
   .container { padding: 12px; }
-  .page-head, .topline, .filter-row { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }
+  .page-head, .topline, .filter-row, .head-actions { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }
   .filter-row { align-items: center; flex-wrap: wrap; }
+  .head-actions { align-items:center; flex-wrap:wrap; }
   h1, h2 { margin: 0; } h2 { font-size: 1.1rem; }
   .eyebrow { color: var(--accent); font-weight: 700; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.04em; }
   .muted { color: var(--muted); } .small { font-size: 0.9rem; }

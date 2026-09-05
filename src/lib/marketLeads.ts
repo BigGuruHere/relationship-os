@@ -92,6 +92,7 @@ export const SELLER_QUALIFICATION_STATUSES = [
 
 export const NOTE_CHANNELS = [
   { value: 'note', label: 'Note' },
+  { value: 'research', label: 'Research' },
   { value: 'call', label: 'Call' },
   { value: 'voice note', label: 'Voice note' },
   { value: 'meeting', label: 'Meeting' },

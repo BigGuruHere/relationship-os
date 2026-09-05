@@ -54,6 +54,7 @@ model User {
   interactions  Interaction[]
   tags          Tag[]
   companyTags   CompanyTag[]
+  companyExternalIdentifiers CompanyExternalIdentifier[]
   projectNotes  ProjectNote[]
   oauthAccounts OAuthAccount[] // external accounts linked to this user
 
@@ -168,6 +169,7 @@ model ContextSpace {
   // IT: Context-local metadata inverse relations required by Prisma for direct ContextSpace custody links.
   tags Tag[]
   companyTags CompanyTag[]
+  companyExternalIdentifiers CompanyExternalIdentifier[]
   leadSources LeadSource[]
   interactions Interaction[]
   reminders Reminder[]
@@ -1102,6 +1104,7 @@ model Company {
   contactEnrichments ContactEnrichment[]
   introductionParticipants IntroductionParticipant[]
   marketLeads        MarketLead[]
+  externalIdentifiers CompanyExternalIdentifier[]
   interactions       Interaction[]
   objectives         Objective[]
   knowledgeClaims    KnowledgeClaim[]
@@ -1113,6 +1116,35 @@ model Company {
   @@index([websiteIdx])
   @@index([userId, contextSpaceId])
   @@index([phoneIdx])
+}
+
+// IT: Stable external identifiers let imports resolve the same real-world company across batches.
+// Examples: ASQA_RTO + registration number, AGED_CARE_PROVIDER + provider id, ABN + ABN.
+model CompanyExternalIdentifier {
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // IT: External identifiers are Workspace knowledge and therefore live in one ContextSpace.
+  contextSpaceId String @default("00000000-0000-0000-0000-000000000000")
+  contextSpace   ContextSpace @relation(fields: [contextSpaceId], references: [id], onDelete: Cascade)
+
+  companyId String
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  // IT: scheme is deliberately plaintext taxonomy. The identifier value is encrypted with a deterministic index for equality lookup.
+  scheme       String
+  valueEnc     String
+  valueIdx     String
+  sourceUrlEnc String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, contextSpaceId, scheme, valueIdx], map: "CompanyExternalIdentifier_userId_contextSpaceId_scheme_valueIdx")
+  @@index([userId, companyId])
+  @@index([userId, contextSpaceId])
+  @@index([scheme, valueIdx])
 }
 
 // IT: time-stamped notes attached directly to a company. These capture company-level research, calls, emails, and context separate from one-off profile fields.

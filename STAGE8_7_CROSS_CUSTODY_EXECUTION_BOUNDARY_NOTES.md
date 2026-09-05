@@ -381,10 +381,11 @@ The canonical roadmap is now:
 ```text
 8.6 ContextSpace custody foundation
 8.7 Cross-custody execution boundary
-8.8 Consent/disclosure foundation - only when grounded by a real case
-8.9 Manual PotentialMatch - only when real manual matching evidence justifies it
-8.10 Progressive bilateral disclosure
-8.11 Matchable projections
+8.8 Selected lead batch import + external company identity
+8.9 Consent/disclosure foundation - only when grounded by a real case
+8.10 Manual PotentialMatch - only when real manual matching evidence justifies it
+8.11 Progressive bilateral disclosure
+8.12 Matchable projections
 9.0 Controlled network matching
 ```
 

@@ -34,6 +34,7 @@ import {
   resolveLeadSourceId
 } from '$lib/server/marketLeads';
 import { createTaskFromForm } from '$lib/server/tasks';
+import { decryptCompanyExternalIdentifier, decryptCompanyExternalSourceUrl } from '$lib/server/leadImport';
 import { contactDisplayName } from '$lib/server/contactDisplay';
 import {
   TASK_FOCUS_OPTIONS,
@@ -210,7 +211,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
       createdAt: true,
       updatedAt: true,
       contact: { select: { id: true, fullNameEnc: true } },
-      company: { select: { id: true, nameEnc: true } },
+      company: { select: { id: true, nameEnc: true, externalIdentifiers: { select: { id: true, scheme: true, valueEnc: true, sourceUrlEnc: true }, orderBy: { scheme: 'asc' } } } },
       deal: { select: { id: true, titleEnc: true } },
       project: { select: { id: true, titleEnc: true } }
     }
@@ -288,6 +289,12 @@ export const load: PageServerLoad = async ({ params, locals }) => {
       valueMax: centsToMillionsInputValue(row.valueMaxCents),
       linkedContactName: contactName(row.contact),
       linkedCompanyName: row.company ? safeDecryptCompany(row.company.nameEnc, 'company.name', '') : '',
+      externalIdentifiers: row.company?.externalIdentifiers?.map((identifier: any) => ({
+        id: identifier.id,
+        scheme: identifier.scheme,
+        value: decryptCompanyExternalIdentifier(identifier.valueEnc, ''),
+        sourceUrl: decryptCompanyExternalSourceUrl(identifier.sourceUrlEnc, '')
+      })) || [],
       linkedDealTitle: row.deal ? safeDecrypt(row.deal.titleEnc, 'deal.title', '') : '',
       linkedProjectTitle: row.project ? safeDecryptTask(row.project.titleEnc, 'project.title', '') : '',
       linkedWorkstreamTitle: row.workstream ? safeDecryptTask(row.workstream.nameEnc, 'project_workstream.name', '') : '',

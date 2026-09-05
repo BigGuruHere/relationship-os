@@ -122,11 +122,41 @@
     </form>
   </section>
 
+  {#if data.externalIdentifiers?.length}
+    <section class="card panel">
+      <div class="section-head"><h2>External identifiers</h2></div>
+      <div class="mini-list">
+        {#each data.externalIdentifiers as identifier}
+          <div class="mini-row">
+            <div><span class="status-chip">{identifier.scheme}</span> <strong>{identifier.value}</strong></div>
+            {#if identifier.sourceUrl}<a class="muted small" href={identifier.sourceUrl} target="_blank" rel="noreferrer">Source record</a>{/if}
+          </div>
+        {/each}
+      </div>
+    </section>
+  {/if}
+
   <WantsPanel items={data.wants ?? []} entityLabel={data.company.name} title="Wants / acquisition criteria" />
 
     <OffersPanel items={data.offers ?? []} createAction="?/createOffer" deleteAction="?/deleteOffer" deleteFieldName="offerId" entityLabel={data.company.name} />
 
   <AgentBriefingsPanel entityType="company" entityId={data.company.id} entityLabel={data.company.name} artifacts={data.agentArtifacts ?? []} />
+
+  {#if data.leadResearchHistory?.length}
+    <section class="card panel">
+      <div class="section-head"><h2>Imported lead research</h2></div>
+      <p class="muted small">Research stays attached to the lead/batch that motivated the call. It is surfaced here without duplicating it into Company notes.</p>
+      <div class="mini-list">
+        {#each data.leadResearchHistory as note}
+          <div class="mini-row research-history">
+            <div class="muted small">{fmt(note.occurredAt)} - {note.batchName}</div>
+            <a href={`/leads/${note.leadId}`}><strong>{note.leadTitle}</strong></a>
+            <p class="preline small">{note.body}</p>
+          </div>
+        {/each}
+      </div>
+    </section>
+  {/if}
 
   <section class="card panel">
     <div class="section-head"><h2>Company notes</h2><button class="btn" type="button" on:click={() => (showAddCompanyNote = !showAddCompanyNote)}>{showAddCompanyNote ? 'Cancel note' : 'Add note'}</button></div>
@@ -462,4 +492,5 @@
     .company-header, .section-head, .mini-row, .deal-row { flex-direction: column; align-items: stretch; }
     .main-grid, .grid.two, .grid.three { grid-template-columns: 1fr; }
   }
+  .research-history { padding:10px 0; border-bottom:1px solid var(--border); }
 </style>

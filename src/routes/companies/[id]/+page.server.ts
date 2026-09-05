@@ -81,6 +81,7 @@ import {
   resolveLeadSourceId
 } from '$lib/server/marketLeads';
 import { createTaskFromForm } from '$lib/server/tasks';
+import { decryptCompanyExternalIdentifier, decryptCompanyExternalSourceUrl } from '$lib/server/leadImport';
 
 const ACTIVE_TASK_STATUSES = ['OPEN', 'IN_PROGRESS', 'WAITING', 'SNOOZED'];
 
@@ -342,6 +343,43 @@ export const load: PageServerLoad = async ({ params, locals }) => {
   });
   const companyNotes = companyNotesRaw.map(mapCompanyNote);
 
+  // IT: Imported research remains authoritative on the lead that motivated the call, but the
+  // Company page surfaces that history so later batches can see what was previously known.
+  const [externalIdentifierRows, leadResearchRows] = await Promise.all([
+    (prisma as any).companyExternalIdentifier.findMany({
+      where: { userId, companyId: row.id },
+      select: { id: true, scheme: true, valueEnc: true, sourceUrlEnc: true, createdAt: true },
+      orderBy: [{ scheme: 'asc' }, { createdAt: 'asc' }]
+    }),
+    prisma.marketLeadNote.findMany({
+      where: { userId, channel: 'research', marketLead: { companyId: row.id } },
+      select: {
+        id: true,
+        occurredAt: true,
+        bodyEnc: true,
+        createdAt: true,
+        marketLead: { select: { id: true, titleEnc: true, leadSource: { select: { nameEnc: true } } } }
+      },
+      orderBy: [{ occurredAt: 'desc' }, { createdAt: 'desc' }],
+      take: 80
+    })
+  ]);
+  const externalIdentifiers = externalIdentifierRows.map((identifier: any) => ({
+    id: identifier.id,
+    scheme: identifier.scheme,
+    value: decryptCompanyExternalIdentifier(identifier.valueEnc, ''),
+    sourceUrl: decryptCompanyExternalSourceUrl(identifier.sourceUrlEnc, ''),
+    createdAt: identifier.createdAt
+  }));
+  const leadResearchHistory = leadResearchRows.map((note: any) => ({
+    id: note.id,
+    leadId: note.marketLead.id,
+    leadTitle: safeDecryptTask(note.marketLead.titleEnc, 'market_lead.title', 'Untitled lead'),
+    batchName: safeDecryptTask(note.marketLead.leadSource?.nameEnc, 'lead_source.name', 'Imported lead'),
+    body: safeDecryptTask(note.bodyEnc, 'market_lead_note.body', ''),
+    occurredAt: note.occurredAt || note.createdAt
+  }));
+
   const offers = await loadOffers({ userId, links: { companyId: row.id } });
   const wants = await loadWants({ userId, links: { companyId: row.id } });
   const agentArtifacts = await loadAgentArtifacts({ userId, entityType: 'company', entityId: row.id });
@@ -431,6 +469,8 @@ export const load: PageServerLoad = async ({ params, locals }) => {
     relationships,
     tasks,
     companyNotes,
+    externalIdentifiers,
+    leadResearchHistory,
     linkedLeads,
     leadOptions,
     wants,

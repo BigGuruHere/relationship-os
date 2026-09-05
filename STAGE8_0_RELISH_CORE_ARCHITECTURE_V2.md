@@ -632,7 +632,16 @@ Tests and small fixes only around encryption, tenant isolation and staging/appro
 
 This stage is system execution authority only. It is not consent, disclosure permission or a standing grant.
 
-### 8.8 - Consent/disclosure foundation - gated by real use
+### 8.8 - Selected lead batch import + external company identity
+
+- deliberately selected CSV slices become active MarketLeads, not a wholesale copy of the source market database,
+- custom LeadSource is the first-stage batch/calling-list label,
+- CompanyExternalIdentifier provides stable, context-scoped source/code identity across later batches,
+- imported AI research is append-only MarketLeadNote history and may be surfaced through the linked Company,
+- re-importing the same Company in the same batch is idempotent; a later batch may create a fresh MarketLead,
+- deterministic import infrastructure comes before agent-driven selection/import.
+
+### 8.9 - Consent/disclosure foundation - gated by real use
 
 When a real second-person or cross-ContextSpace case exists:
 
@@ -640,21 +649,21 @@ When a real second-person or cross-ContextSpace case exists:
 - recipient/purpose/stage scope,
 - source consent evidence and revocation.
 
-### 8.9 - Manual PotentialMatch - gated by real use
+### 8.10 - Manual PotentialMatch - gated by real use
 
 - PotentialMatch + participants,
 - domain/policy version,
 - manual first,
 - learn from existing Introduction/Outcome history.
 
-### 8.10 - Progressive bilateral disclosure
+### 8.11 - Progressive bilateral disclosure
 
 - per-side disclosure state,
 - match-specific grants,
 - explicit introduction permission,
 - conversational consent requests supported by future agents.
 
-### 8.11 - Matchable projections
+### 8.12 - Matchable projections
 
 - explicit matching participation scope,
 - permission-minimised projection,

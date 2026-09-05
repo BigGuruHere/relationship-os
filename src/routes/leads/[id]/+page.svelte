@@ -59,6 +59,9 @@
         <strong>Person</strong><span>{lead.name || ' - '}</span>
         <strong>Role/title</strong><span>{lead.roleTitle || ' - '}</span>
         <strong>Company</strong><span>{lead.companyName || ' - '}</span>
+        {#if lead.externalIdentifiers?.length}
+          <strong>External ID</strong><span>{#each lead.externalIdentifiers as identifier, index}{#if index > 0}<br />{/if}<span class="status-chip">{identifier.scheme}</span> {identifier.value}{#if identifier.sourceUrl} <a href={identifier.sourceUrl} target="_blank" rel="noreferrer">source</a>{/if}{/each}</span>
+        {/if}
         <strong>Email</strong><span>{lead.email || ' - '}</span>
         <strong>Phone</strong><span>{lead.phone || ' - '}</span>
         <strong>Website</strong><span>{lead.website || ' - '}</span>

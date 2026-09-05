@@ -25,6 +25,7 @@ npm run migrate:deploy        # prisma migrate deploy (safe for prod)
 npm test                     # node:test Core behavioural suite via tsx
 npm run check:stage8.6       # real Postgres ContextSpace verification
 npm run check:stage8.7       # real Postgres cross-custody verification
+npm run check:stage8.8       # real Postgres selected lead import verification
 ```
 
 Core behavioural tests live under `tests/core/*.test.ts` and run through `tsx --test`. Stage-specific scripts under `scripts/check-stage8-*.ts` add real PostgreSQL verification where the invariant depends on Prisma/database behaviour.
@@ -55,6 +56,7 @@ Rules enforced by convention (see comments in `src/hooks.server.ts`, `src/lib/cr
 - Decrypt only in server-side load functions or actions, never send ciphertext-adjacent secrets to the client unnecessarily.
 - Contextual Core/Workspace data is scoped by both `userId` ownership and `contextSpaceId` custody. Do not treat `userId` alone as a sufficient Core boundary.
 - Stage 8.7 forbids an active Workspace from implicitly resolving or querying another owner. Existing public-profile connection, lead-claim, and public lead-ingress flows must use the named cross-custody helpers in `src/lib/server/core/contextSpace.ts`.
+- Stage 8.8 imports deliberately selected hot-lead CSV slices into the existing MarketLead workflow. `CompanyExternalIdentifier` is the stable source/code identity for cross-batch Company resolution; imported research is append-only `MarketLeadNote` history and must not overwrite earlier research.
 - Comments prefixed `IT:` mark implementation-tricky/security-relevant lines — a convention used throughout `src/lib` and `src/lib/server`; preserve this pattern when editing nearby code.
 
 ### Data model (`prisma/schema.prisma`)
@@ -64,6 +66,7 @@ Core CRM: `User`, `Contact`, `Company`, `Deal` (+ `DealContact`, `DealCompany`, 
 Leads: there are **two distinct lead concepts** — don't confuse them:
 - `Lead` — the older model, used for public claim/invite flows (QR/vCard sharing, guest onboarding).
 - `MarketLead` (+ `MarketLeadNote`, `LeadSource`) — the newer market-making staging layer (buyer/seller/company/contact/mandate/asset/referrer), shown in the UI simply as "Leads" (`/leads`). It converts into real `Contact`, `Company`, `Deal`, `Want`, or `Offer` records while keeping a link back to the originating lead. Server logic lives in `src/lib/server/marketLeads.ts` and `src/lib/leads/` (`link.ts`, `reciprocal.ts`).
+- Stage 8.8 reuses custom `LeadSource` as the first-stage import batch/calling-list label. Do not add a separate `LeadList` unless real use later proves it necessary. CSV import lives under `/leads/import`; it should remain deterministic and human-approved before any agent is allowed to invoke the same capability.
 
 Relationship intent: `Want` and `Offer` are separate first-class Core concepts. Legacy `ExchangeItem` authority has been retired and must not be reintroduced as a generic Intent table without a new architectural decision.
 

@@ -165,7 +165,20 @@ Goals:
 - fail closed instead of choosing a destination once an owner has more than one ContextSpace,
 - no consent, disclosure, matching or Dorian v2.
 
-## 8.8 - Consent / disclosure foundation - deliberately gated
+## 8.8 - Selected lead batch import + external company identity
+
+Goals:
+
+- import only deliberately selected hot-lead slices rather than whole market spreadsheets,
+- reuse the existing MarketLead workflow instead of adding another lead abstraction,
+- use custom LeadSource records as the first-stage batch/calling-list label,
+- resolve companies across later batches by stable context-scoped external identifiers such as ASQA RTO number, aged-care provider id, ABN or ACN,
+- preserve imported Claude/GPT research as append-only MarketLeadNote history,
+- surface that research from the linked Company without copying it into CompanyNote,
+- keep same-batch re-import idempotent while allowing the same Company to enter a later batch as a fresh MarketLead,
+- deterministic human-approved import first; agents may later call the same infrastructure but do not own identity or import policy.
+
+## 8.9 - Consent / disclosure foundation - deliberately gated
 
 Do not build this stage from imagination. Start only when a real second-person or cross-ContextSpace case makes the required consent/disclosure decision concrete.
 
@@ -178,7 +191,7 @@ Likely goals when grounded by real use:
 - revocation,
 - agents may request consent conversationally but cannot expand their own authority.
 
-## 8.9 - Manual PotentialMatch - deliberately gated
+## 8.10 - Manual PotentialMatch - deliberately gated
 
 Matching remains deferred until real manual matching usage provides enough evidence to design the neutral Core object.
 
@@ -190,16 +203,16 @@ Likely goals:
 - learn from Introduction/Outcome history,
 - no raw cross-context record visibility.
 
-## 8.10 - Progressive bilateral disclosure
+## 8.11 - Progressive bilateral disclosure
 
-Goals when 8.8 and real use justify it:
+Goals when consent and real use justify it:
 
 - per-side disclosure state,
 - recipient-specific grants,
 - explicit introduction permission,
 - asymmetric disclosure where domain requires it.
 
-## 8.11 - Matchable projections
+## 8.12 - Matchable projections
 
 Goals when matching is activated:
 

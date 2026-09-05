@@ -8,6 +8,8 @@ import { createScopedRelationshipRepository } from '../../src/lib/server/core/sc
 
 const schema = readFileSync('prisma/schema.prisma', 'utf8');
 const migration = readFileSync('prisma/migrations/20260901073000_stage8_6_context_space_custody_foundation/migration.sql', 'utf8');
+const leadImportMigration = readFileSync('prisma/migrations/20260904184000_stage8_8_lead_batch_import/migration.sql', 'utf8');
+const custodyBoundaryMigrations = `${migration}\n${leadImportMigration}`;
 const mutationHarness = readFileSync('scripts/mutate-stage8-6-context-trigger.ts', 'utf8');
 
 function delegateFor(rows: any[]) {
@@ -210,7 +212,7 @@ test('every direct ContextSpace relation has an inverse relation on ContextSpace
   );
   const missing = directScopedModels.filter((model) => !inverseTargets.has(model));
 
-  assert.equal(directScopedModels.length, 44, 'Stage 8.6 direct ContextSpace model count changed; review inverse relations.');
+  assert.equal(directScopedModels.length, 45, 'Direct ContextSpace model count changed; review inverse relations.');
   assert.deepEqual(missing, []);
 });
 
@@ -219,12 +221,12 @@ test('every direct ContextSpace relation has an inverse relation on ContextSpace
 test('contextSpaceId sentinel defaults use Prisma static string defaults rather than dbgenerated expressions', () => {
   const staticSentinel = '@default("00000000-0000-0000-0000-000000000000")';
   const directContextFields = Array.from(schema.matchAll(/contextSpaceId\s+String\s+([^\n]+)/g));
-  assert.equal(directContextFields.length, 44, 'Stage 8.6 direct ContextSpace field count changed; review sentinel defaults.');
+  assert.equal(directContextFields.length, 45, 'Direct ContextSpace field count changed; review sentinel defaults.');
   for (const match of directContextFields) {
     assert.match(match[1], /@default\("00000000-0000-0000-0000-000000000000"\)/);
     assert.doesNotMatch(match[1], /dbgenerated/);
   }
-  assert.equal(schema.split(staticSentinel).length - 1, 44);
+  assert.equal(schema.split(staticSentinel).length - 1, 45);
 });
 
 test('trigger mutation harness supplies Prisma-managed required fields when bypassing Prisma with raw SQL', () => {
@@ -296,7 +298,7 @@ test('every direct foreign key between context-scoped models has a database cont
 
   const guarded = new Set<string>();
   const triggerPattern = /CREATE TRIGGER\s+"[^"]+"\nBEFORE[^\n]+ ON "([^"]+)"\nFOR EACH ROW EXECUTE FUNCTION "relish_enforce_context_reference"\(([^;]+)\);/g;
-  for (const trigger of migration.matchAll(triggerPattern)) {
+  for (const trigger of custodyBoundaryMigrations.matchAll(triggerPattern)) {
     const table = trigger[1];
     const values = Array.from(trigger[2].matchAll(/'([^']+)'/g), (match) => match[1]);
     for (let index = 0; index < values.length; index += 2) {
@@ -305,7 +307,7 @@ test('every direct foreign key between context-scoped models has a database cont
   }
 
   const missing = relations.filter((relation) => !guarded.has(`${relation.model}.${relation.field}->${relation.target}`));
-  assert.equal(relations.length, 111, 'Stage 8.6 expected direct context-scoped foreign-key boundary count changed; review the guard specification.');
+  assert.equal(relations.length, 112, 'Direct context-scoped foreign-key boundary count changed; review the guard specification.');
   assert.deepEqual(missing, []);
 });
 

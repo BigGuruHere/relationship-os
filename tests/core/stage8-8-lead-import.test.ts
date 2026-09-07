@@ -101,7 +101,7 @@ test('importer reuses company identity, makes the same batch idempotent and appe
 });
 
 test('import route uses existing lead machinery for batch, project and workstream instead of adding a LeadList model', () => {
-  assert.match(importRoute, /resolveLeadSourceId\(userId, '', batchName\)/);
+  assert.match(importRoute, /resolveImportBatchLeadSourceId\(userId, batchName\)/);
   assert.match(importRoute, /sourceFileName: file\.name/);
   assert.match(importRoute, /projectWorkstream\.findFirst/);
   assert.match(importRoute, /importSelectedLeadBatch/);

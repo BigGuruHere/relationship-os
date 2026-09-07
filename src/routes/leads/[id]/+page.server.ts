@@ -22,6 +22,7 @@ import {
   parseDateTime as parseLeadDateTime
 } from '$lib/marketLeads';
 import { stepMarketLeadPriority } from '$lib/leadPriority';
+import { isQuickMarketLeadField, parseQuickLeadConfidence } from '$lib/leadQuickFields';
 import { buildLeadDetailReturnUrl, safeLeadListReturnTo } from '$lib/leadListNavigation';
 import {
   buildLeadSourceOptions,
@@ -356,6 +357,100 @@ export const actions: Actions = {
     return { priority };
   },
 
+  // IT: Fast operational-field updates keep the calling workflow on the lead page while
+  // preserving the full Edit Lead form for identity/contact data and less-frequent fields.
+  quickField: async ({ request, params, locals }) => {
+    if (!locals.user) throw redirect(303, '/auth/login');
+    const userId = locals.user.id;
+    const existing = await prisma.marketLead.findFirst({
+      where: { id: params.id, userId },
+      select: { id: true }
+    });
+    if (!existing) return fail(404, { quickFieldError: 'Lead not found.' });
+
+    const form = await request.formData();
+    const field = String(form.get('field') || '').trim();
+    const rawValue = String(form.get('value') ?? '');
+    if (!isQuickMarketLeadField(field)) {
+      return fail(400, { quickField: field, quickFieldError: 'This lead field cannot be updated from the quick panel.' });
+    }
+    const data: any = {};
+    let value: string | number | null = rawValue;
+
+    switch (field) {
+      case 'usualCommunicationMethod': {
+        const candidate = rawValue.trim().toUpperCase();
+        if (!COMMUNICATION_METHODS.some((option) => option.value === candidate)) {
+          return fail(400, { quickField: field, quickFieldError: 'Invalid communication method.' });
+        }
+        data.usualCommunicationMethod = candidate || null;
+        value = candidate;
+        break;
+      }
+      case 'contactAttemptStatus': {
+        const candidate = rawValue.trim().toUpperCase();
+        if (!CONTACT_ATTEMPT_STATUSES.some((option) => option.value === candidate)) {
+          return fail(400, { quickField: field, quickFieldError: 'Invalid contact-attempt status.' });
+        }
+        data.contactAttemptStatus = candidate;
+        value = candidate;
+        break;
+      }
+      case 'lastContactedAt': {
+        const candidate = rawValue.trim();
+        const parsed = candidate ? parseLeadDateTime(form.get('value')) : null;
+        if (candidate && !parsed) {
+          return fail(400, { quickField: field, quickFieldError: 'Invalid last-contacted date.' });
+        }
+        data.lastContactedAt = parsed;
+        value = parsed ? dateToDatetimeLocal(parsed) : '';
+        break;
+      }
+      case 'buyerStatus': {
+        const candidate = rawValue.trim().toUpperCase();
+        if (!BUYER_QUALIFICATION_STATUSES.some((option) => option.value === candidate)) {
+          return fail(400, { quickField: field, quickFieldError: 'Invalid buyer status.' });
+        }
+        data.buyerStatus = candidate;
+        value = candidate;
+        break;
+      }
+      case 'sellerStatus': {
+        const candidate = rawValue.trim().toUpperCase();
+        if (!SELLER_QUALIFICATION_STATUSES.some((option) => option.value === candidate)) {
+          return fail(400, { quickField: field, quickFieldError: 'Invalid seller status.' });
+        }
+        data.sellerStatus = candidate;
+        value = candidate;
+        break;
+      }
+      case 'confidence': {
+        const candidate = parseQuickLeadConfidence(rawValue);
+        if (candidate === null) {
+          return fail(400, { quickField: field, quickFieldError: 'Confidence must be between 0 and 100.' });
+        }
+        data.confidence = candidate;
+        value = candidate;
+        break;
+      }
+      case 'nextAction': {
+        const candidate = rawValue.trim();
+        data.nextActionEnc = candidate ? encrypt(candidate, 'market_lead.next_action') : null;
+        value = candidate;
+        break;
+      }
+      default:
+        return fail(400, { quickField: field, quickFieldError: 'This lead field cannot be updated from the quick panel.' });
+    }
+
+    await prisma.marketLead.updateMany({
+      where: { id: params.id, userId },
+      data
+    });
+
+    return { quickField: field, value };
+  },
+
   update: async ({ request, params, locals }) => {
     if (!locals.user) throw redirect(303, '/auth/login');
     const userId = locals.user.id;
@@ -396,6 +491,7 @@ export const actions: Actions = {
     if (!lead) return fail(404, { error: 'Lead not found.' });
 
     const form = await request.formData();
+    const returnTo = safeLeadListReturnTo(form.get('returnTo'));
     const body = String(form.get('body') || form.get('note') || '').trim();
     const summary = String(form.get('summary') || '').trim();
     const channel = normaliseNoteChannel(form.get('channel'));
@@ -412,7 +508,7 @@ export const actions: Actions = {
         summaryEnc: summary ? encrypt(summary, 'market_lead_note.summary') : null
       }
     });
-    throw redirect(303, `/leads/${params.id}`);
+    throw redirect(303, buildLeadDetailReturnUrl(params.id, returnTo));
   },
 
 
@@ -420,6 +516,7 @@ export const actions: Actions = {
     if (!locals.user) throw redirect(303, '/auth/login');
     const userId = locals.user.id;
     const form = await request.formData();
+    const returnTo = safeLeadListReturnTo(form.get('returnTo'));
     const noteId = String(form.get('noteId') || '').trim();
     const body = String(form.get('body') || '').trim();
     const summary = String(form.get('summary') || '').trim();
@@ -436,15 +533,17 @@ export const actions: Actions = {
         summaryEnc: summary ? encrypt(summary, 'market_lead_note.summary') : null
       }
     });
-    throw redirect(303, `/leads/${params.id}`);
+    throw redirect(303, buildLeadDetailReturnUrl(params.id, returnTo));
   },
 
   deleteLeadNote: async ({ request, params, locals }) => {
     if (!locals.user) throw redirect(303, '/auth/login');
-    const noteId = String((await request.formData()).get('noteId') || '').trim();
+    const form = await request.formData();
+    const returnTo = safeLeadListReturnTo(form.get('returnTo'));
+    const noteId = String(form.get('noteId') || '').trim();
     if (!noteId) return fail(400, { error: 'Missing lead note id.' });
     await prisma.marketLeadNote.deleteMany({ where: { id: noteId, userId: locals.user.id, marketLeadId: params.id } });
-    throw redirect(303, `/leads/${params.id}`);
+    throw redirect(303, buildLeadDetailReturnUrl(params.id, returnTo));
   },
 
   createTask: async ({ request, params, locals }) => {

@@ -113,7 +113,7 @@
         <div class="field">
           <label for="batchName">Batch / calling-list name</label>
           <input id="batchName" name="batchName" placeholder="RTO Hot 50 - Sep 2026 - Batch 1" required />
-          <div class="muted small">This becomes a custom Lead Source, so you can filter the Leads page to this exact batch.</div>
+          <div class="muted small">This becomes an Import Batch, kept separate from normal lead Sources so the Source filter stays clean.</div>
         </div>
         <div class="field">
           <label for="externalScheme">External identifier scheme</label>

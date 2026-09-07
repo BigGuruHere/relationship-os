@@ -11,6 +11,7 @@
   let type = data.selectedType || '';
   let status = data.selectedStatus || '';
   let sourceFilter = data.selectedSource || '';
+  let batchId = data.selectedBatchId || '';
   let contactAttemptStatus = data.selectedContactAttemptStatus || '';
   let buyerStatus = data.selectedBuyerStatus || '';
   let sellerStatus = data.selectedSellerStatus || '';
@@ -107,6 +108,7 @@
       <select name="type" bind:value={type}><option value="">All types</option>{#each data.leadTypes as opt}<option value={opt.value}>{opt.label}</option>{/each}</select>
       <select name="status" bind:value={status}><option value="">All statuses</option>{#each data.leadStatuses as opt}<option value={opt.value}>{opt.label}</option>{/each}</select>
       <select name="source" bind:value={sourceFilter}><option value="">All sources</option>{#each data.leadSourceOptions as opt}{#if opt.value !== 'CUSTOM'}<option value={opt.value}>{opt.label}</option>{/if}{/each}</select>
+      <select name="batch" bind:value={batchId}><option value="">All batches</option>{#each data.importBatches as batch}<option value={batch.id}>{batch.name}</option>{/each}</select>
       <select name="contactAttemptStatus" bind:value={contactAttemptStatus}><option value="">All contact attempts</option>{#each data.contactAttemptStatuses as opt}<option value={opt.value}>{opt.label}</option>{/each}</select>
       <select name="buyerStatus" bind:value={buyerStatus}><option value="">All buyer statuses</option>{#each data.buyerQualificationStatuses as opt}<option value={opt.value}>{opt.label}</option>{/each}</select>
       <select name="sellerStatus" bind:value={sellerStatus}><option value="">All seller statuses</option>{#each data.sellerQualificationStatuses as opt}<option value={opt.value}>{opt.label}</option>{/each}</select>

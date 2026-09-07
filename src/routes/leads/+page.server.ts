@@ -16,6 +16,7 @@ import {
 } from '$lib/marketLeads';
 import { buildLeadSourceOptions, leadFormValues, loadLeadSources, mapMarketLead, marketLeadCreateData, normaliseLeadSourceChoice, resolveLeadSourceId } from '$lib/server/marketLeads';
 import { safeDecryptTask } from '$lib/tasks';
+import { isKnownImportBatch, splitLeadSourcesForFilters } from '$lib/leadSourceKinds';
 
 const LIMIT = 250;
 
@@ -27,6 +28,7 @@ export const load: PageServerLoad = async ({ locals, url }) => {
   const type = String(url.searchParams.get('type') || '').trim().toUpperCase();
   const status = String(url.searchParams.get('status') || '').trim().toUpperCase();
   const selectedSource = String(url.searchParams.get('source') || '').trim();
+  const selectedBatchId = String(url.searchParams.get('batch') || '').trim();
   const contactAttemptStatus = String(url.searchParams.get('contactAttemptStatus') || '').trim().toUpperCase();
   const buyerStatus = String(url.searchParams.get('buyerStatus') || '').trim().toUpperCase();
   const sellerStatus = String(url.searchParams.get('sellerStatus') || '').trim().toUpperCase();
@@ -34,6 +36,7 @@ export const load: PageServerLoad = async ({ locals, url }) => {
   const selectedWorkstreamId = String(url.searchParams.get('workstreamId') || '').trim();
 
   const customLeadSources = await loadLeadSources(userId);
+  const { sources: ordinaryLeadSources, importBatches } = splitLeadSourcesForFilters(customLeadSources);
 
   const where: any = { userId };
   if (type && MARKET_LEAD_TYPES.some((o) => o.value === type)) where.type = type;
@@ -50,7 +53,11 @@ export const load: PageServerLoad = async ({ locals, url }) => {
   if (selectedWorkstreamId) where.workstreamId = selectedWorkstreamId;
   const sourceFilter = normaliseLeadSourceChoice(selectedSource);
   if (sourceFilter.kind === 'builtin' && MARKET_LEAD_SOURCES.some((o) => o.value === sourceFilter.source)) where.source = sourceFilter.source;
-  if (sourceFilter.kind === 'custom' && customLeadSources.some((source) => source.id === sourceFilter.id)) where.leadSourceId = sourceFilter.id;
+  if (sourceFilter.kind === 'custom' && customLeadSources.some((source) => source.id === sourceFilter.id)) {
+    // IT: Keep old /leads?source=custom:<batch> URLs working after batches move to their own filter.
+    where.leadSourceId = sourceFilter.id;
+  }
+  if (isKnownImportBatch(selectedBatchId, importBatches)) where.leadSourceId = selectedBatchId;
 
   const [rows, projectsRaw, workstreamsRaw] = await Promise.all([
     prisma.marketLead.findMany({
@@ -150,6 +157,7 @@ export const load: PageServerLoad = async ({ locals, url }) => {
     selectedType: type,
     selectedStatus: status,
     selectedSource,
+    selectedBatchId,
     selectedContactAttemptStatus: contactAttemptStatus,
     selectedBuyerStatus: buyerStatus,
     selectedSellerStatus: sellerStatus,
@@ -159,7 +167,8 @@ export const load: PageServerLoad = async ({ locals, url }) => {
     summary,
     leadTypes: MARKET_LEAD_TYPES,
     leadStatuses: MARKET_LEAD_STATUSES,
-    leadSourceOptions: buildLeadSourceOptions(customLeadSources),
+    leadSourceOptions: buildLeadSourceOptions(ordinaryLeadSources),
+    importBatches: importBatches.map((batch: any) => ({ id: batch.id, name: batch.name })),
     contactAttemptStatuses: CONTACT_ATTEMPT_STATUSES,
     buyerQualificationStatuses: BUYER_QUALIFICATION_STATUSES,
     sellerQualificationStatuses: SELLER_QUALIFICATION_STATUSES,

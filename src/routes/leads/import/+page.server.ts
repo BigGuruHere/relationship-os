@@ -6,7 +6,7 @@ import { fail, redirect } from '@sveltejs/kit';
 import { prisma } from '$lib/db';
 import { parseCsv, valueForHeader } from '$lib/csv';
 import { MARKET_LEAD_STATUSES, MARKET_LEAD_TYPES } from '$lib/marketLeads';
-import { resolveLeadSourceId } from '$lib/server/marketLeads';
+import { resolveImportBatchLeadSourceId } from '$lib/server/marketLeads';
 import { importSelectedLeadBatch } from '$lib/server/leadImport';
 import { normaliseExternalScheme, type LeadImportRow } from '$lib/leadImport';
 import { safeDecryptTask } from '$lib/tasks';
@@ -141,9 +141,9 @@ export const actions: Actions = {
       sourceUrl: valueForHeader(table.headers, row, mapping.mapSourceUrl)
     }));
 
-    // IT: LeadSource doubles as the first-stage calling-list/batch label. The existing Leads page
-    // can filter directly by this custom source without adding another list abstraction yet.
-    const leadSourceId = await resolveLeadSourceId(userId, '', batchName);
+    // IT: Keep using LeadSource as the compatibility storage link, but classify this record as an
+    // IMPORT_BATCH so operational calling batches have their own Leads filter instead of clogging Source.
+    const leadSourceId = await resolveImportBatchLeadSourceId(userId, batchName);
     if (!leadSourceId) return fail(500, { error: 'Could not create or resolve the import batch source.' });
 
     try {
@@ -165,7 +165,7 @@ export const actions: Actions = {
       return {
         success: true,
         result,
-        batchUrl: `/leads?source=${encodeURIComponent(`custom:${leadSourceId}`)}`
+        batchUrl: `/leads?batch=${encodeURIComponent(leadSourceId)}`
       };
     } catch (err: any) {
       console.error('[lead-import] failed', err);

@@ -2035,6 +2035,11 @@ enum MarketLeadSource {
 
 // IT: Custom user-owned lead sources. This lets you reuse sources like Sam,
 // Sam spreadsheet, MFAA list, LinkedIn, or referral partner names in dropdowns.
+enum LeadSourceKind {
+  SOURCE
+  IMPORT_BATCH
+}
+
 model LeadSource {
   id     String @id @default(uuid())
   userId String
@@ -2046,6 +2051,9 @@ model LeadSource {
   nameEnc String
   nameIdx String
 
+  // IT: Import batches are operational queues, not acquisition/source taxonomy.
+  kind LeadSourceKind @default(SOURCE)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -2054,6 +2062,7 @@ model LeadSource {
 
   @@unique([userId, contextSpaceId, nameIdx])
   @@index([userId, contextSpaceId])
+  @@index([userId, contextSpaceId, kind, updatedAt])
   @@index([userId, updatedAt])
   @@index([nameIdx])
 }

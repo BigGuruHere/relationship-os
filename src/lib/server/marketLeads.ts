@@ -285,7 +285,38 @@ export async function resolveLeadSourceId(userId: string, leadSourceId: string, 
   const row = await prisma.leadSource.upsert({
     where: { userId_contextSpaceId_nameIdx: { userId, contextSpaceId, nameIdx } },
     update: { nameEnc: encrypt(name, 'lead_source.name') },
-    create: { userId, nameEnc: encrypt(name, 'lead_source.name'), nameIdx },
+    create: { userId, nameEnc: encrypt(name, 'lead_source.name'), nameIdx, kind: 'SOURCE' as any },
+    select: { id: true }
+  });
+  return row.id;
+}
+
+// IT: Import batches are operational calling queues, not ordinary lead-source taxonomy.
+// Keep them on LeadSource for compatibility with existing MarketLead links, but mark the role
+// explicitly so the Leads UI can filter them independently and avoid a permanently growing Source list.
+export async function resolveImportBatchLeadSourceId(userId: string, batchName: string) {
+  const name = String(batchName || '').trim();
+  if (!name) return null;
+  const nameIdx = buildIndexToken(name);
+  const contextSpaceId = contextSpaceIdForOwner(userId);
+  const existing = await prisma.leadSource.findUnique({
+    where: { userId_contextSpaceId_nameIdx: { userId, contextSpaceId, nameIdx } },
+    select: { id: true, kind: true }
+  });
+
+  if (existing) {
+    if (existing.kind !== 'IMPORT_BATCH') {
+      throw new Error(`The batch name "${name}" is already used by a normal lead source. Choose a different batch name.`);
+    }
+    await prisma.leadSource.updateMany({
+      where: { id: existing.id, userId, contextSpaceId },
+      data: { nameEnc: encrypt(name, 'lead_source.name') }
+    });
+    return existing.id;
+  }
+
+  const row = await prisma.leadSource.create({
+    data: { userId, contextSpaceId, nameEnc: encrypt(name, 'lead_source.name'), nameIdx, kind: 'IMPORT_BATCH' as any },
     select: { id: true }
   });
   return row.id;
@@ -294,13 +325,14 @@ export async function resolveLeadSourceId(userId: string, leadSourceId: string, 
 export async function loadLeadSources(userId: string) {
   const rows = await prisma.leadSource.findMany({
     where: { userId },
-    select: { id: true, nameEnc: true, updatedAt: true },
+    select: { id: true, nameEnc: true, kind: true, updatedAt: true },
     orderBy: { updatedAt: 'desc' },
-    take: 200
+    take: 500
   });
   return rows.map((source: any) => ({
     id: source.id,
     name: safeDecryptLead(source.nameEnc, 'lead_source.name', 'Untitled source'),
+    kind: source.kind || 'SOURCE',
     updatedAt: source.updatedAt
   })).sort((a: any, b: any) => a.name.localeCompare(b.name));
 }

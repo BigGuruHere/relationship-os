@@ -212,7 +212,7 @@ test('every direct ContextSpace relation has an inverse relation on ContextSpace
   );
   const missing = directScopedModels.filter((model) => !inverseTargets.has(model));
 
-  assert.equal(directScopedModels.length, 45, 'Direct ContextSpace model count changed; review inverse relations.');
+  assert.equal(directScopedModels.length, 46, 'Direct ContextSpace model count changed; review inverse relations.');
   assert.deepEqual(missing, []);
 });
 
@@ -221,12 +221,12 @@ test('every direct ContextSpace relation has an inverse relation on ContextSpace
 test('contextSpaceId sentinel defaults use Prisma static string defaults rather than dbgenerated expressions', () => {
   const staticSentinel = '@default("00000000-0000-0000-0000-000000000000")';
   const directContextFields = Array.from(schema.matchAll(/contextSpaceId\s+String\s+([^\n]+)/g));
-  assert.equal(directContextFields.length, 45, 'Direct ContextSpace field count changed; review sentinel defaults.');
+  assert.equal(directContextFields.length, 46, 'Direct ContextSpace field count changed; review sentinel defaults.');
   for (const match of directContextFields) {
     assert.match(match[1], /@default\("00000000-0000-0000-0000-000000000000"\)/);
     assert.doesNotMatch(match[1], /dbgenerated/);
   }
-  assert.equal(schema.split(staticSentinel).length - 1, 45);
+  assert.equal(schema.split(staticSentinel).length - 1, 46);
 });
 
 test('trigger mutation harness supplies Prisma-managed required fields when bypassing Prisma with raw SQL', () => {

@@ -35,7 +35,10 @@
     "check:stage8.8.1": "node --experimental-strip-types --test tests/core/stage8-8-1-lead-priority-quick-control.test.ts",
     "check:stage8.8.2": "node --experimental-strip-types --test tests/core/stage8-8-2-lead-working-list-navigation.test.ts",
     "check:stage8.8.3": "node --experimental-strip-types --test tests/core/stage8-8-3-lead-batch-filter-and-note-return.test.ts",
-    "check:stage8.8.4": "node --experimental-strip-types --test tests/core/stage8-8-4-lead-inline-operational-fields.test.ts"
+    "check:stage8.8.4": "node --experimental-strip-types --test tests/core/stage8-8-4-lead-inline-operational-fields.test.ts",
+    "check:stage8.8.5": "node --experimental-strip-types --test tests/core/stage8-8-5-lead-next-action-taxonomy.test.ts",
+    "check:stage8.8.6": "node --experimental-strip-types --test tests/core/stage8-8-6-lead-next-action-select.test.ts",
+    "check:stage8.8.5:db": "tsx scripts/check-stage8-8-5-next-actions.ts"
   },
   "engines": {
     "node": ">=22.13.1 <23"

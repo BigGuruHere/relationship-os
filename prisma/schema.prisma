@@ -55,6 +55,7 @@ model User {
   tags          Tag[]
   companyTags   CompanyTag[]
   companyExternalIdentifiers CompanyExternalIdentifier[]
+  leadNextActionOptions LeadNextActionOption[]
   projectNotes  ProjectNote[]
   oauthAccounts OAuthAccount[] // external accounts linked to this user
 
@@ -170,6 +171,7 @@ model ContextSpace {
   tags Tag[]
   companyTags CompanyTag[]
   companyExternalIdentifiers CompanyExternalIdentifier[]
+  leadNextActionOptions LeadNextActionOption[]
   leadSources LeadSource[]
   interactions Interaction[]
   reminders Reminder[]
@@ -2205,6 +2207,27 @@ model MarketLeadNote {
   @@index([userId, marketLeadId, occurredAt])
   @@index([userId, contextSpaceId])
   @@index([userId, marketLeadId, createdAt])
+}
+
+
+// IT: Workspace-local reusable taxonomy for MarketLead next actions. Labels are encrypted at rest;
+// deterministic indexes make user-entered options case-insensitively reusable without plaintext storage.
+model LeadNextActionOption {
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  contextSpaceId String @default("00000000-0000-0000-0000-000000000000")
+  contextSpace   ContextSpace @relation(fields: [contextSpaceId], references: [id], onDelete: Cascade)
+
+  labelEnc String
+  labelIdx String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, contextSpaceId, labelIdx], map: "LeadNextActionOption_user_ctx_label_key")
+  @@index([userId, contextSpaceId, updatedAt])
 }
 
 // ---------------------------------------------------------------------------

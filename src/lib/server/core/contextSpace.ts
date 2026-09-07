@@ -200,7 +200,7 @@ export function contextSpaceIdForOwner(userId: string, request = currentWorkspac
 }
 
 export const CONTEXT_SCOPED_MODELS = new Set([
-  'Tag', 'CompanyTag', 'LeadSource',
+  'Tag', 'CompanyTag', 'LeadSource', 'LeadNextActionOption',
   'Contact', 'Interaction', 'Reminder', 'ContactRelationship',
   'Deal', 'DealNote', 'DealContact', 'DealContactNote',
   'Company', 'CompanyExternalIdentifier', 'CompanyNote', 'CompanyContact', 'CompanyContactNote', 'DealCompany', 'CompanyRelationship',

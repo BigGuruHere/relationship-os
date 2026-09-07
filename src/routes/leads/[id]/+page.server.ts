@@ -23,7 +23,9 @@ import {
 } from '$lib/marketLeads';
 import { stepMarketLeadPriority } from '$lib/leadPriority';
 import { isQuickMarketLeadField, parseQuickLeadConfidence } from '$lib/leadQuickFields';
+import { validateLeadNextActionLabel } from '$lib/leadNextActions';
 import { buildLeadDetailReturnUrl, safeLeadListReturnTo } from '$lib/leadListNavigation';
+import { loadLeadNextActionOptions, rememberLeadNextActionOption } from '$lib/server/leadNextActions';
 import {
   buildLeadSourceOptions,
   convertLeadToCompany,
@@ -282,6 +284,7 @@ export const load: PageServerLoad = async ({ params, locals, url }) => {
   const taskContactOptions = await Promise.all(taskContactsRaw.map(async (c: any) => ({ id: c.id, name: await contactDisplayName(c) })));
   const taskDealContactOptions = taskDealContactsRaw.map((link: any) => ({ id: link.id, dealId: link.deal.id, title: `${safeDecrypt(link.deal.titleEnc, 'deal.title', 'Untitled deal')}${link.label ? ` (${link.label})` : ''}` }));
   const taskDealCompanyOptions = taskDealCompaniesRaw.map((link: any) => ({ id: link.id, dealId: link.deal.id, title: `${safeDecrypt(link.deal.titleEnc, 'deal.title', 'Untitled deal')}${link.label ? ` (${link.label})` : ''}` }));
+  const nextActionOptions = await loadLeadNextActionOptions(userId, lead.nextAction || '');
 
   return {
     // IT: Preserve the filtered calling queue that opened this lead.
@@ -318,6 +321,7 @@ export const load: PageServerLoad = async ({ params, locals, url }) => {
     buyerQualificationStatuses: BUYER_QUALIFICATION_STATUSES,
     sellerQualificationStatuses: SELLER_QUALIFICATION_STATUSES,
     communicationMethods: COMMUNICATION_METHODS,
+    nextActionOptions,
     noteChannels: NOTE_CHANNELS,
     taskStatuses: TASK_STATUSES,
     taskUrgencies: TASK_URGENCIES,
@@ -434,7 +438,11 @@ export const actions: Actions = {
         break;
       }
       case 'nextAction': {
-        const candidate = rawValue.trim();
+        const candidate = validateLeadNextActionLabel(rawValue);
+        if (candidate === null) {
+          return fail(400, { quickField: field, quickFieldError: 'Next action must be 120 characters or fewer.' });
+        }
+        if (candidate) await rememberLeadNextActionOption(userId, candidate);
         data.nextActionEnc = candidate ? encrypt(candidate, 'market_lead.next_action') : null;
         value = candidate;
         break;
@@ -474,6 +482,10 @@ export const actions: Actions = {
     }
 
     values.leadSourceId = (await resolveLeadSourceId(userId, values.leadSourceId, values.newLeadSource)) || '';
+    const nextAction = validateLeadNextActionLabel(values.nextAction);
+    if (nextAction === null) return fail(400, { error: 'Next action must be 120 characters or fewer.' });
+    values.nextAction = nextAction;
+    if (nextAction) await rememberLeadNextActionOption(userId, nextAction);
     const data: any = marketLeadCreateData(userId, values);
     delete data.userId;
     // IT: editing text/status/project fields should not unlink already converted records.

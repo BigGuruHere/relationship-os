@@ -30,6 +30,13 @@
   let quickSellerStatus = lead.sellerStatus || 'NOT_ASKED';
   let quickConfidence = lead.confidence ?? 50;
   let quickNextAction = lead.nextAction || '';
+  // IT: Existing next actions use a real select. Free typing is only shown when the user explicitly creates a new action.
+  let nextActionOptions = [...(data.nextActionOptions || [])];
+  let quickNextActionCreating = false;
+  let quickNextActionDraft = '';
+  let editNextActionChoice = quickNextAction;
+  let editNextActionCreating = false;
+  let editNextActionDraft = '';
   let quickSavingField = '';
   let quickSavedField = '';
   let quickFieldError = '';
@@ -42,7 +49,17 @@
       case 'buyerStatus': quickBuyerStatus = String(value ?? 'NOT_ASKED'); break;
       case 'sellerStatus': quickSellerStatus = String(value ?? 'NOT_ASKED'); break;
       case 'confidence': quickConfidence = Number(value ?? 50); break;
-      case 'nextAction': quickNextAction = String(value ?? ''); break;
+      case 'nextAction': {
+        const saved = String(value ?? '');
+        quickNextAction = saved;
+        quickNextActionCreating = false;
+        quickNextActionDraft = '';
+        editNextActionChoice = saved;
+        editNextActionCreating = false;
+        editNextActionDraft = '';
+        ensureNextActionOption(saved);
+        break;
+      }
     }
   }
 
@@ -75,8 +92,47 @@
   function submitQuickTextOnEnter(event: KeyboardEvent) {
     if (event.key !== 'Enter') return;
     event.preventDefault();
-    // IT: blur fires the input's change event once, avoiding a duplicate autosave.
-    (event.currentTarget as HTMLInputElement).blur();
+    // IT: New taxonomy values use an explicit submit so Cancel cannot accidentally save on blur.
+    (event.currentTarget as HTMLInputElement).form?.requestSubmit();
+  }
+
+  function ensureNextActionOption(raw: string) {
+    const value = String(raw || '').trim();
+    if (!value) return;
+    if (nextActionOptions.some((option: string) => option.toLocaleLowerCase() === value.toLocaleLowerCase())) return;
+    nextActionOptions = [...nextActionOptions, value];
+  }
+
+  function handleQuickNextActionSelect(event: Event) {
+    const select = event.currentTarget as HTMLSelectElement;
+    if (select.value === '__create__') {
+      // IT: Do not submit the sentinel value. Swap to the create field while keeping the saved action intact.
+      quickNextActionCreating = true;
+      quickNextActionDraft = '';
+      return;
+    }
+    submitQuickControl(event);
+  }
+
+  function cancelQuickNextActionCreate() {
+    quickNextActionCreating = false;
+    quickNextActionDraft = '';
+  }
+
+  function handleEditNextActionSelect(event: Event) {
+    const select = event.currentTarget as HTMLSelectElement;
+    if (select.value === '__create__') {
+      editNextActionCreating = true;
+      editNextActionDraft = '';
+      return;
+    }
+    editNextActionChoice = select.value;
+  }
+
+  function cancelEditNextActionCreate() {
+    editNextActionCreating = false;
+    editNextActionDraft = '';
+    editNextActionChoice = quickNextAction;
   }
 
   function enhancePriority() {
@@ -200,7 +256,17 @@
         <strong>Workstream</strong><span>{lead.linkedWorkstreamTitle || ' - '}</span>
         <strong>Next action</strong><form method="post" action="?/quickField" class="quick-inline-form quick-action-form" use:enhance={enhanceQuickField('nextAction')}>
           <input type="hidden" name="field" value="nextAction" />
-          <input name="value" class="quick-text" bind:value={quickNextAction} on:change={submitQuickControl} on:keydown={submitQuickTextOnEnter} placeholder="Add next action" aria-label="Next action" />
+          {#if quickNextActionCreating}
+            <input name="value" class="quick-text" bind:value={quickNextActionDraft} on:keydown={submitQuickTextOnEnter} maxlength="120" placeholder="Type a new next action" aria-label="Create next action" autocomplete="off" autofocus />
+            <button class="btn primary" type="submit" disabled={!quickNextActionDraft.trim()}>Save</button>
+            <button class="btn quick-create-cancel" type="button" on:click={cancelQuickNextActionCreate}>Cancel</button>
+          {:else}
+            <select name="value" class="quick-select quick-action-select" value={quickNextAction} on:change={handleQuickNextActionSelect} aria-label="Next action">
+              <option value="">No next action</option>
+              {#each nextActionOptions as option}<option value={option}>{option}</option>{/each}
+              <option value="__create__">+ Create new action...</option>
+            </select>
+          {/if}
           {#if quickSavingField === 'nextAction'}<span class="quick-feedback muted">Saving...</span>{:else if quickSavedField === 'nextAction'}<span class="quick-feedback saved">Saved</span>{/if}
         </form>
       </div>
@@ -295,7 +361,7 @@
         <div class="grid two"><div class="field"><label for="valueMin">Minimum value ($m)</label><input id="valueMin" name="valueMin" type="number" min="0" max="100000000" step="0.00000001" inputmode="decimal" value={lead.valueMin} /></div><div class="field"><label for="valueMax">Maximum value ($m)</label><input id="valueMax" name="valueMax" type="number" min="0" max="100000000" step="0.00000001" inputmode="decimal" value={lead.valueMax} /></div></div>
         <div class="field"><label for="description">Description</label><textarea id="description" name="description" rows="3">{lead.description}</textarea></div>
         <div class="field"><label for="notes">Original notes</label><textarea id="notes" name="notes" rows="3">{lead.notes}</textarea></div>
-        <div class="grid two"><div class="field"><label for="sourceUrl">Source URL</label><input id="sourceUrl" name="sourceUrl" value={lead.sourceUrl} /></div><div class="field"><label for="nextAction">Next action</label><input id="nextAction" name="nextAction" value={quickNextAction} /></div></div>
+        <div class="grid two"><div class="field"><label for="sourceUrl">Source URL</label><input id="sourceUrl" name="sourceUrl" value={lead.sourceUrl} /></div><div class="field"><label for="nextAction">Next action</label>{#if editNextActionCreating}<input id="nextAction" name="nextAction" maxlength="120" autocomplete="off" bind:value={editNextActionDraft} placeholder="Type a new next action" /><button class="btn quick-create-cancel" type="button" on:click={cancelEditNextActionCreate}>Use existing action</button>{:else}<select id="nextAction" name="nextAction" value={editNextActionChoice} on:change={handleEditNextActionSelect}><option value="">No next action</option>{#each nextActionOptions as option}<option value={option}>{option}</option>{/each}<option value="__create__">+ Create new action...</option></select>{/if}</div></div>
         <button class="btn primary" type="submit">Save lead</button>
       </form>
     </section>
@@ -405,6 +471,8 @@
   .quick-number-wrap { display: inline-flex; align-items: center; gap: 4px; color: var(--muted); }
   .quick-number { width: 76px; min-height: 34px; }
   .quick-action-form { width: 100%; }
+  .quick-action-select { width: min(100%, 520px); flex: 1 1 260px; }
+  .quick-create-cancel { white-space: nowrap; }
   .quick-text { width: min(100%, 520px); min-height: 34px; flex: 1 1 260px; }
   .quick-feedback { font-size: 0.78rem; min-width: 42px; }
   .quick-feedback.saved { color: var(--accent); }

@@ -21,6 +21,8 @@ import {
   noteChannelLabel,
   parseDateTime as parseLeadDateTime
 } from '$lib/marketLeads';
+import { stepMarketLeadPriority } from '$lib/leadPriority';
+import { buildLeadDetailReturnUrl, safeLeadListReturnTo } from '$lib/leadListNavigation';
 import {
   buildLeadSourceOptions,
   convertLeadToCompany,
@@ -163,7 +165,7 @@ async function mapLeadTask(task: any) {
   };
 }
 
-export const load: PageServerLoad = async ({ params, locals }) => {
+export const load: PageServerLoad = async ({ params, locals, url }) => {
   if (!locals.user) throw redirect(303, '/auth/login');
   const userId = locals.user.id;
 
@@ -281,6 +283,8 @@ export const load: PageServerLoad = async ({ params, locals }) => {
   const taskDealCompanyOptions = taskDealCompaniesRaw.map((link: any) => ({ id: link.id, dealId: link.deal.id, title: `${safeDecrypt(link.deal.titleEnc, 'deal.title', 'Untitled deal')}${link.label ? ` (${link.label})` : ''}` }));
 
   return {
+    // IT: Preserve the filtered calling queue that opened this lead.
+    returnTo: safeLeadListReturnTo(url.searchParams.get('returnTo')),
     lead: {
       ...lead,
       nextActionAtInput: dateToDatetimeLocal(lead.nextActionAt),
@@ -326,13 +330,41 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 };
 
 export const actions: Actions = {
+  // IT: Fast priority control for working a calling queue without opening the full edit form.
+  quickPriority: async ({ request, params, locals }) => {
+    if (!locals.user) throw redirect(303, '/auth/login');
+    const userId = locals.user.id;
+    const form = await request.formData();
+    const delta = Number.parseInt(String(form.get('delta') || ''), 10);
+    if (delta !== -1 && delta !== 1) return fail(400, { error: 'Priority can only move one step at a time.' });
+
+    const existing = await prisma.marketLead.findFirst({
+      where: { id: params.id, userId },
+      select: { id: true, priority: true }
+    });
+    if (!existing) return fail(404, { error: 'Lead not found.' });
+
+    // IT: Priority remains constrained to the existing 1-5 scale.
+    const priority = stepMarketLeadPriority(existing.priority, delta);
+    if (priority !== existing.priority) {
+      await prisma.marketLead.updateMany({
+        where: { id: params.id, userId },
+        data: { priority }
+      });
+    }
+
+    return { priority };
+  },
+
   update: async ({ request, params, locals }) => {
     if (!locals.user) throw redirect(303, '/auth/login');
     const userId = locals.user.id;
     const existing = await prisma.marketLead.findFirst({ where: { id: params.id, userId }, select: { id: true } });
     if (!existing) return fail(404, { error: 'Lead not found.' });
 
-    const values = leadFormValues(await request.formData());
+    const form = await request.formData();
+    const returnTo = safeLeadListReturnTo(form.get('returnTo'));
+    const values = leadFormValues(form);
     if (!values.title && !values.name && !values.companyName) return fail(400, { error: 'Add a title, person name, or company name.' });
 
     if (values.projectId) {
@@ -354,7 +386,7 @@ export const actions: Actions = {
     delete data.companyId;
     delete data.dealId;
     await prisma.marketLead.updateMany({ where: { id: params.id, userId }, data });
-    throw redirect(303, `/leads/${params.id}`);
+    throw redirect(303, buildLeadDetailReturnUrl(params.id, returnTo));
   },
 
   createLeadNote: async ({ request, params, locals }) => {

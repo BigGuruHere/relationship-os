@@ -1,8 +1,10 @@
 <!-- src/routes/leads/[id]/+page.svelte -->
 <script lang="ts">
+  import { enhance } from '$app/forms';
   import VoiceTextField from '$lib/recording/VoiceTextField.svelte';
   import TasksPanel from '$lib/TasksPanel.svelte';
   import { closeDatePickerOnChange } from '$lib/closeDatePicker';
+  import { buildLeadListReturnHref } from '$lib/leadListNavigation';
 
   export let data: any;
   export let form: any;
@@ -13,6 +15,30 @@
   let leadNoteSummary = '';
   let editSourceChoice = lead.sourceChoice || (lead.leadSourceId ? `custom:${lead.leadSourceId}` : `builtin:${lead.source || 'MANUAL'}`);
   let companySearch = '';
+  // IT: Keep a local priority value so the Details-row control can autosave without a page reload.
+  let quickPriority = lead.priority;
+  let prioritySaving = false;
+  let prioritySaved = false;
+  let priorityError = '';
+
+  function enhancePriority() {
+    prioritySaving = true;
+    prioritySaved = false;
+    priorityError = '';
+
+    return async ({ result }: any) => {
+      prioritySaving = false;
+      if (result.type === 'success') {
+        const savedPriority = Number(result.data?.priority);
+        if (Number.isFinite(savedPriority)) quickPriority = savedPriority;
+        prioritySaved = true;
+        window.setTimeout(() => (prioritySaved = false), 900);
+        return;
+      }
+
+      priorityError = result.data?.error || 'Could not update priority.';
+    };
+  }
 
   $: filteredCompanies = (data.companies || []).filter((company: any) => {
     const q = companySearch.trim().toLowerCase();
@@ -44,6 +70,7 @@
       <p class="muted small">Contact: {lead.contactAttemptStatusLabel} - Buyer: {lead.buyerStatusLabel} - Seller: {lead.sellerStatusLabel}</p>
     </div>
     <div class="actions">
+      <a class="btn primary" href={buildLeadListReturnHref(data.returnTo)}>Return to list</a>
       <a class="btn" href="/leads">All leads</a>
       {#if lead.projectId}<a class="btn" href={`/projects/${lead.projectId}`}>Open project</a>{/if}
       <button class="btn" type="button" on:click={() => (showEdit = !showEdit)}>{showEdit ? 'Close edit' : 'Edit lead'}</button>
@@ -73,7 +100,15 @@
         <strong>Last contacted</strong><span>{fmt(lead.lastContactedAt)}</span>
         <strong>Buyer status</strong><span>{lead.buyerStatusLabel}</span>
         <strong>Seller status</strong><span>{lead.sellerStatusLabel}</span>
-        <strong>Priority</strong><span>{lead.priority}/5</span>
+        <strong>Priority</strong><div class="priority-inline-wrap">
+          <form method="post" action="?/quickPriority" class="priority-stepper" use:enhance={enhancePriority}>
+            <button class="priority-step" type="submit" name="delta" value="-1" disabled={prioritySaving || quickPriority <= 1} aria-label="Lower lead priority" title="Lower priority">▼</button>
+            <strong class="priority-value">{quickPriority}<span>/5</span></strong>
+            <button class="priority-step" type="submit" name="delta" value="1" disabled={prioritySaving || quickPriority >= 5} aria-label="Raise lead priority" title="Raise priority">▲</button>
+            {#if prioritySaving}<span class="priority-feedback muted">Saving...</span>{:else if prioritySaved}<span class="priority-feedback saved">Saved</span>{/if}
+          </form>
+          {#if priorityError}<span class="priority-error" role="alert">{priorityError}</span>{/if}
+        </div>
         <strong>Confidence</strong><span>{lead.confidence}/100</span>
         <strong>Project</strong><span>{#if lead.projectId}<a href={`/projects/${lead.projectId}`}>{lead.linkedProjectTitle || 'Open project'}</a>{:else}Standalone lead{/if}</span>
         <strong>Workstream</strong><span>{lead.linkedWorkstreamTitle || ' - '}</span>
@@ -140,6 +175,7 @@
     <section class="card panel">
       <h2>Edit lead</h2>
       <form method="post" action="?/update" class="create-form">
+        <input type="hidden" name="returnTo" value={data.returnTo || '/leads'} />
         <div class="grid two">
           <div class="field"><label for="title">Lead title</label><input id="title" name="title" value={lead.title} /></div>
           <div class="field"><label for="typeEdit">Lead type</label><select id="typeEdit" name="type">{#each data.leadTypes as opt}<option value={opt.value} selected={lead.type === opt.value}>{opt.label}</option>{/each}</select></div>
@@ -164,7 +200,7 @@
         <div class="grid two"><div class="field"><label for="website">Website</label><input id="website" name="website" value={lead.website} /></div><div class="field"><label for="linkedin">LinkedIn</label><input id="linkedin" name="linkedin" value={lead.linkedin} /></div></div>
         <div class="grid two"><div class="field"><label for="roleTitle">Role/title</label><input id="roleTitle" name="roleTitle" value={lead.roleTitle} /></div><div class="field"><label for="geography">Geography</label><input id="geography" name="geography" value={lead.geography} /></div></div>
         <div class="field"><label for="address">Address</label><input id="address" name="address" value={lead.address} /></div>
-        <div class="grid three"><div class="field"><label for="priority">Priority</label><input id="priority" name="priority" type="number" min="1" max="5" value={lead.priority} /></div><div class="field"><label for="confidence">Confidence</label><input id="confidence" name="confidence" type="number" min="0" max="100" value={lead.confidence} /></div><div class="field"><label for="currency">Currency</label><input id="currency" name="currency" value={lead.currency} /></div></div>
+        <div class="grid three"><div class="field"><label for="priority">Priority</label><input id="priority" name="priority" type="number" min="1" max="5" value={quickPriority} /></div><div class="field"><label for="confidence">Confidence</label><input id="confidence" name="confidence" type="number" min="0" max="100" value={lead.confidence} /></div><div class="field"><label for="currency">Currency</label><input id="currency" name="currency" value={lead.currency} /></div></div>
         <div class="grid two"><div class="field"><label for="valueMin">Minimum value ($m)</label><input id="valueMin" name="valueMin" type="number" min="0" max="100000000" step="0.00000001" inputmode="decimal" value={lead.valueMin} /></div><div class="field"><label for="valueMax">Maximum value ($m)</label><input id="valueMax" name="valueMax" type="number" min="0" max="100000000" step="0.00000001" inputmode="decimal" value={lead.valueMax} /></div></div>
         <div class="field"><label for="description">Description</label><textarea id="description" name="description" rows="3">{lead.description}</textarea></div>
         <div class="field"><label for="notes">Original notes</label><textarea id="notes" name="notes" rows="3">{lead.notes}</textarea></div>
@@ -258,6 +294,16 @@
   .actions { justify-content: flex-start; align-items: center; }
   h1, h2, h3 { margin-top: 0; } h2 { font-size: 1.15rem; } h3 { font-size: 1rem; margin-bottom: 6px; }
   .eyebrow { color: var(--accent); font-weight: 700; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.04em; }
+  .priority-inline-wrap { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .priority-stepper { display: inline-flex; align-items: center; gap: 5px; margin: 0; }
+  .priority-value { min-width: 34px; text-align: center; font-size: 0.95rem; }
+  .priority-value span { color: var(--muted); font-weight: 500; font-size: 0.8rem; }
+  .priority-step { width: 24px; height: 24px; display: inline-grid; place-items: center; padding: 0; border: 1px solid var(--border); border-radius: 7px; background: var(--panel); color: var(--text); cursor: pointer; font-size: 0.72rem; line-height: 1; }
+  .priority-step:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+  .priority-step:disabled { cursor: default; opacity: 0.35; }
+  .priority-feedback { font-size: 0.78rem; min-width: 42px; }
+  .priority-feedback.saved { color: var(--accent); }
+  .priority-error { color: var(--danger); font-size: 0.8rem; }
   .muted { color: var(--muted); } .small { font-size: 0.9rem; }
   .grid.two { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
   .grid.three { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }

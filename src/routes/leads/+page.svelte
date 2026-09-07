@@ -1,6 +1,7 @@
 <!-- src/routes/leads/+page.svelte -->
 <script lang="ts">
   import { closeDatePickerOnChange } from '$lib/closeDatePicker';
+  import { buildLeadDetailHref } from '$lib/leadListNavigation';
 
   export let data: any;
   export let form: any;
@@ -118,9 +119,9 @@
   {#if data.leads.length === 0}
     <section class="card empty"><h2>No leads yet</h2><p class="muted">Capture weak signals here before deciding whether they deserve a contact, company, deal, want, or offer.</p></section>
   {:else}
-    <div class="lead-list">
+    <div class="lead-list" id="lead-list">
       {#each data.leads as lead}
-        <a class="card lead-card" href={`/leads/${lead.id}`}>
+        <a class="card lead-card" href={buildLeadDetailHref(lead.id, data.currentPath || '/leads')}>
           <div class="topline">
             <div><h2>{lead.title}</h2><div class="muted small">{lead.typeLabel} - {lead.statusLabel} - {lead.sourceLabel}</div><div class="muted small">Contact: {lead.contactAttemptStatusLabel} - Buyer: {lead.buyerStatusLabel} - Seller: {lead.sellerStatusLabel}</div></div>
             <div class="chip-row"><span class="status-chip">Priority {lead.priority}</span><span class="status-chip">{lead.confidence}/100</span><span class="status-chip">{lead.contactAttemptStatusLabel}</span></div>

@@ -67,6 +67,7 @@ Leads: there are **two distinct lead concepts** — don't confuse them:
 - `Lead` — the older model, used for public claim/invite flows (QR/vCard sharing, guest onboarding).
 - `MarketLead` (+ `MarketLeadNote`, `LeadSource`) — the newer market-making staging layer (buyer/seller/company/contact/mandate/asset/referrer), shown in the UI simply as "Leads" (`/leads`). It converts into real `Contact`, `Company`, `Deal`, `Want`, or `Offer` records while keeping a link back to the originating lead. Server logic lives in `src/lib/server/marketLeads.ts` and `src/lib/leads/` (`link.ts`, `reciprocal.ts`).
 - Stage 8.8 reuses custom `LeadSource` as the first-stage import batch/calling-list label. Do not add a separate `LeadList` unless real use later proves it necessary. CSV import lives under `/leads/import`; it should remain deterministic and human-approved before any agent is allowed to invoke the same capability.
+- Stage 8.8.2 keeps lead calling workflow lightweight: priority is adjusted inline in the existing lead Details row, and lead-card navigation carries the exact filtered `/leads?...` URL so `Return to list` restores and re-sorts the active calling queue.
 
 Relationship intent: `Want` and `Offer` are separate first-class Core concepts. Legacy `ExchangeItem` authority has been retired and must not be reintroduced as a generic Intent table without a new architectural decision.
 

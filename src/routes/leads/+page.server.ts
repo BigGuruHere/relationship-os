@@ -144,6 +144,8 @@ export const load: PageServerLoad = async ({ locals, url }) => {
   };
 
   return {
+    // IT: Each lead link carries the exact filtered list URL so a detail page can return to the same calling queue.
+    currentPath: `${url.pathname}${url.search}`,
     q,
     selectedType: type,
     selectedStatus: status,

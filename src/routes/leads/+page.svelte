@@ -1,5 +1,6 @@
 <!-- src/routes/leads/+page.svelte -->
 <script lang="ts">
+  import { onMount } from 'svelte';
   import { closeDatePickerOnChange } from '$lib/closeDatePicker';
   import { buildLeadDetailHref } from '$lib/leadListNavigation';
 
@@ -18,6 +19,88 @@
   let projectId = data.selectedProjectId || '';
   let workstreamId = data.selectedWorkstreamId || '';
   let createSourceChoice = form?.values?.sourceChoice || (form?.values?.leadSourceId ? `custom:${form.values.leadSourceId}` : `builtin:${form?.values?.source || 'MANUAL'}`);
+  let filtersExpanded = false;
+  let pinnedFilter: { href: string; label: string } | null = null;
+
+  $: activeFilterParts = buildActiveFilterParts();
+  $: activeFilterSummary = activeFilterParts.length ? activeFilterParts.join(' · ') : 'All leads';
+  $: hasActiveFilters = activeFilterParts.length > 0;
+  $: currentFilterHref = buildCurrentFilterHref();
+  $: currentFilterIsPinned = Boolean(pinnedFilter && pinnedFilter.href === currentFilterHref);
+
+  onMount(() => {
+    try {
+      const raw = localStorage.getItem(data.pinStorageKey);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed.href === 'string' && parsed.href.startsWith('/leads') && typeof parsed.label === 'string') {
+        pinnedFilter = { href: parsed.href, label: parsed.label };
+      }
+    } catch {
+      pinnedFilter = null;
+    }
+  });
+
+  function labelFor(options: any[], value: string) {
+    return options?.find((option: any) => option.value === value || option.id === value)?.label
+      || options?.find((option: any) => option.value === value || option.id === value)?.name
+      || value;
+  }
+
+  function buildActiveFilterParts() {
+    // IT: Pin only the filter that has actually been applied by the server, not unsaved edits in an open filter form.
+    const appliedQ = String(data.q || '').trim();
+    const appliedType = data.selectedType || '';
+    const appliedStatus = data.selectedStatus || '';
+    const appliedSource = data.selectedSource || '';
+    const appliedBatch = data.selectedBatchId || '';
+    const appliedAttempt = data.selectedContactAttemptStatus || '';
+    const appliedBuyer = data.selectedBuyerStatus || '';
+    const appliedSeller = data.selectedSellerStatus || '';
+    const appliedProject = data.selectedProjectId || '';
+    const appliedWorkstream = data.selectedWorkstreamId || '';
+    const parts: string[] = [];
+    if (appliedQ) parts.push(`Search: ${appliedQ}`);
+    if (appliedType) parts.push(labelFor(data.leadTypes, appliedType));
+    if (appliedStatus) parts.push(labelFor(data.leadStatuses, appliedStatus));
+    if (appliedSource) parts.push(`Source: ${labelFor(data.leadSourceOptions, appliedSource)}`);
+    if (appliedBatch) parts.push(`Batch: ${labelFor(data.importBatches, appliedBatch)}`);
+    if (appliedAttempt) parts.push(labelFor(data.contactAttemptStatuses, appliedAttempt));
+    if (appliedBuyer) parts.push(`Buyer: ${labelFor(data.buyerQualificationStatuses, appliedBuyer)}`);
+    if (appliedSeller) parts.push(`Seller: ${labelFor(data.sellerQualificationStatuses, appliedSeller)}`);
+    if (appliedProject) parts.push(`Project: ${labelFor(data.projects, appliedProject)}`);
+    if (appliedWorkstream) parts.push(`Workstream: ${labelFor(data.workstreams, appliedWorkstream)}`);
+    return parts;
+  }
+
+  function buildCurrentFilterHref() {
+    const params = new URLSearchParams();
+    const appliedQ = String(data.q || '').trim();
+    if (appliedQ) params.set('q', appliedQ);
+    if (data.selectedType) params.set('type', data.selectedType);
+    if (data.selectedStatus) params.set('status', data.selectedStatus);
+    if (data.selectedSource) params.set('source', data.selectedSource);
+    if (data.selectedBatchId) params.set('batch', data.selectedBatchId);
+    if (data.selectedContactAttemptStatus) params.set('contactAttemptStatus', data.selectedContactAttemptStatus);
+    if (data.selectedBuyerStatus) params.set('buyerStatus', data.selectedBuyerStatus);
+    if (data.selectedSellerStatus) params.set('sellerStatus', data.selectedSellerStatus);
+    if (data.selectedProjectId) params.set('projectId', data.selectedProjectId);
+    if (data.selectedWorkstreamId) params.set('workstreamId', data.selectedWorkstreamId);
+    const query = params.toString();
+    return query ? `/leads?${query}` : '/leads';
+  }
+
+  function pinCurrentFilter() {
+    if (!hasActiveFilters) return;
+    const next = { href: currentFilterHref, label: activeFilterSummary };
+    pinnedFilter = next;
+    try { localStorage.setItem(data.pinStorageKey, JSON.stringify(next)); } catch { /* Browser storage can be unavailable. */ }
+  }
+
+  function unpinFilter() {
+    pinnedFilter = null;
+    try { localStorage.removeItem(data.pinStorageKey); } catch { /* Browser storage can be unavailable. */ }
+  }
 </script>
 
 <div class="container">
@@ -102,20 +185,45 @@
     </section>
   {/if}
 
+  {#if pinnedFilter}
+    <section class="card pinned-filter" aria-label="Pinned lead filter">
+      <div>
+        <div class="eyebrow">Pinned working list</div>
+        <strong>{pinnedFilter.label}</strong>
+      </div>
+      <div class="pinned-actions">
+        <a class="btn primary" href={pinnedFilter.href}>Open</a>
+        <button class="btn" type="button" on:click={unpinFilter}>Unpin</button>
+      </div>
+    </section>
+  {/if}
+
   <section class="card filters">
-    <form method="GET" class="filter-row">
-      <input name="q" bind:value={q} placeholder="Search leads, people, companies, phone, email, sector" />
-      <select name="type" bind:value={type}><option value="">All types</option>{#each data.leadTypes as opt}<option value={opt.value}>{opt.label}</option>{/each}</select>
-      <select name="status" bind:value={status}><option value="">All statuses</option>{#each data.leadStatuses as opt}<option value={opt.value}>{opt.label}</option>{/each}</select>
-      <select name="source" bind:value={sourceFilter}><option value="">All sources</option>{#each data.leadSourceOptions as opt}{#if opt.value !== 'CUSTOM'}<option value={opt.value}>{opt.label}</option>{/if}{/each}</select>
-      <select name="batch" bind:value={batchId}><option value="">All batches</option>{#each data.importBatches as batch}<option value={batch.id}>{batch.name}</option>{/each}</select>
-      <select name="contactAttemptStatus" bind:value={contactAttemptStatus}><option value="">All contact attempts</option>{#each data.contactAttemptStatuses as opt}<option value={opt.value}>{opt.label}</option>{/each}</select>
-      <select name="buyerStatus" bind:value={buyerStatus}><option value="">All buyer statuses</option>{#each data.buyerQualificationStatuses as opt}<option value={opt.value}>{opt.label}</option>{/each}</select>
-      <select name="sellerStatus" bind:value={sellerStatus}><option value="">All seller statuses</option>{#each data.sellerQualificationStatuses as opt}<option value={opt.value}>{opt.label}</option>{/each}</select>
-      <select name="projectId" bind:value={projectId}><option value="">All projects</option>{#each data.projects as project}<option value={project.id}>{project.title}</option>{/each}</select>
-      <select name="workstreamId" bind:value={workstreamId}><option value="">All workstreams</option>{#each data.workstreams as ws}<option value={ws.id}>{ws.projectTitle} - {ws.name}</option>{/each}</select>
-      <button class="btn primary" type="submit">Filter</button>
-    </form>
+    <div class="filter-head">
+      <button class="btn filter-toggle" type="button" on:click={() => (filtersExpanded = !filtersExpanded)} aria-expanded={filtersExpanded}>
+        {filtersExpanded ? 'Hide filters' : 'Filters'} {filtersExpanded ? '▲' : '▼'}
+      </button>
+      {#if hasActiveFilters}<span class="muted small current-filter">{activeFilterSummary}</span>{/if}
+      {#if hasActiveFilters}
+        <button class="btn" type="button" on:click={pinCurrentFilter} disabled={currentFilterIsPinned}>{currentFilterIsPinned ? 'Pinned' : 'Pin current filter'}</button>
+      {/if}
+    </div>
+    {#if filtersExpanded}
+      <form method="GET" class="filter-row">
+        <input name="q" bind:value={q} placeholder="Search leads, people, companies, phone, email, sector" />
+        <select name="type" bind:value={type}><option value="">All types</option>{#each data.leadTypes as opt}<option value={opt.value}>{opt.label}</option>{/each}</select>
+        <select name="status" bind:value={status}><option value="">All statuses</option>{#each data.leadStatuses as opt}<option value={opt.value}>{opt.label}</option>{/each}</select>
+        <select name="source" bind:value={sourceFilter}><option value="">All sources</option>{#each data.leadSourceOptions as opt}{#if opt.value !== 'CUSTOM'}<option value={opt.value}>{opt.label}</option>{/if}{/each}</select>
+        <select name="batch" bind:value={batchId}><option value="">All batches</option>{#each data.importBatches as batch}<option value={batch.id}>{batch.name}</option>{/each}</select>
+        <select name="contactAttemptStatus" bind:value={contactAttemptStatus}><option value="">All contact attempts</option>{#each data.contactAttemptStatuses as opt}<option value={opt.value}>{opt.label}</option>{/each}</select>
+        <select name="buyerStatus" bind:value={buyerStatus}><option value="">All buyer statuses</option>{#each data.buyerQualificationStatuses as opt}<option value={opt.value}>{opt.label}</option>{/each}</select>
+        <select name="sellerStatus" bind:value={sellerStatus}><option value="">All seller statuses</option>{#each data.sellerQualificationStatuses as opt}<option value={opt.value}>{opt.label}</option>{/each}</select>
+        <select name="projectId" bind:value={projectId}><option value="">All projects</option>{#each data.projects as project}<option value={project.id}>{project.title}</option>{/each}</select>
+        <select name="workstreamId" bind:value={workstreamId}><option value="">All workstreams</option>{#each data.workstreams as ws}<option value={ws.id}>{ws.projectTitle} - {ws.name}</option>{/each}</select>
+        <button class="btn primary" type="submit">Apply filters</button>
+        <a class="btn" href="/leads">Clear</a>
+      </form>
+    {/if}
   </section>
 
   {#if data.leads.length === 0}
@@ -146,7 +254,12 @@
   h1, h2 { margin: 0; } h2 { font-size: 1.1rem; }
   .eyebrow { color: var(--accent); font-weight: 700; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.04em; }
   .muted { color: var(--muted); } .small { font-size: 0.9rem; }
-  .panel, .filters, .empty, .error-card { padding: 14px; margin-bottom: 12px; }
+  .panel, .filters, .empty, .error-card, .pinned-filter { padding: 14px; margin-bottom: 12px; }
+  .pinned-filter, .filter-head, .pinned-actions { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+  .pinned-actions { justify-content: flex-end; flex-wrap: wrap; }
+  .filter-head { flex-wrap: wrap; }
+  .filter-toggle { min-width: 110px; }
+  .current-filter { flex: 1 1 280px; }
   .error-card { color: var(--danger); }
   .summary-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-bottom: 12px; }
   .stat { padding: 12px; display: grid; gap: 4px; } .stat span { color: var(--muted); font-size: 0.9rem; } .stat strong { font-size: 1.5rem; }
@@ -159,5 +272,5 @@
   .lead-card:hover { border-color: var(--accent); text-decoration: none; }
   .chip-row { display:flex; gap:6px; flex-wrap:wrap; }
   .status-chip { border: 1px solid var(--border); background: var(--panel); border-radius: 999px; padding: 3px 8px; font-size: 0.82rem; color: var(--muted); }
-  @media (max-width: 860px) { .page-head, .topline, .filter-row { flex-direction: column; align-items: stretch; } .grid.two, .grid.three, .grid.four, .summary-grid { grid-template-columns: 1fr; } }
+  @media (max-width: 860px) { .page-head, .topline, .filter-row, .pinned-filter, .filter-head { flex-direction: column; align-items: stretch; } .grid.two, .grid.three, .grid.four, .summary-grid { grid-template-columns: 1fr; } }
 </style>

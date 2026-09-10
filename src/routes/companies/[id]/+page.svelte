@@ -122,19 +122,40 @@
     </form>
   </section>
 
-  {#if data.externalIdentifiers?.length}
-    <section class="card panel">
-      <div class="section-head"><h2>External identifiers</h2></div>
-      <div class="mini-list">
+  <section class="card panel">
+    <div class="section-head"><h2>External identifiers</h2></div>
+    <p class="muted small">Optional. Add an ABN, ACN, public register number, or provider ID when one exists. A Company does not need an identifier to be valid.</p>
+    {#if data.externalIdentifiers?.length}
+      <div class="mini-list identifier-list">
         {#each data.externalIdentifiers as identifier}
-          <div class="mini-row">
-            <div><span class="status-chip">{identifier.scheme}</span> <strong>{identifier.value}</strong></div>
-            {#if identifier.sourceUrl}<a class="muted small" href={identifier.sourceUrl} target="_blank" rel="noreferrer">Source record</a>{/if}
+          <div class="mini-row identifier-row">
+            <div>
+              <div><span class="status-chip">{identifier.schemeLabel || identifier.scheme}</span> <strong>{identifier.value}</strong></div>
+              {#if identifier.sourceUrl}<a class="muted small" href={identifier.sourceUrl} target="_blank" rel="noreferrer">Source record</a>{/if}
+            </div>
+            <form method="post" action="?/removeExternalIdentifier" on:submit={(event) => { if (!confirm('Remove this external identifier?')) event.preventDefault(); }}>
+              <input type="hidden" name="identifierId" value={identifier.id} />
+              <button class="btn" type="submit">Remove</button>
+            </form>
           </div>
         {/each}
       </div>
-    </section>
-  {/if}
+    {:else}
+      <p class="muted">No external identifiers recorded.</p>
+    {/if}
+    <form method="post" action="?/addExternalIdentifier" class="identifier-add-form">
+      <div class="grid three">
+        <div class="field">
+          <label for="companyIdentifierScheme">Identifier type</label>
+          <input id="companyIdentifierScheme" name="identifierScheme" list="company-identifier-schemes" placeholder="e.g. ABN" required />
+          <datalist id="company-identifier-schemes">{#each data.companyExternalIdentifierSchemes as opt}<option value={opt.value}>{opt.label}</option>{/each}</datalist>
+        </div>
+        <div class="field"><label for="companyIdentifierValue">Identifier</label><input id="companyIdentifierValue" name="identifierValue" placeholder="Registration / reference number" required /></div>
+        <div class="field"><label for="companyIdentifierSourceUrl">Source URL</label><input id="companyIdentifierSourceUrl" name="identifierSourceUrl" placeholder="Optional source record" /></div>
+      </div>
+      <button class="btn" type="submit">Add identifier</button>
+    </form>
+  </section>
 
   <WantsPanel items={data.wants ?? []} entityLabel={data.company.name} title="Wants / acquisition criteria" />
 
@@ -488,6 +509,10 @@
   .tag-add-row { margin-top: 10px; }
   .tag-add-row input { max-width: 320px; }
   textarea { resize: vertical; }
+  .identifier-list { margin-bottom: 12px; }
+  .identifier-row { align-items: center; }
+  .identifier-add-form { margin-top: 12px; }
+
   @media (max-width: 860px) {
     .company-header, .section-head, .mini-row, .deal-row { flex-direction: column; align-items: stretch; }
     .main-grid, .grid.two, .grid.three { grid-template-columns: 1fr; }

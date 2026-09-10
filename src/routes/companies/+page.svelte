@@ -60,7 +60,7 @@
       {/if}
 
       <form method="post" action="?/create" class="create-form">
-        {#if duplicateWarning}<input type="hidden" name="forceCreate" value="1" />{/if}
+        {#if duplicateWarning?.allowCreateAnyway}<input type="hidden" name="forceCreate" value="1" />{/if}
         <div class="grid two">
           <div class="field"><label for="name">Company name</label><input id="name" name="name" required value={form?.values?.name || ''} /></div>
           <div class="field"><label for="website">Website</label><input id="website" name="website" placeholder="https://..." value={form?.values?.website || ''} /></div>
@@ -68,6 +68,21 @@
         <div class="grid two">
           <div class="field"><label for="phone">Phone</label><input id="phone" name="phone" placeholder="Main phone number" value={form?.values?.phone || ''} /></div>
           <div class="field"><label for="tags">Tags</label><input id="tags" name="tags" placeholder="mortgage broker, aged care, buyer" value={form?.values?.tags || ''} /></div>
+        </div>
+        <div class="identity-box">
+          <div>
+            <strong>External identifier <span class="muted small">(optional)</span></strong>
+            <p class="muted small">Use an ABN, ACN, register number, or provider ID when you have one. Companies can still be created with only a name.</p>
+          </div>
+          <div class="grid three">
+            <div class="field">
+              <label for="identifierScheme">Identifier type</label>
+              <input id="identifierScheme" name="identifierScheme" list="company-identifier-schemes" placeholder="e.g. ABN" value={form?.values?.identifierScheme || ''} />
+              <datalist id="company-identifier-schemes">{#each data.companyExternalIdentifierSchemes as opt}<option value={opt.value}>{opt.label}</option>{/each}</datalist>
+            </div>
+            <div class="field"><label for="identifierValue">Identifier</label><input id="identifierValue" name="identifierValue" placeholder="Registration / reference number" value={form?.values?.identifierValue || ''} /></div>
+            <div class="field"><label for="identifierSourceUrl">Source URL</label><input id="identifierSourceUrl" name="identifierSourceUrl" placeholder="Optional source record" value={form?.values?.identifierSourceUrl || ''} /></div>
+          </div>
         </div>
         <div class="grid two">
           <div class="field"><label for="kindCreate">Type</label><select id="kindCreate" name="kind">{#each data.companyKinds as opt}<option value={opt.value} selected={(form?.values?.kind || 'OPERATING_BUSINESS') === opt.value}>{opt.label}</option>{/each}</select></div>
@@ -79,7 +94,7 @@
         </div>
         <div class="field"><label for="description">Description</label><textarea id="description" name="description" rows="3" placeholder="What they do and why they matter">{form?.values?.description || ''}</textarea></div>
         <div class="field"><label for="notes">Internal notes</label><textarea id="notes" name="notes" rows="3">{form?.values?.notes || ''}</textarea></div>
-        <button class="btn primary" type="submit">{duplicateWarning ? 'Create anyway' : 'Save company'}</button>
+        <button class="btn primary" type="submit">{duplicateWarning?.allowCreateAnyway ? 'Create anyway' : 'Save company'}</button>
       </form>
     </section>
   {/if}
@@ -155,6 +170,9 @@
   .reason-row { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
   .reason-chip { border: 1px solid rgba(0,0,0,0.12); border-radius: 999px; padding: 2px 7px; font-size: 0.8rem; background: #fafafa; }
   .grid.two { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+  .grid.three { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+  .identity-box { border: 1px solid var(--border); border-radius: 10px; padding: 12px; margin-bottom: 12px; }
+  .identity-box p { margin: 4px 0 10px; }
   .company-list { display: grid; gap: 10px; }
   .company-card { padding: 14px; }
   .company-main { min-width: 0; }
@@ -163,6 +181,6 @@
   textarea { resize: vertical; }
   @media (max-width: 860px) {
     .page-head, .company-card, .filter-row, .card-actions { flex-direction: column; align-items: stretch; }
-    .grid.two { grid-template-columns: 1fr; }
+    .grid.two, .grid.three { grid-template-columns: 1fr; }
   }
 </style>

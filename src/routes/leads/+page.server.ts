@@ -17,12 +17,14 @@ import {
 import { buildLeadSourceOptions, leadFormValues, loadLeadSources, mapMarketLead, marketLeadCreateData, normaliseLeadSourceChoice, resolveLeadSourceId } from '$lib/server/marketLeads';
 import { safeDecryptTask } from '$lib/tasks';
 import { isKnownImportBatch, splitLeadSourcesForFilters } from '$lib/leadSourceKinds';
+import { contextSpaceIdForOwner } from '$lib/server/core/contextSpace';
 
 const LIMIT = 250;
 
 export const load: PageServerLoad = async ({ locals, url }) => {
   if (!locals.user) throw redirect(303, '/auth/login');
   const userId = locals.user.id;
+  const contextSpaceId = contextSpaceIdForOwner(userId);
 
   const q = String(url.searchParams.get('q') || '').trim();
   const type = String(url.searchParams.get('type') || '').trim().toUpperCase();
@@ -152,6 +154,8 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 
   return {
     // IT: Each lead link carries the exact filtered list URL so a detail page can return to the same calling queue.
+    // IT: Browser-persisted pins are keyed per owner + ContextSpace so another account on the same device does not inherit them.
+    pinStorageKey: `relish.leads.pinnedFilter.${userId}.${contextSpaceId}`,
     currentPath: `${url.pathname}${url.search}`,
     q,
     selectedType: type,

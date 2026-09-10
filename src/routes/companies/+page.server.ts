@@ -7,6 +7,15 @@ import { fail, redirect } from '@sveltejs/kit';
 import { prisma } from '$lib/db';
 import { buildIndexToken, encrypt } from '$lib/crypto';
 import { resolveOrCreateTagForTenant } from '$lib/tags';
+import { contextSpaceIdForOwner } from '$lib/server/core/contextSpace';
+import { decryptCompanyExternalIdentifier } from '$lib/server/leadImport';
+import {
+  COMPANY_EXTERNAL_IDENTIFIER_SCHEMES,
+  companyIdentifierComparisonKey,
+  normaliseCompanyIdentifierScheme,
+  normaliseCompanyIdentifierValue,
+  normaliseCompanyNameForDuplicateWarning
+} from '$lib/companyIdentity';
 import {
   COMPANY_KINDS,
   COMPANY_STATUSES,
@@ -107,7 +116,8 @@ export const load: PageServerLoad = async ({ locals, url }) => {
     selectedKind: kind,
     companies,
     companyKinds: COMPANY_KINDS,
-    companyStatuses: COMPANY_STATUSES
+    companyStatuses: COMPANY_STATUSES,
+    companyExternalIdentifierSchemes: COMPANY_EXTERNAL_IDENTIFIER_SCHEMES
   };
 };
 
@@ -115,6 +125,7 @@ export const actions: Actions = {
   create: async ({ request, locals }) => {
     if (!locals.user) throw redirect(303, '/auth/login');
     const userId = locals.user.id;
+    const contextSpaceId = contextSpaceIdForOwner(userId);
     const form = await request.formData();
     const name = String(form.get('name') || '').trim();
     const website = String(form.get('website') || '').trim();
@@ -128,8 +139,15 @@ export const actions: Actions = {
     const kind = normaliseCompanyKind(form.get('kind')) as any;
     const status = normaliseCompanyStatus(form.get('status')) as any;
     const forceCreate = String(form.get('forceCreate') || '') === '1';
+    const identifierScheme = normaliseCompanyIdentifierScheme(form.get('identifierScheme'));
+    const identifierValue = normaliseCompanyIdentifierValue(form.get('identifierValue'));
+    const identifierSourceUrl = String(form.get('identifierSourceUrl') || '').trim();
 
-    const values = { name, website, phone, tags: tagsInput, industry, location, description, criteria, notes, kind, status };
+    const values = { name, website, phone, tags: tagsInput, industry, location, description, criteria, notes, kind, status, identifierScheme, identifierValue, identifierSourceUrl };
+
+    if ((identifierScheme && !identifierValue) || (!identifierScheme && identifierValue)) {
+      return fail(400, { error: 'Add both an identifier type and identifier value, or leave both blank.', values });
+    }
 
     if (!name) return fail(400, { error: 'Company name is required.', values });
 
@@ -142,10 +160,44 @@ export const actions: Actions = {
       locationEnc: true
     } as const;
 
-    const [sameNameRows, samePhoneRows, sameWebsiteRows] = await Promise.all([
-      prisma.company.findMany({ where: { userId, nameIdx: buildIndexToken(name) }, select: duplicateSelect, take: 6, orderBy: { updatedAt: 'desc' } }),
-      phone ? prisma.company.findMany({ where: { userId, phoneIdx: buildIndexToken(phone) }, select: duplicateSelect, take: 6, orderBy: { updatedAt: 'desc' } }) : Promise.resolve([]),
-      website ? prisma.company.findMany({ where: { userId, websiteIdx: buildIndexToken(website) }, select: duplicateSelect, take: 6, orderBy: { updatedAt: 'desc' } }) : Promise.resolve([])
+    // IT: An exact external identifier is authoritative when present. It is optional, so Companies
+    // without a register id still use name/phone/website warnings and remain valid records.
+    if (identifierScheme && identifierValue) {
+      const comparisonKey = companyIdentifierComparisonKey(identifierScheme, identifierValue);
+      let identifierMatch = await (prisma as any).companyExternalIdentifier.findFirst({
+        where: { userId, contextSpaceId, scheme: identifierScheme, valueIdx: buildIndexToken(identifierValue) },
+        select: { id: true, valueEnc: true, company: { select: duplicateSelect } }
+      });
+      // IT: ABNs/ACNs are often formatted with or without spaces. The exact HMAC lookup stays fast,
+      // then this small compatibility scan catches formatting-only differences in older/manual data.
+      if (!identifierMatch && (identifierScheme === 'ABN' || identifierScheme === 'ACN')) {
+        const candidates = await (prisma as any).companyExternalIdentifier.findMany({
+          where: { userId, contextSpaceId, scheme: identifierScheme },
+          select: { id: true, valueEnc: true, company: { select: duplicateSelect } },
+          take: 1000
+        });
+        identifierMatch = candidates.find((candidate: any) =>
+          companyIdentifierComparisonKey(identifierScheme, decryptCompanyExternalIdentifier(candidate.valueEnc, '')) === comparisonKey
+        ) || null;
+      }
+      if (identifierMatch?.company) {
+        return fail(409, {
+          values,
+          duplicateWarning: {
+            title: 'Company identifier already exists',
+            message: 'This identifier is already attached to an existing Company. Open that Company rather than creating another one.',
+            matches: [companyDuplicateSummary(identifierMatch.company, [`same ${identifierScheme} identifier`])],
+            allowCreateAnyway: false
+          }
+        });
+      }
+    }
+
+    const [sameNameRows, samePhoneRows, sameWebsiteRows, recentNameRows] = await Promise.all([
+      prisma.company.findMany({ where: { userId, contextSpaceId, nameIdx: buildIndexToken(name) }, select: duplicateSelect, take: 6, orderBy: { updatedAt: 'desc' } }),
+      phone ? prisma.company.findMany({ where: { userId, contextSpaceId, phoneIdx: buildIndexToken(phone) }, select: duplicateSelect, take: 6, orderBy: { updatedAt: 'desc' } }) : Promise.resolve([]),
+      website ? prisma.company.findMany({ where: { userId, contextSpaceId, websiteIdx: buildIndexToken(website) }, select: duplicateSelect, take: 6, orderBy: { updatedAt: 'desc' } }) : Promise.resolve([]),
+      prisma.company.findMany({ where: { userId, contextSpaceId }, select: duplicateSelect, take: 750, orderBy: { updatedAt: 'desc' } })
     ]);
 
     const matchReasonsById = new Map<string, Set<string>>();
@@ -153,7 +205,17 @@ export const actions: Actions = {
     for (const row of samePhoneRows) matchReasonsById.set(row.id, new Set([...(matchReasonsById.get(row.id) || []), 'same phone']));
     for (const row of sameWebsiteRows) matchReasonsById.set(row.id, new Set([...(matchReasonsById.get(row.id) || []), 'same website']));
 
-    const duplicateRows = uniqById([...sameNameRows, ...samePhoneRows, ...sameWebsiteRows]);
+    const normalisedName = normaliseCompanyNameForDuplicateWarning(name);
+    const similarNameRows = normalisedName
+      ? recentNameRows.filter((row: any) => {
+          if (sameNameRows.some((same: any) => same.id === row.id)) return false;
+          const existingName = safeDecryptCompany(row.nameEnc, 'company.name', '');
+          return normaliseCompanyNameForDuplicateWarning(existingName) === normalisedName;
+        }).slice(0, 6)
+      : [];
+    for (const row of similarNameRows) matchReasonsById.set(row.id, new Set([...(matchReasonsById.get(row.id) || []), 'similar company name']));
+
+    const duplicateRows = uniqById([...sameNameRows, ...samePhoneRows, ...sameWebsiteRows, ...similarNameRows]);
     if (!forceCreate && duplicateRows.length > 0) {
       return fail(409, {
         values,
@@ -167,24 +229,42 @@ export const actions: Actions = {
     }
 
     try {
-      const created = await prisma.company.create({
-        data: {
-          userId,
-          nameEnc: encrypt(name, 'company.name'),
-          nameIdx: buildIndexToken(name),
-          websiteEnc: website ? encrypt(website, 'company.website') : null,
-          websiteIdx: website ? buildIndexToken(website) : null,
-          phoneEnc: phone ? encrypt(phone, 'company.phone') : null,
-          phoneIdx: phone ? buildIndexToken(phone) : null,
-          industryEnc: industry ? encrypt(industry, 'company.industry') : null,
-          locationEnc: location ? encrypt(location, 'company.location') : null,
-          descriptionEnc: description ? encrypt(description, 'company.description') : null,
-          criteriaEnc: criteria ? encrypt(criteria, 'company.criteria') : null,
-          notesEnc: notes ? encrypt(notes, 'company.notes') : null,
-          kind,
-          status
-        },
-        select: { id: true }
+      const created = await prisma.$transaction(async (tx: any) => {
+        const company = await tx.company.create({
+          data: {
+            userId,
+            contextSpaceId,
+            nameEnc: encrypt(name, 'company.name'),
+            nameIdx: buildIndexToken(name),
+            websiteEnc: website ? encrypt(website, 'company.website') : null,
+            websiteIdx: website ? buildIndexToken(website) : null,
+            phoneEnc: phone ? encrypt(phone, 'company.phone') : null,
+            phoneIdx: phone ? buildIndexToken(phone) : null,
+            industryEnc: industry ? encrypt(industry, 'company.industry') : null,
+            locationEnc: location ? encrypt(location, 'company.location') : null,
+            descriptionEnc: description ? encrypt(description, 'company.description') : null,
+            criteriaEnc: criteria ? encrypt(criteria, 'company.criteria') : null,
+            notesEnc: notes ? encrypt(notes, 'company.notes') : null,
+            kind,
+            status
+          },
+          select: { id: true }
+        });
+
+        if (identifierScheme && identifierValue) {
+          await tx.companyExternalIdentifier.create({
+            data: {
+              userId,
+              contextSpaceId,
+              companyId: company.id,
+              scheme: identifierScheme,
+              valueEnc: encrypt(identifierValue, 'company_external_identifier.value'),
+              valueIdx: buildIndexToken(identifierValue),
+              sourceUrlEnc: identifierSourceUrl ? encrypt(identifierSourceUrl, 'company_external_identifier.source_url') : null
+            }
+          });
+        }
+        return company;
       });
 
       const tagNames = tagsInput.split(',').map((t) => t.trim()).filter(Boolean).slice(0, 12);
@@ -193,7 +273,7 @@ export const actions: Actions = {
         await prisma.companyTag.upsert({
           where: { companyId_tagId: { companyId: created.id, tagId: tag.id } },
           update: {},
-          create: { userId, companyId: created.id, tagId: tag.id, assignedBy: 'user' as any }
+          create: { userId, contextSpaceId, companyId: created.id, tagId: tag.id, assignedBy: 'user' as any }
         });
       }
 

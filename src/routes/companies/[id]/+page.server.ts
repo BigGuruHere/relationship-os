@@ -82,6 +82,14 @@ import {
 } from '$lib/server/marketLeads';
 import { createTaskFromForm } from '$lib/server/tasks';
 import { decryptCompanyExternalIdentifier, decryptCompanyExternalSourceUrl } from '$lib/server/leadImport';
+import { contextSpaceIdForOwner } from '$lib/server/core/contextSpace';
+import {
+  COMPANY_EXTERNAL_IDENTIFIER_SCHEMES,
+  companyIdentifierComparisonKey,
+  companyIdentifierLabel,
+  normaliseCompanyIdentifierScheme,
+  normaliseCompanyIdentifierValue
+} from '$lib/companyIdentity';
 
 const ACTIVE_TASK_STATUSES = ['OPEN', 'IN_PROGRESS', 'WAITING', 'SNOOZED'];
 
@@ -367,6 +375,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
   const externalIdentifiers = externalIdentifierRows.map((identifier: any) => ({
     id: identifier.id,
     scheme: identifier.scheme,
+    schemeLabel: companyIdentifierLabel(identifier.scheme),
     value: decryptCompanyExternalIdentifier(identifier.valueEnc, ''),
     sourceUrl: decryptCompanyExternalSourceUrl(identifier.sourceUrlEnc, ''),
     createdAt: identifier.createdAt
@@ -488,6 +497,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
     dealCompanyOptions,
     companyKinds: COMPANY_KINDS,
     companyStatuses: COMPANY_STATUSES,
+    companyExternalIdentifierSchemes: COMPANY_EXTERNAL_IDENTIFIER_SCHEMES,
     companyContactStatuses: COMPANY_CONTACT_STATUSES,
     companyRelationshipTypes: COMPANY_RELATIONSHIP_TYPES,
     relationshipOptions: DEAL_RELATIONSHIP_TYPES,
@@ -507,6 +517,73 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 };
 
 export const actions: Actions = {
+  addExternalIdentifier: async ({ request, params, locals }) => {
+    if (!locals.user) throw redirect(303, '/auth/login');
+    const userId = locals.user.id;
+    const contextSpaceId = contextSpaceIdForOwner(userId);
+    const company = await ensureCompany(userId, params.id);
+    if (!company) return fail(404, { error: 'Company not found.' });
+
+    const form = await request.formData();
+    const scheme = normaliseCompanyIdentifierScheme(form.get('identifierScheme'));
+    const value = normaliseCompanyIdentifierValue(form.get('identifierValue'));
+    const sourceUrl = String(form.get('identifierSourceUrl') || '').trim();
+    if (!scheme || !value) return fail(400, { error: 'Identifier type and value are required.' });
+
+    const comparisonKey = companyIdentifierComparisonKey(scheme, value);
+    let match = await (prisma as any).companyExternalIdentifier.findFirst({
+      where: { userId, contextSpaceId, scheme, valueIdx: buildIndexToken(value) },
+      select: { id: true, companyId: true, valueEnc: true, company: { select: { id: true, nameEnc: true } } }
+    });
+    if (!match && (scheme === 'ABN' || scheme === 'ACN')) {
+      const candidates = await (prisma as any).companyExternalIdentifier.findMany({
+        where: { userId, contextSpaceId, scheme },
+        select: { id: true, companyId: true, valueEnc: true, company: { select: { id: true, nameEnc: true } } },
+        take: 1000
+      });
+      match = candidates.find((candidate: any) =>
+        companyIdentifierComparisonKey(scheme, decryptCompanyExternalIdentifier(candidate.valueEnc, '')) === comparisonKey
+      ) || null;
+    }
+    if (match) {
+      if (match.companyId === params.id) return fail(409, { error: 'This identifier is already attached to this Company.' });
+      const existingName = safeDecryptCompany(match.company?.nameEnc, 'company.name', 'another Company');
+      return fail(409, { error: `This identifier is already attached to ${existingName}. Open that Company rather than duplicating the identifier.` });
+    }
+
+    try {
+      await (prisma as any).companyExternalIdentifier.create({
+        data: {
+          userId,
+          contextSpaceId,
+          companyId: params.id,
+          scheme,
+          valueEnc: encrypt(value, 'company_external_identifier.value'),
+          valueIdx: buildIndexToken(value),
+          sourceUrlEnc: sourceUrl ? encrypt(sourceUrl, 'company_external_identifier.source_url') : null
+        }
+      });
+    } catch (err: any) {
+      if (err?.code === 'P2002') return fail(409, { error: 'That external identifier is already in use.' });
+      console.error('[companies:addExternalIdentifier] failed', err);
+      return fail(500, { error: 'Could not add external identifier.' });
+    }
+    throw redirect(303, `/companies/${params.id}`);
+  },
+
+  removeExternalIdentifier: async ({ request, params, locals }) => {
+    if (!locals.user) throw redirect(303, '/auth/login');
+    const userId = locals.user.id;
+    const contextSpaceId = contextSpaceIdForOwner(userId);
+    const form = await request.formData();
+    const identifierId = String(form.get('identifierId') || '').trim();
+    if (!identifierId) return fail(400, { error: 'Missing external identifier id.' });
+    await (prisma as any).companyExternalIdentifier.deleteMany({
+      where: { id: identifierId, userId, contextSpaceId, companyId: params.id }
+    });
+    throw redirect(303, `/companies/${params.id}`);
+  },
+
   createCompanyNote: async ({ request, params, locals }) => {
     if (!locals.user) throw redirect(303, '/auth/login');
     const userId = locals.user.id;

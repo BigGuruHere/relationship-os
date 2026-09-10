@@ -11,6 +11,7 @@ import { contextSpaceIdForOwner } from '$lib/server/core/contextSpace';
 import { decryptCompanyExternalIdentifier } from '$lib/server/leadImport';
 import {
   COMPANY_EXTERNAL_IDENTIFIER_SCHEMES,
+  areCompanyNamesSimilarForDuplicateWarning,
   companyIdentifierComparisonKey,
   normaliseCompanyIdentifierScheme,
   normaliseCompanyIdentifierValue,
@@ -210,7 +211,8 @@ export const actions: Actions = {
       ? recentNameRows.filter((row: any) => {
           if (sameNameRows.some((same: any) => same.id === row.id)) return false;
           const existingName = safeDecryptCompany(row.nameEnc, 'company.name', '');
-          return normaliseCompanyNameForDuplicateWarning(existingName) === normalisedName;
+          // IT: Fuzzy name matching is warning-only. It must never merge or block a Company.
+          return areCompanyNamesSimilarForDuplicateWarning(existingName, name);
         }).slice(0, 6)
       : [];
     for (const row of similarNameRows) matchReasonsById.set(row.id, new Set([...(matchReasonsById.get(row.id) || []), 'similar company name']));

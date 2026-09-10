@@ -39,7 +39,8 @@
     "check:stage8.8.5": "node --experimental-strip-types --test tests/core/stage8-8-5-lead-next-action-taxonomy.test.ts",
     "check:stage8.8.6": "node --experimental-strip-types --test tests/core/stage8-8-6-lead-next-action-select.test.ts",
     "check:stage8.8.5:db": "tsx scripts/check-stage8-8-5-next-actions.ts",
-    "check:stage8.8.7": "node --experimental-strip-types --test tests/core/stage8-8-7-company-identity-and-pinned-lead-filter.test.ts"
+    "check:stage8.8.7": "node --experimental-strip-types --test tests/core/stage8-8-7-company-identity-and-pinned-lead-filter.test.ts",
+    "check:stage8.8.8": "node --experimental-strip-types --test tests/core/stage8-8-8-company-fuzzy-name-warning.test.ts"
   },
   "engines": {
     "node": ">=22.13.1 <23"

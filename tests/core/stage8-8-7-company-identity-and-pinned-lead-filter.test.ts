@@ -5,6 +5,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import {
+  areCompanyNamesSimilarForDuplicateWarning,
   companyIdentifierComparisonKey,
   normaliseCompanyIdentifierScheme,
   normaliseCompanyNameForDuplicateWarning
@@ -14,6 +15,15 @@ test('company name warning key catches common Australian legal-suffix variants w
   assert.equal(normaliseCompanyNameForDuplicateWarning('ABC Training Pty Ltd'), normaliseCompanyNameForDuplicateWarning('ABC Training'));
   assert.equal(normaliseCompanyNameForDuplicateWarning('ABC & Sons Proprietary Limited'), 'abc and sons');
   assert.notEqual(normaliseCompanyNameForDuplicateWarning('ABC Health'), normaliseCompanyNameForDuplicateWarning('ABC Healthcare'));
+});
+
+test('company name warning catches close spelling mistakes but ignores weak fragments', () => {
+  assert.equal(areCompanyNamesSimilarForDuplicateWarning('Coca Cola', 'Coka Cola'), true);
+  assert.equal(areCompanyNamesSimilarForDuplicateWarning('Coca Cola', 'Coac Cola'), true);
+  assert.equal(areCompanyNamesSimilarForDuplicateWarning('Melbourne Training Institute', 'Melbourne Trainng Institute'), true);
+  assert.equal(areCompanyNamesSimilarForDuplicateWarning('Coca Cola', 'Coka'), false);
+  assert.equal(areCompanyNamesSimilarForDuplicateWarning('Coca Cola', 'Cola'), false);
+  assert.equal(areCompanyNamesSimilarForDuplicateWarning('ABC Health', 'ABC Healthcare'), false);
 });
 
 test('identifier helpers preserve optional schemes and compare ABN/ACN formatting safely', () => {

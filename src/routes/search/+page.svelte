@@ -5,9 +5,11 @@
 
   export let data: {
     q: string;
-    scope: 'all' | 'contacts' | 'notes' | 'tags' | 'company' | 'deals';
+    scope: 'all' | 'contacts' | 'leads' | 'notes' | 'tags' | 'company' | 'deals';
     results: {
       contacts: Array<{ id: string; name: string; email: string; phone: string; company: string; tags: { name: string }[] }>;
+      leads: Array<{ id: string; title: string; name: string; companyName: string; email: string; phone: string; typeLabel: string; statusLabel: string; sourceLabel: string; preview: string; matchedInNote: boolean }>;
+      leadNotes: Array<{ id: string; marketLeadId: string; leadTitle: string; occurredAt: string | Date; channel: string; preview: string }>;
       notes: Array<{ id: string; contactId: string; contactName: string; occurredAt: string | Date; preview: string }>;
       tags: Array<{ id: string; name: string; contactCount: number; companyCount: number }>;
       companies: Array<{ id: string; name: string; kindLabel: string; statusLabel: string; website: string; phone: string; tags: { name: string }[]; preview: string }>;
@@ -16,16 +18,17 @@
   };
 
   let q = data.q || '';
-  let scope: 'all' | 'contacts' | 'notes' | 'tags' | 'company' | 'deals' = data.scope || 'all';
+  let scope: 'all' | 'contacts' | 'leads' | 'notes' | 'tags' | 'company' | 'deals' = data.scope || 'all';
 </script>
 
 <div class="container">
   <div class="card" style="padding:16px; margin-bottom:12px;">
     <form method="GET" class="search-bar">
-      <input type="text" name="q" bind:value={q} placeholder="Search notes, contacts, companies, tags, or deals" class="search-input" aria-label="Search query" />
+      <input type="text" name="q" bind:value={q} placeholder="Search leads, notes, contacts, companies, tags, or deals" class="search-input" aria-label="Search query" />
       <select name="scope" bind:value={scope} aria-label="Search scope" title="Search scope" class="scope-select">
         <option value="all">All</option>
         <option value="contacts">Contacts</option>
+        <option value="leads">Leads</option>
         <option value="notes">Notes</option>
         <option value="tags">Tags</option>
         <option value="company">Company</option>
@@ -48,6 +51,19 @@
         {/each}
       {/if}
 
+
+      {#if data.results.leads.length}
+        <h3>Leads ({data.results.leads.length})</h3>
+        {#each data.results.leads as l}
+          <div class="card result-card">
+            <a href={`/leads/${l.id}`} class="link strong">◈ {l.title}</a>
+            <div class="muted small">{l.typeLabel} - {l.statusLabel} - {l.sourceLabel}</div>
+            {#if l.name || l.companyName}<div class="muted">{[l.name, l.companyName].filter(Boolean).join(' · ')}</div>{/if}
+            {#if l.email || l.phone}<div class="muted small">{#if l.email}{l.email}{/if}{#if l.email && l.phone} · {/if}{#if l.phone}{l.phone}{/if}</div>{/if}
+            {#if l.preview}<div style="margin-top:6px;">{l.preview}</div>{/if}
+          </div>
+        {/each}
+      {/if}
 
 
       {#if data.results.companies.length}
@@ -99,8 +115,23 @@
         {/each}
       {/if}
 
-      {#if !data.results.contacts.length && !data.results.notes.length && !data.results.tags.length && !data.results.companies.length && !data.results.deals.length}
+      {#if !data.results.contacts.length && !data.results.leads.length && !data.results.leadNotes.length && !data.results.notes.length && !data.results.tags.length && !data.results.companies.length && !data.results.deals.length}
         <div class="muted">No results - try another term or switch scope.</div>
+      {/if}
+    {:else if data.scope === 'leads'}
+      {#if data.results.leads.length}
+        <h3>Leads ({data.results.leads.length})</h3>
+        {#each data.results.leads as l}
+          <div class="card result-card">
+            <a href={`/leads/${l.id}`} class="link strong">◈ {l.title}</a>
+            <div class="muted small">{l.typeLabel} - {l.statusLabel} - {l.sourceLabel}</div>
+            {#if l.name || l.companyName}<div class="muted">{[l.name, l.companyName].filter(Boolean).join(' · ')}</div>{/if}
+            {#if l.email || l.phone}<div class="muted small">{#if l.email}{l.email}{/if}{#if l.email && l.phone} · {/if}{#if l.phone}{l.phone}{/if}</div>{/if}
+            {#if l.preview}<div style="margin-top:6px;">{l.preview}</div>{/if}
+          </div>
+        {/each}
+      {:else}
+        <div class="muted">No leads found.</div>
       {/if}
     {:else if data.scope === 'deals'}
       {#if data.results.deals.length}
@@ -152,7 +183,7 @@
       {/if}
     {:else if data.scope === 'notes'}
       {#if data.results.notes.length}
-        <h3>Notes ({data.results.notes.length})</h3>
+        <h3>Contact notes ({data.results.notes.length})</h3>
         {#each data.results.notes as n}
           <div class="card result-card">
             <a href={`/contacts/${n.contactId}`} class="link strong">{n.contactName}</a>
@@ -160,7 +191,20 @@
             <div style="margin-top:6px;">{n.preview}</div>
           </div>
         {/each}
-      {:else}
+      {/if}
+
+      {#if data.results.leadNotes.length}
+        <h3>Lead notes ({data.results.leadNotes.length})</h3>
+        {#each data.results.leadNotes as n}
+          <div class="card result-card">
+            <a href={`/leads/${n.marketLeadId}`} class="link strong">◈ {n.leadTitle}</a>
+            <div class="muted small">{n.channel} · {new Date(n.occurredAt).toLocaleDateString()}</div>
+            <div style="margin-top:6px;">{n.preview}</div>
+          </div>
+        {/each}
+      {/if}
+
+      {#if !data.results.notes.length && !data.results.leadNotes.length}
         <div class="muted">No notes found.</div>
       {/if}
     {:else if data.scope === 'tags'}

@@ -9,6 +9,7 @@ export type ToolContext = {
   agentRunId: string;
   agentStepId?: string;
   agentDefinitionId?: string;
+  auditDataClass?: 'standard' | 'sensitive';
 };
 
 export type ToolDefinition<Input, Output> = {

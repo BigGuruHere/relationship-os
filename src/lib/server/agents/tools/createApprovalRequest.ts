@@ -3,6 +3,7 @@
 
 import { prisma } from '$lib/db';
 import type { ToolDefinition } from '$lib/server/agents/types';
+import { auditJson, normalizeAgentAuditDataClass } from '$lib/server/agents/sensitiveAudit';
 
 type CreateApprovalRequestInput = {
   actionType: string;
@@ -25,6 +26,7 @@ export const createApprovalRequestTool: ToolDefinition<CreateApprovalRequestInpu
   execute: async (input, context) => {
     if (!input.actionType?.trim()) throw new Error('Approval action type is required.');
 
+    const auditDataClass = normalizeAgentAuditDataClass(context.auditDataClass);
     const approval = await prisma.approvalRequest.create({
       data: {
         userId: context.userId,
@@ -34,8 +36,8 @@ export const createApprovalRequestTool: ToolDefinition<CreateApprovalRequestInpu
         actionType: input.actionType.trim(),
         entityType: input.entityType ?? null,
         entityId: input.entityId ?? null,
-        proposedActionJson: (input.proposedActionJson ?? {}) as any,
-        proposedDiffJson: (input.proposedDiffJson ?? {}) as any,
+        proposedActionJson: auditJson(input.proposedActionJson ?? {}, auditDataClass) as any,
+        proposedDiffJson: auditJson(input.proposedDiffJson ?? {}, auditDataClass) as any,
         status: 'pending'
       }
     });

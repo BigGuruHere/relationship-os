@@ -4,6 +4,7 @@
 
 import { prisma } from '$lib/db';
 import type { CoreAccessContext } from '$lib/server/core/accessPolicy';
+import { assertAgentDeploymentAllowed } from '$lib/server/agents/deploymentPolicy';
 
 export type AgentReadableEntityType = 'contact' | 'company' | 'deal' | 'project' | 'person';
 
@@ -63,6 +64,8 @@ export async function loadAgentAccessProfile(context: CoreAccessContext): Promis
       purposeKey: true,
       deploymentScope: true,
       authorityLevel: true,
+      allowedDomainKeys: true,
+      allowedContextSpaceIds: true,
       dataAccessPolicy: {
         select: {
           id: true,
@@ -95,6 +98,13 @@ export async function loadAgentAccessProfile(context: CoreAccessContext): Promis
 
   if (!agent) throw new Error('Agent definition not found in this workspace.');
   if (!agent.dataAccessPolicy) throw new Error('Agent has no relationship-data access policy.');
+
+  const targetContext = await prisma.contextSpace.findFirst({
+    where: { id: context.contextSpaceId, ownerUserId: context.workspaceUserId },
+    select: { id: true, ownerUserId: true, domainKey: true }
+  });
+  if (!targetContext) throw new Error('Agent ContextSpace target not found.');
+  assertAgentDeploymentAllowed(agent, targetContext, context.workspaceUserId);
 
   // IT: The Core access purpose is the operation being attempted. The durable agent purpose
   // is stored separately and cannot be changed by a tool caller.

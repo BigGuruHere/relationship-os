@@ -1,5 +1,7 @@
 # Stage 8.0 - Revised Release and Migration Plan
 
+> Planning status update, 2026-09-22: completed historical stages in this document remain valid. The unimplemented future-stage numbering from Stage 8.8 onward is superseded by `STAGE8_9_MULTI_APP_RELATIONSHIP_INTELLIGENCE_ROADMAP.md`, because the shipped Stage 8.8.x Lead releases consumed that sequence and the real Dating voice-feedback case now grounds the consent, feedback, matching, and learning order.
+
 ## Baseline
 
 This contract is built from the current uploaded Relish source. The existing database is the only live-data migration anchor.

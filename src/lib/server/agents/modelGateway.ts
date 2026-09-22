@@ -3,6 +3,12 @@
 // IT: Agents call this wrapper rather than directly calling OpenAI, Claude, etc.
 
 import { prisma } from '$lib/db';
+import {
+  auditJson,
+  normalizeAgentAuditDataClass,
+  safeAgentAuditError,
+  type AgentAuditDataClass
+} from '$lib/server/agents/sensitiveAudit';
 
 export type ModelProvider = 'openai' | 'anthropic' | 'google' | 'local';
 
@@ -16,6 +22,7 @@ type GenerateStructuredInput = {
   systemPrompt: string;
   userPrompt: string;
   outputSchema?: unknown;
+  auditDataClass?: AgentAuditDataClass;
 };
 
 type GenerateStructuredResult<T> = {
@@ -41,10 +48,22 @@ function extractJson(text: string) {
   }
 }
 
+async function resolveModelAuditDataClass(input: GenerateStructuredInput) {
+  if (input.auditDataClass) return normalizeAgentAuditDataClass(input.auditDataClass);
+  if (!input.agentRunId) return 'standard' as const;
+  const run = await prisma.agentRun.findFirst({
+    where: { id: input.agentRunId, userId: input.userId },
+    select: { auditDataClass: true }
+  });
+  if (!run) throw new Error('Agent run not found for model audit.');
+  return normalizeAgentAuditDataClass(run.auditDataClass);
+}
+
 export async function generateStructured<T>(
   input: GenerateStructuredInput
 ): Promise<GenerateStructuredResult<T>> {
   const startedAt = new Date();
+  const auditDataClass = await resolveModelAuditDataClass(input);
 
   try {
     let result: GenerateStructuredResult<T>;
@@ -72,10 +91,10 @@ export async function generateStructured<T>(
           outputSchema: input.outputSchema ?? null,
           startedAt: startedAt.toISOString()
         } as any,
-        responseJsonRedacted: {
-          textPreview: result.text.slice(0, 1200)
-        } as any,
-        structuredOutputJson: (result.structured ?? {}) as any,
+        responseJsonRedacted: (auditDataClass === 'sensitive'
+          ? auditJson({ text: result.text, structured: result.structured }, auditDataClass)
+          : { textPreview: result.text.slice(0, 1200) }) as any,
+        structuredOutputJson: auditJson(result.structured ?? {}, auditDataClass) as any,
         status: 'success'
       }
     });
@@ -98,7 +117,7 @@ export async function generateStructured<T>(
           startedAt: startedAt.toISOString()
         } as any,
         status: 'failed',
-        errorMessage: error instanceof Error ? error.message : String(error)
+        errorMessage: safeAgentAuditError(error, auditDataClass)
       }
     });
     throw error;

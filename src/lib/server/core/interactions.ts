@@ -7,6 +7,7 @@ import { encrypt, decrypt } from '$lib/crypto';
 import { upsertInteractionEmbedding } from '$lib/embeddings';
 import type { CoreAccessContext } from '$lib/server/core/accessPolicy';
 import { findAccessibleCorePerson, findCoreCompany, findCoreContact, findCoreInteraction } from '$lib/server/core/relationshipRepository';
+import { decryptInteractionSummary, encryptInteractionSummary } from '$lib/server/core/interactionEncryption';
 
 export type CreateCoreInteractionInput = {
   contactId?: string | null;
@@ -71,7 +72,7 @@ export async function createCoreInteraction(context: CoreAccessContext, input: C
       externalRef: clean(input.externalRef),
       occurredAt: input.occurredAt || undefined,
       rawTextEnc: encrypt(rawText, 'interaction.raw_text'),
-      summaryEnc: summary ? encrypt(summary, 'interaction.raw_text') : null
+      summaryEnc: summary ? encryptInteractionSummary(summary) : null
     },
     select: { id: true, contactId: true, personId: true, companyId: true, occurredAt: true }
   });
@@ -105,6 +106,6 @@ export async function loadCoreInteraction(context: CoreAccessContext, interactio
   let text = '';
   let summary = '';
   try { text = decrypt(row.rawTextEnc, 'interaction.raw_text'); } catch {}
-  try { summary = row.summaryEnc ? decrypt(row.summaryEnc, 'interaction.raw_text') : ''; } catch {}
+  summary = decryptInteractionSummary(row.summaryEnc);
   return { ...row, text, summary };
 }

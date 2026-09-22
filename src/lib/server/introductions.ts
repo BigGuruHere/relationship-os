@@ -22,6 +22,7 @@ import {
   normaliseKnowledgeAuthority,
   normaliseKnowledgeSourceType
 } from '$lib/provenance';
+import { decryptInteractionSummary } from '$lib/server/core/interactionEncryption';
 
 function safeDecryptIntro(payload: string | null | undefined, aad: string, fallback = '') {
   if (!payload) return fallback;
@@ -264,7 +265,7 @@ async function mapInteraction(row: any) {
     id: row.id,
     occurredAt: row.occurredAt,
     channel: row.channel,
-    summary: safeDecryptIntro(row.summaryEnc, 'interaction.summary', '') || safeDecryptIntro(row.summaryEnc, 'interaction.raw_text', ''),
+    summary: decryptInteractionSummary(row.summaryEnc),
     contact: row.contact ? { id: row.contact.id, name: await contactDisplayName(row.contact) } : null
   };
 }

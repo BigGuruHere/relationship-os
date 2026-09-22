@@ -8,6 +8,7 @@
 import type { LayoutServerLoad } from './$types';
 import { prisma } from '$lib/db';
 import { decryptUserEmail } from '$lib/server/userEmail'; // IT - server-only decrypt helper
+import { decryptContextSpaceDisplayName } from '$lib/server/core/contextSpaceDirectory';
 
 // IT - helper to redact an email for safe display
 function redactEmail(email: string | null) {
@@ -19,6 +20,8 @@ function redactEmail(email: string | null) {
 export const load: LayoutServerLoad = async ({ locals }) => {
   // IT - basic shape for layout - only id plus optional redacted email for display
   let user: { id: string; emailRedacted: string | null } | null = null;
+  let activeContext: { id: string; domainKey: string; displayName: string } | null = null;
+  let hasDatingContext = false;
 
   if (locals.user?.id) {
     // IT - read encrypted email for this user and produce a redacted string
@@ -29,6 +32,23 @@ export const load: LayoutServerLoad = async ({ locals }) => {
 
     const decrypted = decryptUserEmail(u?.email_Enc ?? null);
     user = { id: locals.user.id, emailRedacted: redactEmail(decrypted) };
+
+    const spaces = await prisma.contextSpace.findMany({
+      where: { ownerUserId: locals.user.id },
+      select: { id: true, domainKey: true, displayNameEnc: true }
+    });
+    hasDatingContext = spaces.some((space) => space.domainKey === 'dating');
+    const selected = spaces.find((space) => space.id === locals.contextSpaceId) ?? null;
+    if (selected) {
+      activeContext = {
+        id: selected.id,
+        domainKey: selected.domainKey,
+        displayName: decryptContextSpaceDisplayName(
+          selected.displayNameEnc,
+          selected.domainKey === 'dating' ? 'Dating' : 'Business'
+        )
+      };
+    }
   }
 
   // IT - counts for actions in the top bar
@@ -36,7 +56,8 @@ export const load: LayoutServerLoad = async ({ locals }) => {
   let remindersOpenCount = 0;
   let tasksOpenCount = 0;
 
-  if (locals.user?.id) {
+  // SECURITY: Never let a route without a resolved app ContextSpace fall back to userId-only Business reads.
+  if (locals.user?.id && locals.contextSpaceId) {
     // IT - compute reconnects due from cadence fields
     const rows = await prisma.contact.findMany({
       where: { userId: locals.user.id, reconnectEveryDays: { not: null } },
@@ -67,6 +88,8 @@ export const load: LayoutServerLoad = async ({ locals }) => {
 
   return {
     user, // { id, emailRedacted } or null
+    activeContext,
+    hasDatingContext,
     reconnectDue,
     remindersOpenCount,
     tasksOpenCount,

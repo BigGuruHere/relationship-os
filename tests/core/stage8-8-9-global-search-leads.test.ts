@@ -61,5 +61,6 @@ test('new lead search is explicitly owner and ContextSpace scoped before decrypt
 
 test('Stage 8.8.9 is code-only with no new Prisma migration', () => {
   const migrations = fs.readdirSync('prisma/migrations').filter((name) => /^\d/.test(name)).sort();
-  assert.equal(migrations.at(-1), '20260907144000_stage8_8_5_lead_next_action_options');
+  // IT: Test the historical release itself rather than assuming the repository can never gain a later migration.
+  assert.equal(migrations.filter((name) => name.includes('stage8_8_9')).length, 0);
 });

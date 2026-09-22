@@ -30,6 +30,7 @@ import {
   buildProjectEntitySelect,
   exchangeReadLimits
 } from '$lib/server/core/agentEntitySelection';
+import { decryptInteractionSummary } from '$lib/server/core/interactionEncryption';
 
 export type AgentEntityContextInput = {
   entityType: Exclude<AgentReadableEntityType, 'person'>;
@@ -163,7 +164,7 @@ async function readContact(context: CoreAccessContext, policy: AgentDataAccessPo
       id: item.id,
       channel: item.channel,
       occurredAt: iso(item.occurredAt),
-      summary: compactText(decryptContact(item.summaryEnc, 'interaction.summary', '') || decryptContact(item.rawTextEnc, 'interaction.raw_text', ''), 800)
+      summary: compactText(decryptInteractionSummary(item.summaryEnc) || decryptContact(item.rawTextEnc, 'interaction.raw_text', ''), 800)
     }));
   }
   if (row.tasks) {

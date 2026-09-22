@@ -14,6 +14,8 @@ import { researchWebSearchTool } from '$lib/server/agents/tools/researchWebSearc
 import { createResearchSourceTool } from '$lib/server/agents/tools/createResearchSource';
 import { createContactEnrichmentTool } from '$lib/server/agents/tools/createContactEnrichment';
 import { needsToolApproval } from '$lib/server/agents/approvalPolicy';
+import { assertAgentDeploymentAllowed } from '$lib/server/agents/deploymentPolicy';
+import { auditJson, normalizeAgentAuditDataClass, safeAgentAuditError } from '$lib/server/agents/sensitiveAudit';
 
 const tools = new Map<string, ToolDefinition<any, any>>();
 
@@ -49,12 +51,21 @@ export async function executeAgentTool<Input, Output>(
 
   const run = await prisma.agentRun.findFirst({
     where: { id: context.agentRunId, userId: context.userId },
-    select: { id: true, agentDefinitionId: true, contextSpaceId: true }
+    select: {
+      id: true,
+      agentDefinitionId: true,
+      contextSpaceId: true,
+      auditDataClass: true,
+      contextSpace: { select: { id: true, ownerUserId: true, domainKey: true } },
+      agentDefinition: { select: { allowedDomainKeys: true, allowedContextSpaceIds: true } }
+    }
   });
 
   if (!run) {
     throw new Error('Agent run not found or not owned by this user.');
   }
+  assertAgentDeploymentAllowed(run.agentDefinition, run.contextSpace, context.userId);
+  const auditDataClass = normalizeAgentAuditDataClass(run.auditDataClass);
 
   const dbTool = await prisma.agentToolDefinition.findUnique({
     where: {
@@ -96,7 +107,7 @@ export async function executeAgentTool<Input, Output>(
         agentRunId: context.agentRunId,
         agentStepId: context.agentStepId ?? null,
         actionType: `tool:${key}`,
-        proposedActionJson: input as any,
+        proposedActionJson: auditJson(input, auditDataClass) as any,
         status: 'pending'
       }
     });
@@ -111,20 +122,25 @@ export async function executeAgentTool<Input, Output>(
       agentStepId: context.agentStepId ?? null,
       toolKey: key,
       status: 'running',
-      inputJson: input as any,
+      inputJson: auditJson(input, auditDataClass) as any,
       startedAt: new Date()
     }
   });
 
   try {
-    const output = await tool.execute(input, { ...context, contextSpaceId: run.contextSpaceId, agentDefinitionId: run.agentDefinitionId });
+    const output = await tool.execute(input, {
+      ...context,
+      contextSpaceId: run.contextSpaceId,
+      agentDefinitionId: run.agentDefinitionId,
+      auditDataClass
+    });
     const created = output as any;
 
     await prisma.agentToolCall.update({
       where: { id: call.id },
       data: {
         status: 'success',
-        outputJson: output as any,
+        outputJson: auditJson(output, auditDataClass) as any,
         createdEntityType: created?.createdEntityType ?? null,
         createdEntityId: created?.createdEntityId ?? null,
         completedAt: new Date()
@@ -137,7 +153,7 @@ export async function executeAgentTool<Input, Output>(
       where: { id: call.id },
       data: {
         status: 'failed',
-        errorMessage: error instanceof Error ? error.message : String(error),
+        errorMessage: safeAgentAuditError(error, auditDataClass),
         completedAt: new Date()
       }
     });

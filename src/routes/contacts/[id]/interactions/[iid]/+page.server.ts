@@ -10,6 +10,7 @@ import { createWorkspaceCoreAccess } from '$lib/server/core/accessPolicy';
 import { loadCoreInteraction } from '$lib/server/core/interactions';
 import { captureAndPromoteKnowledgeFromInteraction, loadClaimsForInteraction, promoteKnowledgeClaim } from '$lib/server/core/knowledge';
 import { interactionSourceTypeLabel } from '$lib/interactions';
+import { encryptInteractionSummary } from '$lib/server/core/interactionEncryption';
 
 export const load: PageServerLoad = async ({ locals, params }) => {
   if (!locals.user) throw redirect(303, '/auth/login');
@@ -43,7 +44,7 @@ export const actions: Actions = {
     const value = String(form.get('summary') ?? '').trim();
     const res = await prisma.interaction.updateMany({
       where: { id: params.iid, contactId: params.id, userId: locals.user.id },
-      data: { summaryEnc: value ? encrypt(value, 'interaction.raw_text') : null }
+      data: { summaryEnc: value ? encryptInteractionSummary(value) : null }
     });
     if (res.count === 0) return fail(404, { error: 'Interaction not found.' });
     throw redirect(303, `/contacts/${params.id}/interactions/${params.iid}`);

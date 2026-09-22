@@ -161,10 +161,14 @@ model ContextSpace {
   ownerUserId String
   owner       User   @relation(fields: [ownerUserId], references: [id], onDelete: Cascade)
 
-  kind      ContextSpaceKind @default(WORKSPACE)
-  isDefault Boolean          @default(false)
-  createdAt DateTime         @default(now())
-  updatedAt DateTime         @updatedAt
+  kind           ContextSpaceKind @default(WORKSPACE)
+  // IT: Extensible application-domain key. This is intentionally a string rather than a closed enum.
+  domainKey      String           @default("business")
+  // SECURITY: A user-chosen ContextSpace label may reveal sensitive purpose, so it is encrypted at rest.
+  displayNameEnc String?
+  isDefault      Boolean          @default(false)
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
 
   contacts Contact[]
   // IT: Context-local metadata inverse relations required by Prisma for direct ContextSpace custody links.
@@ -216,6 +220,7 @@ model ContextSpace {
 
   @@index([ownerUserId])
   @@index([ownerUserId, kind])
+  @@index([ownerUserId, domainKey])
 }
 
 // IT: New table to track claimable leads
@@ -2853,6 +2858,11 @@ model AgentDefinition {
   deploymentScope         String   @default("workspace_internal")
   authorityLevel          String   @default("advisory")
 
+  // SECURITY: An agent may run only when the target ContextSpace matches an allowed domain
+  // or an explicitly allowed ContextSpace id. Existing built-in agents remain Business-only.
+  allowedDomainKeys       String[] @default(["business"])
+  allowedContextSpaceIds  String[] @default([])
+
   defaultModelProvider    String   @default("openai")
   defaultModelName        String   @default("gpt-4o-mini")
   systemPrompt            String
@@ -3001,6 +3011,8 @@ model AgentRun {
   promptVersion        AgentPromptVersion? @relation(fields: [promptVersionId], references: [id], onDelete: SetNull)
 
   status               String   @default("queued")
+  // SECURITY: Sensitive runs store only structural metadata in ordinary JSON audit columns.
+  auditDataClass       String   @default("standard")
   triggerType          String   @default("manual")
   triggerEntityType    String?
   triggerEntityId      String?
@@ -3029,6 +3041,7 @@ model AgentRun {
   @@index([userId, agentDefinitionId])
   @@index([triggerEntityType, triggerEntityId])
   @@index([userId, contextSpaceId])
+  @@index([userId, auditDataClass])
   @@index([createdAt])
 }
 
@@ -3209,4 +3222,3 @@ model AgentRunEntity {
   @@index([agentRunId])
   @@index([entityType, entityId])
 }
-

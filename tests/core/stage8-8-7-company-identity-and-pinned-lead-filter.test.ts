@@ -82,5 +82,6 @@ test('pinned lead filter is browser-persisted but keyed per owner and ContextSpa
 
 test('Stage 8.8.7 reuses existing CompanyExternalIdentifier storage and adds no migration', () => {
   const migrations = fs.readdirSync('prisma/migrations').filter((name) => /^\d/.test(name)).sort();
-  assert.equal(migrations.at(-1), '20260907144000_stage8_8_5_lead_next_action_options');
+  // IT: Later implementation stages may migrate. Stage 8.8.7 itself remains migration-free.
+  assert.equal(migrations.filter((name) => name.includes('stage8_8_7')).length, 0);
 });

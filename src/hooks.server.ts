@@ -14,7 +14,13 @@ import type { Handle } from '@sveltejs/kit';
 import { inferEnvFromHost, resolveOrigin } from '$lib/env';
 import { sessionCookieConfig } from '$lib/cookies';
 import { readSessionToken, getSessionFromCookie } from '$lib/auth';
-import { defaultContextSpaceIdForUser, runWithWorkspaceCustody } from '$lib/server/core/contextSpace';
+import { runWithWorkspaceCustody } from '$lib/server/core/contextSpace';
+import { prisma } from '$lib/db';
+import {
+  contextDomainForPathname,
+  contextSelectionCookieName,
+  resolveContextSpaceForDomain
+} from '$lib/server/core/contextDomain';
 
 export const handle: Handle = async ({ event, resolve }) => {
   // 1 - infer environment from Host header
@@ -36,6 +42,8 @@ export const handle: Handle = async ({ event, resolve }) => {
 
   // IT - initialize locals.user to undefined and only attach id on success
   event.locals.user = undefined;
+  event.locals.contextSpaceId = undefined;
+  event.locals.contextDomainKey = contextDomainForPathname(event.url.pathname);
 
   // optional: keep a session id for logout - set after DB lookup in getSessionFromCookie
   let sessionId: string | undefined;
@@ -45,19 +53,24 @@ export const handle: Handle = async ({ event, resolve }) => {
     if (result) {
       // IT - attach only the user id - do not attach email here
       event.locals.user = { id: result.user.id };
-      event.locals.contextSpaceId = defaultContextSpaceIdForUser(result.user.id);
+      // SECURITY: The cookie is only a preference. The resolver rechecks owner and route domain.
+      const preferredContextSpaceId = event.cookies.get(contextSelectionCookieName(event.locals.contextDomainKey));
+      const resolvedContext = await resolveContextSpaceForDomain(prisma, {
+        ownerUserId: result.user.id,
+        domainKey: event.locals.contextDomainKey,
+        preferredContextSpaceId
+      });
+      event.locals.contextSpaceId = resolvedContext?.id;
       sessionId = result.session.id;
     }
   }
 
   // 5 - store sessionId if available so logout can destroy it
   // - type is optional on Locals, so this is safe to set when present
-  // - if you already declare this elsewhere, keep that in sync
-  // @ts-expect-error - allow dynamic attach if not in your App.Locals type yet
+  // - App.Locals declares this optional session id.
   event.locals.sessionId = sessionId;
 
-  // 6 - continue to route handling inside the current default custody context.
-  // Future context selection can change locals.contextSpaceId without changing downstream query APIs.
+  // 6 - continue to route handling inside the resolved owner + application-domain custody context.
   if (event.locals.user?.id && event.locals.contextSpaceId) {
     return runWithWorkspaceCustody({ userId: event.locals.user.id, contextSpaceId: event.locals.contextSpaceId }, () => resolve(event));
   }

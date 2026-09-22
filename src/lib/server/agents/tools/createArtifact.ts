@@ -4,6 +4,7 @@
 import { prisma } from '$lib/db';
 import { encrypt } from '$lib/crypto';
 import type { AgentEntityType, ToolDefinition } from '$lib/server/agents/types';
+import { auditJson, normalizeAgentAuditDataClass } from '$lib/server/agents/sensitiveAudit';
 
 type CreateAgentArtifactInput = {
   artifactType: string;
@@ -29,6 +30,7 @@ export const createAgentArtifactTool: ToolDefinition<CreateAgentArtifactInput, C
     if (!input.title?.trim()) throw new Error('Artifact title is required.');
     if (!input.artifactType?.trim()) throw new Error('Artifact type is required.');
 
+    const auditDataClass = normalizeAgentAuditDataClass(context.auditDataClass);
     const artifact = await prisma.agentArtifact.create({
       data: {
         userId: context.userId,
@@ -36,10 +38,11 @@ export const createAgentArtifactTool: ToolDefinition<CreateAgentArtifactInput, C
         agentRunId: context.agentRunId,
         agentStepId: context.agentStepId ?? null,
         artifactType: input.artifactType,
-        title: input.title.trim(),
+        // SECURITY: Free-form sensitive titles belong in encrypted content, not a plaintext column.
+        title: auditDataClass === 'sensitive' ? 'Sensitive agent artifact' : input.title.trim(),
         contentEnc: input.content ? encrypt(input.content, 'agent_artifact.content') : null,
         summaryEnc: input.summary ? encrypt(input.summary, 'agent_artifact.summary') : null,
-        structuredJson: (input.structuredJson ?? {}) as any,
+        structuredJson: auditJson(input.structuredJson ?? {}, auditDataClass) as any,
         entityType: input.entityType ?? null,
         entityId: input.entityId ?? null
       }

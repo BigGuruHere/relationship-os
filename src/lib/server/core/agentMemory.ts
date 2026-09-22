@@ -20,6 +20,7 @@ import {
   type AgentDataAccessPolicySnapshot,
   type AgentProfileSnapshot
 } from '$lib/server/core/agentDataAccess';
+import { decryptInteractionSummary } from '$lib/server/core/interactionEncryption';
 
 export type AgentMemorySubjectType = 'contact' | 'person';
 
@@ -192,7 +193,7 @@ async function loadInteractions(userId: string, contactIds: string[], personId: 
     channel: row.channel,
     sourceType: row.sourceType,
     occurredAt: iso(row.occurredAt),
-    summary: compact(safeDecrypt(row.summaryEnc, 'interaction.summary') || safeDecrypt(row.rawTextEnc, 'interaction.raw_text'))
+    summary: compact(decryptInteractionSummary(row.summaryEnc) || safeDecrypt(row.rawTextEnc, 'interaction.raw_text'))
   }));
 }
 

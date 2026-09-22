@@ -2,6 +2,8 @@
 // PURPOSE: Fail-closed access context for Core relationship-data reads and references.
 // SECURITY: User.id is ownership; ContextSpace.id is custody. Core lookups require both.
 
+import { contextSpaceIdForOwner } from '$lib/server/core/contextSpace';
+
 export type CoreActorType = 'WORKSPACE_USER' | 'AGENT';
 
 export type CoreAccessContext = {
@@ -22,7 +24,8 @@ export function createWorkspaceCoreAccess(userId: string, purpose = 'workspace',
   const workspaceUserId = required(userId, 'workspace user id');
   return {
     workspaceUserId,
-    contextSpaceId: required(contextSpaceId ?? workspaceUserId, 'context space id'),
+    // IT: Existing callers may omit the id. Resolve from active request custody before using the legacy default.
+    contextSpaceId: required(contextSpaceId ?? contextSpaceIdForOwner(workspaceUserId), 'context space id'),
     actorType: 'WORKSPACE_USER',
     actorId: workspaceUserId,
     purpose: required(purpose, 'purpose')

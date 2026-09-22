@@ -40,5 +40,6 @@ test('full Edit Lead uses the same select plus explicit create-new mode', () => 
 
 test('Stage 8.8.6 is code-only and adds no migration after the 8.8.5 taxonomy migration', () => {
   const migrations = fs.readdirSync('prisma/migrations').filter((name) => /^\d/.test(name)).sort();
-  assert.equal(migrations.at(-1), '20260907144000_stage8_8_5_lead_next_action_options');
+  // IT: Later stages may add migrations. Preserve only the historical promise that 8.8.6 did not add one.
+  assert.equal(migrations.filter((name) => name.includes('stage8_8_6')).length, 0);
 });

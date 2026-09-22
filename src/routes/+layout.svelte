@@ -13,6 +13,8 @@
   // IT: align with +layout.server.ts which now returns { id, emailRedacted } on user
   export let data: {
     user: { id: string; emailRedacted: string | null } | null;
+    activeContext?: { id: string; domainKey: string; displayName: string } | null;
+    hasDatingContext?: boolean;
     reconnectDue: number;
     remindersOpenCount: number;
     tasksOpenCount?: number;
@@ -231,6 +233,17 @@
     </a>
 
     <nav class="nav-group">
+      {#if data.user}
+        <div class="card app-space-card">
+          <div class="app-space-label">Application</div>
+          <strong>{data.activeContext?.displayName || 'Setup required'}</strong>
+          <div class="app-space-links">
+            <a href="/">Business</a>
+            <a href="/dating">Dating</a>
+            <a href="/settings/context-spaces">Manage</a>
+          </div>
+        </div>
+      {/if}
       <a class="nav-link" href="/">Contacts</a>
       {#if data.user}
         <a class="nav-link" href="/leads">◇ Leads</a>
@@ -413,6 +426,26 @@
     display: flex;
     align-items: center;
     gap: 8px;
+  }
+
+  /* IT: Make the active application boundary visible without exposing internal ids. */
+  .app-space-card {
+    padding: 10px;
+    margin-bottom: 6px;
+    display: grid;
+    gap: 6px;
+  }
+  .app-space-label {
+    color: var(--muted);
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+  .app-space-links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    font-size: 0.82rem;
   }
 
   /* Pills */

@@ -12,6 +12,8 @@ Stage 8.9 turns the existing ContextSpace custody foundation into an explicit Bu
 - Added an HTTP-only ContextSpace preference cookie whose value is revalidated by owner and domain on every request.
 - Added controlled Dating ContextSpace creation and an application-space management page.
 - Added a boundary-only `/dating` landing page without Dating profile or matching functionality.
+- Added domain-aware desktop and mobile navigation so Dating never presents Business modules as Dating features.
+- Added explicit Business and Dating application switches and forced the shared shell to refresh across route-domain changes.
 - Kept all existing Business routes bound to the Business domain.
 - Added `AgentDefinition.allowedDomainKeys` and `allowedContextSpaceIds`.
 - Backfilled and maintained existing built-in agents as Business-only.

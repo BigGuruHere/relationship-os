@@ -8,467 +8,534 @@
 -->
 
 <script lang="ts">
-  import "../app.css"; // ensure global styles load
+	import '../app.css'; // ensure global styles load
 
-  // IT: align with +layout.server.ts which now returns { id, emailRedacted } on user
-  export let data: {
-    user: { id: string; emailRedacted: string | null } | null;
-    activeContext?: { id: string; domainKey: string; displayName: string } | null;
-    hasDatingContext?: boolean;
-    reconnectDue: number;
-    remindersOpenCount: number;
-    tasksOpenCount?: number;
-    actionsCount?: number;
-  };
+	// IT: align with +layout.server.ts which now returns { id, emailRedacted } on user
+	export let data: {
+		user: { id: string; emailRedacted: string | null } | null;
+		activeContext?: { id: string; domainKey: string; displayName: string } | null;
+		activeDomainKey?: string;
+		routePathname?: string;
+		hasDatingContext?: boolean;
+		reconnectDue: number;
+		remindersOpenCount: number;
+		tasksOpenCount?: number;
+		actionsCount?: number;
+	};
 
-  import { onMount } from 'svelte';
+	// IT: Navigation is selected from the server-resolved route domain, never from a client-controlled context id.
+	$: isDatingApplication = data.activeDomainKey === 'dating';
 
-  // PURPOSE: register service worker so Android can install as full PWA
-  if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('/service-worker.js')
-      .then(() => console.log('Service Worker registered'))
-      .catch(err => console.error('SW registration failed:', err));
-  }
+	import { onMount } from 'svelte';
 
-  // IT: install prompt state
-  let canInstall = false;      // controls Install button visibility on Android
-  let isInstalled = false;     // reflects whether the app is currently installed
-  let showIosHint = false;     // small helper banner for iOS Safari
-  let deferredPrompt: any = null;
+	// PURPOSE: register service worker so Android can install as full PWA
+	if ('serviceWorker' in navigator) {
+		navigator.serviceWorker
+			.register('/service-worker.js')
+			.then(() => console.log('Service Worker registered'))
+			.catch((err) => console.error('SW registration failed:', err));
+	}
 
-  // IT: detect iOS Safari - rough check that is good enough for this UI hint
-  function isIosSafari(): boolean {
-    if (typeof navigator === 'undefined') return false;
-    const ua = navigator.userAgent || navigator.vendor || '';
-    const isIOS = /iPad|iPhone|iPod/.test(ua);
-    const isSafari = /^((?!chrome|android).)*safari/i.test(ua);
-    return isIOS && isSafari;
-  }
+	// IT: install prompt state
+	let canInstall = false; // controls Install button visibility on Android
+	let isInstalled = false; // reflects whether the app is currently installed
+	let showIosHint = false; // small helper banner for iOS Safari
+	let deferredPrompt: any = null;
 
-  // IT: detect installed state across platforms
-  function computeInstalled(): boolean {
-    // Android and most browsers
-    const standaloneMedia = typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(display-mode: standalone)').matches;
-    // iOS Safari fallback
-    const iosStandalone = typeof navigator !== 'undefined' && (navigator as any).standalone === true;
-    return Boolean(standaloneMedia || iosStandalone);
-  }
+	// IT: detect iOS Safari - rough check that is good enough for this UI hint
+	function isIosSafari(): boolean {
+		if (typeof navigator === 'undefined') return false;
+		const ua = navigator.userAgent || navigator.vendor || '';
+		const isIOS = /iPad|iPhone|iPod/.test(ua);
+		const isSafari = /^((?!chrome|android).)*safari/i.test(ua);
+		return isIOS && isSafari;
+	}
 
-  function updateUiFlags() {
-    isInstalled = computeInstalled();
+	// IT: detect installed state across platforms
+	function computeInstalled(): boolean {
+		// Android and most browsers
+		const standaloneMedia =
+			typeof window !== 'undefined' &&
+			window.matchMedia &&
+			window.matchMedia('(display-mode: standalone)').matches;
+		// iOS Safari fallback
+		const iosStandalone =
+			typeof navigator !== 'undefined' && (navigator as any).standalone === true;
+		return Boolean(standaloneMedia || iosStandalone);
+	}
 
-    // Android logic: show Install only if not installed and Chrome fired beforeinstallprompt
-    canInstall = !isInstalled && !!deferredPrompt;
+	function updateUiFlags() {
+		isInstalled = computeInstalled();
 
-    // iOS Safari: show hint if not installed - user must use Share -> Add to Home Screen
-    showIosHint = !isInstalled && isIosSafari();
-  }
+		// Android logic: show Install only if not installed and Chrome fired beforeinstallprompt
+		canInstall = !isInstalled && !!deferredPrompt;
 
-  // IT: call the saved prompt
-  async function install() {
-    if (!deferredPrompt) return;
-    deferredPrompt.prompt();
-    const { outcome } = await deferredPrompt.userChoice; // accepted or dismissed
-    deferredPrompt = null; // event cannot be reused
-    updateUiFlags(); // will hide button if accepted
-  }
+		// iOS Safari: show hint if not installed - user must use Share -> Add to Home Screen
+		showIosHint = !isInstalled && isIosSafari();
+	}
 
-  function handleBeforeInstallPrompt(e: Event) {
-    // Prevent the default mini-infobar and remember the event for our button
-    e.preventDefault();
-    deferredPrompt = e;
-    updateUiFlags();
-  }
+	// IT: call the saved prompt
+	async function install() {
+		if (!deferredPrompt) return;
+		deferredPrompt.prompt();
+		const { outcome } = await deferredPrompt.userChoice; // accepted or dismissed
+		deferredPrompt = null; // event cannot be reused
+		updateUiFlags(); // will hide button if accepted
+	}
 
-  function handleAppInstalled() {
-    // App has been installed - hide controls
-    deferredPrompt = null;
-    updateUiFlags();
-  }
+	function handleBeforeInstallPrompt(e: Event) {
+		// Prevent the default mini-infobar and remember the event for our button
+		e.preventDefault();
+		deferredPrompt = e;
+		updateUiFlags();
+	}
 
-  function handleVisibilityChange() {
-    // If the user installed from another tab or OS dialog, state can change
-    updateUiFlags();
-  }
+	function handleAppInstalled() {
+		// App has been installed - hide controls
+		deferredPrompt = null;
+		updateUiFlags();
+	}
 
-  onMount(() => {
-    updateUiFlags();
+	function handleVisibilityChange() {
+		// If the user installed from another tab or OS dialog, state can change
+		updateUiFlags();
+	}
 
-    // Android install availability
-    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt as any);
-    // Fired after successful install
-    window.addEventListener('appinstalled', handleAppInstalled);
-    // Re-check when tab visibility changes
-    document.addEventListener('visibilitychange', handleVisibilityChange);
+	onMount(() => {
+		updateUiFlags();
 
-    return () => {
-      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt as any);
-      window.removeEventListener('appinstalled', handleAppInstalled);
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-    };
-  });
+		// Android install availability
+		window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt as any);
+		// Fired after successful install
+		window.addEventListener('appinstalled', handleAppInstalled);
+		// Re-check when tab visibility changes
+		document.addEventListener('visibilitychange', handleVisibilityChange);
+
+		return () => {
+			window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt as any);
+			window.removeEventListener('appinstalled', handleAppInstalled);
+			document.removeEventListener('visibilitychange', handleVisibilityChange);
+		};
+	});
 </script>
 
 <div class="layout">
-  <!-- Mobile topbar -->
-  <header class="topbar mobile-only">
-    <a class="brand" href="/" aria-label="Relish home">
-      <div class="logo">
-        <img src="/relish-logo.png" alt="Relish logo" />
-      </div>
-    </a>
+	<!-- Mobile topbar -->
+	<header class="topbar mobile-only">
+		<a class="brand" href={isDatingApplication ? '/dating' : '/'} aria-label="Relish home">
+			<div class="logo">
+				<img src="/relish-logo.png" alt="Relish logo" />
+			</div>
+		</a>
 
-    <!-- Compact mobile actions - icon only for a tidy topbar -->
-    <nav class="topbar-actions" aria-label="Primary">
-      <!-- Add Contact -->
-      <a class="btn icon" href="/contacts/new" aria-label="Add Contact" title="Add Contact">
-        <!-- user plus icon -->
-        <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-          <path d="M12 12a4 4 0 1 0-4-4 4 4 0 0 0 4 4z"/>
-          <path d="M12 14c-4 0-7 2-7 4v2h8.5v-2c0-.7.2-1.4.6-2 .5-.8 1.3-1.4 2.3-1.8A9.7 9.7 0 0 0 12 14z"/>
-          <path d="M19 10v-3h-2v3h-3v2h3v3h2v-3h3v-2z"/>
-        </svg>
-      </a>
+		<!-- Compact mobile actions - icon only for a tidy topbar -->
+		<nav class="topbar-actions" aria-label="Primary">
+			{#if !isDatingApplication}
+				<!-- Add Contact -->
+				<a class="btn icon" href="/contacts/new" aria-label="Add Contact" title="Add Contact">
+					<!-- user plus icon -->
+					<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+						<path d="M12 12a4 4 0 1 0-4-4 4 4 0 0 0 4 4z" />
+						<path
+							d="M12 14c-4 0-7 2-7 4v2h8.5v-2c0-.7.2-1.4.6-2 .5-.8 1.3-1.4 2.3-1.8A9.7 9.7 0 0 0 12 14z"
+						/>
+						<path d="M19 10v-3h-2v3h-3v2h3v3h2v-3h3v-2z" />
+					</svg>
+				</a>
 
-      <!-- Search -->
-      <a class="btn icon" href="/search" aria-label="Search">
-        <!-- magnifier icon -->
-        <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-          <path d="M10 4a6 6 0 1 1 0 12A6 6 0 0 1 10 4zm8.707 13.293-3.4-3.4A8 8 0 1 0 11 20a7.96 7.96 0 0 0 4.893-1.693l3.4 3.4 1.414-1.414z"/>
-        </svg>
-      </a>
+				<!-- Search -->
+				<a class="btn icon" href="/search" aria-label="Search">
+					<!-- magnifier icon -->
+					<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+						<path
+							d="M10 4a6 6 0 1 1 0 12A6 6 0 0 1 10 4zm8.707 13.293-3.4-3.4A8 8 0 1 0 11 20a7.96 7.96 0 0 0 4.893-1.693l3.4 3.4 1.414-1.414z"
+						/>
+					</svg>
+				</a>
 
-      <!-- Deals -->
-      {#if data.user}
-        <a class="btn icon" href="/deals" aria-label="Deals" title="Deals">
-          <!-- diamond deal icon -->
-          <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-            <path d="M12 2 22 9l-10 13L2 9l10-7zm0 3.1L6.2 9 12 16.6 17.8 9 12 5.1z"/>
-          </svg>
-        </a>
+				<!-- Business-only shortcuts -->
+				{#if data.user}
+					<a class="btn icon" href="/deals" aria-label="Deals" title="Deals">
+						<!-- diamond deal icon -->
+						<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+							<path d="M12 2 22 9l-10 13L2 9l10-7zm0 3.1L6.2 9 12 16.6 17.8 9 12 5.1z" />
+						</svg>
+					</a>
 
-        <!-- Companies -->
-        <a class="btn icon" href="/companies" aria-label="Companies" title="Companies">
-          <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-            <path d="M4 21V5a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v16h-2v-4h-3v4h-2v-4H7v4H4zm3-6h3v-3H7v3zm5 0h3v-3h-3v3zM7 10h3V7H7v3zm5 0h3V7h-3v3z"/>
-            <path d="M18 21v-9h2a2 2 0 0 1 2 2v7h-4z"/>
-          </svg>
-        </a>
+					<!-- Companies -->
+					<a class="btn icon" href="/companies" aria-label="Companies" title="Companies">
+						<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+							<path
+								d="M4 21V5a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v16h-2v-4h-3v4h-2v-4H7v4H4zm3-6h3v-3H7v3zm5 0h3v-3h-3v3zM7 10h3V7H7v3zm5 0h3V7h-3v3z"
+							/>
+							<path d="M18 21v-9h2a2 2 0 0 1 2 2v7h-4z" />
+						</svg>
+					</a>
 
-        <!-- Leads -->
-        <a class="btn icon" href="/leads" aria-label="Leads" title="Leads">
-          <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2 21 7v10l-9 5-9-5V7l9-5zm0 2.3L5 8.1v7.8l7 3.9 7-3.9V8.1l-7-3.8z"/></svg>
-        </a>
+					<!-- Leads -->
+					<a class="btn icon" href="/leads" aria-label="Leads" title="Leads">
+						<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"
+							><path
+								d="M12 2 21 7v10l-9 5-9-5V7l9-5zm0 2.3L5 8.1v7.8l7 3.9 7-3.9V8.1l-7-3.8z"
+							/></svg
+						>
+					</a>
 
-        <!-- Tasks -->
-        <a class="btn icon" href="/tasks" aria-label="Tasks" title="Tasks">
-          <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-            <path d="M9 11 6.8 8.8 5.4 10.2 9 13.8l7-7-1.4-1.4L9 11z"/>
-            <path d="M4 4h16v16H4V4zm2 2v12h12V6H6z"/>
-          </svg>
-          {#if (data.tasksOpenCount || 0) > 0}
-            <span class="pill">{data.tasksOpenCount}</span>
-          {/if}
-        </a>
-      {/if}
+					<!-- Tasks -->
+					<a class="btn icon" href="/tasks" aria-label="Tasks" title="Tasks">
+						<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+							<path d="M9 11 6.8 8.8 5.4 10.2 9 13.8l7-7-1.4-1.4L9 11z" />
+							<path d="M4 4h16v16H4V4zm2 2v12h12V6H6z" />
+						</svg>
+						{#if (data.tasksOpenCount || 0) > 0}
+							<span class="pill">{data.tasksOpenCount}</span>
+						{/if}
+					</a>
+				{/if}
+			{/if}
 
-      {#if data.user}
-        <!-- Actions -->
-        <a class="btn icon" href="/actions" aria-label="Actions" title="Actions">
-          <!-- bell icon -->
-          <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-            <path d="M12 22a2 2 0 0 0 2-2h-4a2 2 0 0 0 2 2z"/>
-            <path d="M18 16v-5a6 6 0 1 0-12 0v5l-2 2v1h16v-1l-2-2z"/>
-          </svg>
-          {#if (data.actionsCount || 0) > 0}
-            <span class="pill">{data.actionsCount}</span>
-          {/if}
-        </a>
+			{#if data.user}
+				{#if isDatingApplication}
+					<!-- IT: This link deliberately crosses back to the server-owned Business route boundary. -->
+					<a class="btn" href="/">Business</a>
+				{:else}
+					<!-- Actions -->
+					<a class="btn icon" href="/actions" aria-label="Actions" title="Actions">
+						<!-- bell icon -->
+						<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+							<path d="M12 22a2 2 0 0 0 2-2h-4a2 2 0 0 0 2 2z" />
+							<path d="M18 16v-5a6 6 0 1 0-12 0v5l-2 2v1h16v-1l-2-2z" />
+						</svg>
+						{#if (data.actionsCount || 0) > 0}
+							<span class="pill">{data.actionsCount}</span>
+						{/if}
+					</a>
 
-        <!-- Share -->
-        <a class="btn icon" href="/share" aria-label="Share your link" title="Share your link">
-          <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-            <path d="M18 8a3 3 0 1 0-2.83-4H15a3 3 0 0 0 3 3zM6 14a3 3 0 1 0 0 6 3 3 0 0 0 0-6zm12 0a3 3 0 1 0 0 6 3 3 0 0 0 0-6zM8.59 13.05l6.83-3.42.9 1.8-6.83 3.43-.9-1.81z"/>
-          </svg>
-        </a>
+					<!-- Share -->
+					<a class="btn icon" href="/share" aria-label="Share your link" title="Share your link">
+						<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+							<path
+								d="M18 8a3 3 0 1 0-2.83-4H15a3 3 0 0 0 3 3zM6 14a3 3 0 1 0 0 6 3 3 0 0 0 0-6zm12 0a3 3 0 1 0 0 6 3 3 0 0 0 0-6zM8.59 13.05l6.83-3.42.9 1.8-6.83 3.43-.9-1.81z"
+							/>
+						</svg>
+					</a>
+				{/if}
 
-        <!-- Logout -->
-        <form method="POST" action="/auth/logout?redirect=/auth/login" class="inline-form" aria-label="Logout">
-          <button class="btn icon" type="submit" aria-label="Logout" title="Logout">
-            <!-- logout icon -->
-            <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-              <path d="M3 3h12v2H5v14h10v2H3V3z"/>
-              <path d="M13 12l5-5v3h6v4h-6v3l-5-5z"/>
-            </svg>
-          </button>
-        </form>
-      {:else}
-        <!-- Login -->
-        <a class="btn icon" href="/auth/login" aria-label="Login" title="Login">
-          <!-- key icon -->
-          <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-            <path d="M7 14a5 5 0 1 1 4.9-6h10.1v4h-2v2h-2v2h-4v-2H11.9A5 5 0 0 1 7 14zm0-2a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/>
-          </svg>
-        </a>
-      {/if}
-    </nav>
+				<!-- Logout -->
+				<form
+					method="POST"
+					action="/auth/logout?redirect=/auth/login"
+					class="inline-form"
+					aria-label="Logout"
+				>
+					<button class="btn icon" type="submit" aria-label="Logout" title="Logout">
+						<!-- logout icon -->
+						<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+							<path d="M3 3h12v2H5v14h10v2H3V3z" />
+							<path d="M13 12l5-5v3h6v4h-6v3l-5-5z" />
+						</svg>
+					</button>
+				</form>
+			{:else}
+				<!-- Login -->
+				<a class="btn icon" href="/auth/login" aria-label="Login" title="Login">
+					<!-- key icon -->
+					<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+						<path
+							d="M7 14a5 5 0 1 1 4.9-6h10.1v4h-2v2h-2v2h-4v-2H11.9A5 5 0 0 1 7 14zm0-2a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"
+						/>
+					</svg>
+				</a>
+			{/if}
+		</nav>
 
-    <!-- ANDROID: show Install button only when not installed and install prompt is available -->
-    {#if canInstall}
-      <button on:click={install} class="install-btn">Install Relish</button>
-    {/if}
+		<!-- ANDROID: show Install button only when not installed and install prompt is available -->
+		{#if canInstall}
+			<button on:click={install} class="install-btn">Install Relish</button>
+		{/if}
 
-    <!-- iOS: show a tiny helper only when not installed -->
-    {#if showIosHint}
-      <div class="ios-hint">Add to Home Screen: tap Share, then Add to Home Screen</div>
-    {/if}
-  </header>
+		<!-- iOS: show a tiny helper only when not installed -->
+		{#if showIosHint}
+			<div class="ios-hint">Add to Home Screen: tap Share, then Add to Home Screen</div>
+		{/if}
+	</header>
 
-  <!-- Desktop sidebar -->
-  <aside class="sidebar desktop-only">
-    <a class="brand" href="/" aria-label="Relish home">
-      <div class="logo">
-        <img src="/relish-logo.png" alt="Relish logo" width="28" height="28" />
-      </div>
-    </a>
+	<!-- Desktop sidebar -->
+	<aside class="sidebar desktop-only">
+		<a class="brand" href={isDatingApplication ? '/dating' : '/'} aria-label="Relish home">
+			<div class="logo">
+				<img src="/relish-logo.png" alt="Relish logo" width="28" height="28" />
+			</div>
+		</a>
 
-    <nav class="nav-group">
-      {#if data.user}
-        <div class="card app-space-card">
-          <div class="app-space-label">Application</div>
-          <strong>{data.activeContext?.displayName || 'Setup required'}</strong>
-          <div class="app-space-links">
-            <a href="/">Business</a>
-            <a href="/dating">Dating</a>
-            <a href="/settings/context-spaces">Manage</a>
-          </div>
-        </div>
-      {/if}
-      <a class="nav-link" href="/">Contacts</a>
-      {#if data.user}
-        <a class="nav-link" href="/leads">◇ Leads</a>
-        <a class="nav-link" href="/wants">◎ Wants</a>
-        <a class="nav-link" href="/offers">◌ Offers</a>
-        <a class="nav-link" href="/introductions">↔ Introductions</a>
-        <a class="nav-link" href="/deals">◆ Deals</a>
-        <a class="nav-link" href="/companies">▥ Companies</a>
-        <a class="nav-link" href="/tasks">☑ Tasks{#if (data.tasksOpenCount || 0) > 0} <span class="pill">{data.tasksOpenCount}</span>{/if}</a>
-        <a class="nav-link" href="/projects">▣ Projects</a>
-        <a class="nav-link" href="/workstreams">▤ Workstreams</a>
-        <a class="nav-link" href="/agents">⚙ Agents</a>
-      {/if}
-      <a class="nav-link" href="/search">Search</a>
+		<nav class="nav-group">
+			{#if data.user}
+				<div class="card app-space-card">
+					<div class="app-space-label">Application</div>
+					<strong>{data.activeContext?.displayName || 'Setup required'}</strong>
+					<div class="app-space-links">
+						{#if isDatingApplication}
+							<!-- IT: Business records remain available only after an explicit application switch. -->
+							<a href="/">Switch to Business</a>
+						{:else}
+							<a href="/dating">Switch to Dating</a>
+						{/if}
+						<a href="/settings/context-spaces">Manage</a>
+					</div>
+				</div>
+			{/if}
+			{#if isDatingApplication}
+				<a class="nav-link" href="/dating">Dating home</a>
+				<div class="card" style="padding:10px; color:var(--muted); font-size:0.9rem;">
+					Dating voice feedback will be added in Stage 8.10.
+				</div>
+			{:else}
+				<a class="nav-link" href="/">Contacts</a>
+				{#if data.user}
+					<a class="nav-link" href="/leads">◇ Leads</a>
+					<a class="nav-link" href="/wants">◎ Wants</a>
+					<a class="nav-link" href="/offers">◌ Offers</a>
+					<a class="nav-link" href="/introductions">↔ Introductions</a>
+					<a class="nav-link" href="/deals">◆ Deals</a>
+					<a class="nav-link" href="/companies">▥ Companies</a>
+					<a class="nav-link" href="/tasks"
+						>☑ Tasks{#if (data.tasksOpenCount || 0) > 0}
+							<span class="pill">{data.tasksOpenCount}</span>{/if}</a
+					>
+					<a class="nav-link" href="/projects">▣ Projects</a>
+					<a class="nav-link" href="/workstreams">▤ Workstreams</a>
+					<a class="nav-link" href="/agents">⚙ Agents</a>
+				{/if}
+				<a class="nav-link" href="/search">Search</a>
 
-      {#if data.user}
-        <a class="nav-link" href="/contacts/new">➕ Add Contact</a>
+				{#if data.user}
+					<a class="nav-link" href="/contacts/new">➕ Add Contact</a>
 
-        <div class="nav-right" style="margin:6px 0;">
-          <a href="/actions" class="btn">
-          Inbox        
-            <!-- IT: total actions = overdue cadences + open reminders + open tasks/actions -->
-            {#if ((data.reconnectDue ?? 0) + (data.remindersOpenCount ?? 0) + (data.tasksOpenCount ?? 0)) > 0}
-              <span class="pill">
-                {(data.reconnectDue ?? 0) + (data.remindersOpenCount ?? 0) + (data.tasksOpenCount ?? 0)}
-              </span>
-            {/if}
-          </a>
-        </div>
+					<div class="nav-right" style="margin:6px 0;">
+						<a href="/actions" class="btn">
+							Inbox
+							<!-- IT: total actions = overdue cadences + open reminders + open tasks/actions -->
+							{#if (data.reconnectDue ?? 0) + (data.remindersOpenCount ?? 0) + (data.tasksOpenCount ?? 0) > 0}
+								<span class="pill">
+									{(data.reconnectDue ?? 0) +
+										(data.remindersOpenCount ?? 0) +
+										(data.tasksOpenCount ?? 0)}
+								</span>
+							{/if}
+						</a>
+					</div>
+				{/if}
+			{/if}
 
-        <form method="POST" action="/auth/logout">
-          <button class="btn" type="submit" style="width:100%;">Logout</button>
-        </form>
+			{#if data.user}
+				<form method="POST" action="/auth/logout">
+					<button class="btn" type="submit" style="width:100%;">Logout</button>
+				</form>
 
-        <!-- IT: show redacted email only - never plaintext -->
-        <div class="card" style="padding:10px;">
-          <div style="font-size:0.9rem; color:var(--muted);">Signed in as</div>
-          <div style="font-weight:600; word-break:break-all;">
-            {#if data.user.emailRedacted}{data.user.emailRedacted}{/if}
-          </div>
-        </div>
-      {:else}
-        <a class="nav-link" href="/auth/login">Login</a>
-        <a class="nav-link" href="/auth/register">Register</a>
-      {/if}
-    </nav>
+				<!-- IT: show redacted email only - never plaintext -->
+				<div class="card" style="padding:10px;">
+					<div style="font-size:0.9rem; color:var(--muted);">Signed in as</div>
+					<div style="font-weight:600; word-break:break-all;">
+						{#if data.user.emailRedacted}{data.user.emailRedacted}{/if}
+					</div>
+				</div>
+			{:else}
+				<a class="nav-link" href="/auth/login">Login</a>
+				<a class="nav-link" href="/auth/register">Register</a>
+			{/if}
+		</nav>
 
-    <div class="card" style="padding:12px; margin-top:auto;">
-      <div style="font-weight:600; margin-bottom:6px;">Quick tip</div>
-      <div style="color:var(--muted); font-size:0.95rem;">
-        Add a contact, then attach a note or link them to a deal.
-      </div>
-    </div>
-  </aside>
+		<div class="card" style="padding:12px; margin-top:auto;">
+			<div style="font-weight:600; margin-bottom:6px;">Quick tip</div>
+			<div style="color:var(--muted); font-size:0.95rem;">
+				{isDatingApplication
+					? 'Dating information remains separate from your Business workspace.'
+					: 'Add a contact, then attach a note or link them to a deal.'}
+			</div>
+		</div>
+	</aside>
 
-  <!-- Main content -->
-  <main class="main">
-    <slot />
-  </main>
+	<!-- Main content -->
+	<main class="main">
+		<slot />
+	</main>
 
-  <!-- Footer - links only on mobile -->
-  <footer class="footer">
-    <div class="container" style="display:flex; align-items:center; gap:12px; justify-content:space-between;">
-      <div>© {new Date().getFullYear()} Relationship OS</div>
-      <div class="mobile-only footer-links">
-        <a href="/" aria-label="Home">Contacts</a>
-        {#if data.user}
-          <span aria-hidden="true">·</span>
-          <a href="/deals" aria-label="Deals">Deals</a>
-          <span aria-hidden="true">·</span>
-          <a href="/companies" aria-label="Companies">Companies</a>
-          <span aria-hidden="true">·</span>
-          <a href="/introductions" aria-label="Introductions">Introductions</a>
-          <span aria-hidden="true">·</span>
-          <a href="/agents" aria-label="Agents">Agents</a>
-        {/if}
-        <span aria-hidden="true">·</span>
-        {#if !data.user}
-          <a href="/auth/login" aria-label="Login">Login</a>
-        {/if}
-      </div>
-    </div>
-  </footer>
+	<!-- Footer - links only on mobile -->
+	<footer class="footer">
+		<div
+			class="container"
+			style="display:flex; align-items:center; gap:12px; justify-content:space-between;"
+		>
+			<div>© {new Date().getFullYear()} Relationship OS</div>
+			<div class="mobile-only footer-links">
+				{#if isDatingApplication}
+					<a href="/dating" aria-label="Dating home">Dating</a>
+					<span aria-hidden="true">·</span>
+					<a href="/" aria-label="Switch to Business">Business</a>
+				{:else}
+					<a href="/" aria-label="Home">Contacts</a>
+					{#if data.user}
+						<span aria-hidden="true">·</span>
+						<a href="/deals" aria-label="Deals">Deals</a>
+						<span aria-hidden="true">·</span>
+						<a href="/companies" aria-label="Companies">Companies</a>
+						<span aria-hidden="true">·</span>
+						<a href="/introductions" aria-label="Introductions">Introductions</a>
+						<span aria-hidden="true">·</span>
+						<a href="/agents" aria-label="Agents">Agents</a>
+					{/if}
+				{/if}
+				<span aria-hidden="true">·</span>
+				{#if !data.user}
+					<a href="/auth/login" aria-label="Login">Login</a>
+				{/if}
+			</div>
+		</div>
+	</footer>
 </div>
 
 <style>
-  /* One place to tune sizes */
+	/* One place to tune sizes */
 
-  /* Mobile tweaks - pick your breakpoint */
-  :root {
-    /* clamp(min, preferred, max) - scales smoothly between widths */
-    --icon-size: clamp(20px, 2.2vw, 24px);
-    --icon-button-w: clamp(40px, 4.8vw, 48px);
-    --icon-button-h: clamp(36px, 4.2vw, 44px);
-    --logo-size: clamp(44px, 6vw, 60px);
-    --brand-gap: clamp(4px, 1vw, 8px);
-  }
+	/* Mobile tweaks - pick your breakpoint */
+	:root {
+		/* clamp(min, preferred, max) - scales smoothly between widths */
+		--icon-size: clamp(20px, 2.2vw, 24px);
+		--icon-button-w: clamp(40px, 4.8vw, 48px);
+		--icon-button-h: clamp(36px, 4.2vw, 44px);
+		--logo-size: clamp(44px, 6vw, 60px);
+		--brand-gap: clamp(4px, 1vw, 8px);
+	}
 
-  /* Topbar layout */
-  .topbar {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    padding: 2px 14px;
-    border-bottom: 1px solid var(--border);
-    background: var(--surface-1);
-    box-sizing: border-box; /* ensure padding does not clip content */
-  }
-  .topbar .brand {
-    display: flex;
-    align-items: center;
-    gap: var(--brand-gap);
-    flex: 1 1 auto;
-    min-width: 0;            /* allow text to truncate instead of pushing icons off */
-    text-decoration: none;
-    color: var(--text);
-  }
-  .topbar .topbar-actions {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    flex: 0 0 auto;          /* keep actions fixed - no shrinking */
-  }
+	/* Topbar layout */
+	.topbar {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 12px;
+		padding: 2px 14px;
+		border-bottom: 1px solid var(--border);
+		background: var(--surface-1);
+		box-sizing: border-box; /* ensure padding does not clip content */
+	}
+	.topbar .brand {
+		display: flex;
+		align-items: center;
+		gap: var(--brand-gap);
+		flex: 1 1 auto;
+		min-width: 0; /* allow text to truncate instead of pushing icons off */
+		text-decoration: none;
+		color: var(--text);
+	}
+	.topbar .topbar-actions {
+		display: inline-flex;
+		align-items: center;
+		gap: 8px;
+		flex: 0 0 auto; /* keep actions fixed - no shrinking */
+	}
 
-  /* Logo box - remove phantom spacing and fit exactly */
-  .logo {
-    width: var(--logo-size);
-    height: var(--logo-size);
-    padding: 0;
-    margin: 0;
-    line-height: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex: 0 0 auto;
-  }
-  .logo img {
-    width: 100%;
-    height: 100%;
-    display: block;
-    object-fit: contain;
-  }
+	/* Logo box - remove phantom spacing and fit exactly */
+	.logo {
+		width: var(--logo-size);
+		height: var(--logo-size);
+		padding: 0;
+		margin: 0;
+		line-height: 0;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		flex: 0 0 auto;
+	}
+	.logo img {
+		width: 100%;
+		height: 100%;
+		display: block;
+		object-fit: contain;
+	}
 
-  /* Generic button styles */
-  .btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    padding: 6px 6px;
-    border-radius: 8px;
-    background: var(--surface-2);
-    border: 1px solid var(--border);
-    color: var(--text);
-    text-decoration: none;
-    cursor: pointer;
-  }
-  .btn:hover { background: var(--surface-3); }
+	/* Generic button styles */
+	.btn {
+		display: inline-flex;
+		align-items: center;
+		gap: 8px;
+		padding: 6px 6px;
+		border-radius: 8px;
+		background: var(--surface-2);
+		border: 1px solid var(--border);
+		color: var(--text);
+		text-decoration: none;
+		cursor: pointer;
+	}
+	.btn:hover {
+		background: var(--surface-3);
+	}
 
-  /* Icon buttons - use the shared size variables */
-  .btn.icon {
-    width: var(--icon-button-w);
-    height: var(--icon-button-h);
-    justify-content: center;
-    padding: 0;
-  }
-  .btn.icon svg {
-    width: var(--icon-size);
-    height: var(--icon-size);
-  }
+	/* Icon buttons - use the shared size variables */
+	.btn.icon {
+		width: var(--icon-button-w);
+		height: var(--icon-button-h);
+		justify-content: center;
+		padding: 0;
+	}
+	.btn.icon svg {
+		width: var(--icon-size);
+		height: var(--icon-size);
+	}
 
-  /* Keep the logout form inline so it looks like a button in the row */
-  .inline-form {
-    display: inline-flex;
-    margin: 0;
-  }
+	/* Keep the logout form inline so it looks like a button in the row */
+	.inline-form {
+		display: inline-flex;
+		margin: 0;
+	}
 
-  /* Right aligned nav cluster */
-  .nav-right {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
+	/* Right aligned nav cluster */
+	.nav-right {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+	}
 
-  /* IT: Make the active application boundary visible without exposing internal ids. */
-  .app-space-card {
-    padding: 10px;
-    margin-bottom: 6px;
-    display: grid;
-    gap: 6px;
-  }
-  .app-space-label {
-    color: var(--muted);
-    font-size: 0.75rem;
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-  }
-  .app-space-links {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-    font-size: 0.82rem;
-  }
+	/* IT: Make the active application boundary visible without exposing internal ids. */
+	.app-space-card {
+		padding: 10px;
+		margin-bottom: 6px;
+		display: grid;
+		gap: 6px;
+	}
+	.app-space-label {
+		color: var(--muted);
+		font-size: 0.75rem;
+		text-transform: uppercase;
+		letter-spacing: 0.06em;
+	}
+	.app-space-links {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 8px;
+		font-size: 0.82rem;
+	}
 
-  /* Pills */
-  .pill {
-    display: inline-block;
-    min-width: 20px;
-    padding: 2px 6px;
-    border-radius: 9999px;
-    font-size: 12px;
-    text-align: center;
-    background: #e5f4ff;
-    color: #0369a1;
-    border: 1px solid #bae6fd;
-  }
+	/* Pills */
+	.pill {
+		display: inline-block;
+		min-width: 20px;
+		padding: 2px 6px;
+		border-radius: 9999px;
+		font-size: 12px;
+		text-align: center;
+		background: #e5f4ff;
+		color: #0369a1;
+		border: 1px solid #bae6fd;
+	}
 
-  /* Small neutral icon button */
-  .icon-btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    padding: 4px;
-    border-radius: 10px;
-    border: 1px solid #ddd;
-    text-decoration: none;
-  }
+	/* Small neutral icon button */
+	.icon-btn {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		padding: 4px;
+		border-radius: 10px;
+		border: 1px solid #ddd;
+		text-decoration: none;
+	}
 </style>

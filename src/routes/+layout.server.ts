@@ -12,87 +12,94 @@ import { decryptContextSpaceDisplayName } from '$lib/server/core/contextSpaceDir
 
 // IT - helper to redact an email for safe display
 function redactEmail(email: string | null) {
-  if (!email) return null;
-  // keep first 2 chars and domain, mask the middle
-  return email.replace(/^(.{2}).*(@.*)$/, '$1***$2');
+	if (!email) return null;
+	// keep first 2 chars and domain, mask the middle
+	return email.replace(/^(.{2}).*(@.*)$/, '$1***$2');
 }
 
-export const load: LayoutServerLoad = async ({ locals }) => {
-  // IT - basic shape for layout - only id plus optional redacted email for display
-  let user: { id: string; emailRedacted: string | null } | null = null;
-  let activeContext: { id: string; domainKey: string; displayName: string } | null = null;
-  let hasDatingContext = false;
+export const load: LayoutServerLoad = async ({ locals, url }) => {
+	// IT: Reading pathname makes SvelteKit refresh this shared layout when navigation crosses an application boundary.
+	const routePathname = url.pathname;
+	// IT - basic shape for layout - only id plus optional redacted email for display
+	let user: { id: string; emailRedacted: string | null } | null = null;
+	let activeContext: { id: string; domainKey: string; displayName: string } | null = null;
+	let hasDatingContext = false;
 
-  if (locals.user?.id) {
-    // IT - read encrypted email for this user and produce a redacted string
-    const u = await prisma.user.findUnique({
-      where: { id: locals.user.id },
-      select: { email_Enc: true }
-    });
+	if (locals.user?.id) {
+		// IT - read encrypted email for this user and produce a redacted string
+		const u = await prisma.user.findUnique({
+			where: { id: locals.user.id },
+			select: { email_Enc: true }
+		});
 
-    const decrypted = decryptUserEmail(u?.email_Enc ?? null);
-    user = { id: locals.user.id, emailRedacted: redactEmail(decrypted) };
+		const decrypted = decryptUserEmail(u?.email_Enc ?? null);
+		user = { id: locals.user.id, emailRedacted: redactEmail(decrypted) };
 
-    const spaces = await prisma.contextSpace.findMany({
-      where: { ownerUserId: locals.user.id },
-      select: { id: true, domainKey: true, displayNameEnc: true }
-    });
-    hasDatingContext = spaces.some((space) => space.domainKey === 'dating');
-    const selected = spaces.find((space) => space.id === locals.contextSpaceId) ?? null;
-    if (selected) {
-      activeContext = {
-        id: selected.id,
-        domainKey: selected.domainKey,
-        displayName: decryptContextSpaceDisplayName(
-          selected.displayNameEnc,
-          selected.domainKey === 'dating' ? 'Dating' : 'Business'
-        )
-      };
-    }
-  }
+		const spaces = await prisma.contextSpace.findMany({
+			where: { ownerUserId: locals.user.id },
+			select: { id: true, domainKey: true, displayNameEnc: true }
+		});
+		hasDatingContext = spaces.some((space) => space.domainKey === 'dating');
+		const selected = spaces.find((space) => space.id === locals.contextSpaceId) ?? null;
+		if (selected) {
+			activeContext = {
+				id: selected.id,
+				domainKey: selected.domainKey,
+				displayName: decryptContextSpaceDisplayName(
+					selected.displayNameEnc,
+					selected.domainKey === 'dating' ? 'Dating' : 'Business'
+				)
+			};
+		}
+	}
 
-  // IT - counts for actions in the top bar
-  let reconnectDue = 0;
-  let remindersOpenCount = 0;
-  let tasksOpenCount = 0;
+	// IT - counts for actions in the top bar
+	let reconnectDue = 0;
+	let remindersOpenCount = 0;
+	let tasksOpenCount = 0;
 
-  // SECURITY: Never let a route without a resolved app ContextSpace fall back to userId-only Business reads.
-  if (locals.user?.id && locals.contextSpaceId) {
-    // IT - compute reconnects due from cadence fields
-    const rows = await prisma.contact.findMany({
-      where: { userId: locals.user.id, reconnectEveryDays: { not: null } },
-      select: { createdAt: true, lastContactedAt: true, reconnectEveryDays: true }
-    });
+	// SECURITY: Never let a route without a resolved app ContextSpace fall back to userId-only Business reads.
+	if (locals.user?.id && locals.contextSpaceId) {
+		// IT - compute reconnects due from cadence fields
+		const rows = await prisma.contact.findMany({
+			where: { userId: locals.user.id, reconnectEveryDays: { not: null } },
+			select: { createdAt: true, lastContactedAt: true, reconnectEveryDays: true }
+		});
 
-    const now = Date.now();
-    reconnectDue = rows.reduce((acc, c) => {
-      const days = c.reconnectEveryDays ?? 0;
-      if (days <= 0) return acc;
-      const baseline = (c.lastContactedAt ?? c.createdAt).getTime();
-      const nextDue = baseline + days * 24 * 60 * 60 * 1000;
-      return acc + (now >= nextDue ? 1 : 0);
-    }, 0);
+		const now = Date.now();
+		reconnectDue = rows.reduce((acc, c) => {
+			const days = c.reconnectEveryDays ?? 0;
+			if (days <= 0) return acc;
+			const baseline = (c.lastContactedAt ?? c.createdAt).getTime();
+			const nextDue = baseline + days * 24 * 60 * 60 * 1000;
+			return acc + (now >= nextDue ? 1 : 0);
+		}, 0);
 
-    // IT - open reminders count
-    remindersOpenCount = await prisma.reminder.count({
-      where: { userId: locals.user.id, completedAt: null }
-    });
+		// IT - open reminders count
+		remindersOpenCount = await prisma.reminder.count({
+			where: { userId: locals.user.id, completedAt: null }
+		});
 
-    // IT - open task count for the new unified task layer.
-    tasksOpenCount = await prisma.task.count({
-      where: { userId: locals.user.id, status: { in: ['OPEN', 'IN_PROGRESS', 'WAITING', 'SNOOZED'] as any } }
-    });
-  }
+		// IT - open task count for the new unified task layer.
+		tasksOpenCount = await prisma.task.count({
+			where: {
+				userId: locals.user.id,
+				status: { in: ['OPEN', 'IN_PROGRESS', 'WAITING', 'SNOOZED'] as any }
+			}
+		});
+	}
 
-  const actionsCount = (reconnectDue || 0) + (remindersOpenCount || 0) + (tasksOpenCount || 0);
+	const actionsCount = (reconnectDue || 0) + (remindersOpenCount || 0) + (tasksOpenCount || 0);
 
-  return {
-    user, // { id, emailRedacted } or null
-    activeContext,
-    hasDatingContext,
-    reconnectDue,
-    remindersOpenCount,
-    tasksOpenCount,
-    actionsCount
-  };
+	return {
+		user, // { id, emailRedacted } or null
+		activeContext,
+		activeDomainKey: locals.contextDomainKey,
+		routePathname,
+		hasDatingContext,
+		reconnectDue,
+		remindersOpenCount,
+		tasksOpenCount,
+		actionsCount
+	};
 };

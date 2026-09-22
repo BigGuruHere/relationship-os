@@ -61,6 +61,11 @@ const settings = readFileSync(
 	new URL('../../src/routes/settings/context-spaces/+page.server.ts', import.meta.url),
 	'utf8'
 );
+const layoutServer = readFileSync(
+	new URL('../../src/routes/+layout.server.ts', import.meta.url),
+	'utf8'
+);
+const layout = readFileSync(new URL('../../src/routes/+layout.svelte', import.meta.url), 'utf8');
 
 function modelBlock(name: string) {
 	return schema.match(new RegExp(`model ${name} \\{[\\s\\S]*?\\n\\}`))?.[0] || '';
@@ -173,4 +178,14 @@ test('Dating ContextSpace creation and selection are controlled owner-scoped ser
 	assert.match(settings, /ensureOwnedDomainContextSpace/);
 	assert.match(settings, /where: \{ id: contextSpaceId, ownerUserId: locals\.user\.id \}/);
 	assert.match(settings, /contextSelectionCookieName/);
+});
+
+test('shared navigation hides Business modules inside Dating and refreshes across route boundaries', () => {
+	assert.match(layoutServer, /async \(\{ locals, url \}\)/);
+	assert.match(layoutServer, /routePathname = url\.pathname/);
+	assert.match(layoutServer, /activeDomainKey: locals\.contextDomainKey/);
+	assert.match(layout, /isDatingApplication = data\.activeDomainKey === 'dating'/);
+	assert.match(layout, /Switch to Business/);
+	assert.match(layout, /Dating home/);
+	assert.match(layout, /\{#if !isDatingApplication\}/);
 });

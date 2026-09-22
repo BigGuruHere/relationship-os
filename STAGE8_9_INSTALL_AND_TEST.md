@@ -28,10 +28,11 @@ Do not reset the database and do not run `prisma migrate dev` against production
 3. Create the Dating space through the provided action.
 4. Confirm `/dating` reports that the isolated space is ready.
 5. Confirm Dating displays no Business counts or records.
-6. Return to `/` and confirm the Business records are unchanged.
-7. Confirm an invalid or another owner's ContextSpace cookie is ignored and replaced by server-side resolution.
-8. Confirm a Business-only agent cannot start or execute tools in the Dating ContextSpace.
-9. Create a controlled sensitive test run and confirm ordinary audit JSON contains redaction metadata rather than the test transcript.
+6. Confirm the Dating navigation does not show Business Contacts, Leads, Deals, or other Business modules.
+7. Select `Switch to Business`, confirm the application label changes to Business, and confirm the Business records are unchanged.
+8. Confirm an invalid or another owner's ContextSpace cookie is ignored and replaced by server-side resolution.
+9. Confirm a Business-only agent cannot start or execute tools in the Dating ContextSpace.
+10. Create a controlled sensitive test run and confirm ordinary audit JSON contains redaction metadata rather than the test transcript.
 
 ## Rollback considerations
 

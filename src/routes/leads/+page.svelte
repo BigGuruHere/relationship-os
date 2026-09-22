@@ -21,12 +21,28 @@
   let createSourceChoice = form?.values?.sourceChoice || (form?.values?.leadSourceId ? `custom:${form.values.leadSourceId}` : `builtin:${form?.values?.source || 'MANUAL'}`);
   let filtersExpanded = false;
   let pinnedFilter: { href: string; label: string } | null = null;
+  let syncedFilterPath = '';
 
-  $: activeFilterParts = buildActiveFilterParts();
+  // IT: Pass data explicitly so Svelte reruns these calculations after query-string navigation.
+  $: activeFilterParts = buildActiveFilterParts(data);
   $: activeFilterSummary = activeFilterParts.length ? activeFilterParts.join(' · ') : 'All leads';
   $: hasActiveFilters = activeFilterParts.length > 0;
-  $: currentFilterHref = buildCurrentFilterHref();
+  $: currentFilterHref = buildCurrentFilterHref(data);
   $: currentFilterIsPinned = Boolean(pinnedFilter && pinnedFilter.href === currentFilterHref);
+  // IT: SvelteKit can reuse this page component during query-string navigation, so keep the controls aligned with the server-applied URL.
+  $: if (data.currentPath !== syncedFilterPath) {
+    syncedFilterPath = data.currentPath;
+    q = data.q || '';
+    type = data.selectedType || '';
+    status = data.selectedStatus || '';
+    sourceFilter = data.selectedSource || '';
+    batchId = data.selectedBatchId || '';
+    contactAttemptStatus = data.selectedContactAttemptStatus || '';
+    buyerStatus = data.selectedBuyerStatus || '';
+    sellerStatus = data.selectedSellerStatus || '';
+    projectId = data.selectedProjectId || '';
+    workstreamId = data.selectedWorkstreamId || '';
+  }
 
   onMount(() => {
     try {
@@ -47,45 +63,45 @@
       || value;
   }
 
-  function buildActiveFilterParts() {
+  function buildActiveFilterParts(applied: any) {
     // IT: Pin only the filter that has actually been applied by the server, not unsaved edits in an open filter form.
-    const appliedQ = String(data.q || '').trim();
-    const appliedType = data.selectedType || '';
-    const appliedStatus = data.selectedStatus || '';
-    const appliedSource = data.selectedSource || '';
-    const appliedBatch = data.selectedBatchId || '';
-    const appliedAttempt = data.selectedContactAttemptStatus || '';
-    const appliedBuyer = data.selectedBuyerStatus || '';
-    const appliedSeller = data.selectedSellerStatus || '';
-    const appliedProject = data.selectedProjectId || '';
-    const appliedWorkstream = data.selectedWorkstreamId || '';
+    const appliedQ = String(applied.q || '').trim();
+    const appliedType = applied.selectedType || '';
+    const appliedStatus = applied.selectedStatus || '';
+    const appliedSource = applied.selectedSource || '';
+    const appliedBatch = applied.selectedBatchId || '';
+    const appliedAttempt = applied.selectedContactAttemptStatus || '';
+    const appliedBuyer = applied.selectedBuyerStatus || '';
+    const appliedSeller = applied.selectedSellerStatus || '';
+    const appliedProject = applied.selectedProjectId || '';
+    const appliedWorkstream = applied.selectedWorkstreamId || '';
     const parts: string[] = [];
     if (appliedQ) parts.push(`Search: ${appliedQ}`);
-    if (appliedType) parts.push(labelFor(data.leadTypes, appliedType));
-    if (appliedStatus) parts.push(labelFor(data.leadStatuses, appliedStatus));
-    if (appliedSource) parts.push(`Source: ${labelFor(data.leadSourceOptions, appliedSource)}`);
-    if (appliedBatch) parts.push(`Batch: ${labelFor(data.importBatches, appliedBatch)}`);
-    if (appliedAttempt) parts.push(labelFor(data.contactAttemptStatuses, appliedAttempt));
-    if (appliedBuyer) parts.push(`Buyer: ${labelFor(data.buyerQualificationStatuses, appliedBuyer)}`);
-    if (appliedSeller) parts.push(`Seller: ${labelFor(data.sellerQualificationStatuses, appliedSeller)}`);
-    if (appliedProject) parts.push(`Project: ${labelFor(data.projects, appliedProject)}`);
-    if (appliedWorkstream) parts.push(`Workstream: ${labelFor(data.workstreams, appliedWorkstream)}`);
+    if (appliedType) parts.push(labelFor(applied.leadTypes, appliedType));
+    if (appliedStatus) parts.push(labelFor(applied.leadStatuses, appliedStatus));
+    if (appliedSource) parts.push(`Source: ${labelFor(applied.leadSourceOptions, appliedSource)}`);
+    if (appliedBatch) parts.push(`Batch: ${labelFor(applied.importBatches, appliedBatch)}`);
+    if (appliedAttempt) parts.push(labelFor(applied.contactAttemptStatuses, appliedAttempt));
+    if (appliedBuyer) parts.push(`Buyer: ${labelFor(applied.buyerQualificationStatuses, appliedBuyer)}`);
+    if (appliedSeller) parts.push(`Seller: ${labelFor(applied.sellerQualificationStatuses, appliedSeller)}`);
+    if (appliedProject) parts.push(`Project: ${labelFor(applied.projects, appliedProject)}`);
+    if (appliedWorkstream) parts.push(`Workstream: ${labelFor(applied.workstreams, appliedWorkstream)}`);
     return parts;
   }
 
-  function buildCurrentFilterHref() {
+  function buildCurrentFilterHref(applied: any) {
     const params = new URLSearchParams();
-    const appliedQ = String(data.q || '').trim();
+    const appliedQ = String(applied.q || '').trim();
     if (appliedQ) params.set('q', appliedQ);
-    if (data.selectedType) params.set('type', data.selectedType);
-    if (data.selectedStatus) params.set('status', data.selectedStatus);
-    if (data.selectedSource) params.set('source', data.selectedSource);
-    if (data.selectedBatchId) params.set('batch', data.selectedBatchId);
-    if (data.selectedContactAttemptStatus) params.set('contactAttemptStatus', data.selectedContactAttemptStatus);
-    if (data.selectedBuyerStatus) params.set('buyerStatus', data.selectedBuyerStatus);
-    if (data.selectedSellerStatus) params.set('sellerStatus', data.selectedSellerStatus);
-    if (data.selectedProjectId) params.set('projectId', data.selectedProjectId);
-    if (data.selectedWorkstreamId) params.set('workstreamId', data.selectedWorkstreamId);
+    if (applied.selectedType) params.set('type', applied.selectedType);
+    if (applied.selectedStatus) params.set('status', applied.selectedStatus);
+    if (applied.selectedSource) params.set('source', applied.selectedSource);
+    if (applied.selectedBatchId) params.set('batch', applied.selectedBatchId);
+    if (applied.selectedContactAttemptStatus) params.set('contactAttemptStatus', applied.selectedContactAttemptStatus);
+    if (applied.selectedBuyerStatus) params.set('buyerStatus', applied.selectedBuyerStatus);
+    if (applied.selectedSellerStatus) params.set('sellerStatus', applied.selectedSellerStatus);
+    if (applied.selectedProjectId) params.set('projectId', applied.selectedProjectId);
+    if (applied.selectedWorkstreamId) params.set('workstreamId', applied.selectedWorkstreamId);
     const query = params.toString();
     return query ? `/leads?${query}` : '/leads';
   }
@@ -100,6 +116,22 @@
   function unpinFilter() {
     pinnedFilter = null;
     try { localStorage.removeItem(data.pinStorageKey); } catch { /* Browser storage can be unavailable. */ }
+  }
+
+  function applyFilters(event: SubmitEvent) {
+    event.preventDefault();
+    filtersExpanded = false;
+
+    // IT: A document navigation guarantees fresh server-rendered Lead results and avoids stale same-route component state.
+    const submittedForm = event.currentTarget as HTMLFormElement;
+    const submitted = new FormData(submittedForm);
+    const params = new URLSearchParams();
+    for (const [key, value] of submitted.entries()) {
+      const normalised = String(value).trim();
+      if (normalised) params.set(key, normalised);
+    }
+    const query = params.toString();
+    window.location.assign(query ? `/leads?${query}` : '/leads');
   }
 </script>
 
@@ -211,10 +243,11 @@
           on:click={pinCurrentFilter}
           disabled={currentFilterIsPinned}
         >{currentFilterIsPinned ? 'Pinned' : 'Pin current filter'}</button>
+        <a class="btn" href="/leads" data-sveltekit-reload>Clear filters</a>
       {/if}
     </div>
     {#if filtersExpanded}
-      <form method="GET" class="filter-row" on:submit={() => (filtersExpanded = false)}>
+      <form method="GET" class="filter-row" on:submit={applyFilters}>
         <input name="q" bind:value={q} placeholder="Search leads, people, companies, phone, email, sector" />
         <select name="type" bind:value={type}><option value="">All types</option>{#each data.leadTypes as opt}<option value={opt.value}>{opt.label}</option>{/each}</select>
         <select name="status" bind:value={status}><option value="">All statuses</option>{#each data.leadStatuses as opt}<option value={opt.value}>{opt.label}</option>{/each}</select>
@@ -226,7 +259,6 @@
         <select name="projectId" bind:value={projectId}><option value="">All projects</option>{#each data.projects as project}<option value={project.id}>{project.title}</option>{/each}</select>
         <select name="workstreamId" bind:value={workstreamId}><option value="">All workstreams</option>{#each data.workstreams as ws}<option value={ws.id}>{ws.projectTitle} - {ws.name}</option>{/each}</select>
         <button class="btn primary" type="submit">Apply filters</button>
-        <a class="btn" href="/leads">Clear</a>
       </form>
     {/if}
   </section>

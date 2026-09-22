@@ -205,11 +205,16 @@
       </button>
       {#if hasActiveFilters}<span class="muted small current-filter">{activeFilterSummary}</span>{/if}
       {#if hasActiveFilters}
-        <button class="btn" type="button" on:click={pinCurrentFilter} disabled={currentFilterIsPinned}>{currentFilterIsPinned ? 'Pinned' : 'Pin current filter'}</button>
+        <button
+          class="btn"
+          type="button"
+          on:click={pinCurrentFilter}
+          disabled={currentFilterIsPinned}
+        >{currentFilterIsPinned ? 'Pinned' : 'Pin current filter'}</button>
       {/if}
     </div>
     {#if filtersExpanded}
-      <form method="GET" class="filter-row">
+      <form method="GET" class="filter-row" on:submit={() => (filtersExpanded = false)}>
         <input name="q" bind:value={q} placeholder="Search leads, people, companies, phone, email, sector" />
         <select name="type" bind:value={type}><option value="">All types</option>{#each data.leadTypes as opt}<option value={opt.value}>{opt.label}</option>{/each}</select>
         <select name="status" bind:value={status}><option value="">All statuses</option>{#each data.leadStatuses as opt}<option value={opt.value}>{opt.label}</option>{/each}</select>

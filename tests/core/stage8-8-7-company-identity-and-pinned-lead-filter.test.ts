@@ -69,7 +69,7 @@ test('lead filters start collapsed and expose one pinnable working list above th
   assert.match(page, /Pinned working list/);
   assert.match(page, /Pin current filter/);
   assert.match(page, /on:click=\{unpinFilter\}>Unpin/);
-  assert.match(page, /\{#if filtersExpanded\}[\s\S]*<form method="GET" class="filter-row">/);
+  assert.match(page, /\{#if filtersExpanded\}[\s\S]*<form method="GET" class="filter-row"(?:\s+[^>]*)?>/);
 });
 
 test('pinned lead filter is browser-persisted but keyed per owner and ContextSpace', () => {

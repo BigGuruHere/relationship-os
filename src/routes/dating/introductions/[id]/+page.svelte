@@ -57,7 +57,8 @@
 	</section>
 
 	<section class="card panel">
-		<h2>Approved whole-Introduction Outcomes</h2>
+		<h2>Approved Outcomes from individual reports</h2>
+		<p class="muted small">Each voice reflection records one person's account. An approved Outcome does not establish that both participants agree or wish to continue.</p>
 		{#if data.introduction.outcomes.length === 0}
 			<p class="muted">No approved Outcome yet.</p>
 		{:else}
@@ -71,7 +72,7 @@
 						</div>
 						<div class="chips">
 							<span>Useful: {yn(outcome.useful)}</span><span
-								>Continued: {yn(outcome.continued)}</span
+								>Respondent reports continuation: {yn(outcome.continued)}</span
 							>
 						</div>
 						{#if outcome.result}<p>{outcome.result}</p>{/if}

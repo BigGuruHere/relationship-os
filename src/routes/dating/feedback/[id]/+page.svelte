@@ -111,7 +111,7 @@
 						>
 					</div>
 					<div class="field">
-						<label for="continued">Continued?</label><select id="continued" name="continued"
+						<label for="continued">Respondent reports continuation?</label><select id="continued" name="continued"
 							>{#each data.yesNoUnknown as option}<option
 									value={option.value}
 									selected={(proposal.wholeOutcome.continued === true

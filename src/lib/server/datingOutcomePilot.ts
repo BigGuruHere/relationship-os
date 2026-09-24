@@ -350,7 +350,7 @@ export async function approveDatingOutcomeReview(params: {
 					? encrypt(proposal.wholeOutcome.notes, 'outcome.notes')
 					: null,
 				evidenceEnc: encrypt(
-					`Human-approved private voice reflection proposal v${proposal.proposalVersion}.`,
+					`Human-approved private voice reflection proposal v${proposal.proposalVersion}. One-sided report by IntroductionParticipant ${proposal.respondentParticipantId}; not mutual confirmation.`,
 					'outcome.evidence'
 				),
 				authority: 'SELF_DECLARED',

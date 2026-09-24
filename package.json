@@ -50,7 +50,8 @@
 		"check:stage8.9": "node --experimental-strip-types --test tests/core/stage8-9-multi-app-context-boundary.test.ts",
 		"check:stage8.10.2": "node --experimental-strip-types --test tests/core/stage8-10-2-login-throttle.test.ts",
 		"check:stage8.10.2:db": "tsx scripts/check-stage8-10-2-login-db.ts",
-		"check:stage8.10": "node --experimental-strip-types --test tests/core/stage8-10-dating-voice-outcome-pilot.test.ts"
+		"check:stage8.10": "node --experimental-strip-types --test tests/core/stage8-10-dating-voice-outcome-pilot.test.ts",
+		"check:stage8.10.3:db": "node --env-file=.env --import tsx scripts/check-stage8-10-3-dating-db.ts"
 	},
 	"engines": {
 		"node": ">=22.13.1 <23"

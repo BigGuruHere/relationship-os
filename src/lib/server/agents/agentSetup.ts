@@ -4,163 +4,259 @@
 import { prisma } from '$lib/db';
 
 const BROKER_BRIEF_OUTPUT_SCHEMA = {
-  type: 'object',
-  required: ['title', 'summary', 'context', 'keyPeople', 'openTasks', 'risks', 'opportunities', 'recommendedNextActions'],
-  properties: {
-    title: { type: 'string' },
-    summary: { type: 'string' },
-    context: { type: 'array', items: { type: 'string' } },
-    keyPeople: { type: 'array', items: { type: 'string' } },
-    openTasks: { type: 'array', items: { type: 'string' } },
-    risks: { type: 'array', items: { type: 'string' } },
-    opportunities: { type: 'array', items: { type: 'string' } },
-    recommendedNextActions: { type: 'array', items: { type: 'string' } }
-  }
+	type: 'object',
+	required: [
+		'title',
+		'summary',
+		'context',
+		'keyPeople',
+		'openTasks',
+		'risks',
+		'opportunities',
+		'recommendedNextActions'
+	],
+	properties: {
+		title: { type: 'string' },
+		summary: { type: 'string' },
+		context: { type: 'array', items: { type: 'string' } },
+		keyPeople: { type: 'array', items: { type: 'string' } },
+		openTasks: { type: 'array', items: { type: 'string' } },
+		risks: { type: 'array', items: { type: 'string' } },
+		opportunities: { type: 'array', items: { type: 'string' } },
+		recommendedNextActions: { type: 'array', items: { type: 'string' } }
+	}
 };
 
 const OUTREACH_OUTPUT_SCHEMA = {
-  type: 'object',
-  required: ['candidates', 'runBriefing'],
-  properties: {
-    candidates: {
-      type: 'array',
-      items: {
-        type: 'object',
-        required: ['entityType', 'name', 'confidence', 'totalScore', 'outreachAngle'],
-        properties: {
-          entityType: { type: 'string', enum: ['COMPANY', 'CONTACT'] },
-          name: { type: 'string' },
-          website: { type: 'string' },
-          sourceUrl: { type: 'string' },
-          sourceLabel: { type: 'string' },
-          confidence: { type: 'number' },
-          notes: { type: 'string' },
-          totalScore: { type: 'number' },
-          sectorFitScore: { type: 'number' },
-          ownerLedScore: { type: 'number' },
-          dealLikelihoodScore: { type: 'number' },
-          outreachFitScore: { type: 'number' },
-          timingScore: { type: 'number' },
-          confidenceScore: { type: 'number' },
-          strategicFitScore: { type: 'number' },
-          valuePotentialScore: { type: 'number' },
-          relationshipPathScore: { type: 'number' },
-          evidenceQualityScore: { type: 'number' },
-          riskScore: { type: 'number' },
-          scoreLabel: { type: 'string' },
-          priority: { type: 'string' },
-          recommendedAction: { type: 'string' },
-          scoreFactors: { type: 'array', items: { type: 'object' } },
-          scoreRationale: { type: 'array', items: { type: 'string' } },
-          outreachAngle: { type: 'string' },
-          draftSubject: { type: 'string' },
-          draftBody: { type: 'string' },
-          nextActionTitle: { type: 'string' }
-        }
-      }
-    },
-    runBriefing: {
-      type: 'object',
-      properties: {
-        title: { type: 'string' },
-        summary: { type: 'string' },
-        recommendedNextActions: { type: 'array', items: { type: 'string' } }
-      }
-    }
-  }
+	type: 'object',
+	required: ['candidates', 'runBriefing'],
+	properties: {
+		candidates: {
+			type: 'array',
+			items: {
+				type: 'object',
+				required: ['entityType', 'name', 'confidence', 'totalScore', 'outreachAngle'],
+				properties: {
+					entityType: { type: 'string', enum: ['COMPANY', 'CONTACT'] },
+					name: { type: 'string' },
+					website: { type: 'string' },
+					sourceUrl: { type: 'string' },
+					sourceLabel: { type: 'string' },
+					confidence: { type: 'number' },
+					notes: { type: 'string' },
+					totalScore: { type: 'number' },
+					sectorFitScore: { type: 'number' },
+					ownerLedScore: { type: 'number' },
+					dealLikelihoodScore: { type: 'number' },
+					outreachFitScore: { type: 'number' },
+					timingScore: { type: 'number' },
+					confidenceScore: { type: 'number' },
+					strategicFitScore: { type: 'number' },
+					valuePotentialScore: { type: 'number' },
+					relationshipPathScore: { type: 'number' },
+					evidenceQualityScore: { type: 'number' },
+					riskScore: { type: 'number' },
+					scoreLabel: { type: 'string' },
+					priority: { type: 'string' },
+					recommendedAction: { type: 'string' },
+					scoreFactors: { type: 'array', items: { type: 'object' } },
+					scoreRationale: { type: 'array', items: { type: 'string' } },
+					outreachAngle: { type: 'string' },
+					draftSubject: { type: 'string' },
+					draftBody: { type: 'string' },
+					nextActionTitle: { type: 'string' }
+				}
+			}
+		},
+		runBriefing: {
+			type: 'object',
+			properties: {
+				title: { type: 'string' },
+				summary: { type: 'string' },
+				recommendedNextActions: { type: 'array', items: { type: 'string' } }
+			}
+		}
+	}
 };
 
-
 const CONTACT_ENRICHMENT_OUTPUT_SCHEMA = {
-  type: 'object',
-  required: ['enrichments', 'runBriefing'],
-  properties: {
-    enrichments: {
-      type: 'array',
-      items: {
-        type: 'object',
-        properties: {
-          targetName: { type: 'string' },
-          fullName: { type: 'string' },
-          companyName: { type: 'string' },
-          fieldKey: { type: 'string' },
-          fieldLabel: { type: 'string' },
-          proposedValue: { type: 'string' },
-          existingValue: { type: 'string' },
-          evidenceType: { type: 'string' },
-          sourceKind: { type: 'string' },
-          conflictStatus: { type: 'string' },
-          isApplyable: { type: 'boolean' },
-          groupKey: { type: 'string' },
-          email: { type: 'string' },
-          phone: { type: 'string' },
-          linkedin: { type: 'string' },
-          roleTitle: { type: 'string' },
-          website: { type: 'string' },
-          sourceUrl: { type: 'string' },
-          sourceLabel: { type: 'string' },
-          confidence: { type: 'number' },
-          evidence: { type: 'string' },
-          notes: { type: 'string' },
-          recommendedAction: { type: 'string' }
-        }
-      }
-    },
-    runBriefing: {
-      type: 'object',
-      properties: {
-        title: { type: 'string' },
-        summary: { type: 'string' },
-        recommendedNextActions: { type: 'array', items: { type: 'string' } }
-      }
-    }
-  }
+	type: 'object',
+	required: ['enrichments', 'runBriefing'],
+	properties: {
+		enrichments: {
+			type: 'array',
+			items: {
+				type: 'object',
+				properties: {
+					targetName: { type: 'string' },
+					fullName: { type: 'string' },
+					companyName: { type: 'string' },
+					fieldKey: { type: 'string' },
+					fieldLabel: { type: 'string' },
+					proposedValue: { type: 'string' },
+					existingValue: { type: 'string' },
+					evidenceType: { type: 'string' },
+					sourceKind: { type: 'string' },
+					conflictStatus: { type: 'string' },
+					isApplyable: { type: 'boolean' },
+					groupKey: { type: 'string' },
+					email: { type: 'string' },
+					phone: { type: 'string' },
+					linkedin: { type: 'string' },
+					roleTitle: { type: 'string' },
+					website: { type: 'string' },
+					sourceUrl: { type: 'string' },
+					sourceLabel: { type: 'string' },
+					confidence: { type: 'number' },
+					evidence: { type: 'string' },
+					notes: { type: 'string' },
+					recommendedAction: { type: 'string' }
+				}
+			}
+		},
+		runBriefing: {
+			type: 'object',
+			properties: {
+				title: { type: 'string' },
+				summary: { type: 'string' },
+				recommendedNextActions: { type: 'array', items: { type: 'string' } }
+			}
+		}
+	}
+};
+
+// IT: Stage 8.10 keeps private Dating reflections in encrypted artifacts. Ordinary agent audit JSON is metadata-only.
+export const DATING_OUTCOME_OUTPUT_SCHEMA = {
+	type: 'object',
+	required: [
+		'personalExperience',
+		'selfLearning',
+		'otherPersonExperience',
+		'relationshipDynamic',
+		'desireToContinue',
+		'wholeOutcome',
+		'confidence'
+	],
+	properties: {
+		personalExperience: {
+			type: 'object',
+			required: ['summary', 'evidence'],
+			properties: {
+				summary: { type: 'string' },
+				evidence: { type: 'array', items: { type: 'string' } }
+			}
+		},
+		selfLearning: {
+			type: 'object',
+			required: ['summary', 'evidence'],
+			properties: {
+				summary: { type: 'string' },
+				evidence: { type: 'array', items: { type: 'string' } }
+			}
+		},
+		otherPersonExperience: {
+			type: 'object',
+			required: ['summary', 'evidence'],
+			properties: {
+				summary: { type: 'string' },
+				evidence: { type: 'array', items: { type: 'string' } }
+			}
+		},
+		relationshipDynamic: {
+			type: 'object',
+			required: ['summary', 'evidence'],
+			properties: {
+				summary: { type: 'string' },
+				evidence: { type: 'array', items: { type: 'string' } }
+			}
+		},
+		desireToContinue: {
+			type: 'object',
+			required: ['value', 'summary', 'evidence'],
+			properties: {
+				value: { type: 'string', enum: ['YES', 'NO', 'UNSURE', 'NOT_STATED'] },
+				summary: { type: 'string' },
+				evidence: { type: 'array', items: { type: 'string' } }
+			}
+		},
+		wholeOutcome: {
+			type: 'object',
+			required: ['status', 'useful', 'continued', 'result', 'notes'],
+			properties: {
+				status: {
+					type: 'string',
+					enum: [
+						'UNKNOWN',
+						'NO_RESPONSE',
+						'DECLINED',
+						'CONNECTED',
+						'CONTINUING',
+						'SUCCESSFUL',
+						'ENDED'
+					]
+				},
+				useful: { type: ['boolean', 'null'] },
+				continued: { type: ['boolean', 'null'] },
+				result: { type: 'string' },
+				notes: { type: 'string' }
+			}
+		},
+		confidence: { type: 'number' }
+	}
 };
 
 const OPPORTUNITY_SCORING_OUTPUT_SCHEMA = {
-  type: 'object',
-  required: ['targetName', 'totalScore', 'factors', 'rationale', 'risks', 'missingInformation', 'nextActions'],
-  properties: {
-    targetName: { type: 'string' },
-    entityType: { type: 'string' },
-    totalScore: { type: 'number' },
-    scoreLabel: { type: 'string', enum: ['hot', 'warm', 'watch', 'low', 'reject'] },
-    priority: { type: 'string', enum: ['urgent', 'high', 'medium', 'low'] },
-    recommendedAction: { type: 'string' },
-    sectorFitScore: { type: 'number' },
-    ownerLedScore: { type: 'number' },
-    dealLikelihoodScore: { type: 'number' },
-    outreachFitScore: { type: 'number' },
-    timingScore: { type: 'number' },
-    confidenceScore: { type: 'number' },
-    strategicFitScore: { type: 'number' },
-    valuePotentialScore: { type: 'number' },
-    relationshipPathScore: { type: 'number' },
-    evidenceQualityScore: { type: 'number' },
-    riskScore: { type: 'number' },
-    factors: {
-      type: 'array',
-      items: {
-        type: 'object',
-        required: ['criterionKey', 'criterionLabel', 'score', 'rationale'],
-        properties: {
-          criterionKey: { type: 'string' },
-          criterionLabel: { type: 'string' },
-          score: { type: 'number' },
-          weight: { type: 'number' },
-          polarity: { type: 'string' },
-          confidence: { type: 'number' },
-          evidence: { type: 'string' },
-          rationale: { type: 'string' },
-          sourceUrl: { type: 'string' }
-        }
-      }
-    },
-    rationale: { type: 'array', items: { type: 'string' } },
-    risks: { type: 'array', items: { type: 'string' } },
-    missingInformation: { type: 'array', items: { type: 'string' } },
-    nextActions: { type: 'array', items: { type: 'string' } }
-  }
+	type: 'object',
+	required: [
+		'targetName',
+		'totalScore',
+		'factors',
+		'rationale',
+		'risks',
+		'missingInformation',
+		'nextActions'
+	],
+	properties: {
+		targetName: { type: 'string' },
+		entityType: { type: 'string' },
+		totalScore: { type: 'number' },
+		scoreLabel: { type: 'string', enum: ['hot', 'warm', 'watch', 'low', 'reject'] },
+		priority: { type: 'string', enum: ['urgent', 'high', 'medium', 'low'] },
+		recommendedAction: { type: 'string' },
+		sectorFitScore: { type: 'number' },
+		ownerLedScore: { type: 'number' },
+		dealLikelihoodScore: { type: 'number' },
+		outreachFitScore: { type: 'number' },
+		timingScore: { type: 'number' },
+		confidenceScore: { type: 'number' },
+		strategicFitScore: { type: 'number' },
+		valuePotentialScore: { type: 'number' },
+		relationshipPathScore: { type: 'number' },
+		evidenceQualityScore: { type: 'number' },
+		riskScore: { type: 'number' },
+		factors: {
+			type: 'array',
+			items: {
+				type: 'object',
+				required: ['criterionKey', 'criterionLabel', 'score', 'rationale'],
+				properties: {
+					criterionKey: { type: 'string' },
+					criterionLabel: { type: 'string' },
+					score: { type: 'number' },
+					weight: { type: 'number' },
+					polarity: { type: 'string' },
+					confidence: { type: 'number' },
+					evidence: { type: 'string' },
+					rationale: { type: 'string' },
+					sourceUrl: { type: 'string' }
+				}
+			}
+		},
+		rationale: { type: 'array', items: { type: 'string' } },
+		risks: { type: 'array', items: { type: 'string' } },
+		missingInformation: { type: 'array', items: { type: 'string' } },
+		nextActions: { type: 'array', items: { type: 'string' } }
+	}
 };
 
 const BROKER_BRIEF_SYSTEM_PROMPT = `You are the Broker Brief Agent inside Relish.
@@ -187,7 +283,6 @@ Use plain human language, acknowledge uncertainty, and make the ask a quick conv
 Prefer fewer, stronger candidates over a broad loose list.
 Do not claim an email was sent.
 Do not claim research has been verified unless the source text or logged research source supports it. Prefer company candidates plus staged likely contact candidates with role/title and evidence when contact discovery is requested.`;
-
 
 const OPPORTUNITY_SCORING_SYSTEM_PROMPT = `You are the Opportunity Scoring Agent inside Relish.
 Relish is the source of truth. Your job is to prioritise attention, not to declare truth or take action.
@@ -218,303 +313,448 @@ Do not create applyable rows for guessed email patterns, guessed phone numbers, 
 For company contact discovery, never stage a person unless the name and relationship to the company are explicitly supported by evidence.
 Do not update CRM. Do not claim outreach has been sent.`;
 
+const DATING_OUTCOME_SYSTEM_PROMPT = `You are the Dating Outcome Extractor inside Relish.
+You extract a faithful structured proposal from one person's private reflection after a date or introduction.
+The transcript is evidence, not canonical truth. Distinguish the respondent's own experience, what they learned about themselves, their experience of the other person, the relationship dynamic, and their desire to continue.
+Do not diagnose either person. Do not infer protected or intimate traits. Do not turn preferences into facts about the other person. Do not infer consent or permission from silence.
+Use short evidence excerpts only when the transcript directly supports a field. Return strict JSON only without markdown fences.`;
+
+const DATING_OUTCOME_INSTRUCTIONS = `Create a provisional extraction for mandatory human review.
+Personal experience means how the respondent experienced the date, venue, format, comfort, enjoyment, or similar matters.
+Self-learning means preferences, boundaries, or insights the respondent explicitly learned about themselves.
+Other-person experience means the respondent's subjective impression of the other person, never an objective claim.
+Relationship dynamic means the interaction between the two people as experienced by the respondent.
+Desire to continue must be YES, NO, UNSURE, or NOT_STATED and must not be guessed.
+The whole Outcome is a cautious summary of what happened. Leave uncertain values null or UNKNOWN.
+Do not propose Knowledge Claims, Wants, Offers, matches, messages, or disclosure to the other participant.`;
 
 const AGENTS = [
-  {
-    key: 'broker_brief_agent',
-    name: 'Broker Brief Agent',
-    description: 'Creates a structured broker briefing from Relish CRM context.',
-    category: 'briefing',
-    personaKey: 'broker_analyst',
-    purposeKey: 'broker_briefing',
-    deploymentScope: 'workspace_internal',
-    authorityLevel: 'advisory',
-    dataPolicy: {
-      allowContacts: true, allowCompanies: true, allowDeals: true, allowProjects: true, allowPeople: true,
-      allowIdentity: true, allowContactMethods: true, allowInteractions: true, allowKnowledgeClaims: true,
-      allowObjectives: true, allowWants: true, allowOffers: true, allowRelationships: true,
-      allowIntroductions: true, allowOutcomes: true, allowTasks: true,
-      maxRecentInteractions: 8, maxKnowledgeClaims: 20, maxObjectives: 12, maxWants: 12, maxOffers: 12
-    },
-    systemPrompt: BROKER_BRIEF_SYSTEM_PROMPT,
-    instructions: BROKER_BRIEF_INSTRUCTIONS,
-    outputSchemaJson: BROKER_BRIEF_OUTPUT_SCHEMA,
-    requiresApprovalDefault: false,
-    promptVersion: 1
-  },
-  {
-    key: 'opportunity_scoring_agent',
-    name: 'Opportunity Scoring Agent',
-    description: 'Creates explainable scorecards for candidates, companies, contacts, and deals.',
-    category: 'scoring',
-    personaKey: 'opportunity_analyst',
-    purposeKey: 'opportunity_scoring',
-    deploymentScope: 'workspace_internal',
-    authorityLevel: 'advisory',
-    dataPolicy: {
-      allowContacts: true, allowCompanies: true, allowDeals: true, allowProjects: false, allowPeople: true,
-      allowIdentity: true, allowContactMethods: false, allowInteractions: true, allowKnowledgeClaims: true,
-      allowObjectives: true, allowWants: true, allowOffers: true, allowRelationships: true,
-      allowIntroductions: true, allowOutcomes: true, allowTasks: false,
-      maxRecentInteractions: 8, maxKnowledgeClaims: 20, maxObjectives: 12, maxWants: 12, maxOffers: 12
-    },
-    systemPrompt: OPPORTUNITY_SCORING_SYSTEM_PROMPT,
-    instructions: OPPORTUNITY_SCORING_INSTRUCTIONS,
-    outputSchemaJson: OPPORTUNITY_SCORING_OUTPUT_SCHEMA,
-    requiresApprovalDefault: false,
-    promptVersion: 2
-  },
+	{
+		key: 'dating_outcome_extractor',
+		name: 'Dating Outcome Extractor',
+		description:
+			'Produces a private, provisional extraction from a single-sided Dating voice reflection.',
+		category: 'dating_feedback',
+		personaKey: 'dating_reflection_listener',
+		purposeKey: 'dating_outcome_extraction',
+		deploymentScope: 'workspace_internal',
+		authorityLevel: 'propose_only',
+		allowedDomainKeys: ['dating'],
+		dataPolicy: {
+			allowContacts: false,
+			allowCompanies: false,
+			allowDeals: false,
+			allowProjects: false,
+			allowPeople: false,
+			allowIdentity: false,
+			allowContactMethods: false,
+			allowInteractions: true,
+			allowKnowledgeClaims: false,
+			allowObjectives: false,
+			allowWants: false,
+			allowOffers: false,
+			allowRelationships: false,
+			allowIntroductions: true,
+			allowOutcomes: true,
+			allowTasks: false,
+			maxRecentInteractions: 1,
+			maxKnowledgeClaims: 0,
+			maxObjectives: 0,
+			maxWants: 0,
+			maxOffers: 0
+		},
+		systemPrompt: DATING_OUTCOME_SYSTEM_PROMPT,
+		instructions: DATING_OUTCOME_INSTRUCTIONS,
+		outputSchemaJson: DATING_OUTCOME_OUTPUT_SCHEMA,
+		requiresApprovalDefault: true,
+		promptVersion: 1
+	},
+	{
+		key: 'broker_brief_agent',
+		name: 'Broker Brief Agent',
+		description: 'Creates a structured broker briefing from Relish CRM context.',
+		category: 'briefing',
+		personaKey: 'broker_analyst',
+		purposeKey: 'broker_briefing',
+		deploymentScope: 'workspace_internal',
+		authorityLevel: 'advisory',
+		allowedDomainKeys: ['business'],
+		dataPolicy: {
+			allowContacts: true,
+			allowCompanies: true,
+			allowDeals: true,
+			allowProjects: true,
+			allowPeople: true,
+			allowIdentity: true,
+			allowContactMethods: true,
+			allowInteractions: true,
+			allowKnowledgeClaims: true,
+			allowObjectives: true,
+			allowWants: true,
+			allowOffers: true,
+			allowRelationships: true,
+			allowIntroductions: true,
+			allowOutcomes: true,
+			allowTasks: true,
+			maxRecentInteractions: 8,
+			maxKnowledgeClaims: 20,
+			maxObjectives: 12,
+			maxWants: 12,
+			maxOffers: 12
+		},
+		systemPrompt: BROKER_BRIEF_SYSTEM_PROMPT,
+		instructions: BROKER_BRIEF_INSTRUCTIONS,
+		outputSchemaJson: BROKER_BRIEF_OUTPUT_SCHEMA,
+		requiresApprovalDefault: false,
+		promptVersion: 1
+	},
+	{
+		key: 'opportunity_scoring_agent',
+		name: 'Opportunity Scoring Agent',
+		description: 'Creates explainable scorecards for candidates, companies, contacts, and deals.',
+		category: 'scoring',
+		personaKey: 'opportunity_analyst',
+		purposeKey: 'opportunity_scoring',
+		deploymentScope: 'workspace_internal',
+		authorityLevel: 'advisory',
+		allowedDomainKeys: ['business'],
+		dataPolicy: {
+			allowContacts: true,
+			allowCompanies: true,
+			allowDeals: true,
+			allowProjects: false,
+			allowPeople: true,
+			allowIdentity: true,
+			allowContactMethods: false,
+			allowInteractions: true,
+			allowKnowledgeClaims: true,
+			allowObjectives: true,
+			allowWants: true,
+			allowOffers: true,
+			allowRelationships: true,
+			allowIntroductions: true,
+			allowOutcomes: true,
+			allowTasks: false,
+			maxRecentInteractions: 8,
+			maxKnowledgeClaims: 20,
+			maxObjectives: 12,
+			maxWants: 12,
+			maxOffers: 12
+		},
+		systemPrompt: OPPORTUNITY_SCORING_SYSTEM_PROMPT,
+		instructions: OPPORTUNITY_SCORING_INSTRUCTIONS,
+		outputSchemaJson: OPPORTUNITY_SCORING_OUTPUT_SCHEMA,
+		requiresApprovalDefault: false,
+		promptVersion: 2
+	},
 
-  {
-    key: 'contact_enrichment_agent',
-    name: 'Contact Enrichment Agent',
-    description: 'Stages public contact details with source evidence before CRM update.',
-    category: 'enrichment',
-    personaKey: 'relationship_researcher',
-    purposeKey: 'contact_enrichment',
-    deploymentScope: 'workspace_internal',
-    authorityLevel: 'propose_only',
-    dataPolicy: {
-      allowContacts: true, allowCompanies: true, allowDeals: false, allowProjects: false, allowPeople: false,
-      allowIdentity: true, allowContactMethods: true, allowInteractions: false, allowKnowledgeClaims: false,
-      allowObjectives: false, allowWants: false, allowOffers: false, allowRelationships: true,
-      allowIntroductions: false, allowOutcomes: false, allowTasks: false,
-      maxRecentInteractions: 4, maxKnowledgeClaims: 8, maxObjectives: 6, maxWants: 6, maxOffers: 6
-    },
-    systemPrompt: CONTACT_ENRICHMENT_SYSTEM_PROMPT,
-    instructions: CONTACT_ENRICHMENT_INSTRUCTIONS,
-    outputSchemaJson: CONTACT_ENRICHMENT_OUTPUT_SCHEMA,
-    requiresApprovalDefault: true,
-    promptVersion: 2
-  },
-  {
-    key: 'outreach_agent',
-    name: 'Outreach Agent',
-    description: 'Stages outreach candidates, scores opportunities, drafts outreach, requests approval, and creates next actions.',
-    category: 'outreach',
-    personaKey: 'broker_outreach_assistant',
-    purposeKey: 'broker_outreach',
-    deploymentScope: 'workspace_internal',
-    authorityLevel: 'propose_and_operational',
-    dataPolicy: {
-      allowContacts: true, allowCompanies: true, allowDeals: true, allowProjects: true, allowPeople: true,
-      allowIdentity: true, allowContactMethods: true, allowInteractions: true, allowKnowledgeClaims: true,
-      allowObjectives: true, allowWants: true, allowOffers: true, allowRelationships: true,
-      allowIntroductions: true, allowOutcomes: true, allowTasks: true,
-      maxRecentInteractions: 8, maxKnowledgeClaims: 20, maxObjectives: 12, maxWants: 12, maxOffers: 12
-    },
-    systemPrompt: OUTREACH_SYSTEM_PROMPT,
-    instructions: OUTREACH_INSTRUCTIONS,
-    outputSchemaJson: OUTREACH_OUTPUT_SCHEMA,
-    requiresApprovalDefault: true,
-    promptVersion: 1
-  }
+	{
+		key: 'contact_enrichment_agent',
+		name: 'Contact Enrichment Agent',
+		description: 'Stages public contact details with source evidence before CRM update.',
+		category: 'enrichment',
+		personaKey: 'relationship_researcher',
+		purposeKey: 'contact_enrichment',
+		deploymentScope: 'workspace_internal',
+		authorityLevel: 'propose_only',
+		allowedDomainKeys: ['business'],
+		dataPolicy: {
+			allowContacts: true,
+			allowCompanies: true,
+			allowDeals: false,
+			allowProjects: false,
+			allowPeople: false,
+			allowIdentity: true,
+			allowContactMethods: true,
+			allowInteractions: false,
+			allowKnowledgeClaims: false,
+			allowObjectives: false,
+			allowWants: false,
+			allowOffers: false,
+			allowRelationships: true,
+			allowIntroductions: false,
+			allowOutcomes: false,
+			allowTasks: false,
+			maxRecentInteractions: 4,
+			maxKnowledgeClaims: 8,
+			maxObjectives: 6,
+			maxWants: 6,
+			maxOffers: 6
+		},
+		systemPrompt: CONTACT_ENRICHMENT_SYSTEM_PROMPT,
+		instructions: CONTACT_ENRICHMENT_INSTRUCTIONS,
+		outputSchemaJson: CONTACT_ENRICHMENT_OUTPUT_SCHEMA,
+		requiresApprovalDefault: true,
+		promptVersion: 2
+	},
+	{
+		key: 'outreach_agent',
+		name: 'Outreach Agent',
+		description:
+			'Stages outreach candidates, scores opportunities, drafts outreach, requests approval, and creates next actions.',
+		category: 'outreach',
+		personaKey: 'broker_outreach_assistant',
+		purposeKey: 'broker_outreach',
+		deploymentScope: 'workspace_internal',
+		authorityLevel: 'propose_and_operational',
+		allowedDomainKeys: ['business'],
+		dataPolicy: {
+			allowContacts: true,
+			allowCompanies: true,
+			allowDeals: true,
+			allowProjects: true,
+			allowPeople: true,
+			allowIdentity: true,
+			allowContactMethods: true,
+			allowInteractions: true,
+			allowKnowledgeClaims: true,
+			allowObjectives: true,
+			allowWants: true,
+			allowOffers: true,
+			allowRelationships: true,
+			allowIntroductions: true,
+			allowOutcomes: true,
+			allowTasks: true,
+			maxRecentInteractions: 8,
+			maxKnowledgeClaims: 20,
+			maxObjectives: 12,
+			maxWants: 12,
+			maxOffers: 12
+		},
+		systemPrompt: OUTREACH_SYSTEM_PROMPT,
+		instructions: OUTREACH_INSTRUCTIONS,
+		outputSchemaJson: OUTREACH_OUTPUT_SCHEMA,
+		requiresApprovalDefault: true,
+		promptVersion: 1
+	}
 ];
 
 const CORE_TOOLS = [
-  {
-    key: 'read_entity_context',
-    name: 'Read entity context',
-    description: 'Reads a contact, company, deal, or project context from Relish.',
-    toolType: 'read',
-    requiresApproval: false,
-    agents: ['broker_brief_agent', 'outreach_agent', 'opportunity_scoring_agent', 'contact_enrichment_agent']
-  },
-  {
-    key: 'read_agent_memory',
-    name: 'Read agent memory',
-    description: 'Builds a purpose-scoped derived memory projection from permitted Relish Core records.',
-    toolType: 'read',
-    requiresApproval: false,
-    agents: ['broker_brief_agent', 'outreach_agent', 'opportunity_scoring_agent']
-  },
-  {
-    key: 'create_agent_artifact',
-    name: 'Create agent artifact',
-    description: 'Stores an encrypted durable output produced by an agent.',
-    toolType: 'write',
-    requiresApproval: false,
-    agents: ['broker_brief_agent', 'outreach_agent', 'opportunity_scoring_agent', 'contact_enrichment_agent']
-  },
-  {
-    key: 'create_research_candidate',
-    name: 'Create research candidate',
-    description: 'Stages a company or contact candidate before it becomes source-of-truth CRM data.',
-    toolType: 'write',
-    requiresApproval: false,
-    agents: ['outreach_agent']
-  },
-  {
-    key: 'create_contact_enrichment',
-    name: 'Create contact enrichment',
-    description: 'Stages proposed contact details before they update CRM.',
-    toolType: 'write',
-    requiresApproval: false,
-    agents: ['contact_enrichment_agent']
-  },
-  {
-    key: 'create_opportunity_score',
-    name: 'Create opportunity score',
-    description: 'Stores a structured scorecard for a candidate or existing CRM record.',
-    toolType: 'write',
-    requiresApproval: false,
-    agents: ['outreach_agent', 'opportunity_scoring_agent', 'contact_enrichment_agent']
-  },
-  {
-    key: 'create_approval_request',
-    name: 'Create approval request',
-    description: 'Creates a human approval request for a proposed agent action.',
-    toolType: 'propose',
-    requiresApproval: false,
-    agents: ['outreach_agent']
-  },
+	{
+		key: 'read_entity_context',
+		name: 'Read entity context',
+		description: 'Reads a contact, company, deal, or project context from Relish.',
+		toolType: 'read',
+		requiresApproval: false,
+		agents: [
+			'broker_brief_agent',
+			'outreach_agent',
+			'opportunity_scoring_agent',
+			'contact_enrichment_agent'
+		]
+	},
+	{
+		key: 'read_agent_memory',
+		name: 'Read agent memory',
+		description:
+			'Builds a purpose-scoped derived memory projection from permitted Relish Core records.',
+		toolType: 'read',
+		requiresApproval: false,
+		agents: ['broker_brief_agent', 'outreach_agent', 'opportunity_scoring_agent']
+	},
+	{
+		key: 'create_agent_artifact',
+		name: 'Create agent artifact',
+		description: 'Stores an encrypted durable output produced by an agent.',
+		toolType: 'write',
+		requiresApproval: false,
+		agents: [
+			'broker_brief_agent',
+			'outreach_agent',
+			'opportunity_scoring_agent',
+			'contact_enrichment_agent',
+			'dating_outcome_extractor'
+		]
+	},
+	{
+		key: 'create_research_candidate',
+		name: 'Create research candidate',
+		description:
+			'Stages a company or contact candidate before it becomes source-of-truth CRM data.',
+		toolType: 'write',
+		requiresApproval: false,
+		agents: ['outreach_agent']
+	},
+	{
+		key: 'create_contact_enrichment',
+		name: 'Create contact enrichment',
+		description: 'Stages proposed contact details before they update CRM.',
+		toolType: 'write',
+		requiresApproval: false,
+		agents: ['contact_enrichment_agent']
+	},
+	{
+		key: 'create_opportunity_score',
+		name: 'Create opportunity score',
+		description: 'Stores a structured scorecard for a candidate or existing CRM record.',
+		toolType: 'write',
+		requiresApproval: false,
+		agents: ['outreach_agent', 'opportunity_scoring_agent', 'contact_enrichment_agent']
+	},
+	{
+		key: 'create_approval_request',
+		name: 'Create approval request',
+		description: 'Creates a human approval request for a proposed agent action.',
+		toolType: 'propose',
+		requiresApproval: false,
+		agents: ['outreach_agent', 'dating_outcome_extractor']
+	},
 
-  {
-    key: 'research_web_search',
-    name: 'Research web search',
-    description: 'Runs controlled provider-independent web search and returns normalized results for staging only.',
-    toolType: 'research',
-    requiresApproval: false,
-    agents: ['outreach_agent', 'contact_enrichment_agent']
-  },
-  {
-    key: 'create_research_source',
-    name: 'Create research source',
-    description: 'Stores web/search evidence rows linked to an agent run, candidate, company, or contact.',
-    toolType: 'write',
-    requiresApproval: false,
-    agents: ['outreach_agent', 'contact_enrichment_agent']
-  },
-  {
-    key: 'create_task',
-    name: 'Create task',
-    description: 'Creates a Relish task for follow-up or human review.',
-    toolType: 'write',
-    requiresApproval: false,
-    agents: ['outreach_agent', 'opportunity_scoring_agent', 'contact_enrichment_agent']
-  }
+	{
+		key: 'research_web_search',
+		name: 'Research web search',
+		description:
+			'Runs controlled provider-independent web search and returns normalized results for staging only.',
+		toolType: 'research',
+		requiresApproval: false,
+		agents: ['outreach_agent', 'contact_enrichment_agent']
+	},
+	{
+		key: 'create_research_source',
+		name: 'Create research source',
+		description:
+			'Stores web/search evidence rows linked to an agent run, candidate, company, or contact.',
+		toolType: 'write',
+		requiresApproval: false,
+		agents: ['outreach_agent', 'contact_enrichment_agent']
+	},
+	{
+		key: 'create_task',
+		name: 'Create task',
+		description: 'Creates a Relish task for follow-up or human review.',
+		toolType: 'write',
+		requiresApproval: false,
+		agents: ['outreach_agent', 'opportunity_scoring_agent', 'contact_enrichment_agent']
+	}
 ];
 
 export async function ensureCoreAgentSetup(userId: string) {
-  const createdAgents = new Map<string, { id: string }>();
+	const createdAgents = new Map<string, { id: string }>();
 
-  for (const cfg of AGENTS) {
-    const agent = await prisma.agentDefinition.upsert({
-      where: { userId_key: { userId, key: cfg.key } },
-      update: {
-        name: cfg.name,
-        description: cfg.description,
-        category: cfg.category,
-        status: 'active',
-        personaKey: cfg.personaKey,
-        purposeKey: cfg.purposeKey,
-        deploymentScope: cfg.deploymentScope,
-        authorityLevel: cfg.authorityLevel,
-        allowedDomainKeys: ['business'],
-        allowedContextSpaceIds: [],
-        defaultModelProvider: 'openai',
-        defaultModelName: process.env.AGENT_DEFAULT_MODEL || 'gpt-4o-mini',
-        systemPrompt: cfg.systemPrompt,
-        instructions: cfg.instructions,
-        outputSchemaJson: cfg.outputSchemaJson as any,
-        requiresApprovalDefault: cfg.requiresApprovalDefault
-      },
-      create: {
-        userId,
-        key: cfg.key,
-        name: cfg.name,
-        description: cfg.description,
-        category: cfg.category,
-        status: 'active',
-        personaKey: cfg.personaKey,
-        purposeKey: cfg.purposeKey,
-        deploymentScope: cfg.deploymentScope,
-        authorityLevel: cfg.authorityLevel,
-        allowedDomainKeys: ['business'],
-        allowedContextSpaceIds: [],
-        defaultModelProvider: 'openai',
-        defaultModelName: process.env.AGENT_DEFAULT_MODEL || 'gpt-4o-mini',
-        systemPrompt: cfg.systemPrompt,
-        instructions: cfg.instructions,
-        outputSchemaJson: cfg.outputSchemaJson as any,
-        requiresApprovalDefault: cfg.requiresApprovalDefault
-      }
-    });
-    createdAgents.set(cfg.key, { id: agent.id });
+	for (const cfg of AGENTS) {
+		const agent = await prisma.agentDefinition.upsert({
+			where: { userId_key: { userId, key: cfg.key } },
+			update: {
+				name: cfg.name,
+				description: cfg.description,
+				category: cfg.category,
+				status: 'active',
+				personaKey: cfg.personaKey,
+				purposeKey: cfg.purposeKey,
+				deploymentScope: cfg.deploymentScope,
+				authorityLevel: cfg.authorityLevel,
+				allowedDomainKeys: cfg.allowedDomainKeys,
+				allowedContextSpaceIds: [],
+				defaultModelProvider: 'openai',
+				defaultModelName: process.env.AGENT_DEFAULT_MODEL || 'gpt-4o-mini',
+				systemPrompt: cfg.systemPrompt,
+				instructions: cfg.instructions,
+				outputSchemaJson: cfg.outputSchemaJson as any,
+				requiresApprovalDefault: cfg.requiresApprovalDefault
+			},
+			create: {
+				userId,
+				key: cfg.key,
+				name: cfg.name,
+				description: cfg.description,
+				category: cfg.category,
+				status: 'active',
+				personaKey: cfg.personaKey,
+				purposeKey: cfg.purposeKey,
+				deploymentScope: cfg.deploymentScope,
+				authorityLevel: cfg.authorityLevel,
+				allowedDomainKeys: cfg.allowedDomainKeys,
+				allowedContextSpaceIds: [],
+				defaultModelProvider: 'openai',
+				defaultModelName: process.env.AGENT_DEFAULT_MODEL || 'gpt-4o-mini',
+				systemPrompt: cfg.systemPrompt,
+				instructions: cfg.instructions,
+				outputSchemaJson: cfg.outputSchemaJson as any,
+				requiresApprovalDefault: cfg.requiresApprovalDefault
+			}
+		});
+		createdAgents.set(cfg.key, { id: agent.id });
 
-    await prisma.agentDataAccessPolicy.upsert({
-      where: { agentDefinitionId: agent.id },
-      update: {
-        userId,
-        scopeKey: 'workspace_visible',
-        ...cfg.dataPolicy
-      },
-      create: {
-        userId,
-        agentDefinitionId: agent.id,
-        scopeKey: 'workspace_visible',
-        ...cfg.dataPolicy
-      }
-    });
+		await prisma.agentDataAccessPolicy.upsert({
+			where: { agentDefinitionId: agent.id },
+			update: {
+				userId,
+				scopeKey: 'workspace_visible',
+				...cfg.dataPolicy
+			},
+			create: {
+				userId,
+				agentDefinitionId: agent.id,
+				scopeKey: 'workspace_visible',
+				...cfg.dataPolicy
+			}
+		});
 
-    await prisma.agentPromptVersion.upsert({
-      where: { agentDefinitionId_version: { agentDefinitionId: agent.id, version: cfg.promptVersion } },
-      update: {
-        userId,
-        systemPrompt: cfg.systemPrompt,
-        instructions: cfg.instructions,
-        outputSchemaJson: cfg.outputSchemaJson as any,
-        isActive: true
-      },
-      create: {
-        userId,
-        agentDefinitionId: agent.id,
-        version: cfg.promptVersion,
-        systemPrompt: cfg.systemPrompt,
-        instructions: cfg.instructions,
-        outputSchemaJson: cfg.outputSchemaJson as any,
-        isActive: true,
-        createdBy: 'system'
-      }
-    });
-  }
+		await prisma.agentPromptVersion.upsert({
+			where: {
+				agentDefinitionId_version: { agentDefinitionId: agent.id, version: cfg.promptVersion }
+			},
+			update: {
+				userId,
+				systemPrompt: cfg.systemPrompt,
+				instructions: cfg.instructions,
+				outputSchemaJson: cfg.outputSchemaJson as any,
+				isActive: true
+			},
+			create: {
+				userId,
+				agentDefinitionId: agent.id,
+				version: cfg.promptVersion,
+				systemPrompt: cfg.systemPrompt,
+				instructions: cfg.instructions,
+				outputSchemaJson: cfg.outputSchemaJson as any,
+				isActive: true,
+				createdBy: 'system'
+			}
+		});
+	}
 
-  for (const tool of CORE_TOOLS) {
-    const dbTool = await prisma.agentToolDefinition.upsert({
-      where: { userId_key: { userId, key: tool.key } },
-      update: {
-        name: tool.name,
-        description: tool.description,
-        toolType: tool.toolType,
-        requiresApproval: tool.requiresApproval,
-        isEnabled: true
-      },
-      create: {
-        userId,
-        key: tool.key,
-        name: tool.name,
-        description: tool.description,
-        toolType: tool.toolType,
-        requiresApproval: tool.requiresApproval,
-        isEnabled: true
-      }
-    });
+	for (const tool of CORE_TOOLS) {
+		const dbTool = await prisma.agentToolDefinition.upsert({
+			where: { userId_key: { userId, key: tool.key } },
+			update: {
+				name: tool.name,
+				description: tool.description,
+				toolType: tool.toolType,
+				requiresApproval: tool.requiresApproval,
+				isEnabled: true
+			},
+			create: {
+				userId,
+				key: tool.key,
+				name: tool.name,
+				description: tool.description,
+				toolType: tool.toolType,
+				requiresApproval: tool.requiresApproval,
+				isEnabled: true
+			}
+		});
 
-    for (const agentKey of tool.agents) {
-      const agent = createdAgents.get(agentKey);
-      if (!agent) continue;
-      await prisma.agentToolPermission.upsert({
-        where: { agentDefinitionId_toolDefinitionId: { agentDefinitionId: agent.id, toolDefinitionId: dbTool.id } },
-        update: { permissionLevel: 'execute', requiresApproval: tool.requiresApproval },
-        create: {
-          agentDefinitionId: agent.id,
-          toolDefinitionId: dbTool.id,
-          permissionLevel: 'execute',
-          requiresApproval: tool.requiresApproval
-        }
-      });
-    }
-  }
+		for (const agentKey of tool.agents) {
+			const agent = createdAgents.get(agentKey);
+			if (!agent) continue;
+			await prisma.agentToolPermission.upsert({
+				where: {
+					agentDefinitionId_toolDefinitionId: {
+						agentDefinitionId: agent.id,
+						toolDefinitionId: dbTool.id
+					}
+				},
+				update: { permissionLevel: 'execute', requiresApproval: tool.requiresApproval },
+				create: {
+					agentDefinitionId: agent.id,
+					toolDefinitionId: dbTool.id,
+					permissionLevel: 'execute',
+					requiresApproval: tool.requiresApproval
+				}
+			});
+		}
+	}
 
-  return createdAgents.get('broker_brief_agent');
+	return createdAgents.get('broker_brief_agent');
 }

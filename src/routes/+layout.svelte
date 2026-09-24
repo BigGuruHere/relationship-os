@@ -286,8 +286,10 @@
 			{/if}
 			{#if isDatingApplication}
 				<a class="nav-link" href="/dating">Dating home</a>
+				<a class="nav-link" href="/dating/people">People</a>
+				<a class="nav-link" href="/dating/introductions/new">New Introduction</a>
 				<div class="card" style="padding:10px; color:var(--muted); font-size:0.9rem;">
-					Dating voice feedback will be added in Stage 8.10.
+					Voice reflections require review before an Outcome is created.
 				</div>
 			{:else}
 				<a class="nav-link" href="/">Contacts</a>

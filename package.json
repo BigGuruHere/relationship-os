@@ -47,7 +47,8 @@
 		"check:stage8.8.12": "node --experimental-strip-types --test tests/core/stage8-8-12-lead-filter-authoritative-refresh.test.ts",
 		"check:stage8.8.13": "node --experimental-strip-types --test tests/core/stage8-8-13-multi-app-roadmap-baseline.test.ts",
 		"check:stage8.8.14": "node --experimental-strip-types --test tests/core/stage8-8-14-relationshipos-design-roadmap.test.ts",
-		"check:stage8.9": "node --experimental-strip-types --test tests/core/stage8-9-multi-app-context-boundary.test.ts"
+		"check:stage8.9": "node --experimental-strip-types --test tests/core/stage8-9-multi-app-context-boundary.test.ts",
+		"check:stage8.10": "node --experimental-strip-types --test tests/core/stage8-10-dating-voice-outcome-pilot.test.ts"
 	},
 	"engines": {
 		"node": ">=22.13.1 <23"

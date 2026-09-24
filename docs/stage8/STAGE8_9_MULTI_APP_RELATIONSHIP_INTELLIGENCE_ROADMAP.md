@@ -133,23 +133,23 @@ Future models may reprocess preserved evidence and produce better interpretation
 
 The following existing components remain authoritative and must be extended rather than duplicated:
 
-| Need | Existing Core capability |
-| --- | --- |
-| Encrypted source evidence | `Interaction.rawTextEnc` |
-| Source summary | `Interaction.summaryEnc` |
-| Channel-neutral ingestion | `createCoreInteraction()` |
-| Private semantic evidence search | `InteractionEmbedding` |
-| Durable reviewed meaning | `KnowledgeClaim` |
-| Appendable provenance | `KnowledgeEvidence` |
-| Higher-level intentions | `Objective`, `Want`, `Offer` |
-| Real connection event | `Introduction` and `IntroductionParticipant` |
-| Whole-connection state | `Outcome` |
-| Custody boundary | `ContextSpace` |
-| Purpose-scoped agent memory | `buildAgentMemoryProjection()` |
-| Agent data permission | `AgentDataAccessPolicy` |
-| Agent action permission | `AgentToolPermission` |
-| Human review | `ApprovalRequest` |
-| Agent audit | `AgentRun`, `AgentStep`, `AgentToolCall`, `ModelInvocation` |
+| Need                             | Existing Core capability                                    |
+| -------------------------------- | ----------------------------------------------------------- |
+| Encrypted source evidence        | `Interaction.rawTextEnc`                                    |
+| Source summary                   | `Interaction.summaryEnc`                                    |
+| Channel-neutral ingestion        | `createCoreInteraction()`                                   |
+| Private semantic evidence search | `InteractionEmbedding`                                      |
+| Durable reviewed meaning         | `KnowledgeClaim`                                            |
+| Appendable provenance            | `KnowledgeEvidence`                                         |
+| Higher-level intentions          | `Objective`, `Want`, `Offer`                                |
+| Real connection event            | `Introduction` and `IntroductionParticipant`                |
+| Whole-connection state           | `Outcome`                                                   |
+| Custody boundary                 | `ContextSpace`                                              |
+| Purpose-scoped agent memory      | `buildAgentMemoryProjection()`                              |
+| Agent data permission            | `AgentDataAccessPolicy`                                     |
+| Agent action permission          | `AgentToolPermission`                                       |
+| Human review                     | `ApprovalRequest`                                           |
+| Agent audit                      | `AgentRun`, `AgentStep`, `AgentToolCall`, `ModelInvocation` |
 
 No new live representation may duplicate these concepts without an explicit migration and retirement plan.
 
@@ -193,17 +193,17 @@ Future work must extend these foundations rather than claim that the later capab
 
 Relish must not collapse the following concepts into one table or identifier:
 
-| Concept | Meaning | Examples |
-| --- | --- | --- |
-| Identity | Who or what exists | Person, Company |
-| Contextual representation | How a custodian knows an identity | Contact |
-| Custody | Which owner and app boundary holds records | ContextSpace |
-| Relationship unit | An ongoing collective whose value may be considered | Dyad, partnership, team, family |
-| Activity | Something that occurred or is planned | Introduction, meeting, contribution plan |
-| Opportunity context | A setting in which connections or actions may create value | Conference, dinner, community event |
-| Evidence | What was said, observed, or recorded | Interaction, transcript, note |
-| Meaning | Reviewed interpretation of evidence | Claim, Want, Offer, constraint |
-| Outcome | What resulted and from whose perspective | Individual, relationship, group, policy |
+| Concept                   | Meaning                                                    | Examples                                 |
+| ------------------------- | ---------------------------------------------------------- | ---------------------------------------- |
+| Identity                  | Who or what exists                                         | Person, Company                          |
+| Contextual representation | How a custodian knows an identity                          | Contact                                  |
+| Custody                   | Which owner and app boundary holds records                 | ContextSpace                             |
+| Relationship unit         | An ongoing collective whose value may be considered        | Dyad, partnership, team, family          |
+| Activity                  | Something that occurred or is planned                      | Introduction, meeting, contribution plan |
+| Opportunity context       | A setting in which connections or actions may create value | Conference, dinner, community event      |
+| Evidence                  | What was said, observed, or recorded                       | Interaction, transcript, note            |
+| Meaning                   | Reviewed interpretation of evidence                        | Claim, Want, Offer, constraint           |
+| Outcome                   | What resulted and from whose perspective                   | Individual, relationship, group, policy  |
 
 `ContextSpace` remains the custody and application boundary. It must not be used as the person, relationship unit, team, event, or real-world activity being analysed.
 
@@ -245,13 +245,13 @@ New Value Orchestration and Event Intelligence models begin app-specific unless 
 
 ### 5.5 RelationshipOS capability map
 
-| App or capability | Fixed input | Variable being chosen | Primary output | Shared Core dependencies |
-| --- | --- | --- | --- | --- |
-| Business introduction | Buyer, seller, mandate, or opportunity | Relevant counterpart | Introduction recommendation | Identity, Wants, Offers, Objectives, evidence, consent, projection, Outcome |
-| Dating | One participant or candidate pool | Compatible participant | PotentialMatch and Introduction | Identity, feedback, claims, consent, projection, disclosure, Outcome |
-| Value Orchestration | Existing pair or group | Contributions and joint actions | ValueOpportunity and ContributionPlan | Relationship unit, Wants, Needs, Offers, Objectives, multi-subject projection, Outcome |
-| Event attendee recommendation | Person or group plus one event | Relevant attendees or meetings | Networking plan | Event, attendance, current objectives, projection, consent, recommendation Outcome |
-| Event recommendation | Person or group | Suitable events | Ranked event opportunities | Event metadata, time and location constraints, group projection, Outcome learning |
+| App or capability             | Fixed input                            | Variable being chosen           | Primary output                        | Shared Core dependencies                                                               |
+| ----------------------------- | -------------------------------------- | ------------------------------- | ------------------------------------- | -------------------------------------------------------------------------------------- |
+| Business introduction         | Buyer, seller, mandate, or opportunity | Relevant counterpart            | Introduction recommendation           | Identity, Wants, Offers, Objectives, evidence, consent, projection, Outcome            |
+| Dating                        | One participant or candidate pool      | Compatible participant          | PotentialMatch and Introduction       | Identity, feedback, claims, consent, projection, disclosure, Outcome                   |
+| Value Orchestration           | Existing pair or group                 | Contributions and joint actions | ValueOpportunity and ContributionPlan | Relationship unit, Wants, Needs, Offers, Objectives, multi-subject projection, Outcome |
+| Event attendee recommendation | Person or group plus one event         | Relevant attendees or meetings  | Networking plan                       | Event, attendance, current objectives, projection, consent, recommendation Outcome     |
+| Event recommendation          | Person or group                        | Suitable events                 | Ranked event opportunities            | Event metadata, time and location constraints, group projection, Outcome learning      |
 
 The architecture must support both selection and orchestration:
 
@@ -367,6 +367,8 @@ Acceptance gate:
 - No raw contextual data crosses the boundary in search, memory, embeddings, or audit logs.
 
 ### Stage 8.10 - Dating app shell and single-sided voice Outcome pilot
+
+Status: implemented in the Stage 8.10 release. Pilot acceptance still requires the controlled dry runs and real consented reflections below.
 
 Goal: test whether voice feedback produces reliable, useful information before building two-sided matching.
 

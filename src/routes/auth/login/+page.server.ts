@@ -12,6 +12,7 @@ import { fail, redirect } from '@sveltejs/kit';
 import { prisma } from '$lib/db';
 import { verifyPassword, createSession, setSessionCookie } from '$lib/auth';
 import { linkLeadsForUser } from '$lib/leads/link';
+import { consumePasswordLoginAttempt, clearSuccessfulLoginAccountBucket } from '$lib/server/loginThrottle';
 
 // IT - encrypted email helpers
 import { findUserByEmail, decryptUserEmail } from '$lib/server/userEmail';
@@ -23,7 +24,7 @@ export const load: PageServerLoad = async ({ locals }) => {
 };
 
 export const actions: Actions = {
-  default: async ({ request, cookies, locals }) => {
+  default: async ({ request, cookies, locals, getClientAddress }) => {
     // 1 - parse form
     const form = await request.formData();
     const emailInput = String(form.get('email') || '').trim();
@@ -34,24 +35,41 @@ export const actions: Actions = {
       return fail(400, { error: 'Email and password are required' });
     }
 
-    // 3 - lookup by encrypted email index
+    // 3 - consume shared, atomic IP and account budgets before expensive password work.
+    // getClientAddress uses SvelteKit/adapter-node trusted address configuration.
+    // Do not trust an arbitrary X-Forwarded-For request header here.
+    const clientIp = getClientAddress();
+    const allowed = await consumePasswordLoginAttempt(clientIp, emailInput);
+    if (!allowed) {
+      // Do not reveal which budget was exhausted or whether the account exists.
+      return fail(429, { error: 'Too many sign-in attempts. Please try again in 15 minutes.' });
+    }
+
+    // 4 - lookup by encrypted email index
     const user = await findUserByEmail(emailInput);
     if (!user || !user.passwordHash) {
       return fail(400, { error: 'Invalid email or password' });
     }
 
-    // 4 - verify password
-    // IT - verifyPassword takes (password, hash)
-    const ok = await verifyPassword(password, user.passwordHash);
+    // 5 - verifyPassword expects the stored Argon2 hash FIRST, then the password.
+    const ok = await verifyPassword(user.passwordHash, password);
     if (!ok) {
       return fail(400, { error: 'Invalid email or password' });
     }
 
-    // 5 - create session and set env-aware cookie
+    // 6 - create session and set env-aware cookie
     const { cookie, expiresAt } = await createSession(user.id);
     setSessionCookie(cookies, locals, cookie, expiresAt);
 
-    // 6 - post auth linking - decrypt server-side to pass a string email only to the linker
+    // Clearing the account bucket is best effort AFTER successful authentication.
+    // The IP budget remains, limiting traffic even when valid credentials are used.
+    try {
+      await clearSuccessfulLoginAccountBucket(emailInput);
+    } catch (e) {
+      console.warn('Could not clear successful-login throttle bucket:', e);
+    }
+
+    // 7 - post auth linking - decrypt server-side to pass a string email only to the linker
     try {
       const u = await prisma.user.findUnique({
         where: { id: user.id },
@@ -66,7 +84,7 @@ export const actions: Actions = {
       console.warn('linkLeadsForUser failed after password login:', e);
     }
 
-    // 7 - done
+    // 8 - done
     throw redirect(303, '/');
   }
 };

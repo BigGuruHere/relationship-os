@@ -301,6 +301,17 @@ model OAuthAccount {
   @@index([userId])
 }
 
+// Password login attempt budgets live outside any user/context record so unknown
+// addresses are throttled too. Keys are HMACs, never raw email or IP data.
+model PasswordLoginThrottle {
+  key       String   @id
+  kind      String
+  attempts  Int
+  expiresAt DateTime
+
+  @@index([expiresAt])
+}
+
 // MODEL: Session
 // - Stores session token hash and expiry
 // - tokenHash is a server side HMAC of a random token sent to the browser

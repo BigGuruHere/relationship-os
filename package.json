@@ -48,6 +48,8 @@
 		"check:stage8.8.13": "node --experimental-strip-types --test tests/core/stage8-8-13-multi-app-roadmap-baseline.test.ts",
 		"check:stage8.8.14": "node --experimental-strip-types --test tests/core/stage8-8-14-relationshipos-design-roadmap.test.ts",
 		"check:stage8.9": "node --experimental-strip-types --test tests/core/stage8-9-multi-app-context-boundary.test.ts",
+		"check:stage8.10.2": "node --experimental-strip-types --test tests/core/stage8-10-2-login-throttle.test.ts",
+		"check:stage8.10.2:db": "tsx scripts/check-stage8-10-2-login-db.ts",
 		"check:stage8.10": "node --experimental-strip-types --test tests/core/stage8-10-dating-voice-outcome-pilot.test.ts"
 	},
 	"engines": {

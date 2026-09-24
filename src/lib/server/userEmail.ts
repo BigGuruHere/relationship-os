@@ -55,14 +55,20 @@ function toEmailIdx(inputEmail: string) {
   throw new Error('No email index function available');
 }
 
-// IT - write encrypted email and deterministic index
+// Prepare email fields for an atomic User create or update. Never store a plaintext email.
+export function encryptedUserEmailFields(email: string) {
+  const normalized = normalizeEmail(email);
+  return {
+    email_Enc: encrypt(normalized),
+    email_Idx: toEmailIdx(normalized)
+  };
+}
+
+// IT - write encrypted email and deterministic index for existing users.
 export async function setUserEmail(userId: string, email: string) {
-  const norm = normalizeEmail(email);
-  const email_Enc = encrypt(norm);
-  const email_Idx = toEmailIdx(norm);
   return prisma.user.update({
     where: { id: userId },
-    data: { email_Enc, email_Idx }
+    data: encryptedUserEmailFields(email)
   });
 }
 

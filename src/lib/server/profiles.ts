@@ -3,6 +3,7 @@
 // SECURITY: server-only - creates minimal public fields with safe defaults
 
 import { prisma } from '$lib/db';
+import { randomUUID } from 'node:crypto';
 
 type Seed = {
   displayName?: string | null;
@@ -22,6 +23,8 @@ export async function ensureDefaultProfile(userId: string, seed: Seed = {}): Pro
       isDefault: true,
       kind: 'business',
       label: 'My profile',
+      // Use a non-identifying, globally unique public profile URL slug.
+      slug: `p-${randomUUID()}`,
       displayName: seed.displayName || 'New Relish user',
       avatarUrl: seed.avatarUrl || null
       // emailPublic and phonePublic remain null by default

@@ -8,13 +8,8 @@ if (!url) throw new Error('TEST_DATABASE_URL is required (disposable migrated da
 if (process.env.ALLOW_DISPOSABLE_LOGIN_TEST !== 'YES') {
   throw new Error('Set ALLOW_DISPOSABLE_LOGIN_TEST=YES after verifying the disposable database URL');
 }
-// Allow testing on the existing development database only
-// when the developer explicitly authorises it.
-if (
-  url === process.env.DATABASE_URL &&
-  process.env.ALLOW_SHARED_DEV_LOGIN_TEST !== 'YES'
-) {
-  throw new Error('Shared database testing requires explicit authorisation');
+if (url === process.env.DATABASE_URL) {
+  throw new Error('TEST_DATABASE_URL must differ from DATABASE_URL to protect the live database');
 }
 process.env.DATABASE_URL = url;
 process.env.LOGIN_THROTTLE_SECRET = `integration-${randomUUID()}`;

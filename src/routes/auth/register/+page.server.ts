@@ -12,8 +12,8 @@ import { hashPassword, createSession, setSessionCookie } from '$lib/auth';
 // IT: post auth hook to claim and link pending leads created via public forms
 import { linkLeadsForUser } from '$lib/leads/link';
 // IT: encrypted email helpers - equality lookup and write
-import { findUserByEmail, setUserEmail } from '$lib/server/userEmail';
-import { ensureDefaultProfile } from '$lib/server/profiles';
+import { findUserByEmail, encryptedUserEmailFields } from '$lib/server/userEmail';
+import { randomUUID } from 'node:crypto';
 
 
 export const load: PageServerLoad = async ({ locals }) => {
@@ -40,23 +40,33 @@ export const actions: Actions = {
     // Create user without plaintext email - store password hash only
     const passwordHash = await hashPassword(password);
 
-    // IT: create user and then set encrypted email fields
+    // Create the account, encrypted email and required default profile atomically.
+    // A failure cannot leave a registered account without its default profile.
     let userId: string;
     try {
       const created = await prisma.user.create({
-        data: { passwordHash, person: { create: {} } },
+        data: {
+          passwordHash,
+          ...encryptedUserEmailFields(email),
+          person: { create: {} },
+          profiles: {
+            create: {
+              isDefault: true,
+              kind: 'business',
+              label: 'My profile',
+              // Keep the initial public URL unguessable and independent of the email.
+              slug: `p-${randomUUID()}`,
+              displayName: email.split('@')[0]
+            }
+          }
+        },
         select: { id: true }
       });
       userId = created.id;
-      await setUserEmail(userId, email); // writes email_Enc and email_Idx atomically in server code
-      await ensureDefaultProfile(userId, { displayName: email.split('@')[0] });
-
     } catch (e: unknown) {
-      // IT: handle unique constraint on email_Idx in case of race
-      const msg = typeof e === 'object' && e && 'code' in e ? (e as any).code : null;
-      if (msg === 'P2002') {
-        return fail(400, { error: 'Email is already registered' });
-      }
+      // The email index is unique, including simultaneous registration attempts.
+      const code = typeof e === 'object' && e && 'code' in e ? (e as { code?: string }).code : null;
+      if (code === 'P2002') return fail(400, { error: 'Email is already registered' });
       throw e;
     }
 

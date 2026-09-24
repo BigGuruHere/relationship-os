@@ -16,6 +16,7 @@ import { consumePasswordLoginAttempt, clearSuccessfulLoginAccountBucket } from '
 
 // IT - encrypted email helpers
 import { findUserByEmail, decryptUserEmail } from '$lib/server/userEmail';
+import { ensureDefaultProfile } from '$lib/server/profiles';
 
 export const load: PageServerLoad = async ({ locals }) => {
   // If already signed in, redirect home
@@ -60,6 +61,14 @@ export const actions: Actions = {
     // 6 - create session and set env-aware cookie
     const { cookie, expiresAt } = await createSession(user.id);
     setSessionCookie(cookies, locals, cookie, expiresAt);
+
+    // Repair old partial registrations without blocking an otherwise valid login.
+    // New registrations create the profile atomically, so this is a legacy recovery path.
+    try {
+      await ensureDefaultProfile(user.id, { displayName: emailInput.split('@')[0] });
+    } catch (e) {
+      console.warn('Could not provision missing default profile after login:', e);
+    }
 
     // Clearing the account bucket is best effort AFTER successful authentication.
     // The IP budget remains, limiting traffic even when valid credentials are used.

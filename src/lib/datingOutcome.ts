@@ -160,9 +160,10 @@ export function reviewedDatingOutcomeProposal(base: DatingOutcomeProposal, form:
 			respondentParticipantId: base.respondentParticipantId,
 			sourceInteractionId: base.sourceInteractionId,
 			consentConfirmedAt: base.consent.confirmedAt,
-			privateLearningAllowed: formBoolean(form, 'privateLearningAllowed'),
-			futureMatchingAllowed: formBoolean(form, 'futureMatchingAllowed'),
-			shareWithOtherAllowed: formBoolean(form, 'shareWithOtherAllowed')
+			// Do not widen earlier consent during review; new permissions need a fresh consent flow.
+			privateLearningAllowed: base.consent.privateLearningAllowed && formBoolean(form, 'privateLearningAllowed'),
+			futureMatchingAllowed: base.consent.futureMatchingAllowed && formBoolean(form, 'futureMatchingAllowed'),
+			shareWithOtherAllowed: base.consent.shareWithOtherAllowed && formBoolean(form, 'shareWithOtherAllowed')
 		}
 	);
 }

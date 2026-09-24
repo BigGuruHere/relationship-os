@@ -12,6 +12,7 @@ import { generateStructured } from '$lib/server/agents/modelGateway';
 import { executeAgentTool } from '$lib/server/agents/toolRegistry';
 import { DATING_OUTCOME_OUTPUT_SCHEMA } from '$lib/server/agents/agentSetup';
 import { loadIntroduction } from '$lib/server/introductions';
+import { normaliseDatingPrivateNextStep, type DatingPrivateNextStep } from '$lib/datingNextStep';
 import {
 	cleanDatingText,
 	DATING_OUTCOME_CONSENT_VERSION,
@@ -285,10 +286,32 @@ export async function loadDatingOutcomeReview(params: {
 		(item: any) => item.id !== proposal.respondentParticipantId
 	);
 
+	// Only read the approved private choice within the same owner, custody and agent run.
+	// Older approved reviews may not have a next-step field, which is intentional.
+	let privateNextStep: DatingPrivateNextStep | null = null;
+	let approvedReflection: DatingOutcomeProposal | null = null;
+	if (approval.status === 'approved') {
+		const reviewed = await prisma.agentArtifact.findFirst({
+			where: {
+				id: { not: artifact.id }, userId: params.userId,
+				contextSpaceId: params.contextSpaceId, agentRunId: approval.agentRunId,
+				artifactType: 'dating_outcome_reviewed', entityType: 'introduction',
+				entityId: proposal.introductionId
+			},
+			select: { contentEnc: true }, orderBy: { createdAt: 'desc' }
+		});
+		if (reviewed?.contentEnc) {
+			const approvedProposal = JSON.parse(decrypt(reviewed.contentEnc, 'agent_artifact.content'));
+			privateNextStep = approvedProposal.privateNextStep ?? null;
+			approvedReflection = approvedProposal as DatingOutcomeProposal;
+		}
+	}
 	return {
 		approval,
 		artifact,
 		proposal,
+		privateNextStep,
+		approvedReflection,
 		transcript: interaction.text,
 		introduction,
 		respondent,
@@ -309,6 +332,12 @@ export async function approveDatingOutcomeReview(params: {
 	const agentRunId = review.approval.agentRunId;
 	if (!agentRunId) throw new Error('Dating Outcome review has no source agent run.');
 	const proposal = reviewedDatingOutcomeProposal(review.proposal, params.form);
+	// Persist the respondent's decision only inside the encrypted reviewed artifact.
+	// Never convert this choice into outreach, a mutual preference, or disclosure consent.
+	const privateNextStep = normaliseDatingPrivateNextStep(
+		params.form.get('privateNextStep'), params.form.get('privateNextStepNote')
+	);
+	const reviewedContent = { ...proposal, privateNextStep };
 
 	return prisma.$transaction(async (tx) => {
 		const reviewedArtifact = await tx.agentArtifact.create({
@@ -318,7 +347,7 @@ export async function approveDatingOutcomeReview(params: {
 				agentRunId,
 				artifactType: 'dating_outcome_reviewed',
 				title: 'Sensitive reviewed Dating Outcome',
-				contentEnc: encrypt(JSON.stringify(proposal), 'agent_artifact.content'),
+				contentEnc: encrypt(JSON.stringify(reviewedContent), 'agent_artifact.content'),
 				summaryEnc: encrypt(
 					'Human-reviewed private Dating Outcome proposal.',
 					'agent_artifact.summary'

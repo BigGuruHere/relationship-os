@@ -71,15 +71,16 @@
 				to inform future private matching.</label
 			>
 			<label class="check"
-				><input type="checkbox" name="shareWithOtherAllowed" value="true" /> Permit approved information
-				to be disclosed to the other participant. This is off by default.</label
+				><input type="checkbox" name="shareWithOtherAllowed" value="true" /> Record a preference to consider sharing later. Nothing is disclosed without a separate,
+				specific permission. Off by default.</label
 			>
 			<p class="muted small">
-				These permissions are stored with this proposal. No information is disclosed or promoted
-				automatically in Stage 8.10.
+				These preferences are stored with this proposal. They are not permission to disclose
+				particular details. Nothing is shared or promoted automatically.
 			</p>
 		</section>
 
+		<p class="muted small">After transcription, read and correct the text before submitting. You will review Dorian's interpretation and select a private next step before anything becomes an Outcome.</p>
 		{#if form?.error}<section class="card panel error">{form.error}</section>{/if}
 		<button class="btn primary submit" type="submit">Create proposal for review</button>
 	</form>

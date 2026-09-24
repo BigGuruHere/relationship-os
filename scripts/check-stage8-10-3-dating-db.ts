@@ -62,6 +62,8 @@ function approvalForm() {
   form.set('result', 'The respondent wants another meeting.');
   form.set('notes', 'One-sided report. Not confirmed by both people.');
   form.set('privateLearningAllowed', 'true');
+  form.set('privateNextStep', 'PAUSE');
+  form.set('privateNextStepNote', 'Give it one week before deciding.');
   return form;
 }
 async function extract(respondentParticipantId: string) {
@@ -153,6 +155,11 @@ try {
     const outcomes = await custody(() => prisma.outcome.findMany({ where: { userId, introductionId: introId }, select: { id: true, continued: true, sourceInteractionId: true, notesEnc: true } }));
     assert.equal(outcomes.length, 1);
     assert.equal(outcomes[0].continued, true);
+    // Stage 8.11.1: the choice is retrievable only through the scoped review, not Outcome.
+    const approved = await custody(() => pilot.loadDatingOutcomeReview({ userId, contextSpaceId, approvalId: result.approvalId }));
+    assert.equal(approved?.privateNextStep?.choice, 'PAUSE');
+    assert.equal(approved?.privateNextStep?.note, 'Give it one week before deciding.');
+    assert.equal(approved?.approvedReflection?.personalExperience.summary, 'Human-verified: I enjoyed the meeting.');
     assert.equal(outcomes[0].sourceInteractionId, result.interactionId);
     assert.match(decrypt(outcomes[0].notesEnc!, 'outcome.notes'), /One-sided report/);
     await assert.rejects(() => custody(() => pilot.approveDatingOutcomeReview({ userId, contextSpaceId, approvalId: result.approvalId, form: approvalForm() })));

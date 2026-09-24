@@ -141,7 +141,8 @@ test('transcript and proposal remain encrypted and sensitive audits contain meta
 	assert.match(pilot, /createCoreInteraction/);
 	assert.match(pilot, /createEmbedding: false/);
 	assert.match(pilot, /content: JSON\.stringify\(proposal\)/);
-	assert.match(pilot, /encrypt\(JSON\.stringify\(proposal\), 'agent_artifact\.content'\)/);
+	// Stage 8.11.1 also encrypts the respondent's private next step in the reviewed artifact.
+	assert.match(pilot, /encrypt\(JSON\.stringify\(reviewedContent\), 'agent_artifact\.content'\)/);
 	assert.match(interactionCore, /rawTextEnc: encrypt\(rawText, 'interaction\.raw_text'\)/);
 	assert.doesNotMatch(pilot, /inputJson:\s*\{[^}]*transcript\s*:/);
 });

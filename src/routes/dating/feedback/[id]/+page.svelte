@@ -1,6 +1,7 @@
 <script lang="ts">
 	// PURPOSE: Compare the encrypted source transcript with an editable provisional extraction.
 	import ProposalEvidence from '$lib/dating/ProposalEvidence.svelte';
+	import { datingNextStepLabel } from '$lib/datingNextStep';
 	export let data: any;
 	export let form: any;
 	const review = data.review;
@@ -136,7 +137,25 @@
 			</section>
 
 			<section class="card panel">
-				<h2>Permission attached to this reviewed proposal</h2>
+				<h2>What would you like to happen next?</h2>
+				<p class="muted small">This is your private intention. Nothing is sent to the other person or arranged automatically.</p>
+				<div class="field">
+					<label for="privateNextStep">Choose one</label>
+					<select id="privateNextStep" name="privateNextStep" required>
+						<option value="">Select a next step</option>
+						{#each data.nextStepOptions as option}
+							<option value={option.value}>{option.label}</option>
+						{/each}
+					</select>
+				</div>
+				<div class="field">
+					<label for="privateNextStepNote">Anything you want Dorian to remember? (optional)</label>
+					<textarea id="privateNextStepNote" name="privateNextStepNote" rows="3" maxlength="1000" placeholder="For example, I'd like to give this a week before deciding."></textarea>
+				</div>
+			</section>
+
+			<section class="card panel">
+				<h2>Permissions for private use</h2>
 				<label class="check"
 					><input
 						type="checkbox"
@@ -159,11 +178,11 @@
 						name="shareWithOtherAllowed"
 						value="true"
 						checked={proposal.consent.shareWithOtherAllowed}
-					/> Disclosure to the other participant permitted</label
+					/> Store preference to consider sharing later (no disclosure without a separate, specific permission)</label
 				>
 				<p class="muted small">
-					Stage 8.10 records these choices but does not perform matching, disclosure, or Knowledge
-					Claim promotion.
+					You may narrow earlier permissions here, but cannot widen them without a new consent flow.
+					No matching, disclosure or Knowledge Claim promotion happens automatically.
 				</p>
 			</section>
 
@@ -183,6 +202,25 @@
 			<button class="btn danger" type="submit">Reject proposal without creating Outcome</button>
 		</form>
 	{:else}
+		{#if review.approval.status === 'approved'}
+			<section class="card panel">
+				<h2>Your private next step</h2>
+				<p>{review.privateNextStep ? datingNextStepLabel(review.privateNextStep.choice) : 'No next step recorded for this earlier review.'}</p>
+				{#if review.privateNextStep?.note}<p class="muted">{review.privateNextStep.note}</p>{/if}
+				<p class="muted small">This is one person's intention. Relish has not contacted or disclosed anything to the other participant.</p>
+			</section>
+			{#if review.approvedReflection}
+				<section class="card panel">
+					<h2>Your approved reflection</h2>
+					<p class="muted small">These are the corrected, privately approved words, not an independently verified account of the other person.</p>
+					<h3>Your experience</h3><p>{review.approvedReflection.personalExperience.summary || 'Not recorded'}</p>
+					<h3>What you learned</h3><p>{review.approvedReflection.selfLearning.summary || 'Not recorded'}</p>
+					<h3>Your impression of the other person</h3><p>{review.approvedReflection.otherPersonExperience.summary || 'Not recorded'}</p>
+					<h3>The dynamic</h3><p>{review.approvedReflection.relationshipDynamic.summary || 'Not recorded'}</p>
+					<h3>Whether you want to continue</h3><p>{review.approvedReflection.desireToContinue.summary || 'Not recorded'}</p>
+				</section>
+			{/if}
+		{/if}
 		<section class="card panel">
 			<strong>This proposal has been {review.approval.status}.</strong
 			>{#if review.approval.reviewerNote}<p class="muted">{review.approval.reviewerNote}</p>{/if}

@@ -9,6 +9,7 @@ import {
 	rejectDatingOutcomeReview
 } from '$lib/server/datingOutcomePilot';
 import { OUTCOME_STATUSES, YES_NO_UNKNOWN } from '$lib/introductions';
+import { DATING_NEXT_STEP_OPTIONS } from '$lib/datingNextStep';
 
 function requireDating(locals: App.Locals) {
 	if (!locals.user) throw redirect(303, '/auth/login');
@@ -26,6 +27,7 @@ export const load: PageServerLoad = async ({ locals, params }) => {
 		review,
 		outcomeStatuses: OUTCOME_STATUSES,
 		yesNoUnknown: YES_NO_UNKNOWN,
+		nextStepOptions: DATING_NEXT_STEP_OPTIONS,
 		desireOptions: [
 			{ value: 'YES', label: 'Yes' },
 			{ value: 'NO', label: 'No' },

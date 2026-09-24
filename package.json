@@ -53,7 +53,10 @@
     "check:stage8.10": "node --experimental-strip-types --test tests/core/stage8-10-dating-voice-outcome-pilot.test.ts",
     "check:stage8.10.3:db": "node --env-file=.env --import tsx scripts/check-stage8-10-3-dating-db.ts",
     "check:stage8.10.4:voice": "node --experimental-strip-types --test tests/core/stage8-10-4-voice-smoke.test.mjs",
-    "audit:stage8.10.4": "node scripts/audit-stage8-10-4.mjs"
+    "audit:stage8.10.4": "node scripts/audit-stage8-10-4.mjs",
+    "security:stage8.10.5:update": "node scripts/stage8-10-5-controlled-update.mjs",
+    "security:stage8.10.5:verify": "node scripts/stage8-10-5-verify.mjs",
+    "check:stage8.10.5": "node --test tests/core/stage8-10-5-security-workflow.test.mjs"
   },
   "engines": {
     "node": ">=22.13.1 <23"

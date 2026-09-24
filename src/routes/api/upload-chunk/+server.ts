@@ -30,7 +30,7 @@ type Job = {
 const jobs = new Map<string, Job>();
 const assemblies = new Map<
 	string,
-	{ userId: string; contextSpaceId: string; nextIndex: number; totalBytes: number }
+	{ userId: string; contextSpaceId: string; nextIndex: number; totalBytes: number; mime: 'audio/webm' | 'audio/mp4' }
 >();
 const MAX_AUDIO_BYTES = 25 * 1024 * 1024;
 const STALE_AUDIO_MS = 60 * 60 * 1000;
@@ -77,6 +77,11 @@ export const POST: RequestHandler = async ({ request, url, locals }) => {
 		const key = url.searchParams.get('key');
 		const indexStr = url.searchParams.get('index') ?? '0';
 		const lastStr = url.searchParams.get('last') ?? '0';
+		// The upload format must be stable across chunks. Reject arbitrary MIME strings.
+		const mimeParam = url.searchParams.get('mime') || 'audio/webm';
+		if (mimeParam !== 'audio/webm' && mimeParam !== 'audio/mp4') {
+			return json({ error: 'Unsupported audio format' }, { status: 415 });
+		}
 
 		if (!key) {
 			console.error('[upload-chunk] missing key');
@@ -100,12 +105,14 @@ export const POST: RequestHandler = async ({ request, url, locals }) => {
 				userId: locals.user.id,
 				contextSpaceId: locals.contextSpaceId,
 				nextIndex: 0,
-				totalBytes: 0
+				totalBytes: 0,
+				mime: mimeParam
 			});
 		}
 
 		const index = Number.parseInt(indexStr, 10) || 0;
 		const assembly = assemblies.get(key)!;
+		if (assembly.mime !== mimeParam) return json({ error: 'Audio format changed during upload' }, { status: 409 });
 		if (index !== assembly.nextIndex) {
 			return json({ error: 'Audio chunks must arrive in order' }, { status: 409 });
 		}
@@ -189,7 +196,7 @@ export const POST: RequestHandler = async ({ request, url, locals }) => {
 				if (DEBUG_AUDIO) console.log('[upload-chunk] start transcribe', { jobId });
 
 				// Call the transcriber - it should accept a Buffer and return a string
-				const text = await transcribeAudio(assembled);
+				const text = await transcribeAudio(assembled, assembly.mime);
 
 				if (DEBUG_AUDIO) {
 					console.log('[upload-chunk] transcribe ok', {

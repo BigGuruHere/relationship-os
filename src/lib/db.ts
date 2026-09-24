@@ -35,7 +35,8 @@ if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = prisma;
 
 const KEEPALIVE_MINUTES = Number(process.env.DB_KEEPALIVE_MINUTES ?? '4');
 
-if (!globalForPrisma.__keepaliveIntervalId__) {
+// CLI/database tests can disable keepalive before dynamically importing this module.
+if (process.env.DB_KEEPALIVE_DISABLED !== 'YES' && !globalForPrisma.__keepaliveIntervalId__) {
   globalForPrisma.__keepaliveIntervalId__ = setInterval(async () => {
     try {
       await prisma.$executeRaw`SELECT 1;`;
@@ -44,6 +45,8 @@ if (!globalForPrisma.__keepaliveIntervalId__) {
       console.error('[keepalive] DB ping failed:', err);
     }
   }, KEEPALIVE_MINUTES * 60 * 1000);
+  // A keepalive must not be the sole reason a finished CLI test remains alive.
+  globalForPrisma.__keepaliveIntervalId__.unref();
   console.log(`[keepalive] Enabled - every ${KEEPALIVE_MINUTES} minute(s)`);
 }
 

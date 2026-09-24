@@ -26,7 +26,7 @@ if (!OPENAI_API_KEY) {
  *
  * Returns the raw transcription text on success, or throws an Error.
  */
-export async function transcribeAudio(input: File | Blob | Buffer | string): Promise<string> {
+export async function transcribeAudio(input: File | Blob | Buffer | string, audioMime: 'audio/webm' | 'audio/mp4' = 'audio/webm'): Promise<string> {
   // Build a FormData body appropriate for the runtime:
   // - In browser: File/Blob can be appended directly.
   // - In Node: append a stream (fs.createReadStream) or a Buffer/Blob.
@@ -43,10 +43,10 @@ export async function transcribeAudio(input: File | Blob | Buffer | string): Pro
   } else if (Buffer.isBuffer(input)) {
     // Node Buffer - wrap in a Blob (Node supports Blob) or pass Buffer directly
     // Using Blob gives a filename and type information to FormData.
-    // Default to webm container - caller may tune this if needed.
-    const blob = new Blob([input], { type: "audio/webm" });
+    // Preserve the actual browser container type (Safari commonly records MP4).
+    const blob = new Blob([input], { type: audioMime });
     // In Node, FormData.append accepts Blob
-    fd.append("file", blob, "audio.webm");
+    fd.append("file", blob, audioMime === 'audio/mp4' ? 'audio.mp4' : 'audio.webm');
   } else {
     // Browser File or Blob - append directly.
     // If input is a File it should already have a name and type.

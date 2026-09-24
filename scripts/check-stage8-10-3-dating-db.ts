@@ -12,7 +12,8 @@ if (!process.env.DATABASE_URL || !process.env.SECRET_MASTER_KEY || !process.env.
 }
 // The mock still follows the real gateway/provider path without making an external request.
 process.env.OPENAI_API_KEY = 'dating-db-test-no-network';
-process.env.DB_KEEPALIVE_MINUTES = '1440';
+// This is a finite integration test, not the long-running web server.
+process.env.DB_KEEPALIVE_DISABLED = 'YES';
 const [{ prisma }, { runWithWorkspaceCustody }, { encrypt, buildIndexToken, decrypt }, pilot, { createIntroductionFromForm }] = await Promise.all([
   import('../src/lib/db'),
   import('../src/lib/server/core/contextSpace'),
@@ -190,5 +191,8 @@ try {
 } finally {
   globalThis.fetch = originalFetch;
   try { await cleanup(); console.log('PASS fixture-only cleanup'); }
-  finally { await prisma.$disconnect(); }
+  finally {
+    // Always close Prisma, including when an assertion or fixture cleanup fails.
+    await prisma.$disconnect();
+  }
 }

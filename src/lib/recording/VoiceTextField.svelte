@@ -84,7 +84,9 @@
 	}
 
 	async function uploadChunk(key: string, index: number, last: boolean, bytes: Uint8Array) {
-		const qs = new URLSearchParams({ key, index: String(index), last: last ? '1' : '0' });
+		// Send the recorder's container format so Whisper receives the correct file extension.
+		const mime = mediaRecorder?.mimeType?.split(';')[0] || 'audio/webm';
+		const qs = new URLSearchParams({ key, index: String(index), last: last ? '1' : '0', mime });
 		const res = await fetch(`${uploadEndpoint}?${qs.toString()}`, {
 			method: 'POST',
 			headers: { 'content-type': 'application/octet-stream' },

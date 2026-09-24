@@ -13,8 +13,8 @@ Run from the project folder on your Mac:
 
 ```bash
 # Choose the existing development account and its Dating ContextSpace.
-export DATING_TEST_USER_ID='69335c81-f1b0-4383-96aa-99007d622516'
-export DATING_TEST_CONTEXT_SPACE_ID='32e74f61-4249-4768-b524-8c9a24bc3fd9'
+export DATING_TEST_USER_ID='YOUR-USER-UUID'
+export DATING_TEST_CONTEXT_SPACE_ID='YOUR-DATING-CONTEXT-SPACE-UUID'
 
 # Explicitly authorise database fixture writes and cleanup on your development DB.
 export ALLOW_DATING_DEV_DB_TEST=YES

@@ -16,7 +16,7 @@ function requireDating(locals: App.Locals) {
 
 export const load: PageServerLoad = async ({ locals }) => {
 	const context = requireDating(locals);
-	return { people: await listDatingPeople(context.userId) };
+	return { people: await listDatingPeople(context.userId, context.contextSpaceId) };
 };
 
 export const actions: Actions = {

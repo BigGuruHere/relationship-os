@@ -59,7 +59,10 @@
     "check:stage8.10.5": "node --test tests/core/stage8-10-5-security-workflow.test.mjs",
     "check:stage8.11.1": "node --experimental-strip-types --test tests/core/stage8-11-1-private-reflection.test.mjs",
     "check:stage8.11.2": "node --experimental-strip-types --test tests/core/stage8-11-2-element-review.test.mjs",
-    "check:stage8.11.3": "node --experimental-strip-types --test tests/core/stage8-11-3-simplified-element-review.test.mjs"
+    "check:stage8.11.3": "node --experimental-strip-types --test tests/core/stage8-11-3-simplified-element-review.test.mjs",
+    "check:stage8.12.0": "node --test tests/core/stage8-12-0-living-understanding.test.mjs",
+    "check:stage8.12.0.1": "node --experimental-strip-types --test tests/core/stage8-12-0-1-understanding-workflow.test.mjs",
+    "check:stage8.12.0.1:db": "node --env-file=.env --import tsx scripts/check-stage8-12-0-1-understanding-db.ts"
   },
   "engines": {
     "node": ">=22.13.1 <23"

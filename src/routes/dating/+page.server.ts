@@ -14,7 +14,7 @@ export const load: PageServerLoad = async ({ locals }) => {
 	}
 
 	const [people, introductions, pendingReviews] = await Promise.all([
-		listDatingPeople(locals.user.id),
+		listDatingPeople(locals.user.id, locals.contextSpaceId),
 		loadIntroductions(locals.user.id, 100),
 		prisma.approvalRequest.findMany({
 			where: {

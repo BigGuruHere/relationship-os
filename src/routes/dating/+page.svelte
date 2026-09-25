@@ -42,8 +42,7 @@
 		<section class="card panel safety-note">
 			<strong>Pilot boundary</strong>
 			<p>
-				Transcripts and proposals stay private and encrypted. Nothing updates Wants, Offers,
-				Knowledge Claims, matching, or the other participant automatically.
+				Transcripts and proposals stay private and encrypted. Dating reflection approval does not automatically update a participant's Living Understanding. Operator-reviewed statements can be added separately under People. Nothing is automatically shared with the other participant or other contexts.
 			</p>
 		</section>
 

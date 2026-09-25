@@ -5,9 +5,9 @@ import { prisma } from '$lib/db';
 import { buildIndexToken, encrypt } from '$lib/crypto';
 import { contactDisplayName } from '$lib/server/contactDisplay';
 
-export async function listDatingPeople(userId: string) {
+export async function listDatingPeople(userId: string, contextSpaceId: string) {
 	const rows = await prisma.contact.findMany({
-		where: { userId },
+		where: { userId, contextSpaceId },
 		select: { id: true, fullNameEnc: true, linkedUserId: true, createdAt: true },
 		orderBy: { updatedAt: 'desc' },
 		take: 500
@@ -32,7 +32,7 @@ export async function createDatingPerson(params: {
 
 	// IT: Equality checks remain local to the active Dating ContextSpace through the Prisma custody extension.
 	const existing = await prisma.contact.findFirst({
-		where: { userId: params.userId, fullNameIdx: buildIndexToken(name) },
+		where: { userId: params.userId, contextSpaceId: params.contextSpaceId, fullNameIdx: buildIndexToken(name) },
 		select: { id: true }
 	});
 	if (existing) throw new Error('A Dating person with this name already exists.');

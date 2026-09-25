@@ -11,9 +11,33 @@
   <h1>{data.name}: Living Understanding</h1>
   <p class="muted">An evolving, private understanding of what matters to this person. This pilot screen is operated by the workspace administrator.</p>
   <section class="card panel">
+    <h2>Current knowledge</h2>
+    <p class="muted">Active, individually recorded knowledge for this person in the Dating space. Operator review is not participant confirmation or sharing consent.</p>
+    {#if !data.currentKnowledge.length}<p class="muted">No active knowledge yet. Propose an understanding below.</p>{/if}
+    {#each data.currentKnowledge as claim (claim.id)}
+      <article class="entry">
+        <p class="muted small">{claim.kind.replaceAll('_', ' ')} · {claim.authority === 'THIRD_PARTY_REPORTED' ? 'Operator reviewed' : claim.authority.replaceAll('_', ' ')} · {new Date(claim.updatedAt).toLocaleDateString()}</p>
+        <p class="current-statement">{claim.statement}</p>
+        <p class="muted small">Source evidence: {claim.evidenceCount} linked record(s). These do not grant disclosure permission.</p>
+      </article>
+    {/each}
+  </section>
+  <section class="card panel">
     <h2>Add an understanding</h2>
     <p>Begin with one line about their life, interests or what might make a difference for them.</p>
     <form method="POST" action="?/propose">
+      {#if data.selectedSource}
+        <input type="hidden" name="sourceInteractionId" value={data.selectedSource.id} />
+        <p class="muted small">Source: private reflection on {new Date(data.selectedSource.at).toLocaleDateString()}</p>
+        <blockquote>{data.selectedSource.text}</blockquote>
+      {/if}
+      <label for="kind">Knowledge type</label>
+      <select id="kind" name="kind">
+        <option value="PREFERENCE">Preference or interest</option><option value="WANT">Want or need</option>
+        <option value="FACT">Fact or background</option><option value="OBJECTIVE">Objective</option>
+        <option value="OFFER">What they offer</option><option value="CONSTRAINT">Constraint or boundary</option>
+        <option value="OTHER">Other or emerging understanding</option>
+      </select>
       <label for="statement">Statement</label>
       <textarea id="statement" name="statement" rows="3" maxlength="600" required placeholder="They enjoy walking and would welcome someone to share that with."></textarea>
       <label for="note">Source or context (optional)</label>
@@ -33,7 +57,8 @@
     {#if data.entries.length === 0}<p class="muted">No understanding recorded yet.</p>{/if}
     {#each data.entries as item (item.id)}
       <article class="card entry">
-        <p class="muted small">Added {new Date(item.proposedAt).toLocaleString()}</p>
+        <p class="muted small">{item.kind.replaceAll('_',' ')} · Added {new Date(item.proposedAt).toLocaleString()}</p>
+        {#if item.sourceInteractionId}<p class="muted small">Linked to an original private reflection</p>{/if}
         <p class="current-statement">{item.reviewedStatement ?? item.statement}</p>
         <p><strong>Status:</strong> {item.decision === 'CONFIRMED' ? 'Operator reviewed' : item.decision === 'REJECTED' ? 'Rejected' : item.decision === 'DEFERRED' ? 'Not sure yet' : 'Pending review'}</p>
         <div class="actions">

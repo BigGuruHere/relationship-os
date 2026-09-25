@@ -4,24 +4,29 @@ import { fail, redirect } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import { prisma } from '$lib/db';
 import { contactDisplayName } from '$lib/server/contactDisplay';
-import { listDatingUnderstanding, createDatingUnderstanding, reviewDatingUnderstanding } from '$lib/server/datingLivingUnderstanding';
+import { listDatingUnderstanding, createDatingUnderstanding, reviewDatingUnderstanding, listCurrentDatingKnowledge, requireSourceReflection } from '$lib/server/datingLivingUnderstanding';
 
 function requireDating(locals: App.Locals, contactId: string) {
   if (!locals.user) throw redirect(303, '/auth/login');
   if (locals.contextDomainKey !== 'dating' || !locals.contextSpaceId) throw redirect(303, '/settings/context-spaces');
   return { userId: locals.user.id, contextSpaceId: locals.contextSpaceId, contactId };
 }
-export const load: PageServerLoad = async ({ locals, params }) => {
+export const load: PageServerLoad = async ({ locals, params, url }) => {
   const scope = requireDating(locals, params.id);
   const contact = await prisma.contact.findFirst({ where: { id: scope.contactId, userId: scope.userId, contextSpaceId: scope.contextSpaceId }, select: { id: true, fullNameEnc: true } });
   if (!contact) throw redirect(303, '/dating/people');
-  return { personId: scope.contactId, name: await contactDisplayName(contact), entries: await listDatingUnderstanding(scope) };
+  const sourceId = url.searchParams.get('sourceInteractionId');
+  // Validate the optional preselected source rather than trusting query parameters.
+  const selectedSource = sourceId ? await requireSourceReflection(scope, sourceId) : null;
+  return { personId: scope.contactId, name: await contactDisplayName(contact),
+    entries: await listDatingUnderstanding(scope), currentKnowledge: await listCurrentDatingKnowledge(scope), selectedSource }; 
 };
 export const actions: Actions = {
   propose: async ({ locals, params, request }) => {
     const scope = requireDating(locals, params.id);
     const form = await request.formData();
-    try { await createDatingUnderstanding(scope, { statement: String(form.get('statement') || ''), note: String(form.get('note') || ''), decision: String(form.get('decision') || 'PENDING') }); }
+    try { await createDatingUnderstanding(scope, { statement: String(form.get('statement') || ''), note: String(form.get('note') || ''), decision: String(form.get('decision') || 'PENDING'),
+      kind: String(form.get('kind') || 'PREFERENCE'), sourceInteractionId: String(form.get('sourceInteractionId') || '') || null }); }
     catch (e: any) { return fail(400, { error: e?.message || 'Could not save proposed understanding.' }); }
     throw redirect(303, `/dating/people/${params.id}/understanding`);
   },

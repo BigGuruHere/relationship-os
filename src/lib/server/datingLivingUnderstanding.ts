@@ -10,7 +10,12 @@ import { encrypt, decrypt, buildScopedIndexToken } from '$lib/crypto';
 const CHANNEL = 'DATING_LIVING_UNDERSTANDING';
 const AAD = 'interaction.raw_text';
 export type UnderstandingDecision = 'CONFIRMED' | 'DEFERRED' | 'REJECTED';
-type Entry = { version: 1; event: 'PROPOSE' | 'REVIEW'; proposalId: string; statement: string; decision?: UnderstandingDecision; note?: string; actor?: 'OPERATOR' | 'DORIAN' | 'PARTICIPANT' };
+export const DATING_KNOWLEDGE_KINDS = ['FACT', 'WANT', 'OFFER', 'PREFERENCE', 'CONSTRAINT', 'OBJECTIVE', 'OTHER'] as const;
+export type DatingKnowledgeKind = typeof DATING_KNOWLEDGE_KINDS[number];
+export function validateDatingKnowledgeKind(value: unknown): DatingKnowledgeKind {
+  return DATING_KNOWLEDGE_KINDS.includes(value as DatingKnowledgeKind) ? value as DatingKnowledgeKind : 'OTHER';
+}
+type Entry = { version: 1; event: 'PROPOSE' | 'REVIEW'; proposalId: string; statement: string; decision?: UnderstandingDecision; note?: string; actor?: 'OPERATOR' | 'DORIAN' | 'PARTICIPANT'; kind?: DatingKnowledgeKind; sourceInteractionId?: string | null };
 // Future Dorian and participant reviews must use authenticated actor provenance, not caller-supplied form fields.
 type Tx = Prisma.TransactionClient;
 type Scope = { userId: string; contextSpaceId: string; contactId: string };
@@ -34,15 +39,48 @@ async function requireOwnedDatingContact(scope: Scope) {
   if (!space || !contact) throw new Error('Dating participant not found in your active space.');
 }
 
+
+// The original reflection is checked at both proposal creation and review time.
+// This avoids attaching one person's knowledge to somebody else's private experience.
+export async function requireSourceReflection(scope: Scope, sourceId: string, tx: Pick<Prisma.TransactionClient, 'interaction'> = prisma) {
+  const source = await tx.interaction.findFirst({ where: {
+    id: sourceId, userId: scope.userId, contextSpaceId: scope.contextSpaceId,
+    contactId: scope.contactId, channel: 'DATING_PERSON_REFLECTION'
+  }, select: { id: true, rawTextEnc: true, occurredAt: true } });
+  if (!source) throw new Error('The source reflection is not accessible for this person.');
+  const payload = JSON.parse(decrypt(source.rawTextEnc, AAD)) as { version?: number; kind?: string; actor?: string; text?: string };
+  if (payload.version !== 1 || payload.kind !== 'PERSONAL_REFLECTION' || payload.actor !== 'OPERATOR' || !payload.text) {
+    throw new Error('The source is not a valid private reflection.');
+  }
+  return { id: source.id, text: payload.text, at: source.occurredAt };
+}
+
+// Current person-level view: reads active, context-scoped claims directly, not the historical transcript.
+export async function listCurrentDatingKnowledge(scope: Scope) {
+  await requireOwnedDatingContact(scope);
+  const rows = await prisma.knowledgeClaim.findMany({ where: {
+    userId: scope.userId, contextSpaceId: scope.contextSpaceId, contactId: scope.contactId, status: 'ACTIVE'
+  }, select: { id: true, kind: true, statementEnc: true, authority: true, confidence: true,
+    updatedAt: true, evidence: { where: { userId: scope.userId, contextSpaceId: scope.contextSpaceId, status: 'ACTIVE' },
+      select: { sourceInteractionId: true }, take: 8 } }, orderBy: { updatedAt: 'desc' }, take: 150 });
+  return rows.map(row => ({ id: row.id, kind: row.kind, statement: decrypt(row.statementEnc, 'knowledge.claim_statement'),
+    authority: row.authority, confidence: row.confidence, updatedAt: row.updatedAt,
+    evidenceCount: row.evidence.length }));
+}
+
 // Create and initially review in ONE transaction so a failed confirmation never leaves a half-created item.
-export async function createDatingUnderstanding(scope: Scope, input: { statement: string; note?: string; decision: string }) {
+export async function createDatingUnderstanding(scope: Scope, input: { statement: string; note?: string; decision: string; kind?: string; sourceInteractionId?: string | null }) {
   await requireOwnedDatingContact(scope);
   const statement = validateUnderstandingStatement(input.statement);
   const decision = input.decision === 'PENDING' ? null : validateUnderstandingDecision(input.decision);
   const note = String(input.note ?? '').trim().slice(0, 1000);
   const proposalId = randomUUID();
+  const kind = validateDatingKnowledgeKind(input.kind || 'PREFERENCE');
+  // A source may be linked only if it is an owned, same-space reflection of this person.
+  const sourceInteractionId = input.sourceInteractionId || null;
+  if (sourceInteractionId) await requireSourceReflection(scope, sourceInteractionId);
   await prisma.$transaction(async (tx) => {
-    const entry: Entry = { version: 1, event: 'PROPOSE', proposalId, statement, note, actor: 'OPERATOR' };
+    const entry: Entry = { version: 1, event: 'PROPOSE', proposalId, statement, note, actor: 'OPERATOR', kind, sourceInteractionId };
     // The original is immutable even if the initial decision is confirmed immediately.
     await tx.interaction.create({ data: {
       userId: scope.userId, contextSpaceId: scope.contextSpaceId, contactId: scope.contactId,
@@ -60,13 +98,13 @@ export async function listDatingUnderstanding(scope: Scope) {
     where: { userId: scope.userId, contextSpaceId: scope.contextSpaceId, contactId: scope.contactId, channel: CHANNEL },
     select: { id: true, rawTextEnc: true, occurredAt: true }, orderBy: [{ occurredAt: 'asc' }, { id: 'asc' }], take: 300
   });
-  const proposals = new Map<string, { id: string; statement: string; proposalNote: string; proposedAt: Date; decision: UnderstandingDecision | null; reviewedStatement: string | null; reviewedAt: Date | null; history: { decision: UnderstandingDecision; statement: string; at: Date; note: string; actor: string }[] }>();
+  const proposals = new Map<string, { id: string; statement: string; proposalNote: string; proposedAt: Date; decision: UnderstandingDecision | null; reviewedStatement: string | null; reviewedAt: Date | null; kind: DatingKnowledgeKind; sourceInteractionId: string | null; history: { decision: UnderstandingDecision; statement: string; at: Date; note: string; actor: string }[] }>();
   for (const row of rows) {
     // Fail closed on malformed encrypted content rather than leaking another kind of Interaction.
     const entry = JSON.parse(decrypt(row.rawTextEnc, AAD)) as Entry;
     if (entry.version !== 1 || !entry.proposalId) continue;
     if (entry.event === 'PROPOSE') {
-      proposals.set(entry.proposalId, { id: entry.proposalId, statement: entry.statement, proposalNote: entry.note ?? '', proposedAt: row.occurredAt, decision: null, reviewedStatement: null, reviewedAt: null, history: [] });
+      proposals.set(entry.proposalId, { id: entry.proposalId, statement: entry.statement, proposalNote: entry.note ?? '', proposedAt: row.occurredAt, kind: validateDatingKnowledgeKind(entry.kind || 'PREFERENCE'), sourceInteractionId: entry.sourceInteractionId || null, decision: null, reviewedStatement: null, reviewedAt: null, history: [] });
     } else if (entry.event === 'REVIEW') {
       const proposal = proposals.get(entry.proposalId);
       if (!proposal || !entry.decision) continue;
@@ -87,8 +125,12 @@ async function appendUnderstandingReview(tx: Tx, scope: Scope, input: { proposal
   const source = await tx.interaction.findFirst({ where: {
     userId: scope.userId, contextSpaceId: scope.contextSpaceId, contactId: scope.contactId,
     channel: CHANNEL, externalRef: `understanding:proposal:${proposalId}`
-  }, select: { id: true } });
+  }, select: { id: true, rawTextEnc: true } });
   if (!source) throw new Error('Proposed understanding was not found in this Dating space.');
+  const origin = JSON.parse(decrypt(source.rawTextEnc, AAD)) as Entry;
+  if (origin.version !== 1 || origin.event !== 'PROPOSE' || origin.proposalId !== proposalId) throw new Error('Invalid knowledge proposal provenance.');
+  const kind = validateDatingKnowledgeKind(origin.kind || 'PREFERENCE');
+  if (origin.sourceInteractionId) await requireSourceReflection(scope, origin.sourceInteractionId, tx);
 
   const earlierReviews = await tx.interaction.findMany({ where: {
     userId: scope.userId, contextSpaceId: scope.contextSpaceId, contactId: scope.contactId,
@@ -113,7 +155,14 @@ async function appendUnderstandingReview(tx: Tx, scope: Scope, input: { proposal
     userId: scope.userId, contextSpaceId: scope.contextSpaceId,
     sourceInteractionId: { in: earlierIds }, status: 'ACTIVE'
   }, select: { id: true, claimId: true } });
-  for (const old of priorEvidence) {
+  // Retire any original-reflection evidence associated with earlier reviews of this proposal.
+  // Restrict by claim ID so a shared source cannot invalidate unrelated knowledge proposals.
+  const originEvidence = origin.sourceInteractionId && priorEvidence.length ? await tx.knowledgeEvidence.findMany({ where: {
+    userId: scope.userId, contextSpaceId: scope.contextSpaceId, sourceInteractionId: origin.sourceInteractionId,
+    claimId: { in: [...new Set(priorEvidence.map(e => e.claimId))] }, status: 'ACTIVE'
+  }, select: { id: true, claimId: true } }) : [];
+  const retiredEvidence = [...priorEvidence, ...originEvidence];
+  for (const old of retiredEvidence) {
     await tx.knowledgeEvidence.updateMany({ where: { id: old.id, userId: scope.userId, contextSpaceId: scope.contextSpaceId }, data: { status: 'SUPERSEDED' } });
     const remaining = await tx.knowledgeEvidence.count({ where: {
       claimId: old.claimId, userId: scope.userId, contextSpaceId: scope.contextSpaceId, status: 'ACTIVE'
@@ -128,14 +177,14 @@ async function appendUnderstandingReview(tx: Tx, scope: Scope, input: { proposal
   const statementIdx = buildScopedIndexToken(statement, 'knowledge:claim:statement');
   const existing = await tx.knowledgeClaim.findFirst({ where: {
     userId: scope.userId, contextSpaceId: scope.contextSpaceId, contactId: scope.contactId,
-    kind: 'PREFERENCE', statementIdx, status: { in: ['ACTIVE', 'SUPERSEDED'] }
+    kind, statementIdx, status: { in: ['ACTIVE', 'SUPERSEDED'] }
   }, select: { id: true } });
   if (existing) await tx.knowledgeClaim.updateMany({ where: {
     id: existing.id, userId: scope.userId, contextSpaceId: scope.contextSpaceId
   }, data: { status: 'ACTIVE' } });
   const claimId = existing?.id ?? (await tx.knowledgeClaim.create({ data: {
     userId: scope.userId, contextSpaceId: scope.contextSpaceId, contactId: scope.contactId,
-    kind: 'PREFERENCE', status: 'ACTIVE', statementEnc: encrypt(statement, 'knowledge.claim_statement'),
+    kind, status: 'ACTIVE', statementEnc: encrypt(statement, 'knowledge.claim_statement'),
     statementIdx, authority: 'THIRD_PARTY_REPORTED', confidence: 'LOW'
   }, select: { id: true } })).id;
   await tx.knowledgeEvidence.create({ data: {
@@ -144,6 +193,18 @@ async function appendUnderstandingReview(tx: Tx, scope: Scope, input: { proposal
     authority: 'THIRD_PARTY_REPORTED', confidence: 'LOW',
     noteEnc: encrypt('Dating operator-reviewed understanding; not participant verification or disclosure consent.', 'knowledge.evidence_note')
   }});
+  // Link the originating reflection as separate evidence without changing its encrypted source.
+  if (origin.sourceInteractionId) {
+    const earlier = await tx.knowledgeEvidence.findFirst({ where: {
+      userId: scope.userId, contextSpaceId: scope.contextSpaceId, claimId, sourceInteractionId: origin.sourceInteractionId
+    }, select: { id: true } });
+    if (earlier) await tx.knowledgeEvidence.updateMany({ where: { id: earlier.id, userId: scope.userId, contextSpaceId: scope.contextSpaceId }, data: { status: 'ACTIVE' } });
+    else await tx.knowledgeEvidence.create({ data: {
+      userId: scope.userId, contextSpaceId: scope.contextSpaceId, claimId, sourceInteractionId: origin.sourceInteractionId,
+      sourceType: 'INTERACTION', authority: 'THIRD_PARTY_REPORTED', confidence: 'LOW',
+      noteEnc: encrypt('Original private reflection; not participant confirmation or permission to disclose.', 'knowledge.evidence_note')
+    }});
+  }
   return true;
 }
 

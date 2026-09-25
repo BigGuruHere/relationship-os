@@ -44,7 +44,7 @@
     {/if}
     {#if !data.reflections.length}<p class="muted">No personal reflections yet.</p>{/if}
     {#each data.reflections as r (r.id)}
-      <article class="entry"><p class="muted small">{new Date(r.at).toLocaleString()} · {r.touchpointId ? 'Linked to an encounter' : 'Independent reflection'} · Operator-recorded</p><p>{r.text}</p></article>
+      <article class="entry"><p class="muted small">{new Date(r.at).toLocaleString()} · {r.touchpointId ? 'Linked to an encounter' : 'Independent reflection'} · Operator-recorded</p><p>{r.text}</p><p><a href={`/dating/people/${data.person.id}/understanding?sourceInteractionId=${r.id}`}>Propose knowledge from this reflection</a></p></article>
     {/each}
   </section>
   <section class="card panel">

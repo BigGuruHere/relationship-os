@@ -89,6 +89,10 @@ model User {
   wantNotes             WantNote[]
   offers                Offer[]
   offerNotes            OfferNote[]
+  relatings             Relating[]
+  relatingParticipants  RelatingParticipant[]
+  touchpoints           Touchpoint[]
+  touchpointParticipants TouchpointParticipant[]
   introductions         Introduction[]
   introductionParticipants IntroductionParticipant[]
   outcomes              Outcome[]
@@ -197,6 +201,10 @@ model ContextSpace {
   wantNotes WantNote[]
   offers Offer[]
   offerNotes OfferNote[]
+  relatings Relating[]
+  relatingParticipants RelatingParticipant[]
+  touchpoints Touchpoint[]
+  touchpointParticipants TouchpointParticipant[]
   introductions Introduction[]
   introductionParticipants IntroductionParticipant[]
   outcomes Outcome[]
@@ -524,6 +532,10 @@ model Contact {
   facilitatedIntroductions Introduction[] @relation("IntroductionFacilitator")
 
   // Indexes for search and tenancy
+  // Stage 8.12.1: optional custody-local Relating membership/attendance links.
+  relatingParticipants RelatingParticipant[]
+  touchpointParticipants TouchpointParticipant[]
+
   @@index([userId])
   @@index([personId])
   @@index([userId, personId])
@@ -542,6 +554,7 @@ model Contact {
     // IT: new - one contact per owner-user pair; multiple NULLs are allowed by Postgres
   @@index([userId, contextSpaceId])
   @@unique([userId, contextSpaceId, linkedUserId])
+
 }
 
 // ---------------------------------------------------------------------------
@@ -1127,6 +1140,10 @@ model Company {
   objectives         Objective[]
   knowledgeClaims    KnowledgeClaim[]
 
+  // Stage 8.12.1: optional custody-local Relating membership/attendance links.
+  relatingParticipants RelatingParticipant[]
+  touchpointParticipants TouchpointParticipant[]
+
   @@index([userId, nameIdx])
   @@index([userId, kind])
   @@index([userId, status])
@@ -1134,6 +1151,7 @@ model Company {
   @@index([websiteIdx])
   @@index([userId, contextSpaceId])
   @@index([phoneIdx])
+
 }
 
 // IT: Stable external identifiers let imports resolve the same real-world company across batches.
@@ -1837,6 +1855,102 @@ model OfferNote {
 
 
 // ---------------------------------------------------------------------------
+// STAGE 8.12.1: RELATING AND TOUCHPOINT FOUNDATIONS
+// ---------------------------------------------------------------------------
+// A Relating record is a private, custody-local history container, not evidence
+// that the participants know one another or agree that a relationship exists.
+// Membership and attendance have no fixed maximum; the pilot UI remains dyadic.
+model Relating {
+  id             String       @id @default(uuid())
+  userId         String
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  contextSpaceId String
+  contextSpace   ContextSpace @relation(fields: [contextSpaceId], references: [id], onDelete: Cascade)
+
+  // Only administrative origin, never a claimed relationship stage or intimacy score.
+  origin         String       @default("MANUAL")
+  participants   RelatingParticipant[]
+  introductions  Introduction[]
+  touchpoints    Touchpoint[]
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@index([userId, contextSpaceId])
+  @@unique([id, userId, contextSpaceId])
+}
+
+// Membership of this context, not consent for sharing other members' information.
+// Contact/company can be populated together for a named company representative.
+model RelatingParticipant {
+  id             String       @id @default(uuid())
+  userId         String
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  contextSpaceId String
+  contextSpace   ContextSpace @relation(fields: [contextSpaceId], references: [id], onDelete: Cascade)
+  relatingId     String
+  relating       Relating     @relation(fields: [relatingId, userId, contextSpaceId], references: [id, userId, contextSpaceId], onDelete: Cascade)
+  contactId      String?
+  contact        Contact?     @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  companyId      String?
+  company        Company?     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  joinedAt       DateTime     @default(now())
+  leftAt         DateTime?
+  touchpointAttendances TouchpointParticipant[]
+  createdAt      DateTime     @default(now())
+
+  @@unique([id, userId, contextSpaceId])
+  @@index([relatingId, joinedAt])
+  @@index([userId, contextSpaceId, contactId])
+  @@index([userId, contextSpaceId, companyId])
+}
+
+// A touchpoint is a single event, not a group and not necessarily an introduction.
+// One-off touchpoints may have no ongoing Relating history (relatingId = null).
+model Touchpoint {
+  id             String       @id @default(uuid())
+  userId         String
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  contextSpaceId String
+  contextSpace   ContextSpace @relation(fields: [contextSpaceId], references: [id], onDelete: Cascade)
+  relatingId     String?
+  relating       Relating?    @relation(fields: [relatingId], references: [id], onDelete: SetNull)
+  // The event kind is intentionally open-ended. No relationship state inferred.
+  kind           String
+  occurredAt     DateTime     @default(now())
+  notesEnc       String?
+  participants   TouchpointParticipant[]
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@unique([id, userId, contextSpaceId])
+  @@index([relatingId, occurredAt])
+  @@index([userId, contextSpaceId, occurredAt])
+}
+
+// Attendance is separate from group membership. Guests may attend one event
+// without becoming members of an ongoing Relating history.
+model TouchpointParticipant {
+  id                     String       @id @default(uuid())
+  userId                 String
+  user                   User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  contextSpaceId         String
+  contextSpace           ContextSpace @relation(fields: [contextSpaceId], references: [id], onDelete: Cascade)
+  touchpointId           String
+  touchpoint             Touchpoint   @relation(fields: [touchpointId, userId, contextSpaceId], references: [id, userId, contextSpaceId], onDelete: Cascade)
+  relatingParticipantId  String?
+  relatingParticipant    RelatingParticipant? @relation(fields: [relatingParticipantId, userId, contextSpaceId], references: [id, userId, contextSpaceId], onDelete: Cascade, map: "TouchpointParticipant_group_member_fkey")
+  contactId              String?
+  contact                Contact?     @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  companyId              String?
+  company                Company?     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  createdAt              DateTime     @default(now())
+
+  @@unique([touchpointId, relatingParticipantId])
+  @@index([userId, contextSpaceId, touchpointId])
+  @@index([userId, contextSpaceId, contactId])
+}
+
+// ---------------------------------------------------------------------------
 // STAGE 8.2 INTRODUCTION + OUTCOME MODELS
 // ---------------------------------------------------------------------------
 // IT: Introduction records a real connection event. It is intentionally independent of PotentialMatch,
@@ -1897,12 +2011,17 @@ model Introduction {
   facilitatorContactId String?
   facilitatorContact   Contact? @relation("IntroductionFacilitator", fields: [facilitatorContactId], references: [id], onDelete: SetNull)
 
+  // Compatibility link to the private Relating history; existing two-sided pilot is unchanged.
+  relatingId String?
+  relating   Relating? @relation(fields: [relatingId], references: [id], onDelete: SetNull)
+
   participants IntroductionParticipant[]
   outcomes     Outcome[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  @@index([userId, contextSpaceId, relatingId])
   @@index([userId, status])
   @@index([userId, occurredAt])
   @@index([userId, authority])

@@ -96,8 +96,21 @@ async function cleanup() {
       }
       await prisma.outcome.deleteMany({ where: { userId, introductionId: introId } });
       if (ids.length) await prisma.agentRun.deleteMany({ where: { userId, id: { in: ids } } });
+      // Stage 8.12.1: introductions now create private Relating containers.
+      // Remove only this test Introduction's group before deleting its Contacts.
+      const linked = await prisma.introduction.findFirst({
+        where: { userId, contextSpaceId, id: introId }, select: { relatingId: true }
+      });
       await prisma.introductionParticipant.deleteMany({ where: { userId, introductionId: introId } });
       await prisma.introduction.deleteMany({ where: { userId, id: introId } });
+      if (linked?.relatingId) {
+        await prisma.relatingParticipant.deleteMany({
+          where: { userId, contextSpaceId, relatingId: linked.relatingId }
+        });
+        await prisma.relating.deleteMany({
+          where: { userId, contextSpaceId, id: linked.relatingId }
+        });
+      }
     }
     if (contacts.length) {
       // A failed extraction can save a source Interaction without creating an AgentRun.

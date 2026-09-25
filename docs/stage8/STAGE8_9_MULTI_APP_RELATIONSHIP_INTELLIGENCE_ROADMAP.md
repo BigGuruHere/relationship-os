@@ -1,3 +1,5 @@
+> **September 2026 update:** Stage 8.12.1 supersedes any assumption that two-person Introduction is the universal Relating unit. Existing Introduction remains dyadic for compatibility, while new Relating/Touchpoint group membership is unbounded. See [Relating architecture decision](STAGE8_12_1_RELATING_ARCHITECTURE_DECISION.md).
+
 # Relish Core RelationshipOS Design and Multi-App Roadmap
 
 Status: consolidated planning baseline after Stage 8.8.12  

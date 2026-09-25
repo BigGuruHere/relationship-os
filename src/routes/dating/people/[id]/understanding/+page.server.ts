@@ -15,7 +15,7 @@ export const load: PageServerLoad = async ({ locals, params }) => {
   const scope = requireDating(locals, params.id);
   const contact = await prisma.contact.findFirst({ where: { id: scope.contactId, userId: scope.userId, contextSpaceId: scope.contextSpaceId }, select: { id: true, fullNameEnc: true } });
   if (!contact) throw redirect(303, '/dating/people');
-  return { name: await contactDisplayName(contact), entries: await listDatingUnderstanding(scope) };
+  return { personId: scope.contactId, name: await contactDisplayName(contact), entries: await listDatingUnderstanding(scope) };
 };
 export const actions: Actions = {
   propose: async ({ locals, params, request }) => {

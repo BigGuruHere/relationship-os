@@ -4,6 +4,7 @@
 // DATA: Narrative fields are encrypted at rest. No cross-workspace visibility or matching is enabled here.
 
 import { prisma } from '$lib/db';
+import { contextSpaceIdForOwner } from '$lib/server/core/contextSpace';
 import { decrypt, encrypt } from '$lib/crypto';
 import { commercialValueInputError, parseMoneyToCents, formatDealValue, safeDecrypt } from '$lib/deals';
 import { contactDisplayName } from '$lib/server/contactDisplay';
@@ -98,10 +99,26 @@ export async function createIntroductionFromForm(userId: string, form: FormData)
   const sourceType = normaliseKnowledgeSourceType(form.get('sourceType'), 'MANUAL');
   const occurredAt = parseDateTime(form.get('occurredAt'));
 
+  // Stage 8.12.1: an Introduction is now one event in a private Relating history.
+  // The event remains dyadic in the existing UI; the group schema is unbounded.
+  const contextSpaceId = contextSpaceIdForOwner(userId);
   return prisma.$transaction(async (tx) => {
+    // SECURITY: This private container is not evidence of reciprocal interest or permission.
+    const relating = await tx.relating.create({
+      data: { userId, contextSpaceId, origin: 'INTRODUCTION' },
+      select: { id: true }
+    });
+    await tx.relatingParticipant.createMany({
+      data: [
+        { userId, contextSpaceId, relatingId: relating.id, contactId: partyAContactId, companyId: partyACompanyId },
+        { userId, contextSpaceId, relatingId: relating.id, contactId: partyBContactId, companyId: partyBCompanyId }
+      ]
+    });
     const introduction = await tx.introduction.create({
       data: {
         userId,
+        contextSpaceId,
+        relatingId: relating.id,
         status: status as any,
         occurredAt,
         reasonEnc: encrypt(reason, 'introduction.reason'),
@@ -118,6 +135,7 @@ export async function createIntroductionFromForm(userId: string, form: FormData)
     await tx.introductionParticipant.create({
       data: {
         userId,
+        contextSpaceId,
         introductionId: introduction.id,
         side: 'A' as any,
         contactId: partyAContactId,
@@ -129,6 +147,7 @@ export async function createIntroductionFromForm(userId: string, form: FormData)
     await tx.introductionParticipant.create({
       data: {
         userId,
+        contextSpaceId,
         introductionId: introduction.id,
         side: 'B' as any,
         contactId: partyBContactId,

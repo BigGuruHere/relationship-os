@@ -7,7 +7,7 @@
 </script>
 <svelte:head><title>Living Understanding - Relish</title></svelte:head>
 <div class="container understanding-page">
-  <a href="/dating/people">← Dating people</a>
+  <a href={`/dating/people/${data.personId}`}>← Personal history</a>
   <h1>{data.name}: Living Understanding</h1>
   <p class="muted">An evolving, private understanding of what matters to this person. This pilot screen is operated by the workspace administrator.</p>
   <section class="card panel">

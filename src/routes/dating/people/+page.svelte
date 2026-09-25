@@ -38,7 +38,7 @@
 		{:else}
 			<div class="people-list">
 				{#each data.people as person}
-					<div class="person-row"><strong>{person.name}</strong><a href={`/dating/people/${person.id}/understanding`}>Living Understanding</a></div>
+					<div class="person-row"><strong>{person.name}</strong><div><a href={`/dating/people/${person.id}`}>Personal history</a> · <a href={`/dating/people/${person.id}/understanding`}>Living Understanding</a></div></div>
 				{/each}
 			</div>
 		{/if}

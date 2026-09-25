@@ -33,13 +33,23 @@
 	{#if review.approval.status === 'pending'}
 		<form method="post" action="?/approve">
 			<section class="card panel">
-				<h2>Proposed perspectives</h2>
+				<h2>Review each element separately</h2>
+				<p class="muted small">Edit any proposed text or values that are not quite right, then choose Confirm. Relish will record corrections automatically. You can also Reject or choose Not sure yet. Your impression of another person is never their confirmation.</p>
 				<div class="field">
 					<label for="personalExperience">1. Respondent's personal experience</label><textarea
 						id="personalExperience"
 						name="personalExperience"
 						rows="4">{proposal.personalExperience.summary}</textarea
 					><ProposalEvidence items={proposal.personalExperience.evidence} />
+				<div class="field">
+					<label for="reviewDecision_personalExperience">Decision for this element</label>
+					<select id="reviewDecision_personalExperience" name="reviewDecision_personalExperience" required>
+						<option value="">Choose a decision</option>
+						{#each data.elementDecisions as decision}
+							<option value={decision.value}>{decision.label}</option>
+						{/each}
+					</select>
+				</div>
 				</div>
 				<div class="field">
 					<label for="selfLearning">2. What the respondent learned about themselves</label><textarea
@@ -47,6 +57,15 @@
 						name="selfLearning"
 						rows="4">{proposal.selfLearning.summary}</textarea
 					><ProposalEvidence items={proposal.selfLearning.evidence} />
+				<div class="field">
+					<label for="reviewDecision_selfLearning">Decision for this element</label>
+					<select id="reviewDecision_selfLearning" name="reviewDecision_selfLearning" required>
+						<option value="">Choose a decision</option>
+						{#each data.elementDecisions as decision}
+							<option value={decision.value}>{decision.label}</option>
+						{/each}
+					</select>
+				</div>
 				</div>
 				<div class="field">
 					<label for="otherPersonExperience"
@@ -54,6 +73,15 @@
 					><textarea id="otherPersonExperience" name="otherPersonExperience" rows="4"
 						>{proposal.otherPersonExperience.summary}</textarea
 					><ProposalEvidence items={proposal.otherPersonExperience.evidence} />
+				<div class="field">
+					<label for="reviewDecision_otherPersonExperience">Decision for this element</label>
+					<select id="reviewDecision_otherPersonExperience" name="reviewDecision_otherPersonExperience" required>
+						<option value="">Choose a decision</option>
+						{#each data.elementDecisions as decision}
+							<option value={decision.value}>{decision.label}</option>
+						{/each}
+					</select>
+				</div>
 				</div>
 				<div class="field">
 					<label for="relationshipDynamic">4. Relationship dynamic</label><textarea
@@ -61,6 +89,15 @@
 						name="relationshipDynamic"
 						rows="4">{proposal.relationshipDynamic.summary}</textarea
 					><ProposalEvidence items={proposal.relationshipDynamic.evidence} />
+				<div class="field">
+					<label for="reviewDecision_relationshipDynamic">Decision for this element</label>
+					<select id="reviewDecision_relationshipDynamic" name="reviewDecision_relationshipDynamic" required>
+						<option value="">Choose a decision</option>
+						{#each data.elementDecisions as decision}
+							<option value={decision.value}>{decision.label}</option>
+						{/each}
+					</select>
+				</div>
 				</div>
 				<div class="grid two">
 					<div class="field">
@@ -82,14 +119,29 @@
 					</div>
 				</div>
 				<ProposalEvidence items={proposal.desireToContinue.evidence} />
+				<div class="field">
+					<label for="reviewDecision_desireToContinue">Decision for this element</label>
+					<select id="reviewDecision_desireToContinue" name="reviewDecision_desireToContinue" required>
+						<option value="">Choose a decision</option>
+						{#each data.elementDecisions as decision}
+							<option value={decision.value}>{decision.label}</option>
+						{/each}
+					</select>
+				</div>
 			</section>
 
 			<section class="card panel">
 				<h2>Whole-Introduction Outcome</h2>
-				<p class="muted small">
-					Only this section becomes an Outcome after approval. The perspective sections remain
-					reviewed private evidence for the pilot.
-				</p>
+				<p class="muted small">An Outcome is created only if you separately confirm this element, with or without edits. Otherwise only the reviewed private reflection is saved. Continuation is your report, not mutual agreement.</p>
+				<div class="field">
+					<label for="reviewDecision_wholeOutcome">Decision for the whole-Introduction Outcome</label>
+					<select id="reviewDecision_wholeOutcome" name="reviewDecision_wholeOutcome" required>
+						<option value="">Choose a decision</option>
+						{#each data.elementDecisions as decision}
+							<option value={decision.value}>{decision.label}</option>
+						{/each}
+					</select>
+				</div>
 				<div class="grid three">
 					<div class="field">
 						<label for="outcomeStatus">Status</label><select id="outcomeStatus" name="outcomeStatus"
@@ -188,7 +240,7 @@
 
 			{#if form?.error}<section class="card panel error">{form.error}</section>{/if}
 			<div class="actions">
-				<button class="btn primary" type="submit">Approve and create Outcome</button>
+				<button class="btn primary" type="submit">Save reviewed reflection (create Outcome only if confirmed)</button>
 			</div>
 		</form>
 
@@ -211,7 +263,15 @@
 			</section>
 			{#if review.approvedReflection}
 				<section class="card panel">
-					<h2>Your approved reflection</h2>
+					<h2>Your reviewed reflection</h2>
+					{#if review.elementReviews}
+						<p class="muted small">Each decision applies only to your account. Deferred and rejected elements are not confirmed knowledge.</p>
+						{#each review.elementReviews as element}
+							<p><strong>{element.element === 'personalExperience' ? 'Your experience' : element.element === 'selfLearning' ? 'What you learned' : element.element === 'otherPersonExperience' ? 'Your impression of the other person' : element.element === 'relationshipDynamic' ? 'Relationship dynamic' : element.element === 'desireToContinue' ? 'Desire to continue' : 'Whole-Introduction Outcome'}:</strong> {data.elementDecisions.find(item => item.value === element.decision)?.label || element.decision}</p>
+						{/each}
+					{:else}
+						<p class="muted small">Legacy whole-review approval: individual elements were not separately confirmed.</p>
+					{/if}
 					<p class="muted small">These are the corrected, privately approved words, not an independently verified account of the other person.</p>
 					<h3>Your experience</h3><p>{review.approvedReflection.personalExperience.summary || 'Not recorded'}</p>
 					<h3>What you learned</h3><p>{review.approvedReflection.selfLearning.summary || 'Not recorded'}</p>

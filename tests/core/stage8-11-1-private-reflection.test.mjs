@@ -27,8 +27,8 @@ test('the private choice is encrypted with the reviewed artifact and never added
   // Source-level invariant supplements, but does not replace, the real PostgreSQL test.
   const src = readFileSync(new URL('../../src/lib/server/datingOutcomePilot.ts', import.meta.url), 'utf8');
   assert.match(src, /contentEnc: encrypt\(JSON\.stringify\(reviewedContent\)/);
-  assert.match(src, /const reviewedContent = \{ \.\.\.proposal, privateNextStep \}/);
-  const outcomeBlock = src.split('const outcome = await tx.outcome.create(')[1].split('const updated =')[0];
+  assert.match(src, /const reviewedContent = \{ \.\.\.elementReview\.proposal, privateNextStep, elementReviews: elementReview\.elements \}/);
+  const outcomeBlock = src.split('const outcome = elementReview.createOutcome ? await tx.outcome.create(')[1].split('const updated =')[0];
   assert.doesNotMatch(outcomeBlock, /privateNextStep/);
 });
 

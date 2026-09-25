@@ -57,7 +57,9 @@
     "security:stage8.10.5:update": "node scripts/stage8-10-5-controlled-update.mjs",
     "security:stage8.10.5:verify": "node scripts/stage8-10-5-verify.mjs",
     "check:stage8.10.5": "node --test tests/core/stage8-10-5-security-workflow.test.mjs",
-    "check:stage8.11.1": "node --experimental-strip-types --test tests/core/stage8-11-1-private-reflection.test.mjs"
+    "check:stage8.11.1": "node --experimental-strip-types --test tests/core/stage8-11-1-private-reflection.test.mjs",
+    "check:stage8.11.2": "node --experimental-strip-types --test tests/core/stage8-11-2-element-review.test.mjs",
+    "check:stage8.11.3": "node --experimental-strip-types --test tests/core/stage8-11-3-simplified-element-review.test.mjs"
   },
   "engines": {
     "node": ">=22.13.1 <23"

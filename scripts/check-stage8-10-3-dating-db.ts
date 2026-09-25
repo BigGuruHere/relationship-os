@@ -62,6 +62,10 @@ function approvalForm() {
   form.set('result', 'The respondent wants another meeting.');
   form.set('notes', 'One-sided report. Not confirmed by both people.');
   form.set('privateLearningAllowed', 'true');
+  // Stage 8.11.2: every element requires its own explicit decision.
+  for (const element of ['personalExperience', 'selfLearning', 'otherPersonExperience', 'relationshipDynamic', 'desireToContinue', 'wholeOutcome']) {
+    form.set(`reviewDecision_${element}`, element === 'personalExperience' || element === 'wholeOutcome' ? 'CORRECTED' : 'CONFIRMED');
+  }
   form.set('privateNextStep', 'PAUSE');
   form.set('privateNextStepNote', 'Give it one week before deciding.');
   return form;
@@ -160,12 +164,29 @@ try {
     assert.equal(approved?.privateNextStep?.choice, 'PAUSE');
     assert.equal(approved?.privateNextStep?.note, 'Give it one week before deciding.');
     assert.equal(approved?.approvedReflection?.personalExperience.summary, 'Human-verified: I enjoyed the meeting.');
+    assert.equal(approved?.elementReviews?.find((item) => item.element === 'personalExperience')?.decision, 'CORRECTED');
+    assert.equal(approved?.elementReviews?.find((item) => item.element === 'wholeOutcome')?.decision, 'CORRECTED');
     assert.equal(outcomes[0].sourceInteractionId, result.interactionId);
     assert.match(decrypt(outcomes[0].notesEnc!, 'outcome.notes'), /One-sided report/);
     await assert.rejects(() => custody(() => pilot.approveDatingOutcomeReview({ userId, contextSpaceId, approvalId: result.approvalId, form: approvalForm() })));
     assert.equal(await custody(() => prisma.outcome.count({ where: { userId, introductionId: introId } })), 1);
   });
 
+  await check('deferred whole Outcome creates no Outcome; other decisions persist independently', async () => {
+    const result = await extract(respondentId);
+    const form = approvalForm();
+    form.set('reviewDecision_wholeOutcome', 'DEFERRED');
+    form.set('reviewDecision_otherPersonExperience', 'REJECTED');
+    const before = await custody(() => prisma.outcome.count({ where: { userId, introductionId: introId } }));
+    const approved = await custody(() => pilot.approveDatingOutcomeReview({ userId, contextSpaceId, approvalId: result.approvalId, form }));
+    assert.equal(approved.outcomeId, null);
+    assert.equal(await custody(() => prisma.outcome.count({ where: { userId, introductionId: introId } })), before);
+    const review = await custody(() => pilot.loadDatingOutcomeReview({ userId, contextSpaceId, approvalId: result.approvalId }));
+    assert.equal(review?.elementReviews?.find((item) => item.element === 'wholeOutcome')?.decision, 'DEFERRED');
+    assert.equal(review?.elementReviews?.find((item) => item.element === 'otherPersonExperience')?.decision, 'REJECTED');
+    assert.equal(review?.approvedReflection?.otherPersonExperience.summary, '');
+    assert.equal(review?.approvedReflection?.wholeOutcome.status, 'UNKNOWN');
+  });
   await check('failed model response leaves no pending approval; subsequent retry succeeds', async () => {
     failModel = true;
     await assert.rejects(() => extract(respondentId), /OpenAI model call failed/);

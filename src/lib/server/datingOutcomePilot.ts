@@ -13,6 +13,7 @@ import { executeAgentTool } from '$lib/server/agents/toolRegistry';
 import { DATING_OUTCOME_OUTPUT_SCHEMA } from '$lib/server/agents/agentSetup';
 import { loadIntroduction } from '$lib/server/introductions';
 import { normaliseDatingPrivateNextStep, type DatingPrivateNextStep } from '$lib/datingNextStep';
+import { reviewDatingElements, type DatingElementReview } from '$lib/datingElementReview';
 import {
 	cleanDatingText,
 	DATING_OUTCOME_CONSENT_VERSION,
@@ -290,6 +291,7 @@ export async function loadDatingOutcomeReview(params: {
 	// Older approved reviews may not have a next-step field, which is intentional.
 	let privateNextStep: DatingPrivateNextStep | null = null;
 	let approvedReflection: DatingOutcomeProposal | null = null;
+	let elementReviews: DatingElementReview[] | null = null;
 	if (approval.status === 'approved') {
 		const reviewed = await prisma.agentArtifact.findFirst({
 			where: {
@@ -303,6 +305,7 @@ export async function loadDatingOutcomeReview(params: {
 		if (reviewed?.contentEnc) {
 			const approvedProposal = JSON.parse(decrypt(reviewed.contentEnc, 'agent_artifact.content'));
 			privateNextStep = approvedProposal.privateNextStep ?? null;
+			elementReviews = approvedProposal.elementReviews ?? null;
 			approvedReflection = approvedProposal as DatingOutcomeProposal;
 		}
 	}
@@ -312,6 +315,7 @@ export async function loadDatingOutcomeReview(params: {
 		proposal,
 		privateNextStep,
 		approvedReflection,
+		elementReviews,
 		transcript: interaction.text,
 		introduction,
 		respondent,
@@ -337,7 +341,9 @@ export async function approveDatingOutcomeReview(params: {
 	const privateNextStep = normaliseDatingPrivateNextStep(
 		params.form.get('privateNextStep'), params.form.get('privateNextStepNote')
 	);
-	const reviewedContent = { ...proposal, privateNextStep };
+	// An overall approval no longer confirms every element. Each requires a separate decision.
+	const elementReview = reviewDatingElements(review.proposal, proposal, params.form);
+	const reviewedContent = { ...elementReview.proposal, privateNextStep, elementReviews: elementReview.elements };
 
 	return prisma.$transaction(async (tx) => {
 		const reviewedArtifact = await tx.agentArtifact.create({
@@ -363,20 +369,20 @@ export async function approveDatingOutcomeReview(params: {
 			select: { id: true }
 		});
 
-		const outcome = await tx.outcome.create({
+		const outcome = elementReview.createOutcome ? await tx.outcome.create({
 			data: {
 				userId: params.userId,
 				contextSpaceId: params.contextSpaceId,
 				introductionId: proposal.introductionId,
-				status: proposal.wholeOutcome.status as any,
+				status: elementReview.proposal.wholeOutcome.status as any,
 				commerciality: 'NON_COMMERCIAL',
-				useful: proposal.wholeOutcome.useful,
-				continued: proposal.wholeOutcome.continued,
-				resultEnc: proposal.wholeOutcome.result
-					? encrypt(proposal.wholeOutcome.result, 'outcome.result')
+				useful: elementReview.proposal.wholeOutcome.useful,
+				continued: elementReview.proposal.wholeOutcome.continued,
+				resultEnc: elementReview.proposal.wholeOutcome.result
+					? encrypt(elementReview.proposal.wholeOutcome.result, 'outcome.result')
 					: null,
-				notesEnc: proposal.wholeOutcome.notes
-					? encrypt(proposal.wholeOutcome.notes, 'outcome.notes')
+				notesEnc: elementReview.proposal.wholeOutcome.notes
+					? encrypt(elementReview.proposal.wholeOutcome.notes, 'outcome.notes')
 					: null,
 				evidenceEnc: encrypt(
 					`Human-approved private voice reflection proposal v${proposal.proposalVersion}. One-sided report by IntroductionParticipant ${proposal.respondentParticipantId}; not mutual confirmation.`,
@@ -387,27 +393,29 @@ export async function approveDatingOutcomeReview(params: {
 				sourceInteractionId: proposal.sourceInteractionId
 			},
 			select: { id: true }
-		});
+		}) : null;
 
 		const updated = await tx.approvalRequest.updateMany({
 			where: { id: params.approvalId, userId: params.userId, status: 'pending' },
 			data: {
 				status: 'approved',
 				approvedAt: new Date(),
-				reviewerNote: `Reviewed artifact ${reviewedArtifact.id}; created Outcome ${outcome.id}.`
+				reviewerNote: `Reviewed artifact ${reviewedArtifact.id}; ${outcome ? `created Outcome ${outcome.id}` : 'whole Outcome was not confirmed'}.`
 			}
 		});
 		if (updated.count !== 1) throw new Error('This proposal was reviewed by another request.');
 
-		await tx.agentRunEntity.create({
-			data: {
-				agentRunId,
-				entityType: 'outcome',
-				entityId: outcome.id,
-				role: 'created_after_human_approval'
-			}
-		});
-		return { outcomeId: outcome.id, introductionId: proposal.introductionId };
+		if (outcome) {
+			await tx.agentRunEntity.create({
+				data: {
+					agentRunId,
+					entityType: 'outcome',
+					entityId: outcome.id,
+					role: 'created_after_human_approval'
+				}
+			});
+		}
+		return { outcomeId: outcome?.id ?? null, introductionId: proposal.introductionId };
 	});
 }
 

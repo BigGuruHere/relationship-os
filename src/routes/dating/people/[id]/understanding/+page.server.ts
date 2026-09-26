@@ -71,8 +71,8 @@ export const actions: Actions = {
     // External model processing requires explicit consent to submit this reflection.
     if (form.get('allowModelProcessing') !== 'YES') return fail(400, { suggestionError: 'Confirm permission to process this private reflection.' });
     try {
-      const suggestions = await suggestDatingKnowledge(scope, sourceInteractionId);
-      return { suggestions, suggestionSourceId: sourceInteractionId };
+      const { suggestions, diagnostics } = await suggestDatingKnowledge(scope, sourceInteractionId);
+      return { suggestions, diagnostics, suggestionSourceId: sourceInteractionId };
     } catch (error: any) {
       // Provider errors stay generic: do not return private transcript or upstream error text.
       console.error('[dating knowledge suggestions] failed', error?.name || 'unknown');

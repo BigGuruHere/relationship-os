@@ -59,5 +59,5 @@ test('extractor has a bounded second pass and no automatic claims or disclosure'
   assert.match(extractor, /dating_private_person_knowledge_coverage_review/);
   assert.match(extractor, /requireSourceReflection\(scope, sourceInteractionId\)/);
   assert.doesNotMatch(extractor, /knowledgeClaim\.create/);
-  assert.match(extractor, /selectKnowledgeSuggestions\(candidates, text, 32\)/);
+  assert.match(extractor, /inspectKnowledgeSelection\(candidates, text, 32\)/);
 });

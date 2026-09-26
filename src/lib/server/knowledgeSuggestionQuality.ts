@@ -11,21 +11,35 @@ const ORDER: CandidateSuggestion['kind'][] = ['CONSTRAINT', 'WANT', 'PREFERENCE'
 const normalized = (s: string) => s.replace(/\s+/g, ' ').trim().toLocaleLowerCase();
 
 export function selectKnowledgeSuggestions(rawItems: unknown[], source: string, limit = 12): CandidateSuggestion[] {
+  return inspectKnowledgeSelection(rawItems, source, limit).selected;
+}
+
+// Privacy-preserving counters. No statement, quote, source text or identifiers appear in this report.
+// This is a diagnostic of deterministic filters, not a claim about model quality or factual correctness.
+export type KnowledgeSelectionReport = {
+  inputCount: number; examinedCount: number; invalidOrUnsupportedCount: number; exactDuplicateCount: number; nearDuplicateCount: number; eligibleCount: number; displayedCount: number; beyondLimitCount: number;
+  selectedByKind: Record<CandidateSuggestion['kind'], number>;
+  quoteReusedAcrossSelected: number; sourceMentionsUncertainty: boolean; selectedMentionsUncertainty: boolean;
+};
+export function inspectKnowledgeSelection(rawItems: unknown[], source: string, limit = 12): { selected: CandidateSuggestion[]; report: KnowledgeSelectionReport } {
   const candidates: CandidateSuggestion[] = [];
   const seen = new Set<string>();
   const sourceNormalized = normalized(source);
+  let invalid = 0;
+  let exactDuplicates = 0;
+  let nearDuplicates = 0;
   for (const raw of rawItems.slice(0, 80)) {
-    if (!raw || typeof raw !== 'object') continue;
+    if (!raw || typeof raw !== 'object') { invalid++; continue; }
     const item = raw as Record<string, unknown>;
-    if (typeof item.kind !== 'string' || !KINDS.has(item.kind)) continue;
-    if (typeof item.statement !== 'string' || typeof item.evidenceQuote !== 'string') continue;
+    if (typeof item.kind !== 'string' || !KINDS.has(item.kind)) { invalid++; continue; }
+    if (typeof item.statement !== 'string' || typeof item.evidenceQuote !== 'string') { invalid++; continue; }
     const statement = item.statement.trim();
     const quote = item.evidenceQuote.trim();
     // Do not let a plausible-sounding model inference through without literal source evidence.
-    if (!statement || statement.length > 600 || !quote || quote.length > 800 || !sourceNormalized.includes(normalized(quote))) continue;
+    if (!statement || statement.length > 600 || !quote || quote.length > 800 || !sourceNormalized.includes(normalized(quote))) { invalid++; continue; }
     const kind = item.kind as CandidateSuggestion['kind'];
     const key = `${kind}:${normalized(statement)}`;
-    if (seen.has(key)) continue;
+    if (seen.has(key)) { exactDuplicates++; continue; }
     seen.add(key);
     candidates.push({ kind, statement, evidenceQuote: quote });
   }
@@ -48,7 +62,7 @@ export function selectKnowledgeSuggestions(rawItems: unknown[], source: string, 
   };
   const distinct: CandidateSuggestion[] = [];
   for (const candidate of [...candidates].sort((a,b) => qualify(b) - qualify(a))) {
-    if (distinct.some(previous => previous.kind === candidate.kind && overlap(previous.statement, candidate.statement) >= 0.82)) continue;
+    if (distinct.some(previous => previous.kind === candidate.kind && overlap(previous.statement, candidate.statement) >= 0.82)) { nearDuplicates++; continue; }
     distinct.push(candidate);
   }
   // First-page diversity is preserved, but additional valid statements are kept
@@ -66,7 +80,24 @@ export function selectKnowledgeSuggestions(rawItems: unknown[], source: string, 
     }
     if (!added) break;
   }
-  return selected;
+  const counts = Object.fromEntries([...KINDS].map(kind => [kind, selected.filter(item => item.kind === kind).length])) as Record<CandidateSuggestion['kind'], number>;
+  const quotes = new Set<string>();
+  let reused = 0;
+  for (const item of selected) {
+    const quote = normalized(item.evidenceQuote);
+    if (quotes.has(quote)) reused++;
+    quotes.add(quote);
+  }
+  const explicitUncertainty = /\b(unsure|uncertain|not sure|hesitant|might|may|not ready|whether|perhaps|not entirely sure)\b/i;
+  return { selected, report: {
+    inputCount: rawItems.length, examinedCount: Math.min(rawItems.length, 80),
+    invalidOrUnsupportedCount: invalid, exactDuplicateCount: exactDuplicates,
+    nearDuplicateCount: nearDuplicates, eligibleCount: distinct.length,
+    displayedCount: selected.length, beyondLimitCount: Math.max(0, distinct.length - selected.length),
+    selectedByKind: counts, quoteReusedAcrossSelected: reused,
+    sourceMentionsUncertainty: explicitUncertainty.test(source),
+    selectedMentionsUncertainty: selected.some(item => explicitUncertainty.test(`${item.statement} ${item.evidenceQuote}`))
+  }};
 }
 
 export function suggestedCoverage(items: CandidateSuggestion[]): string[] {

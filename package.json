@@ -78,7 +78,9 @@
     "check:stage8.12.8": "node --experimental-strip-types --test tests/core/stage8-12-8-realms-topics.test.mjs",
     "check:stage8.12.8:db": "node --env-file=.env --import tsx scripts/check-stage8-12-8-realms-topics-db.ts",
     "check:stage8.12.9": "node --experimental-strip-types --test tests/core/stage8-12-9-reflection-workflow.test.mjs",
-    "check:stage8.12.10": "node --experimental-strip-types --test tests/core/stage8-12-10-extraction-accuracy.test.mjs"
+    "check:stage8.12.10": "node --experimental-strip-types --test tests/core/stage8-12-10-extraction-accuracy.test.mjs",
+    "check:stage8.12.11": "node --experimental-strip-types --test tests/core/stage8-12-11-topic-placement.test.mjs",
+    "check:stage8.12.12": "node --experimental-strip-types --test tests/core/stage8-12-12-knowledge-comparison.test.mjs"
   },
   "engines": {
     "node": ">=22.13.1 <23"

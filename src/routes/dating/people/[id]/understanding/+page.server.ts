@@ -4,7 +4,9 @@ import { fail, redirect } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import { prisma } from '$lib/db';
 import { suggestDatingKnowledge } from '$lib/server/datingKnowledgeExtraction';
-import { REALMS, possibleRealmHint, listUnderstandingTopics, createUnderstandingTopic, assignKnowledgeTopic, unassignKnowledgeTopic } from '$lib/server/datingUnderstandingTopics';
+import { REALMS, possibleRealmHint, listUnderstandingTopics, createUnderstandingTopic, assignKnowledgeTopic, unassignKnowledgeTopic, requireDatingPerson } from '$lib/server/datingUnderstandingTopics';
+import { suggestTopicPlacement } from '$lib/server/datingTopicPlacement';
+import { compareDatingKnowledge, listDatingKnowledgeComparisons, sharedTopicCandidates } from '$lib/server/datingKnowledgeComparison';
 import { contactDisplayName } from '$lib/server/contactDisplay';
 import { listDatingUnderstanding, createDatingUnderstanding, reviewDatingUnderstanding, listCurrentDatingKnowledge, requireSourceReflection, validateUnderstandingStatement } from '$lib/server/datingLivingUnderstanding';
 
@@ -21,16 +23,41 @@ export const load: PageServerLoad = async ({ locals, params, url }) => {
   // Validate the optional preselected source rather than trusting query parameters.
   const selectedSource = sourceId ? await requireSourceReflection(scope, sourceId) : null;
   const currentKnowledge = await listCurrentDatingKnowledge(scope);
+  const topicTree = await listUnderstandingTopics(scope);
+  const availableTopics = topicTree.flatMap(realm => realm.topics.map(topic => ({ id: topic.id, name: topic.name, realmKey: realm.key, realmName: realm.name })));
   const namedKnowledge = currentKnowledge.map(claim => {
     const hintKey = possibleRealmHint(claim.kind, claim.statement);
-    return { ...claim, possibleRealm: hintKey ? REALMS.find(r => r.key === hintKey)?.name ?? null : null };
+    return { ...claim, possibleRealm: hintKey ? REALMS.find(r => r.key === hintKey)?.name ?? null : null, suggestedTopics: suggestTopicPlacement(claim.statement, claim.kind, availableTopics) };
   });
+  // Only active, same-person claims that share a topic are shown as comparison candidates.
+  const comparisonCandidates = Object.fromEntries(namedKnowledge.map(claim => [claim.id,
+    sharedTopicCandidates(topicTree, claim.id).map(candidate => ({ ...candidate,
+      statement: namedKnowledge.find(item => item.id === candidate.id)?.statement ?? '' }))
+      .filter(candidate => candidate.statement)]));
+  const comparisonHistory = await listDatingKnowledgeComparisons(scope);
   const focusClaimId = url.searchParams.get('claimId');
-  return { personId: scope.contactId, focusClaimId: namedKnowledge.some(claim => claim.id === focusClaimId) ? focusClaimId : null, name: await contactDisplayName(contact),
+  // After a saved review, open the most recently updated unassigned claim, if one exists.
+  const assignedIds = new Set(topicTree.flatMap(realm => realm.topics.flatMap(topic => topic.claims.map(claim => claim.id))));
+  const suggestedFocusClaimId = url.searchParams.get('reviewSaved') === '1'
+    ? namedKnowledge.find(claim => !assignedIds.has(claim.id))?.id ?? null : null;
+  return { personId: scope.contactId, focusClaimId: namedKnowledge.some(claim => claim.id === focusClaimId) ? focusClaimId : null, suggestedFocusClaimId, name: await contactDisplayName(contact),
     reviewSaved: url.searchParams.get('reviewSaved') === '1', entries: await listDatingUnderstanding(scope), currentKnowledge: namedKnowledge,
-    realms: REALMS, topicTree: await listUnderstandingTopics(scope), selectedSource }; 
+    realms: REALMS, topicTree, selectedSource, comparisonCandidates, comparisonHistory, comparisonSaved: url.searchParams.get('comparisonSaved') === '1' }; 
 };
 export const actions: Actions = {
+  compareKnowledge: async ({ locals, params, request }) => {
+    const scope = requireDating(locals, params.id);
+    const form = await request.formData();
+    const newerClaimId = String(form.get('newerClaimId') || '');
+    try {
+      await compareDatingKnowledge(scope, { newerClaimId,
+        olderClaimId: String(form.get('olderClaimId') || ''),
+        relationship: String(form.get('relationship') || ''),
+        note: String(form.get('note') || ''),
+        acknowledgeSupersession: form.get('acknowledgeSupersession') === 'YES' });
+    } catch (error: any) { return fail(400, { comparisonError: error?.message || 'Unable to compare statements.' }); }
+    throw redirect(303, `/dating/people/${params.id}/understanding?claimId=${encodeURIComponent(newerClaimId)}&comparisonSaved=1#compare-knowledge`);
+  },
   createTopic: async ({ locals, params, request }) => {
     const scope = requireDating(locals, params.id);
     const form = await request.formData();
@@ -45,6 +72,21 @@ export const actions: Actions = {
     catch (error: any) { return fail(400, { topicError: error?.message || 'Unable to assign knowledge.' }); }
     const focusClaimId = String(form.get('focusClaimId') || '');
     throw redirect(303, `/dating/people/${params.id}/understanding?claimId=${encodeURIComponent(focusClaimId)}#assign-knowledge`);
+  },
+  // This is an explicit operator action, never implicit AI assignment.
+  createAndAssignTopic: async ({ locals, params, request }) => {
+    const scope = requireDating(locals, params.id);
+    const form = await request.formData();
+    const claimId = String(form.get('claimId') || '');
+    try {
+      await requireDatingPerson(scope);
+      // Validate the claim before creating a topic, to avoid orphan topics on invalid submissions.
+      const claim = await prisma.knowledgeClaim.findFirst({ where: { id: claimId, ...scope, status: 'ACTIVE' }, select: { id: true } });
+      if (!claim) throw new Error('Active knowledge was not found for this person.');
+      const topic = await createUnderstandingTopic(scope, String(form.get('realmKey') || ''), form.get('topicName'));
+      await assignKnowledgeTopic(scope, claimId, topic.id);
+    } catch (error: any) { return fail(400, { topicError: error?.message || 'Unable to create and assign topic.' }); }
+    throw redirect(303, `/dating/people/${params.id}/understanding?claimId=${encodeURIComponent(claimId)}#assign-knowledge`);
   },
   removeTopic: async ({ locals, params, request }) => {
     const scope = requireDating(locals, params.id);

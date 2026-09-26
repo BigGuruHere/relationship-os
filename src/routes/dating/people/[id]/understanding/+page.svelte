@@ -5,8 +5,11 @@
   export let form: any;
   let editingId: string | null = null;
   let suggestionPage = 0;
-  let selectedClaimId: string = data.focusClaimId ?? "";
+  let selectedClaimId: string = data.focusClaimId ?? data.suggestedFocusClaimId ?? "";
   let topicPanelOpen = false;
+  let showAllTopics = false;
+  let comparisonOlderId = "";
+  let comparisonRelationship = "";
   $: selectedClaim = data.currentKnowledge.find((claim: any) => claim.id === selectedClaimId) ?? null;
   $: selectedClaimAssignments = data.topicTree.flatMap((realm: any) => realm.topics.flatMap((topic: any) => topic.claims.some((claim: any) => claim.id === selectedClaimId) ? [{ realm: realm.name, topic: topic.name, topicId: topic.id }] : []));
   const SUGGESTIONS_PER_PAGE = 12;
@@ -19,7 +22,7 @@
     <section class="card source-preview" aria-label="Original reflection"><h2>Original reflection</h2><p class="muted small">Recorded {new Date(data.selectedSource.at).toLocaleString()} · Private to this Dating space</p><blockquote>{data.selectedSource.text}</blockquote></section>
   {:else}
     <header class="focus-heading"><p class="eyebrow">Living Understanding</p><h1>{data.name}</h1><p class="muted">Organise this person's current knowledge by realm and topic. Proposed statements and source history remain below.</p></header>
-    {#if data.reviewSaved}<p class="saved-message" role="status">Knowledge review saved. Confirmed statements appear under Realms and topics when you assign them. Select a statement below to organise it.</p>{/if}
+    {#if data.reviewSaved}<p class="saved-message" role="status">Knowledge review saved. Select a statement below to review suggested topic placements before assigning anything.</p>{/if}
     {#if data.currentKnowledge.length}<p><a class="btn" href="#assign-knowledge">Assign an existing statement to a topic ↓</a></p>{/if}
   {/if}
   {#if !data.selectedSource}
@@ -51,7 +54,7 @@
     </section>
     <section class="card panel" id="assign-knowledge">
       <h2>Assign a statement to a topic</h2>
-      <p class="muted">First select the exact statement, then choose the topic it belongs to. You can assign one statement to multiple topics.</p>
+      <p class="muted">Select a statement. The suggested placements below are local, explainable hints, not automatic AI decisions. Review the full statement and source before making any assignment. You can assign one statement to multiple topics.</p>
       {#if !data.currentKnowledge.length}<p>No active knowledge to organise yet. Add knowledge from a reflection first.</p>{:else}
         <label for="claim-to-organise">1. Statement to organise</label>
         <select id="claim-to-organise" bind:value={selectedClaimId}>
@@ -64,7 +67,39 @@
             <p class="selected-text">{selectedClaim.statement}</p>
             <p class="muted small">{selectedClaim.kind.replaceAll('_', ' ')} · {selectedClaim.authority === 'THIRD_PARTY_REPORTED' ? 'Operator reviewed, not participant confirmed' : selectedClaim.authority.replaceAll('_', ' ')}</p>
             {#if selectedClaimAssignments.length}<p class="small"><strong>Already assigned to:</strong> {selectedClaimAssignments.map((assignment) => `${assignment.realm} → ${assignment.topic}`).join('; ')}</p>{:else}<p class="muted small">This statement has no topic assignments yet.</p>{/if}
+            {#if selectedClaim.sourceReflectionId}<p class="small"><a href={`/dating/people/${data.personId}/understanding?sourceInteractionId=${encodeURIComponent(selectedClaim.sourceReflectionId)}`}>Read the original private reflection →</a></p>{:else}<p class="muted small">No source reflection is linked to this active statement.</p>{/if}
           </div>
+          <div class="placement-panel" aria-label="Suggested topic placements">
+            <h3>Suggested topic placements</h3>
+            <p class="muted small">Suggestions use wording and life-area clues within Relish, without another external AI call. They may miss context. Nothing is assigned or created until you choose an action below.</p>
+            {#if !selectedClaim.suggestedTopics.length}<p class="muted small">No confident placement clue. Choose an existing topic manually, or create a topic above.</p>{/if}
+            {#each selectedClaim.suggestedTopics as suggestion, idx (`${suggestion.topicId ?? suggestion.topicName}-${idx}`)}
+              <div class="placement-option">
+                <p><strong>{suggestion.realmName} → {suggestion.topicName}</strong> {#if suggestion.isNew}<span class="muted small">(new topic)</span>{:else}<span class="muted small">(existing topic)</span>{/if}</p>
+                <p class="muted small">Why suggested: {suggestion.reason}</p>
+                {#if selectedClaimAssignments.some((assignment) => assignment.topicId === suggestion.topicId) && !suggestion.isNew}
+                  <p class="muted small">Already assigned.</p>
+                {:else if suggestion.isNew}
+                  <form method="POST" action="?/createAndAssignTopic#assign-knowledge" class="suggestion-form">
+                    <input type="hidden" name="claimId" value={selectedClaimId} />
+                    <input type="hidden" name="realmKey" value={suggestion.realmKey} />
+                    <label for={`suggested-name-${idx}`}>Edit new topic name</label>
+                    <input id={`suggested-name-${idx}`} name="topicName" value={suggestion.topicName} minlength="2" maxlength="100" required />
+                    <button class="btn" type="submit">Create topic and assign</button>
+                  </form>
+                {:else}
+                  <form method="POST" action="?/assignTopic#assign-knowledge" class="suggestion-form">
+                    <input type="hidden" name="claimId" value={selectedClaimId} />
+                    <input type="hidden" name="focusClaimId" value={selectedClaimId} />
+                    <input type="hidden" name="topicId" value={suggestion.topicId} />
+                    <button class="btn" type="submit">Assign to this topic</button>
+                  </form>
+                {/if}
+              </div>
+            {/each}
+          </div>
+          <button type="button" class="btn" on:click={() => showAllTopics = !showAllTopics} aria-expanded={showAllTopics}>{showAllTopics ? 'Hide all topics' : 'Choose another existing topic'}</button>
+          {#if showAllTopics}
           {#if data.topicTree.some((realm) => realm.topics.length)}
             <form method="POST" action="?/assignTopic#assign-knowledge" class="assignment-form">
               <input type="hidden" name="claimId" value={selectedClaimId} />
@@ -76,8 +111,74 @@
               <button type="submit" class="btn primary">Assign this statement</button>
             </form>
           {:else}<p class="muted">Create a topic in Realms and topics above before assigning this statement.</p>{/if}
+          {/if}
         {/if}
       {/if}
+    </section>
+    <section class="card panel" id="compare-knowledge">
+      <h2>Compare new knowledge with earlier understanding</h2>
+      <p class="muted">Choose an active statement and an earlier statement that shares at least one topic. Compare their wording and source before deciding whether the newer statement is independent, supporting, refining, potentially conflicting or explicitly superseding. No automated decision is made.</p>
+      {#if form?.comparisonError}<p role="alert" class="error">{form.comparisonError}</p>{/if}
+      {#if data.comparisonSaved}<p role="status" class="saved-message">Comparison recorded. Historical source and evidence have been retained.</p>{/if}
+      <label for="comparison-newer">Newer statement to consider</label>
+      <select id="comparison-newer" bind:value={selectedClaimId} on:change={() => { comparisonOlderId = ""; comparisonRelationship = ""; }}>
+        <option value="">Select a current statement…</option>
+        {#each data.currentKnowledge as claim (claim.id)}<option value={claim.id}>{claim.statement}</option>{/each}
+      </select>
+      {#if selectedClaim}
+        <div class="selected-statement"><p class="eyebrow">Newer statement</p><p class="selected-text">{selectedClaim.statement}</p>
+          {#if selectedClaim.sourceReflectionId}<a href={`/dating/people/${data.personId}/understanding?sourceInteractionId=${encodeURIComponent(selectedClaim.sourceReflectionId)}`}>Read its original private reflection</a>{/if}
+        </div>
+        {#if !(data.comparisonCandidates[selectedClaimId]?.length)}
+          <p class="muted">No other active statement shares an assigned topic. Assign both statements to a suitable common topic first, or leave this statement independent.</p>
+        {:else}
+          <label for="comparison-older">Earlier statement</label>
+          <select id="comparison-older" bind:value={comparisonOlderId} on:change={() => comparisonRelationship = ""}>
+            <option value="">Choose a related statement…</option>
+            {#each data.comparisonCandidates[selectedClaimId] as candidate (candidate.id)}<option value={candidate.id}>{candidate.statement}</option>{/each}
+          </select>
+          {#each data.comparisonCandidates[selectedClaimId] as candidate (candidate.id)}
+            {#if comparisonOlderId === candidate.id}
+              <div class="selected-statement"><p class="eyebrow">Existing statement</p><p class="selected-text">{candidate.statement}</p>
+                <p class="muted small">Shared topics: {candidate.topics.join(', ')}</p>
+                {#if data.currentKnowledge.find((claim: any) => claim.id === candidate.id)?.sourceReflectionId}<a href={`/dating/people/${data.personId}/understanding?sourceInteractionId=${encodeURIComponent(data.currentKnowledge.find((claim: any) => claim.id === candidate.id).sourceReflectionId)}`}>Read its original private reflection</a>{/if}
+              </div>
+            {/if}
+          {/each}
+          {#if comparisonOlderId}
+            <form method="POST" action="?/compareKnowledge#compare-knowledge" class="review-form">
+              <input type="hidden" name="newerClaimId" value={selectedClaimId} />
+              <input type="hidden" name="olderClaimId" value={comparisonOlderId} />
+              <label for="comparison-relationship">How do these statements relate?</label>
+              <select id="comparison-relationship" name="relationship" bind:value={comparisonRelationship} required>
+                <option value="" disabled>Choose after reviewing both statements…</option>
+                <option value="INDEPENDENT">Independent new knowledge</option>
+                <option value="SUPPORTS">Supports the earlier statement</option>
+                <option value="REFINES">Refines or qualifies the earlier statement</option>
+                <option value="POTENTIAL_CONFLICT">Potential conflict, keep both active</option>
+                <option value="SUPERSEDES">New statement supersedes the earlier one</option>
+              </select>
+              <label for="comparison-note">Reason for this interpretation (optional)</label>
+              <textarea id="comparison-note" name="note" rows="2" maxlength="1000" placeholder="What changed or how does this new evidence qualify the old statement?"></textarea>
+              {#if comparisonRelationship === 'SUPERSEDES'}
+                <div class="supersession-warning"><p><strong>Retire earlier statement?</strong> This removes it from the current view, but retains the encrypted claim, evidence, topics and comparison history.</p>
+                <label><input type="checkbox" name="acknowledgeSupersession" value="YES" required /> Yes, I explicitly confirm this earlier statement should be superseded.</label></div>
+              {/if}
+              <button type="submit" class="btn primary">Record this comparison</button>
+              <p class="muted small">This is your operator review, not participant confirmation or permission to disclose anything.</p>
+            </form>
+          {/if}
+        {/if}
+      {/if}
+      <details class="history-panel"><summary>Recorded comparisons ({data.comparisonHistory.length})</summary>
+        {#each data.comparisonHistory as comparison (comparison.id)}
+          <article class="history"><p><strong>{comparison.relationship.replaceAll('_', ' ')}</strong> · {new Date(comparison.at).toLocaleString()} · Operator review</p>
+            <p><strong>Newer:</strong> {comparison.newerStatement}</p><p><strong>Earlier:</strong> {comparison.olderStatement}</p>
+            {#if comparison.note}<p>Reason: {comparison.note}</p>{/if}
+            {#if comparison.olderWasSuperseded}<p class="muted small">Earlier statement retired from the current view; original evidence retained.</p>{/if}
+          </article>
+        {/each}
+      </details>
     </section>
     <details class="card panel" id="current-knowledge"><summary><strong>All current knowledge ({data.currentKnowledge.length})</strong></summary>
       <p class="muted small">Each item is individually recorded. Assignment to a topic does not confirm or share it.</p>
@@ -264,9 +365,14 @@
   .realm-entry { border-top: 1px solid var(--border); padding: 12px 0; }
   .topic-entry { margin: 12px 0; padding: 12px; border: 1px solid var(--border); border-radius: 10px; }
   .topic-claim { border-top: 1px solid var(--border); padding: 10px 0; }
+  .placement-panel { margin: 14px 0; padding: 14px; border: 1px solid var(--border); border-radius: 10px; }
+  .placement-option { padding: 12px 0; border-top: 1px solid var(--border); }
+  .placement-option p { margin: 4px 0 8px; }
+  .suggestion-form { display: grid; gap: 8px; max-width: 450px; }
   .assignment-form { border-top: 1px solid var(--border); padding: 12px 0; }
   .history { margin-top: 10px; padding: 12px; border-top: 1px solid var(--border); }
   .history-panel { margin-top: 12px; }
+  .supersession-warning { border: 1px solid var(--border); padding: 14px; border-radius: 10px; }
   .diagnostic-panel { margin-top: 12px; padding: 12px; overflow-x: auto; }
   .diagnostic-panel table { border-collapse: collapse; width: 100%; font-size: .88rem; }
   .diagnostic-panel th, .diagnostic-panel td { padding: 7px; border-bottom: 1px solid var(--border); text-align: left; }

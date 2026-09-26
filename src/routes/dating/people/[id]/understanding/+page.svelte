@@ -25,7 +25,7 @@
   {#if data.selectedSource}
     <section class="card panel" id="knowledge-suggestions">
       <h2>Dorian-assisted knowledge suggestions</h2>
-      <p class="muted small">Review each suggestion independently. Nothing is added to confirmed knowledge without an operator decision. Processing is done by the configured AI provider only after explicit opt-in.</p>
+      <p class="muted small">Dorian checks the full reflection for distinct, evidence-backed knowledge and, for longer reflections, makes a second pass for missed topics. The 12 suggestions displayed are a diverse selection, not an exhaustive profile. Review each independently; no suggestion is confirmed or shared automatically.</p>
       <form method="POST" action={`?/suggest&sourceInteractionId=${encodeURIComponent(data.selectedSource.id)}#knowledge-suggestions`}>
         <input type="hidden" name="sourceInteractionId" value={data.selectedSource.id} />
         <label><input type="checkbox" name="allowModelProcessing" value="YES" required /> Allow AI processing of this private reflection for knowledge suggestions.</label>
@@ -33,7 +33,7 @@
       </form>
       {#if form?.suggestionError}<p class="error" role="alert">{form.suggestionError}</p>{/if}
       {#if form?.suggestions && form?.suggestionSourceId === data.selectedSource.id}
-        {#if form.suggestions.length === 0}<p>No supported suggestions found. You can add knowledge manually below.</p>{/if}
+        {#if form.suggestions.length === 0}<p>No supported suggestions found. You can add knowledge manually below.</p>{:else if form.suggestions.length === 12}<p class="muted small">Showing 12 suggestions, the current review limit. Some supported details may not be shown; you can add them manually below.</p>{/if}
         <form method="POST" action="?/saveSuggestions">
           <input type="hidden" name="sourceInteractionId" value={data.selectedSource.id} />
           <input type="hidden" name="count" value={form.suggestions.length} />

@@ -5,6 +5,7 @@ import { readFileSync } from 'node:fs';
 const extractor = readFileSync('src/lib/server/datingKnowledgeExtraction.ts', 'utf8');
 const route = readFileSync('src/routes/dating/people/[id]/understanding/+page.server.ts', 'utf8');
 const ui = readFileSync('src/routes/dating/people/[id]/understanding/+page.svelte', 'utf8');
+const selector = readFileSync('src/lib/server/knowledgeSuggestionQuality.ts', 'utf8');
 
 test('AI extraction is explicitly opt-in and source is custody validated', () => {
   assert.match(route, /allowModelProcessing.*'YES'/);
@@ -18,7 +19,7 @@ test('AI suggestions are not directly promoted to active knowledge', () => {
   assert.match(route, /createDatingUnderstanding\(scope/);
 });
 test('every suggestion retains literal reflection evidence and known category', () => {
-  assert.match(extractor, /normalise\(source\)\.includes\(normalise\(quote\)\)/);
+  assert.match(selector, /sourceNormalized\.includes\(normalized\(quote\)\)/);
   assert.match(route, /normalize\(source\.text\)\.includes\(normalize\(quote\)\)/);
   assert.match(route, /\['FACT','WANT','OFFER','PREFERENCE','CONSTRAINT','OBJECTIVE','OTHER'\]/);
 });

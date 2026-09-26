@@ -69,7 +69,8 @@
     "check:stage8.12.2:db": "node --env-file=.env --import tsx scripts/check-stage8-12-2-person-history-db.ts",
     "check:stage8.12.3": "node --test tests/core/stage8-12-3-person-knowledge.test.mjs",
     "check:stage8.12.3:db": "node --env-file=.env --import tsx scripts/check-stage8-12-3-person-knowledge-db.ts",
-    "check:stage8.12.4": "node --test tests/core/stage8-12-4-ai-knowledge.test.mjs"
+    "check:stage8.12.4": "node --test tests/core/stage8-12-4-ai-knowledge.test.mjs",
+    "check:stage8.12.5": "node --experimental-strip-types --test tests/core/stage8-12-5-extraction-quality.test.mjs"
   },
   "engines": {
     "node": ">=22.13.1 <23"

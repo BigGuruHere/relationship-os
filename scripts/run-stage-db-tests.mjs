@@ -13,7 +13,8 @@ const scripts = [
   'check-stage8-12-0-1-understanding-db.ts',
   'check-stage8-12-1-relating-db.ts',
   'check-stage8-12-2-person-history-db.ts',
-  'check-stage8-12-3-person-knowledge-db.ts'
+  'check-stage8-12-3-person-knowledge-db.ts',
+  'check-stage8-12-8-realms-topics-db.ts'
 ];
 for (const script of scripts) {
   console.log(`Running authorised development DB test: ${script}`);

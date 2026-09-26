@@ -4,6 +4,7 @@ import { fail, redirect } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import { prisma } from '$lib/db';
 import { suggestDatingKnowledge } from '$lib/server/datingKnowledgeExtraction';
+import { REALMS, possibleRealmHint, listUnderstandingTopics, createUnderstandingTopic, assignKnowledgeTopic, unassignKnowledgeTopic } from '$lib/server/datingUnderstandingTopics';
 import { contactDisplayName } from '$lib/server/contactDisplay';
 import { listDatingUnderstanding, createDatingUnderstanding, reviewDatingUnderstanding, listCurrentDatingKnowledge, requireSourceReflection, validateUnderstandingStatement } from '$lib/server/datingLivingUnderstanding';
 
@@ -19,10 +20,37 @@ export const load: PageServerLoad = async ({ locals, params, url }) => {
   const sourceId = url.searchParams.get('sourceInteractionId');
   // Validate the optional preselected source rather than trusting query parameters.
   const selectedSource = sourceId ? await requireSourceReflection(scope, sourceId) : null;
+  const currentKnowledge = await listCurrentDatingKnowledge(scope);
+  const namedKnowledge = currentKnowledge.map(claim => {
+    const hintKey = possibleRealmHint(claim.kind, claim.statement);
+    return { ...claim, possibleRealm: hintKey ? REALMS.find(r => r.key === hintKey)?.name ?? null : null };
+  });
   return { personId: scope.contactId, name: await contactDisplayName(contact),
-    entries: await listDatingUnderstanding(scope), currentKnowledge: await listCurrentDatingKnowledge(scope), selectedSource }; 
+    entries: await listDatingUnderstanding(scope), currentKnowledge: namedKnowledge,
+    realms: REALMS, topicTree: await listUnderstandingTopics(scope), selectedSource }; 
 };
 export const actions: Actions = {
+  createTopic: async ({ locals, params, request }) => {
+    const scope = requireDating(locals, params.id);
+    const form = await request.formData();
+    try { await createUnderstandingTopic(scope, String(form.get('realmKey') || ''), form.get('topicName')); }
+    catch (error: any) { return fail(400, { topicError: error?.message || 'Unable to create topic.' }); }
+    throw redirect(303, `/dating/people/${params.id}/understanding#realms`);
+  },
+  assignTopic: async ({ locals, params, request }) => {
+    const scope = requireDating(locals, params.id);
+    const form = await request.formData();
+    try { await assignKnowledgeTopic(scope, String(form.get('claimId') || ''), String(form.get('topicId') || '')); }
+    catch (error: any) { return fail(400, { topicError: error?.message || 'Unable to assign knowledge.' }); }
+    throw redirect(303, `/dating/people/${params.id}/understanding#realms`);
+  },
+  removeTopic: async ({ locals, params, request }) => {
+    const scope = requireDating(locals, params.id);
+    const form = await request.formData();
+    try { await unassignKnowledgeTopic(scope, String(form.get('claimId') || ''), String(form.get('topicId') || '')); }
+    catch (error: any) { return fail(400, { topicError: error?.message || 'Unable to remove assignment.' }); }
+    throw redirect(303, `/dating/people/${params.id}/understanding#realms`);
+  },
   saveSuggestions: async ({ locals, params, request }) => {
     const scope = requireDating(locals, params.id);
     const form = await request.formData();

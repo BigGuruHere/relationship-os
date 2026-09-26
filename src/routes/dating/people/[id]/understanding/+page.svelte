@@ -24,6 +24,65 @@
       </article>
     {/each}
   </section>
+  <section class="card panel" id="realms">
+    <h2>Realms and topics</h2>
+    <p class="muted">Organise confirmed knowledge by areas of life. A topic can hold many independent statements and a statement may appear in several topics. The operator reviews each assignment. No information is shared with another person.</p>
+    {#if form?.topicError}<p class="error" role="alert">{form.topicError}</p>{/if}
+    <h3>Create a topic</h3>
+    <form method="POST" action="?/createTopic#realms">
+      <label for="realm-select">Realm</label>
+      <select id="realm-select" name="realmKey" required>
+        {#each data.realms as realm}<option value={realm.key}>{realm.name}</option>{/each}
+      </select>
+      <label for="topic-name">Topic name</label>
+      <input id="topic-name" name="topicName" minlength="2" maxlength="100" required placeholder="e.g. Desired relationship, Relationship readiness, Preferred partner" />
+      <button class="btn" type="submit">Create topic</button>
+    </form>
+    {#if !data.topicTree.length}<p class="muted">No topics yet. Your existing knowledge is unchanged. Create a topic, then assign individual statements below.</p>{/if}
+    {#each data.topicTree as realm (realm.id)}
+      <div class="realm-entry">
+        <h3>{realm.name}</h3>
+        {#each realm.topics as topic (topic.id)}
+          <div class="topic-entry">
+            <h4>{topic.name}</h4>
+            {#if !topic.claims.length}<p class="muted small">No current knowledge assigned yet.</p>{/if}
+            {#each topic.claims as claim (claim.id)}
+              <div class="topic-claim">
+                <p>{claim.statement}</p>
+                <p class="muted small">{claim.kind.replaceAll('_', ' ')} · {claim.authority === 'THIRD_PARTY_REPORTED' ? 'Operator reviewed (not participant confirmed)' : claim.authority.replaceAll('_', ' ')}</p>
+                <form method="POST" action="?/removeTopic#realms">
+                  <input type="hidden" name="topicId" value={topic.id} />
+                  <input type="hidden" name="claimId" value={claim.id} />
+                  <button type="submit" class="btn">Remove from this topic</button>
+                </form>
+              </div>
+            {/each}
+          </div>
+        {/each}
+      </div>
+    {/each}
+    {#if data.topicTree.some(realm => realm.topics.length) && data.currentKnowledge.length}
+      <h3>Assign existing knowledge</h3>
+      <p class="muted small">You can assign the same statement to multiple topics; its original evidence and revision history remain unchanged.</p>
+      {#each data.currentKnowledge as claim (claim.id)}
+        <form method="POST" action="?/assignTopic#realms" class="assignment-form">
+          <p>{claim.statement}</p>
+          {#if claim.possibleRealm}<p class="muted small">Possible realm: {claim.possibleRealm}. This is an unverified local hint, not an automatic assignment.</p>{/if}
+          <input type="hidden" name="claimId" value={claim.id} />
+          <label for={`topic-${claim.id}`}>Topic</label>
+          <select id={`topic-${claim.id}`} name="topicId" required>
+            <option value="" disabled selected>Choose an existing topic</option>
+            {#each data.topicTree as realm}
+              <optgroup label={realm.name}>
+                {#each realm.topics as topic}<option value={topic.id}>{topic.name}</option>{/each}
+              </optgroup>
+            {/each}
+          </select>
+          <button type="submit" class="btn">Assign to topic</button>
+        </form>
+      {/each}
+    {/if}
+  </section>
   {#if data.selectedSource}
     <section class="card panel" id="knowledge-suggestions">
       <h2>Dorian-assisted knowledge suggestions</h2>
@@ -187,6 +246,10 @@
   .error { color: var(--danger); }
   input[type="checkbox"] { width: auto; margin-right: 8px; }
   select { padding: 10px; border: 1px solid var(--border); border-radius: 9px; background: var(--surface); color: var(--text); }
+  .realm-entry { border-top: 1px solid var(--border); padding: 12px 0; }
+  .topic-entry { margin: 12px 0; padding: 12px; border: 1px solid var(--border); border-radius: 10px; }
+  .topic-claim { border-top: 1px solid var(--border); padding: 10px 0; }
+  .assignment-form { border-top: 1px solid var(--border); padding: 12px 0; }
   .history { margin-top: 10px; padding: 12px; border-top: 1px solid var(--border); }
   .history-panel { margin-top: 12px; }
   .diagnostic-panel { margin-top: 12px; padding: 12px; overflow-x: auto; }

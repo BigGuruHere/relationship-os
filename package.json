@@ -74,7 +74,9 @@
     "test:db": "node scripts/run-stage-db-tests.mjs",
     "test:all": "npm test && npm run test:db && npm run check && npm run build",
     "check:stage8.12.6": "node --experimental-strip-types --test tests/core/stage8-12-6-knowledge-selection.test.mjs",
-    "check:stage8.12.7": "node --experimental-strip-types --test tests/core/stage8-12-7-extraction-diagnostics.test.mjs"
+    "check:stage8.12.7": "node --experimental-strip-types --test tests/core/stage8-12-7-extraction-diagnostics.test.mjs",
+    "check:stage8.12.8": "node --experimental-strip-types --test tests/core/stage8-12-8-realms-topics.test.mjs",
+    "check:stage8.12.8:db": "node --env-file=.env --import tsx scripts/check-stage8-12-8-realms-topics-db.ts"
   },
   "engines": {
     "node": ">=22.13.1 <23"

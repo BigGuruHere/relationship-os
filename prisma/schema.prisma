@@ -98,6 +98,9 @@ model User {
   outcomes              Outcome[]
   objectives            Objective[]
   knowledgeClaims       KnowledgeClaim[]
+  understandingRealms UnderstandingRealm[]
+  understandingTopics UnderstandingTopic[]
+  understandingLinks UnderstandingTopicClaim[]
   knowledgeEvidence     KnowledgeEvidence[]
 
   // IT: agent framework records. Agents read/write through Relish services and every run is logged.
@@ -196,6 +199,9 @@ model ContextSpace {
   companyRelationships CompanyRelationship[]
   objectives Objective[]
   knowledgeClaims KnowledgeClaim[]
+  understandingRealms UnderstandingRealm[]
+  understandingTopics UnderstandingTopic[]
+  understandingLinks UnderstandingTopicClaim[]
   knowledgeEvidence KnowledgeEvidence[]
   wants Want[]
   wantNotes WantNote[]
@@ -496,6 +502,9 @@ model Contact {
   interactions Interaction[]
   objectives   Objective[]
   knowledgeClaims KnowledgeClaim[]
+  understandingRealms UnderstandingRealm[]
+  understandingTopics UnderstandingTopic[]
+  understandingLinks UnderstandingTopicClaim[]
   tags         ContactTag[]
   linkedUserId String?
 
@@ -1496,6 +1505,7 @@ model KnowledgeClaim {
   offer       Offer? @relation(fields: [offerId], references: [id], onDelete: SetNull)
 
   evidence KnowledgeEvidence[]
+  topicLinks UnderstandingTopicClaim[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1509,6 +1519,63 @@ model KnowledgeClaim {
   @@index([userId, wantId])
   @@index([userId, contextSpaceId])
   @@index([userId, offerId])
+}
+
+
+// Stage 8.12.8 - all hierarchy records are private to one contact, owner and ContextSpace.
+// Labels are encrypted. Stable realm keys are non-sensitive structural identifiers.
+model UnderstandingRealm {
+  id String @id @default(uuid())
+  userId String
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  contextSpaceId String
+  contextSpace ContextSpace @relation(fields: [contextSpaceId], references: [id], onDelete: Cascade)
+  contactId String
+  contact Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  key String
+  nameEnc String
+  createdAt DateTime @default(now())
+  topics UnderstandingTopic[]
+  @@unique([userId, contextSpaceId, contactId, key])
+  @@unique([id, userId, contextSpaceId, contactId])
+  @@index([userId, contextSpaceId, contactId])
+}
+
+model UnderstandingTopic {
+  id String @id @default(uuid())
+  userId String
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  contextSpaceId String
+  contextSpace ContextSpace @relation(fields: [contextSpaceId], references: [id], onDelete: Cascade)
+  contactId String
+  contact Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  realmId String
+  realm UnderstandingRealm @relation(fields: [realmId, userId, contextSpaceId, contactId], references: [id, userId, contextSpaceId, contactId], onDelete: Cascade)
+  nameEnc String
+  nameIdx String
+  createdAt DateTime @default(now())
+  links UnderstandingTopicClaim[]
+  @@unique([userId, contextSpaceId, contactId, realmId, nameIdx], map: "UnderstandingTopic_unique_name")
+  @@unique([id, userId, contextSpaceId, contactId])
+  @@index([userId, contextSpaceId, contactId, realmId])
+}
+
+// Many-to-many: a single claim can appear in several topics without copying its source or statement.
+model UnderstandingTopicClaim {
+  id String @id @default(uuid())
+  userId String
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  contextSpaceId String
+  contextSpace ContextSpace @relation(fields: [contextSpaceId], references: [id], onDelete: Cascade)
+  contactId String
+  contact Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  topicId String
+  topic UnderstandingTopic @relation(fields: [topicId, userId, contextSpaceId, contactId], references: [id, userId, contextSpaceId, contactId], onDelete: Cascade, map: "UnderstandingTopicClaim_topic_custody_fk")
+  claimId String
+  claim KnowledgeClaim @relation(fields: [claimId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  @@unique([userId, contextSpaceId, contactId, topicId, claimId], map: "UnderstandingTopicClaim_unique_link")
+  @@index([userId, contextSpaceId, contactId, claimId], map: "UnderstandingTopicClaim_claim_idx")
 }
 
 // IT: Source evidence for a KnowledgeClaim. Multiple interactions can support the same claim.

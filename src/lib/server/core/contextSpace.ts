@@ -205,6 +205,7 @@ export const CONTEXT_SCOPED_MODELS = new Set([
   'Deal', 'DealNote', 'DealContact', 'DealContactNote',
   'Company', 'CompanyExternalIdentifier', 'CompanyNote', 'CompanyContact', 'CompanyContactNote', 'DealCompany', 'CompanyRelationship',
   'Objective', 'KnowledgeClaim', 'KnowledgeEvidence',
+  'UnderstandingRealm', 'UnderstandingTopic', 'UnderstandingTopicClaim',
   'Want', 'WantNote', 'Offer', 'OfferNote',
   'Relating', 'RelatingParticipant', 'Touchpoint', 'TouchpointParticipant',
   'Introduction', 'IntroductionParticipant', 'Outcome',

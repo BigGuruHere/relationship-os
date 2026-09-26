@@ -5,88 +5,91 @@
   export let form: any;
   let editingId: string | null = null;
   let suggestionPage = 0;
+  let selectedClaimId: string = data.focusClaimId ?? "";
+  let topicPanelOpen = false;
+  $: selectedClaim = data.currentKnowledge.find((claim: any) => claim.id === selectedClaimId) ?? null;
+  $: selectedClaimAssignments = data.topicTree.flatMap((realm: any) => realm.topics.flatMap((topic: any) => topic.claims.some((claim: any) => claim.id === selectedClaimId) ? [{ realm: realm.name, topic: topic.name, topicId: topic.id }] : []));
   const SUGGESTIONS_PER_PAGE = 12;
 </script>
 <svelte:head><title>Living Understanding - Relish</title></svelte:head>
 <div class="container understanding-page">
-  <a href={`/dating/people/${data.personId}`}>← Personal history</a>
-  <h1>{data.name}: Living Understanding</h1>
-  <p class="muted">An evolving, private understanding of what matters to this person. This pilot screen is operated by the workspace administrator.</p>
-  <section class="card panel">
-    <h2>Current knowledge</h2>
-    <p class="muted">Active, individually recorded knowledge for this person in the Dating space. Operator review is not participant confirmation or sharing consent.</p>
-    {#if !data.currentKnowledge.length}<p class="muted">No active knowledge yet. Propose an understanding below.</p>{/if}
-    {#each data.currentKnowledge as claim (claim.id)}
-      <article class="entry">
-        <p class="muted small">{claim.kind.replaceAll('_', ' ')} · {claim.authority === 'THIRD_PARTY_REPORTED' ? 'Operator reviewed' : claim.authority.replaceAll('_', ' ')} · {new Date(claim.updatedAt).toLocaleDateString()}</p>
-        <p class="current-statement">{claim.statement}</p>
-        <p class="muted small">Source evidence: {claim.evidenceCount} linked record(s). These do not grant disclosure permission.</p>
-      </article>
-    {/each}
-  </section>
-  <section class="card panel" id="realms">
-    <h2>Realms and topics</h2>
-    <p class="muted">Organise confirmed knowledge by areas of life. A topic can hold many independent statements and a statement may appear in several topics. The operator reviews each assignment. No information is shared with another person.</p>
-    {#if form?.topicError}<p class="error" role="alert">{form.topicError}</p>{/if}
-    <h3>Create a topic</h3>
-    <form method="POST" action="?/createTopic#realms">
-      <label for="realm-select">Realm</label>
-      <select id="realm-select" name="realmKey" required>
-        {#each data.realms as realm}<option value={realm.key}>{realm.name}</option>{/each}
-      </select>
-      <label for="topic-name">Topic name</label>
-      <input id="topic-name" name="topicName" minlength="2" maxlength="100" required placeholder="e.g. Desired relationship, Relationship readiness, Preferred partner" />
-      <button class="btn" type="submit">Create topic</button>
-    </form>
-    {#if !data.topicTree.length}<p class="muted">No topics yet. Your existing knowledge is unchanged. Create a topic, then assign individual statements below.</p>{/if}
-    {#each data.topicTree as realm (realm.id)}
-      <div class="realm-entry">
-        <h3>{realm.name}</h3>
-        {#each realm.topics as topic (topic.id)}
-          <div class="topic-entry">
-            <h4>{topic.name}</h4>
-            {#if !topic.claims.length}<p class="muted small">No current knowledge assigned yet.</p>{/if}
-            {#each topic.claims as claim (claim.id)}
-              <div class="topic-claim">
-                <p>{claim.statement}</p>
-                <p class="muted small">{claim.kind.replaceAll('_', ' ')} · {claim.authority === 'THIRD_PARTY_REPORTED' ? 'Operator reviewed (not participant confirmed)' : claim.authority.replaceAll('_', ' ')}</p>
-                <form method="POST" action="?/removeTopic#realms">
-                  <input type="hidden" name="topicId" value={topic.id} />
-                  <input type="hidden" name="claimId" value={claim.id} />
-                  <button type="submit" class="btn">Remove from this topic</button>
-                </form>
-              </div>
-            {/each}
-          </div>
-        {/each}
-      </div>
-    {/each}
-    {#if data.topicTree.some(realm => realm.topics.length) && data.currentKnowledge.length}
-      <h3>Assign existing knowledge</h3>
-      <p class="muted small">You can assign the same statement to multiple topics; its original evidence and revision history remain unchanged.</p>
-      {#each data.currentKnowledge as claim (claim.id)}
-        <form method="POST" action="?/assignTopic#realms" class="assignment-form">
-          <p>{claim.statement}</p>
-          {#if claim.possibleRealm}<p class="muted small">Possible realm: {claim.possibleRealm}. This is an unverified local hint, not an automatic assignment.</p>{/if}
-          <input type="hidden" name="claimId" value={claim.id} />
-          <label for={`topic-${claim.id}`}>Topic</label>
-          <select id={`topic-${claim.id}`} name="topicId" required>
-            <option value="" disabled selected>Choose an existing topic</option>
-            {#each data.topicTree as realm}
-              <optgroup label={realm.name}>
-                {#each realm.topics as topic}<option value={topic.id}>{topic.name}</option>{/each}
-              </optgroup>
-            {/each}
-          </select>
-          <button type="submit" class="btn">Assign to topic</button>
+  <nav class="workflow-nav"><a href={`/dating/people/${data.personId}#personal-reflections`}>← Personal reflections</a>{#if data.selectedSource}<a href={`/dating/people/${data.personId}/understanding`}>View full Living Understanding →</a>{/if}</nav>
+  {#if data.selectedSource}
+    <header class="focus-heading"><p class="eyebrow">Reflection → Knowledge</p><h1>Review this reflection</h1><p class="muted">Choose which individual pieces of this reflection should become proposed or operator-reviewed knowledge. Organise confirmed statements into topics afterwards.</p></header>
+    <section class="card source-preview" aria-label="Original reflection"><h2>Original reflection</h2><p class="muted small">Recorded {new Date(data.selectedSource.at).toLocaleString()} · Private to this Dating space</p><blockquote>{data.selectedSource.text}</blockquote></section>
+  {:else}
+    <header class="focus-heading"><p class="eyebrow">Living Understanding</p><h1>{data.name}</h1><p class="muted">Organise this person's current knowledge by realm and topic. Proposed statements and source history remain below.</p></header>
+    {#if data.reviewSaved}<p class="saved-message" role="status">Knowledge review saved. Confirmed statements appear under Realms and topics when you assign them. Select a statement below to organise it.</p>{/if}
+    {#if data.currentKnowledge.length}<p><a class="btn" href="#assign-knowledge">Assign an existing statement to a topic ↓</a></p>{/if}
+  {/if}
+  {#if !data.selectedSource}
+    <section class="card panel" id="realms">
+      <div class="section-heading"><div><h2>Realms and topics</h2><p class="muted">Each topic groups related, individually recorded knowledge. Assigning a statement does not change its evidence or disclose it.</p></div><button type="button" class="btn" on:click={() => topicPanelOpen = !topicPanelOpen} aria-expanded={topicPanelOpen}>{topicPanelOpen ? 'Close topic form' : '+ Create topic'}</button></div>
+      {#if form?.topicError}<p class="error" role="alert">{form.topicError}</p>{/if}
+      {#if topicPanelOpen}
+        <form method="POST" action="?/createTopic#realms" class="topic-create-form">
+          <label for="realm-select">Area of life</label><select id="realm-select" name="realmKey" required>{#each data.realms as realm}<option value={realm.key}>{realm.name}</option>{/each}</select>
+          <label for="topic-name">New topic name</label><input id="topic-name" name="topicName" minlength="2" maxlength="100" required placeholder="e.g. Relationship readiness" />
+          <button class="btn primary" type="submit">Create topic</button>
         </form>
+      {/if}
+      {#if !data.topicTree.length}<p class="muted">No topics yet. Create one above; your existing knowledge will not change.</p>{/if}
+      {#each data.topicTree as realm (realm.id)}
+        <div class="realm-entry"><h3>{realm.name}</h3>
+          {#each realm.topics as topic (topic.id)}
+            <div class="topic-entry"><h4>{topic.name} <span class="muted small">({topic.claims.length})</span></h4>
+              {#if !topic.claims.length}<p class="muted small">No current knowledge assigned.</p>{/if}
+              {#each topic.claims as claim (claim.id)}
+                <div class="topic-claim"><p class="current-statement">{claim.statement}</p><p class="muted small">{claim.kind.replaceAll('_', ' ')} · {claim.authority === 'THIRD_PARTY_REPORTED' ? 'Operator reviewed (not participant confirmed)' : claim.authority.replaceAll('_', ' ')}</p>
+                  <form method="POST" action="?/removeTopic#realms"><input type="hidden" name="topicId" value={topic.id} /><input type="hidden" name="claimId" value={claim.id} /><button type="submit" class="btn">Remove assignment</button></form>
+                </div>
+              {/each}
+            </div>
+          {/each}
+        </div>
       {/each}
-    {/if}
-  </section>
+    </section>
+    <section class="card panel" id="assign-knowledge">
+      <h2>Assign a statement to a topic</h2>
+      <p class="muted">First select the exact statement, then choose the topic it belongs to. You can assign one statement to multiple topics.</p>
+      {#if !data.currentKnowledge.length}<p>No active knowledge to organise yet. Add knowledge from a reflection first.</p>{:else}
+        <label for="claim-to-organise">1. Statement to organise</label>
+        <select id="claim-to-organise" bind:value={selectedClaimId}>
+          <option value="">Select a current statement…</option>
+          {#each data.currentKnowledge as claim (claim.id)}<option value={claim.id}>{claim.statement}</option>{/each}
+        </select>
+        {#if selectedClaim}
+          <div class="selected-statement" aria-live="polite">
+            <p class="eyebrow">You are assigning this statement</p>
+            <p class="selected-text">{selectedClaim.statement}</p>
+            <p class="muted small">{selectedClaim.kind.replaceAll('_', ' ')} · {selectedClaim.authority === 'THIRD_PARTY_REPORTED' ? 'Operator reviewed, not participant confirmed' : selectedClaim.authority.replaceAll('_', ' ')}</p>
+            {#if selectedClaimAssignments.length}<p class="small"><strong>Already assigned to:</strong> {selectedClaimAssignments.map((assignment) => `${assignment.realm} → ${assignment.topic}`).join('; ')}</p>{:else}<p class="muted small">This statement has no topic assignments yet.</p>{/if}
+          </div>
+          {#if data.topicTree.some((realm) => realm.topics.length)}
+            <form method="POST" action="?/assignTopic#assign-knowledge" class="assignment-form">
+              <input type="hidden" name="claimId" value={selectedClaimId} />
+              <input type="hidden" name="focusClaimId" value={selectedClaimId} />
+              <label for="target-topic">2. Topic to add it to</label>
+              <select id="target-topic" name="topicId" required><option value="" disabled selected>Choose a topic…</option>
+                {#each data.topicTree as realm}<optgroup label={realm.name}>{#each realm.topics as topic}<option value={topic.id} disabled={selectedClaimAssignments.some((assignment) => assignment.topicId === topic.id)}>{topic.name}{selectedClaimAssignments.some((assignment) => assignment.topicId === topic.id) ? ' (already assigned)' : ''}</option>{/each}</optgroup>{/each}
+              </select>
+              <button type="submit" class="btn primary">Assign this statement</button>
+            </form>
+          {:else}<p class="muted">Create a topic in Realms and topics above before assigning this statement.</p>{/if}
+        {/if}
+      {/if}
+    </section>
+    <details class="card panel" id="current-knowledge"><summary><strong>All current knowledge ({data.currentKnowledge.length})</strong></summary>
+      <p class="muted small">Each item is individually recorded. Assignment to a topic does not confirm or share it.</p>
+      {#each data.currentKnowledge as claim (claim.id)}
+        <article class="entry"><p class="current-statement">{claim.statement}</p><p class="muted small">{claim.kind.replaceAll('_', ' ')} · {claim.authority === 'THIRD_PARTY_REPORTED' ? 'Operator reviewed' : claim.authority.replaceAll('_', ' ')} · {claim.evidenceCount} linked source(s)</p><a href="#assign-knowledge" on:click={() => selectedClaimId = claim.id}>Organise this statement →</a></article>
+      {/each}
+    </details>
+  {/if}
   {#if data.selectedSource}
     <section class="card panel" id="knowledge-suggestions">
-      <h2>Dorian-assisted knowledge suggestions</h2>
-      <p class="muted small">Dorian checks the full reflection for distinct, evidence-backed knowledge and, for longer reflections, makes a second pass for missed topics. The first page prioritises distinct, current understanding. Additional supported suggestions remain available on subsequent review pages. Review each independently; no suggestion is confirmed or shared automatically.</p>
+      <h2>1. Extract individual knowledge</h2>
+      <p class="muted small">With your permission, Dorian checks the full reflection for distinct, evidence-backed knowledge and, for longer reflections, makes a second pass for missed topics. The first page prioritises distinct, current understanding. Additional supported suggestions remain available on subsequent review pages. Review each independently; no suggestion is confirmed or shared automatically.</p>
       <form method="POST" action={`?/suggest&sourceInteractionId=${encodeURIComponent(data.selectedSource.id)}#knowledge-suggestions`}>
         <input type="hidden" name="sourceInteractionId" value={data.selectedSource.id} />
         <label><input type="checkbox" name="allowModelProcessing" value="YES" required /> Allow AI processing of this private reflection for knowledge suggestions.</label>
@@ -127,7 +130,10 @@
           {/if}
           {#each form.suggestions as suggestion, i}
             <article class="card entry" style:display={Math.floor(i / SUGGESTIONS_PER_PAGE) === suggestionPage ? 'block' : 'none'}>
-              <p class="muted small">Suggestion {i + 1} · Passage supporting this proposal</p>
+              <p class="eyebrow">Suggestion {i + 1}: proposed knowledge</p>
+              <label for={`suggestion-statement-${i}`}>What Dorian thinks this says about the person</label>
+              <textarea id={`suggestion-statement-${i}`} name={`statement_${i}`} rows="3" maxlength="600" required>{suggestion.statement}</textarea>
+              <p class="muted small"><strong>Evidence in the original reflection:</strong></p>
               <blockquote>{suggestion.evidenceQuote}</blockquote>
               <input type="hidden" name={`evidence_${i}`} value={suggestion.evidenceQuote} />
               <label for={`suggestion-kind-${i}`}>Knowledge type</label>
@@ -137,8 +143,6 @@
                 <option value="CONSTRAINT">Constraint or boundary</option><option value="OBJECTIVE">Objective</option>
                 <option value="OTHER">Other</option>
               </select>
-              <label for={`suggestion-statement-${i}`}>Edit the proposed statement</label>
-              <textarea id={`suggestion-statement-${i}`} name={`statement_${i}`} rows="3" maxlength="600" required>{suggestion.statement}</textarea>
               <label for={`suggestion-decision-${i}`}>Review decision</label>
               <select id={`suggestion-decision-${i}`} name={`decision_${i}`}>
                 <option value="PENDING">Save as proposal</option>
@@ -155,21 +159,17 @@
               <button type="button" class="btn" disabled={(suggestionPage + 1) * SUGGESTIONS_PER_PAGE >= form.suggestions.length} on:click={() => suggestionPage += 1}>Next suggestions</button>
             </div>
           {/if}
-          <button type="submit" class="btn primary">Save reviewed suggestions (all pages)</button>
+          <button type="submit" class="btn primary">Save reviewed knowledge (all pages)</button>
           <p class="muted small">You can edit and decide on every element before saving them together. Your decisions do not authorise disclosure.</p>
         </form>
       {/if}
     </section>
   {/if}
   <section class="card panel">
-    <h2>Add an understanding</h2>
+    <h2>{data.selectedSource ? "2. Add something Dorian missed" : "Add knowledge manually"}</h2>
     <p>Begin with one line about their life, interests or what might make a difference for them.</p>
-    <form method="POST" action="?/propose">
-      {#if data.selectedSource}
-        <input type="hidden" name="sourceInteractionId" value={data.selectedSource.id} />
-        <p class="muted small">Source: private reflection on {new Date(data.selectedSource.at).toLocaleDateString()}</p>
-        <blockquote>{data.selectedSource.text}</blockquote>
-      {/if}
+    <form method="POST" action={`?/propose${data.selectedSource ? `&sourceInteractionId=${encodeURIComponent(data.selectedSource.id)}` : ""}`}>
+      {#if data.selectedSource}<input type="hidden" name="sourceInteractionId" value={data.selectedSource.id} />{/if}
             <label for="kind">Knowledge type</label>
       <select id="kind" name="kind">
         <option value="PREFERENCE">Preference or interest</option><option value="WANT">Want or need</option>
@@ -177,7 +177,7 @@
         <option value="OFFER">What they offer</option><option value="CONSTRAINT">Constraint or boundary</option>
         <option value="OTHER">Other or emerging understanding</option>
       </select>
-      <label for="statement">Statement</label>
+      <label for="statement">Exact statement to record</label>
       <textarea id="statement" name="statement" rows="3" maxlength="600" required placeholder="They enjoy walking and would welcome someone to share that with."></textarea>
       <label for="note">Source or context (optional)</label>
       <textarea id="note" name="note" rows="2" maxlength="1000" placeholder="Their introductory conversation with Dorian"></textarea>
@@ -191,8 +191,8 @@
     </form>
   </section>
   {#if form?.error}<p class="error" role="alert">{form.error}</p>{/if}
-  <section class="panel">
-    <h2>Existing statements</h2>
+  {#if !data.selectedSource}
+  <details class="panel card existing-panel" id="existing-statements"><summary><strong>Existing proposals and review history ({data.entries.length})</strong></summary>
     {#if data.entries.length === 0}<p class="muted">No understanding recorded yet.</p>{/if}
     {#each data.entries as item (item.id)}
       <article class="card entry">
@@ -229,11 +229,22 @@
         </details>
       </article>
     {/each}
-  </section>
+  </details>
+  {/if}
   <p class="muted"><strong>Privacy:</strong> Operator confirmation is not independently verified by the participant and does not grant permission to use this information in other spaces or disclose it to anyone.</p>
 </div>
 <style>
-  .understanding-page { max-width: 880px; padding: 14px; }
+  .understanding-page { max-width: 920px; padding: 14px; }
+  .workflow-nav { display:flex; flex-wrap:wrap; justify-content:space-between; gap:12px; margin: 8px 0 22px; }
+  .focus-heading { margin: 18px 0 24px; } .eyebrow { text-transform: uppercase; letter-spacing: .07em; font-size: .78rem; font-weight: 700; color: var(--muted); }
+  .saved-message { padding: 14px; border: 1px solid #518c75; border-radius: 10px; }
+  .source-preview { padding: 18px; border-left: 4px solid var(--primary, #518c75); }
+  .source-preview blockquote { white-space: pre-wrap; max-height: 260px; overflow-y: auto; }
+  .section-heading { display: flex; justify-content: space-between; align-items: start; flex-wrap: wrap; gap: 16px; }
+  .topic-create-form { padding:16px; margin:16px 0; border:1px solid var(--border); border-radius:10px; }
+  .selected-statement { border-left: 4px solid var(--primary, #518c75); background: var(--surface); padding: 16px; margin: 14px 0; border-radius: 6px; }
+  .selected-text { font-size: 1.16rem; font-weight: 600; white-space: pre-wrap; }
+  details.panel > summary { cursor: pointer; padding: 7px 0; }
   .panel { padding: 18px; margin: 15px 0; }
   .entry { padding: 18px; margin: 14px 0; }
   .panel form, .review-form { display: grid; gap: 10px; }

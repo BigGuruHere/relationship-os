@@ -15,7 +15,7 @@ test('AI extraction is explicitly opt-in and source is custody validated', () =>
 test('AI suggestions are not directly promoted to active knowledge', () => {
   assert.match(extractor, /normalizeKnowledgeSuggestions/);
   assert.doesNotMatch(extractor, /knowledgeClaim\.create/);
-  assert.match(ui, /Save reviewed suggestions/);
+  assert.match(ui, /Save reviewed knowledge/);
   assert.match(route, /createDatingUnderstanding\(scope/);
 });
 test('every suggestion retains literal reflection evidence and known category', () => {

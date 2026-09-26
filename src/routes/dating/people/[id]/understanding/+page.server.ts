@@ -25,8 +25,9 @@ export const load: PageServerLoad = async ({ locals, params, url }) => {
     const hintKey = possibleRealmHint(claim.kind, claim.statement);
     return { ...claim, possibleRealm: hintKey ? REALMS.find(r => r.key === hintKey)?.name ?? null : null };
   });
-  return { personId: scope.contactId, name: await contactDisplayName(contact),
-    entries: await listDatingUnderstanding(scope), currentKnowledge: namedKnowledge,
+  const focusClaimId = url.searchParams.get('claimId');
+  return { personId: scope.contactId, focusClaimId: namedKnowledge.some(claim => claim.id === focusClaimId) ? focusClaimId : null, name: await contactDisplayName(contact),
+    reviewSaved: url.searchParams.get('reviewSaved') === '1', entries: await listDatingUnderstanding(scope), currentKnowledge: namedKnowledge,
     realms: REALMS, topicTree: await listUnderstandingTopics(scope), selectedSource }; 
 };
 export const actions: Actions = {
@@ -42,7 +43,8 @@ export const actions: Actions = {
     const form = await request.formData();
     try { await assignKnowledgeTopic(scope, String(form.get('claimId') || ''), String(form.get('topicId') || '')); }
     catch (error: any) { return fail(400, { topicError: error?.message || 'Unable to assign knowledge.' }); }
-    throw redirect(303, `/dating/people/${params.id}/understanding#realms`);
+    const focusClaimId = String(form.get('focusClaimId') || '');
+    throw redirect(303, `/dating/people/${params.id}/understanding?claimId=${encodeURIComponent(focusClaimId)}#assign-knowledge`);
   },
   removeTopic: async ({ locals, params, request }) => {
     const scope = requireDating(locals, params.id);
@@ -90,7 +92,7 @@ export const actions: Actions = {
     } catch (error: any) {
       return fail(400, { error: error?.message || 'Could not save reviewed suggestions.' });
     }
-    throw redirect(303, `/dating/people/${params.id}/understanding`);
+    throw redirect(303, `/dating/people/${params.id}/understanding?reviewSaved=1#current-knowledge`);
   },
   suggest: async ({ locals, params, request }) => {
     const scope = requireDating(locals, params.id);
@@ -113,7 +115,7 @@ export const actions: Actions = {
     try { await createDatingUnderstanding(scope, { statement: String(form.get('statement') || ''), note: String(form.get('note') || ''), decision: String(form.get('decision') || 'PENDING'),
       kind: String(form.get('kind') || 'PREFERENCE'), sourceInteractionId: String(form.get('sourceInteractionId') || '') || null }); }
     catch (e: any) { return fail(400, { error: e?.message || 'Could not save proposed understanding.' }); }
-    throw redirect(303, `/dating/people/${params.id}/understanding`);
+    throw redirect(303, `/dating/people/${params.id}/understanding?reviewSaved=1#current-knowledge`);
   },
   review: async ({ locals, params, request }) => {
     const scope = requireDating(locals, params.id);

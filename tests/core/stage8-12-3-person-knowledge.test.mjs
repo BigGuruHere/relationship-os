@@ -23,10 +23,10 @@ test('current knowledge is a bounded scoped claim view, not a transcript reconst
   assert.match(service, /knowledgeClaim\.findMany/);
   assert.match(service, /status: 'ACTIVE'/);
   assert.match(service, /take: 150/);
-  assert.match(ui, /Current knowledge/);
+  assert.match(ui, /All current knowledge/);
 });
 test('manual pilot review does not grant person confirmation or disclosure authority', () => {
-  assert.match(ui, /Operator review is not participant confirmation or sharing consent/);
+  assert.match(ui, /Operator confirmation is not independently verified by the participant/);
   assert.match(service, /requireOwnedDatingContact/);
   assert.match(route, /contextDomainKey !== 'dating'/);
 });

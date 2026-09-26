@@ -41,9 +41,9 @@ test('old claims and evidence remain untouched and no automatic migration assign
   assert.match(service,/domainKey: 'dating'/);
   assert.match(service,/nameEnc: encrypt\(/);
   assert.match(service,/decrypt\(realm\.nameEnc/);
-  assert.match(page,/Assign existing knowledge/);
-  assert.match(page,/same statement to multiple topics/);
-  assert.match(page,/operator reviews each assignment/);
+  assert.match(page,/Assign a statement to a topic/);
+  assert.match(page,/one statement to multiple topics/);
+  assert.match(page,/Assigning a statement does not change its evidence/);
   assert.match(route,/assignKnowledgeTopic/);
 });
 

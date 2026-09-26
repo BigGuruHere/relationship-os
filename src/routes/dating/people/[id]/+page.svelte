@@ -27,7 +27,7 @@
       </article>
     {/each}
   </section>
-  <section class="card panel">
+  <section class="card panel" id="personal-reflections">
     <h2>Personal reflections</h2>
     <p class="muted">A thought, experience or conversation can be recorded without a meeting or introduction. These are operator-recorded accounts for this pilot.</p>
     <button class="btn primary" type="button" on:click={() => newReflection = !newReflection}>{newReflection ? 'Close' : 'Add reflection'}</button>
@@ -42,9 +42,10 @@
         <button class="btn primary" type="submit">Save private reflection</button>
       </form>
     {/if}
+    {#if data.savedReflectionId}<p class="saved-message" role="status">Reflection saved. It remains in Personal history. You can choose whether to extract knowledge from it.</p>{/if}
     {#if !data.reflections.length}<p class="muted">No personal reflections yet.</p>{/if}
     {#each data.reflections as r (r.id)}
-      <article class="entry"><p class="muted small">{new Date(r.at).toLocaleString()} · {r.touchpointId ? 'Linked to an encounter' : 'Independent reflection'} · Operator-recorded</p><p>{r.text}</p><p><a href={`/dating/people/${data.person.id}/understanding?sourceInteractionId=${r.id}`}>Propose knowledge from this reflection</a></p></article>
+      <article class={data.savedReflectionId === r.id ? "entry saved-reflection" : "entry"}><p class="muted small">{new Date(r.at).toLocaleString()} · {r.touchpointId ? 'Linked to an encounter' : 'Independent reflection'} · Operator-recorded</p><p>{r.text}</p><p><a href={`/dating/people/${data.person.id}/understanding?sourceInteractionId=${r.id}`}>Review reflection and suggest knowledge →</a></p></article>
     {/each}
   </section>
   <section class="card panel">
@@ -84,5 +85,7 @@
 <style>
   .person-page { max-width: 900px; padding: 16px; } .panel { padding: 18px; margin: 16px 0; } header { margin: 15px 0; }
   .panel form { display: grid; gap: 9px; margin: 15px 0; } .panel textarea, .panel input:not([type="checkbox"]), .panel select { width: 100%; box-sizing: border-box; padding: 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--text); }
+  .saved-reflection { border-left: 4px solid #518c75; padding-left: 14px; }
+  .saved-message { padding: 12px; border: 1px solid #518c75; border-radius: 9px; }
   .entry { padding: 12px 0; border-top: 1px solid var(--border); white-space: pre-wrap; } .muted { color: var(--muted); } .small { font-size: .9rem; } .error { color: var(--danger); } .attendee { display:block; padding: 5px 0; }
 </style>

@@ -69,7 +69,7 @@ export async function listCurrentDatingKnowledge(scope: Scope) {
 }
 
 // Create and initially review in ONE transaction so a failed confirmation never leaves a half-created item.
-export async function createDatingUnderstanding(scope: Scope, input: { statement: string; note?: string; decision: string; kind?: string; sourceInteractionId?: string | null }) {
+export async function createDatingUnderstanding(scope: Scope, input: { statement: string; note?: string; decision: string; kind?: string; sourceInteractionId?: string | null; proposedBy?: 'OPERATOR' | 'DORIAN' }) {
   await requireOwnedDatingContact(scope);
   const statement = validateUnderstandingStatement(input.statement);
   const decision = input.decision === 'PENDING' ? null : validateUnderstandingDecision(input.decision);
@@ -80,7 +80,7 @@ export async function createDatingUnderstanding(scope: Scope, input: { statement
   const sourceInteractionId = input.sourceInteractionId || null;
   if (sourceInteractionId) await requireSourceReflection(scope, sourceInteractionId);
   await prisma.$transaction(async (tx) => {
-    const entry: Entry = { version: 1, event: 'PROPOSE', proposalId, statement, note, actor: 'OPERATOR', kind, sourceInteractionId };
+    const entry: Entry = { version: 1, event: 'PROPOSE', proposalId, statement, note, actor: input.proposedBy === 'DORIAN' ? 'DORIAN' : 'OPERATOR', kind, sourceInteractionId };
     // The original is immutable even if the initial decision is confirmed immediately.
     await tx.interaction.create({ data: {
       userId: scope.userId, contextSpaceId: scope.contextSpaceId, contactId: scope.contactId,
@@ -98,13 +98,13 @@ export async function listDatingUnderstanding(scope: Scope) {
     where: { userId: scope.userId, contextSpaceId: scope.contextSpaceId, contactId: scope.contactId, channel: CHANNEL },
     select: { id: true, rawTextEnc: true, occurredAt: true }, orderBy: [{ occurredAt: 'asc' }, { id: 'asc' }], take: 300
   });
-  const proposals = new Map<string, { id: string; statement: string; proposalNote: string; proposedAt: Date; decision: UnderstandingDecision | null; reviewedStatement: string | null; reviewedAt: Date | null; kind: DatingKnowledgeKind; sourceInteractionId: string | null; history: { decision: UnderstandingDecision; statement: string; at: Date; note: string; actor: string }[] }>();
+  const proposals = new Map<string, { id: string; statement: string; proposalNote: string; proposedAt: Date; decision: UnderstandingDecision | null; reviewedStatement: string | null; reviewedAt: Date | null; proposedBy: string; kind: DatingKnowledgeKind; sourceInteractionId: string | null; history: { decision: UnderstandingDecision; statement: string; at: Date; note: string; actor: string }[] }>();
   for (const row of rows) {
     // Fail closed on malformed encrypted content rather than leaking another kind of Interaction.
     const entry = JSON.parse(decrypt(row.rawTextEnc, AAD)) as Entry;
     if (entry.version !== 1 || !entry.proposalId) continue;
     if (entry.event === 'PROPOSE') {
-      proposals.set(entry.proposalId, { id: entry.proposalId, statement: entry.statement, proposalNote: entry.note ?? '', proposedAt: row.occurredAt, kind: validateDatingKnowledgeKind(entry.kind || 'PREFERENCE'), sourceInteractionId: entry.sourceInteractionId || null, decision: null, reviewedStatement: null, reviewedAt: null, history: [] });
+      proposals.set(entry.proposalId, { id: entry.proposalId, statement: entry.statement, proposalNote: entry.note ?? '', proposedAt: row.occurredAt, proposedBy: entry.actor || 'OPERATOR', kind: validateDatingKnowledgeKind(entry.kind || 'PREFERENCE'), sourceInteractionId: entry.sourceInteractionId || null, decision: null, reviewedStatement: null, reviewedAt: null, history: [] });
     } else if (entry.event === 'REVIEW') {
       const proposal = proposals.get(entry.proposalId);
       if (!proposal || !entry.decision) continue;

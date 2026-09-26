@@ -22,6 +22,51 @@
       </article>
     {/each}
   </section>
+  {#if data.selectedSource}
+    <section class="card panel" id="knowledge-suggestions">
+      <h2>Dorian-assisted knowledge suggestions</h2>
+      <p class="muted small">Review each suggestion independently. Nothing is added to confirmed knowledge without an operator decision. Processing is done by the configured AI provider only after explicit opt-in.</p>
+      <form method="POST" action={`?/suggest&sourceInteractionId=${encodeURIComponent(data.selectedSource.id)}#knowledge-suggestions`}>
+        <input type="hidden" name="sourceInteractionId" value={data.selectedSource.id} />
+        <label><input type="checkbox" name="allowModelProcessing" value="YES" required /> Allow AI processing of this private reflection for knowledge suggestions.</label>
+        <button type="submit" class="btn">Suggest knowledge from reflection</button>
+      </form>
+      {#if form?.suggestionError}<p class="error" role="alert">{form.suggestionError}</p>{/if}
+      {#if form?.suggestions && form?.suggestionSourceId === data.selectedSource.id}
+        {#if form.suggestions.length === 0}<p>No supported suggestions found. You can add knowledge manually below.</p>{/if}
+        <form method="POST" action="?/saveSuggestions">
+          <input type="hidden" name="sourceInteractionId" value={data.selectedSource.id} />
+          <input type="hidden" name="count" value={form.suggestions.length} />
+          {#each form.suggestions as suggestion, i}
+            <article class="card entry">
+              <p class="muted small">Suggestion {i + 1} · Passage supporting this proposal</p>
+              <blockquote>{suggestion.evidenceQuote}</blockquote>
+              <input type="hidden" name={`evidence_${i}`} value={suggestion.evidenceQuote} />
+              <label for={`suggestion-kind-${i}`}>Knowledge type</label>
+              <select id={`suggestion-kind-${i}`} name={`kind_${i}`} value={suggestion.kind}>
+                <option value="FACT">Fact or background</option><option value="WANT">Want or need</option>
+                <option value="OFFER">What they offer</option><option value="PREFERENCE">Preference or interest</option>
+                <option value="CONSTRAINT">Constraint or boundary</option><option value="OBJECTIVE">Objective</option>
+                <option value="OTHER">Other</option>
+              </select>
+              <label for={`suggestion-statement-${i}`}>Edit the proposed statement</label>
+              <textarea id={`suggestion-statement-${i}`} name={`statement_${i}`} rows="3" maxlength="600" required>{suggestion.statement}</textarea>
+              <label for={`suggestion-decision-${i}`}>Review decision</label>
+              <select id={`suggestion-decision-${i}`} name={`decision_${i}`}>
+                <option value="PENDING">Save as proposal</option>
+                <option value="CONFIRMED">Confirm as operator</option>
+                <option value="DEFERRED">Not sure yet</option>
+                <option value="REJECTED">Reject</option>
+                <option value="SKIP">Do not save this suggestion</option>
+              </select>
+            </article>
+          {/each}
+          <button type="submit" class="btn primary">Save reviewed suggestions</button>
+          <p class="muted small">You can edit and decide on every element before saving them together. Your decisions do not authorise disclosure.</p>
+        </form>
+      {/if}
+    </section>
+  {/if}
   <section class="card panel">
     <h2>Add an understanding</h2>
     <p>Begin with one line about their life, interests or what might make a difference for them.</p>
@@ -31,7 +76,7 @@
         <p class="muted small">Source: private reflection on {new Date(data.selectedSource.at).toLocaleDateString()}</p>
         <blockquote>{data.selectedSource.text}</blockquote>
       {/if}
-      <label for="kind">Knowledge type</label>
+            <label for="kind">Knowledge type</label>
       <select id="kind" name="kind">
         <option value="PREFERENCE">Preference or interest</option><option value="WANT">Want or need</option>
         <option value="FACT">Fact or background</option><option value="OBJECTIVE">Objective</option>
@@ -57,7 +102,7 @@
     {#if data.entries.length === 0}<p class="muted">No understanding recorded yet.</p>{/if}
     {#each data.entries as item (item.id)}
       <article class="card entry">
-        <p class="muted small">{item.kind.replaceAll('_',' ')} · Added {new Date(item.proposedAt).toLocaleString()}</p>
+        <p class="muted small">{item.kind.replaceAll('_',' ')} · {item.proposedBy === 'DORIAN' ? 'Suggested by Dorian' : 'Operator proposal'} · Added {new Date(item.proposedAt).toLocaleString()}</p>
         {#if item.sourceInteractionId}<p class="muted small">Linked to an original private reflection</p>{/if}
         <p class="current-statement">{item.reviewedStatement ?? item.statement}</p>
         <p><strong>Status:</strong> {item.decision === 'CONFIRMED' ? 'Operator reviewed' : item.decision === 'REJECTED' ? 'Rejected' : item.decision === 'DEFERRED' ? 'Not sure yet' : 'Pending review'}</p>
@@ -105,6 +150,8 @@
   .muted { color: var(--muted); }
   .small { font-size: .9rem; }
   .error { color: var(--danger); }
+  input[type="checkbox"] { width: auto; margin-right: 8px; }
+  select { padding: 10px; border: 1px solid var(--border); border-radius: 9px; background: var(--surface); color: var(--text); }
   .history { margin-top: 10px; padding: 12px; border-top: 1px solid var(--border); }
   .history-panel { margin-top: 12px; }
 </style>

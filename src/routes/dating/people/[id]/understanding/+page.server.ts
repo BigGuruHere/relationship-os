@@ -3,8 +3,9 @@
 import { fail, redirect } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import { prisma } from '$lib/db';
+import { suggestDatingKnowledge } from '$lib/server/datingKnowledgeExtraction';
 import { contactDisplayName } from '$lib/server/contactDisplay';
-import { listDatingUnderstanding, createDatingUnderstanding, reviewDatingUnderstanding, listCurrentDatingKnowledge, requireSourceReflection } from '$lib/server/datingLivingUnderstanding';
+import { listDatingUnderstanding, createDatingUnderstanding, reviewDatingUnderstanding, listCurrentDatingKnowledge, requireSourceReflection, validateUnderstandingStatement } from '$lib/server/datingLivingUnderstanding';
 
 function requireDating(locals: App.Locals, contactId: string) {
   if (!locals.user) throw redirect(303, '/auth/login');
@@ -22,6 +23,62 @@ export const load: PageServerLoad = async ({ locals, params, url }) => {
     entries: await listDatingUnderstanding(scope), currentKnowledge: await listCurrentDatingKnowledge(scope), selectedSource }; 
 };
 export const actions: Actions = {
+  saveSuggestions: async ({ locals, params, request }) => {
+    const scope = requireDating(locals, params.id);
+    const form = await request.formData();
+    const sourceId = String(form.get('sourceInteractionId') || '');
+    try {
+      const source = await requireSourceReflection(scope, sourceId);
+      const count = Number(form.get('count'));
+      if (!Number.isInteger(count) || count < 1 || count > 12) throw new Error('Invalid number of suggestions.');
+      const normalize = (v: string) => v.replace(/\s+/g, ' ').trim().toLocaleLowerCase();
+      const proposed = [] as { statement: string; kind: string; decision: string; quote: string }[];
+      const seen = new Set<string>();
+      for (let i = 0; i < count; i++) {
+        const decision = String(form.get(`decision_${i}`) || 'SKIP');
+        if (decision === 'SKIP') continue;
+        if (!['PENDING', 'CONFIRMED', 'DEFERRED', 'REJECTED'].includes(decision)) throw new Error('Invalid review decision.');
+        const kind = String(form.get(`kind_${i}`) || '');
+        if (!['FACT','WANT','OFFER','PREFERENCE','CONSTRAINT','OBJECTIVE','OTHER'].includes(kind)) throw new Error('Invalid knowledge type.');
+        const statement = validateUnderstandingStatement(form.get(`statement_${i}`));
+        const quote = String(form.get(`evidence_${i}`) || '').trim();
+        if (!quote || quote.length > 800 || !normalize(source.text).includes(normalize(quote))) throw new Error('Missing or invalid supporting passage.');
+        const fingerprint = `${kind}:${normalize(statement)}`;
+        if (!seen.has(fingerprint)) { proposed.push({ statement, kind, decision, quote }); seen.add(fingerprint); }
+      }
+      // Repeated submissions must not create duplicate proposals from the same source.
+      const existing = await listDatingUnderstanding(scope);
+      const existingKeys = new Set(existing.filter(item => item.sourceInteractionId === sourceId)
+        .map(item => `${item.kind}:${normalize(item.reviewedStatement ?? item.statement)}`));
+      for (const item of proposed) {
+        const fingerprint = `${item.kind}:${normalize(item.statement)}`;
+        if (existingKeys.has(fingerprint)) continue;
+        await createDatingUnderstanding(scope, {
+          statement: item.statement, kind: item.kind, decision: item.decision,
+          sourceInteractionId: sourceId, proposedBy: 'DORIAN', note: `AI suggested; source quote: ${item.quote.slice(0, 750)}`
+        });
+        existingKeys.add(fingerprint);
+      }
+    } catch (error: any) {
+      return fail(400, { error: error?.message || 'Could not save reviewed suggestions.' });
+    }
+    throw redirect(303, `/dating/people/${params.id}/understanding`);
+  },
+  suggest: async ({ locals, params, request }) => {
+    const scope = requireDating(locals, params.id);
+    const form = await request.formData();
+    const sourceInteractionId = String(form.get('sourceInteractionId') || '');
+    // External model processing requires explicit consent to submit this reflection.
+    if (form.get('allowModelProcessing') !== 'YES') return fail(400, { suggestionError: 'Confirm permission to process this private reflection.' });
+    try {
+      const suggestions = await suggestDatingKnowledge(scope, sourceInteractionId);
+      return { suggestions, suggestionSourceId: sourceInteractionId };
+    } catch (error: any) {
+      // Provider errors stay generic: do not return private transcript or upstream error text.
+      console.error('[dating knowledge suggestions] failed', error?.name || 'unknown');
+      return fail(400, { suggestionError: 'Suggestions could not be generated. You can still add knowledge manually.' });
+    }
+  },
   propose: async ({ locals, params, request }) => {
     const scope = requireDating(locals, params.id);
     const form = await request.formData();

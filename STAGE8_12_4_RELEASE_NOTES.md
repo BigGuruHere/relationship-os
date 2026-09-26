@@ -1,0 +1,5 @@
+# Stage 8.12.4 - Dorian-assisted Knowledge Extraction
+
+Adds a custody-scoped, explicitly opt-in structured model extraction from one private personal Dating reflection. Validated suggestions require a supporting quote found in the original reflection. The operator can edit type and wording and choose an independent review decision for each suggestion. One batch save prevents losing remaining suggestions during individual redirects. Original reflection remains encrypted and unchanged; original AI proposal and subsequent operator review are separately attributed. The current knowledge view still relies on active KnowledgeClaims, not scanning reflection history.
+
+No migration or dependency updates. Retains original Stage 8.12.3 source and scripts. Manual workflow remains available. Initial UI supports personal reflections only and up to twelve supported suggestions. Batch saves are sequential; database-level concurrent deduplication has not been implemented. AI provider responses and runtime behaviour must be tested in the configured development environment.

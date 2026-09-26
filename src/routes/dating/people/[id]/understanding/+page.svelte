@@ -99,12 +99,16 @@
       {#if form?.diagnostics && form?.suggestionSourceId === data.selectedSource.id}
         <details class="card diagnostic-panel">
           <summary>Development diagnostics - candidate counts only</summary>
-          <p class="muted small">Available only when DATING_KNOWLEDGE_DIAGNOSTICS=YES outside production. Counts do not include the reflection or proposed statement text. These checks cannot determine whether Dorian missed information that it never proposed.</p>
+          <p class="muted small">Available only when DATING_KNOWLEDGE_DIAGNOSTICS=YES outside production. Counts do not include the reflection or proposed statement text. These checks cannot determine whether Dorian missed information it never proposed, or whether a proposed statement is actually entailed by its quoted passage.</p>
           <table>
             <thead><tr><th>Measure</th><th>First pass</th><th>Coverage pass</th><th>Combined</th></tr></thead>
             <tbody>
               <tr><th>Received</th><td>{form.diagnostics.firstPass.inputCount}</td><td>{form.diagnostics.secondPass?.inputCount ?? 'Not run'}</td><td>{form.diagnostics.combined.inputCount}</td></tr>
-              <tr><th>Invalid or unsupported</th><td>{form.diagnostics.firstPass.invalidOrUnsupportedCount}</td><td>{form.diagnostics.secondPass?.invalidOrUnsupportedCount ?? '-'}</td><td>{form.diagnostics.combined.invalidOrUnsupportedCount}</td></tr>
+              <tr><th>Invalid format or source passage</th><td>{form.diagnostics.firstPass.invalidOrUnsupportedCount}</td><td>{form.diagnostics.secondPass?.invalidOrUnsupportedCount ?? '-'}</td><td>{form.diagnostics.combined.invalidOrUnsupportedCount}</td></tr>
+              <tr><th>Malformed proposals</th><td>{form.diagnostics.firstPass.rejectionReasons.malformedItem}</td><td>{form.diagnostics.secondPass?.rejectionReasons.malformedItem ?? '-'}</td><td>{form.diagnostics.combined.rejectionReasons.malformedItem}</td></tr>
+              <tr><th>Invalid category</th><td>{form.diagnostics.firstPass.rejectionReasons.invalidKind}</td><td>{form.diagnostics.secondPass?.rejectionReasons.invalidKind ?? '-'}</td><td>{form.diagnostics.combined.rejectionReasons.invalidKind}</td></tr>
+              <tr><th>Empty or oversize statement</th><td>{form.diagnostics.firstPass.rejectionReasons.invalidStatement}</td><td>{form.diagnostics.secondPass?.rejectionReasons.invalidStatement ?? '-'}</td><td>{form.diagnostics.combined.rejectionReasons.invalidStatement}</td></tr>
+              <tr><th>Missing or invalid source passage</th><td>{form.diagnostics.firstPass.rejectionReasons.invalidSourcePassage}</td><td>{form.diagnostics.secondPass?.rejectionReasons.invalidSourcePassage ?? '-'}</td><td>{form.diagnostics.combined.rejectionReasons.invalidSourcePassage}</td></tr>
               <tr><th>Exact duplicates</th><td>{form.diagnostics.firstPass.exactDuplicateCount}</td><td>{form.diagnostics.secondPass?.exactDuplicateCount ?? '-'}</td><td>{form.diagnostics.combined.exactDuplicateCount}</td></tr>
               <tr><th>Near duplicates</th><td>{form.diagnostics.firstPass.nearDuplicateCount}</td><td>{form.diagnostics.secondPass?.nearDuplicateCount ?? '-'}</td><td>{form.diagnostics.combined.nearDuplicateCount}</td></tr>
               <tr><th>Distinct eligible</th><td>{form.diagnostics.firstPass.eligibleCount}</td><td>{form.diagnostics.secondPass?.eligibleCount ?? '-'}</td><td>{form.diagnostics.combined.eligibleCount}</td></tr>

@@ -30,7 +30,7 @@ export const actions: Actions = {
     try {
       const source = await requireSourceReflection(scope, sourceId);
       const count = Number(form.get('count'));
-      if (!Number.isInteger(count) || count < 1 || count > 12) throw new Error('Invalid number of suggestions.');
+      if (!Number.isInteger(count) || count < 1 || count > 32) throw new Error('Invalid number of suggestions.');
       const normalize = (v: string) => v.replace(/\s+/g, ' ').trim().toLocaleLowerCase();
       const proposed = [] as { statement: string; kind: string; decision: string; quote: string }[];
       const seen = new Set<string>();

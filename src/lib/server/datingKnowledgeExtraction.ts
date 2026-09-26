@@ -1,4 +1,4 @@
-// PURPOSE: Stage 8.12.5 - broad, atomic and evidence-backed proposals from a private Dating reflection.
+// PURPOSE: Stage 8.12.6 - selected, reviewable, broad, atomic and evidence-backed proposals from a private Dating reflection.
 // SECURITY: The selected reflection is custody-validated before any opt-in model processing.
 // Only explicit operator reviews can promote suggestions; no disclosure or cross-context use is granted.
 import { generateStructured } from '$lib/server/agents/modelGateway';
@@ -48,6 +48,7 @@ export async function suggestDatingKnowledge(scope: Scope, sourceInteractionId: 
     'Identify up to 26 independently meaningful pieces of knowledge about the SPEAKER, not just the opening sentences.',
     'Read the ENTIRE reflection, including its final paragraphs. Consider their background, interests, aspirations, wants,',
     'offers, social and romantic preferences, constraints, goals, uncertainty and changes of mind.',
+    'Do not propose isolated event-attendance facts as ongoing personal traits; prefer the underlying current interests or needs.',
     'Each item should contain ONE useful idea. Split unrelated activities or preferences where independent review is useful;',
     'keep inherently linked qualifications together (for example, wanting closeness while maintaining independence).',
     'Preserve scope and time: a current wish is not a permanent trait; an intention concerning one person is not a global preference.',
@@ -69,6 +70,7 @@ export async function suggestDatingKnowledge(scope: Scope, sourceInteractionId: 
     try {
       second = await extractPass(scope, text, [
       'Review the WHOLE source for important supported knowledge overlooked by the first extraction.',
+      'Preserve any explicit uncertainty, hesitation or boundary even if a related positive want is already present.',
       `Already represented categories: ${covered.join(', ') || 'none'}.`,
       'Pay particular attention to later passages, concrete personal interests, life circumstances, work,',
       'uncertainty or hesitation, boundaries, goals, and preferences combined into overly broad statements.',
@@ -87,5 +89,5 @@ export async function suggestDatingKnowledge(scope: Scope, sourceInteractionId: 
   }
 
   // Compare the combined candidate pool before enforcing the 12-item review-screen limit.
-  return selectKnowledgeSuggestions(candidates, text, 12);
+  return selectKnowledgeSuggestions(candidates, text, 32);
 }

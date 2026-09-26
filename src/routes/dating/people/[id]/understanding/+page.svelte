@@ -4,6 +4,8 @@
   export let data: any;
   export let form: any;
   let editingId: string | null = null;
+  let suggestionPage = 0;
+  const SUGGESTIONS_PER_PAGE = 12;
 </script>
 <svelte:head><title>Living Understanding - Relish</title></svelte:head>
 <div class="container understanding-page">
@@ -25,7 +27,7 @@
   {#if data.selectedSource}
     <section class="card panel" id="knowledge-suggestions">
       <h2>Dorian-assisted knowledge suggestions</h2>
-      <p class="muted small">Dorian checks the full reflection for distinct, evidence-backed knowledge and, for longer reflections, makes a second pass for missed topics. The 12 suggestions displayed are a diverse selection, not an exhaustive profile. Review each independently; no suggestion is confirmed or shared automatically.</p>
+      <p class="muted small">Dorian checks the full reflection for distinct, evidence-backed knowledge and, for longer reflections, makes a second pass for missed topics. The first page prioritises distinct, current understanding. Additional supported suggestions remain available on subsequent review pages. Review each independently; no suggestion is confirmed or shared automatically.</p>
       <form method="POST" action={`?/suggest&sourceInteractionId=${encodeURIComponent(data.selectedSource.id)}#knowledge-suggestions`}>
         <input type="hidden" name="sourceInteractionId" value={data.selectedSource.id} />
         <label><input type="checkbox" name="allowModelProcessing" value="YES" required /> Allow AI processing of this private reflection for knowledge suggestions.</label>
@@ -33,12 +35,19 @@
       </form>
       {#if form?.suggestionError}<p class="error" role="alert">{form.suggestionError}</p>{/if}
       {#if form?.suggestions && form?.suggestionSourceId === data.selectedSource.id}
-        {#if form.suggestions.length === 0}<p>No supported suggestions found. You can add knowledge manually below.</p>{:else if form.suggestions.length === 12}<p class="muted small">Showing 12 suggestions, the current review limit. Some supported details may not be shown; you can add them manually below.</p>{/if}
+        {#if form.suggestions.length === 0}<p>No supported suggestions found. You can add knowledge manually below.</p>{:else}<p class="muted small">{form.suggestions.length} suggestions available across {Math.ceil(form.suggestions.length / SUGGESTIONS_PER_PAGE)} review page(s). The source may contain further details; add those manually below.</p>{/if}
         <form method="POST" action="?/saveSuggestions">
           <input type="hidden" name="sourceInteractionId" value={data.selectedSource.id} />
           <input type="hidden" name="count" value={form.suggestions.length} />
+          {#if form.suggestions.length > SUGGESTIONS_PER_PAGE}
+            <div class="actions">
+              <button type="button" class="btn" disabled={suggestionPage === 0} on:click={() => suggestionPage -= 1}>Previous suggestions</button>
+              <span>Page {suggestionPage + 1} of {Math.ceil(form.suggestions.length / SUGGESTIONS_PER_PAGE)}</span>
+              <button type="button" class="btn" disabled={(suggestionPage + 1) * SUGGESTIONS_PER_PAGE >= form.suggestions.length} on:click={() => suggestionPage += 1}>Next suggestions</button>
+            </div>
+          {/if}
           {#each form.suggestions as suggestion, i}
-            <article class="card entry">
+            <article class="card entry" style:display={Math.floor(i / SUGGESTIONS_PER_PAGE) === suggestionPage ? 'block' : 'none'}>
               <p class="muted small">Suggestion {i + 1} · Passage supporting this proposal</p>
               <blockquote>{suggestion.evidenceQuote}</blockquote>
               <input type="hidden" name={`evidence_${i}`} value={suggestion.evidenceQuote} />
@@ -61,7 +70,13 @@
               </select>
             </article>
           {/each}
-          <button type="submit" class="btn primary">Save reviewed suggestions</button>
+          {#if form.suggestions.length > SUGGESTIONS_PER_PAGE}
+            <div class="actions">
+              <button type="button" class="btn" disabled={suggestionPage === 0} on:click={() => suggestionPage -= 1}>Previous suggestions</button>
+              <button type="button" class="btn" disabled={(suggestionPage + 1) * SUGGESTIONS_PER_PAGE >= form.suggestions.length} on:click={() => suggestionPage += 1}>Next suggestions</button>
+            </div>
+          {/if}
+          <button type="submit" class="btn primary">Save reviewed suggestions (all pages)</button>
           <p class="muted small">You can edit and decide on every element before saving them together. Your decisions do not authorise disclosure.</p>
         </form>
       {/if}

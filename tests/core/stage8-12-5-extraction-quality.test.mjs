@@ -40,7 +40,7 @@ test('diverse selection considers items at end of model response before 12 cap',
   candidates.push(item('CONSTRAINT', 'Uncertain about serious relationships', 'I am not sure whether I am ready for a serious relationship'));
   candidates.push(item('FACT', 'Working on business', 'I work on my business'));
   const found = selectKnowledgeSuggestions(candidates, source, 12);
-  assert.equal(found.length, 12);
+  assert.equal(found.length, 3); // repeated synthetic phrasings now collapse into one meaningful want
   assert.ok(found.some(x => x.kind === 'CONSTRAINT'));
   assert.ok(found.some(x => x.kind === 'FACT'));
 });
@@ -59,5 +59,5 @@ test('extractor has a bounded second pass and no automatic claims or disclosure'
   assert.match(extractor, /dating_private_person_knowledge_coverage_review/);
   assert.match(extractor, /requireSourceReflection\(scope, sourceInteractionId\)/);
   assert.doesNotMatch(extractor, /knowledgeClaim\.create/);
-  assert.match(extractor, /selectKnowledgeSuggestions\(candidates, text, 12\)/);
+  assert.match(extractor, /selectKnowledgeSuggestions\(candidates, text, 32\)/);
 });

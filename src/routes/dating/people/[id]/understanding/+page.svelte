@@ -18,7 +18,7 @@
 <div class="container understanding-page">
   <nav class="workflow-nav"><a href={`/dating/people/${data.personId}#personal-reflections`}>← Personal reflections</a>{#if data.selectedSource}<a href={`/dating/people/${data.personId}/understanding`}>View full Living Understanding →</a>{/if}</nav>
   {#if data.selectedSource}
-    <header class="focus-heading"><p class="eyebrow">Reflection → Knowledge</p><h1>Review this reflection</h1><p class="muted">Choose which individual pieces of this reflection should become proposed or operator-reviewed knowledge. Organise confirmed statements into topics afterwards.</p></header>
+    <header class="focus-heading"><p class="eyebrow">Reflection → Knowledge</p><h1>{data.selectedSource?.sourceKind === 'CONVERSATION_EXCERPT' ? 'Review this conversation excerpt' : 'Review this reflection'}</h1><p class="muted">Choose which individual pieces of this reflection should become proposed or operator-reviewed knowledge. Organise confirmed statements into topics afterwards.</p></header>
     <section class="card source-preview" aria-label="Original reflection"><h2>Original reflection</h2><p class="muted small">Recorded {new Date(data.selectedSource.at).toLocaleString()} · Private to this Dating space</p><blockquote>{data.selectedSource.text}</blockquote></section>
   {:else}
     <header class="focus-heading"><p class="eyebrow">Living Understanding</p><h1>{data.name}</h1><p class="muted">Organise this person's current knowledge by realm and topic. Proposed statements and source history remain below.</p></header>

@@ -12,7 +12,7 @@
   <header>
     <h1>{data.person.name}</h1>
     <p class="muted">Their private, evolving history. An Introduction is optional, not the starting point.</p>
-    <a class="btn" href={`/dating/people/${data.person.id}/understanding`}>Living Understanding</a>
+    <a class="btn" href={`/dating/people/${data.person.id}/understanding`}>Living Understanding</a> <a class="btn" href="/dating/conversations/import">Import conversation</a>
   </header>
   {#if form?.error}<p class="error" role="alert">{form.error}</p>{/if}
   <section class="card panel">
@@ -45,7 +45,7 @@
     {#if data.savedReflectionId}<p class="saved-message" role="status">Reflection saved. It remains in Personal history. You can choose whether to extract knowledge from it.</p>{/if}
     {#if !data.reflections.length}<p class="muted">No personal reflections yet.</p>{/if}
     {#each data.reflections as r (r.id)}
-      <article class={data.savedReflectionId === r.id ? "entry saved-reflection" : "entry"}><p class="muted small">{new Date(r.at).toLocaleString()} · {r.touchpointId ? 'Linked to an encounter' : 'Independent reflection'} · Operator-recorded</p><p>{r.text}</p><p><a href={`/dating/people/${data.person.id}/understanding?sourceInteractionId=${r.id}`}>Review reflection and suggest knowledge →</a></p></article>
+      <article class={data.savedReflectionId === r.id ? "entry saved-reflection" : "entry"}><p class="muted small">{new Date(r.at).toLocaleString()} · {r.sourceKind === 'CONVERSATION_EXCERPT' ? `Transcript excerpt from ${r.speaker || 'a speaker'}` : r.touchpointId ? 'Linked to an encounter' : 'Independent reflection'} · Operator-recorded</p><p>{r.text}</p><p><a href={`/dating/people/${data.person.id}/understanding?sourceInteractionId=${r.id}`}>{r.sourceKind === 'CONVERSATION_EXCERPT' ? 'Review conversation excerpt and suggest knowledge →' : 'Review reflection and suggest knowledge →'}</a></p></article>
     {/each}
   </section>
   <section class="card panel">

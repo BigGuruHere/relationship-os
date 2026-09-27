@@ -31,7 +31,7 @@
 	<section class="card panel">
 		<div class="section-head">
 			<h2>Dating people</h2>
-			<a class="btn" href="/dating/introductions/new">Create Introduction</a>
+			<div><a class="btn" href="/dating/conversations/import">Import conversation</a> <a class="btn" href="/dating/introductions/new">Create Introduction</a></div>
 		</div>
 		{#if data.people.length === 0}
 			<p class="muted">No Dating people yet. Add two people before creating an Introduction.</p>

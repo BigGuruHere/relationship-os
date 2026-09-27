@@ -49,10 +49,10 @@ export async function requireSourceReflection(scope: Scope, sourceId: string, tx
   }, select: { id: true, rawTextEnc: true, occurredAt: true } });
   if (!source) throw new Error('The source reflection is not accessible for this person.');
   const payload = JSON.parse(decrypt(source.rawTextEnc, AAD)) as { version?: number; kind?: string; actor?: string; text?: string };
-  if (payload.version !== 1 || payload.kind !== 'PERSONAL_REFLECTION' || payload.actor !== 'OPERATOR' || !payload.text) {
+  if (payload.version !== 1 || !['PERSONAL_REFLECTION', 'CONVERSATION_EXCERPT'].includes(payload.kind || '') || payload.actor !== 'OPERATOR' || !payload.text) {
     throw new Error('The source is not a valid private reflection.');
   }
-  return { id: source.id, text: payload.text, at: source.occurredAt };
+  return { id: source.id, text: payload.text, at: source.occurredAt, sourceKind: payload.kind };
 }
 
 // Current person-level view: reads active, context-scoped claims directly, not the historical transcript.

@@ -10,7 +10,7 @@ export type HistoryScope = { userId: string; contextSpaceId: string; contactId: 
 const PERSONAL_CHANNEL = 'DATING_PERSON_REFLECTION';
 const AAD = 'interaction.raw_text';
 
-type ReflectionPayload = { version: 1; kind: 'PERSONAL_REFLECTION'; text: string; touchpointId: string | null; actor: 'OPERATOR' };
+type ReflectionPayload = { version: 1; kind: 'PERSONAL_REFLECTION' | 'CONVERSATION_EXCERPT'; text: string; touchpointId: string | null; actor: 'OPERATOR'; transcriptId?: string; speaker?: string };
 
 export async function requireDatingHistoryContact(scope: HistoryScope) {
   const [space, contact] = await Promise.all([
@@ -89,10 +89,10 @@ export async function loadPersonHistory(scope: HistoryScope) {
   const nameById = new Map(contactNames.map(p => [p.id, p.name]));
   const reflections = interactions.map(row => {
     const parsed = JSON.parse(decrypt(row.rawTextEnc, AAD)) as ReflectionPayload;
-    if (parsed.version !== 1 || parsed.kind !== 'PERSONAL_REFLECTION' || parsed.actor !== 'OPERATOR') {
+    if (parsed.version !== 1 || !['PERSONAL_REFLECTION', 'CONVERSATION_EXCERPT'].includes(parsed.kind) || parsed.actor !== 'OPERATOR') {
       throw new Error('Invalid private reflection data.');
     }
-    return { id: row.id, text: parsed.text, touchpointId: parsed.touchpointId, at: row.occurredAt, actor: parsed.actor };
+    return { id: row.id, text: parsed.text, touchpointId: parsed.touchpointId, at: row.occurredAt, actor: parsed.actor, sourceKind: parsed.kind, speaker: parsed.speaker ?? null };
   });
   return {
     person: { id: person.id, name: await contactDisplayName(person) },
@@ -102,7 +102,7 @@ export async function loadPersonHistory(scope: HistoryScope) {
     introductions: introductions.map(row => ({ id: row.introductionId, at: row.introduction.occurredAt, status: row.introduction.status })),
     // A single person-first timeline combines independent reflections, encounters and introductions.
     timeline: [
-      ...reflections.map(r => ({ id: r.id, type: 'REFLECTION', at: r.at, label: r.touchpointId ? 'Reflection about an encounter' : 'Independent reflection', detail: r.text, href: null })),
+      ...reflections.map(r => ({ id: r.id, type: 'REFLECTION', at: r.at, label: r.sourceKind === 'CONVERSATION_EXCERPT' ? 'Private conversation excerpt' : r.touchpointId ? 'Reflection about an encounter' : 'Independent reflection', detail: r.text, href: null })),
       ...touchpoints.map(t => ({ id: t.id, type: 'TOUCHPOINT', at: t.occurredAt, label: t.kind.replaceAll('_', ' '), detail: t.participants.map(p => nameById.get(p.contactId || p.relatingParticipant?.contactId || '') || 'Other participant').join(', '), href: null })),
       ...introductions.map(i => ({ id: i.introductionId, type: 'INTRODUCTION', at: i.introduction.occurredAt, label: 'Introduction', detail: i.introduction.status, href: `/dating/introductions/${i.introductionId}` }))
     ].sort((a, b) => b.at.getTime() - a.at.getTime()),

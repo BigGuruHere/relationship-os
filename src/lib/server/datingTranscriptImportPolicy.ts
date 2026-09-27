@@ -1,0 +1,61 @@
+// PURPOSE: Strict, deterministic parsing of consented labelled transcripts for the Dating pilot.
+// SECURITY: Do not infer who an unlabelled speaker is or rewrite quoted source passages.
+export type TranscriptTurn = { speaker: string; text: string };
+export type ParsedTranscript = { speakers: string[]; turns: TranscriptTurn[]; text: string };
+const MAX_TRANSCRIPT = 60000;
+const SPEAKER_LINE = /^(?:\[(?:\d{1,2}:)?\d{1,2}:\d{2}\]\s*)?([^:\n]{1,65}):\s*(.*)$/;
+
+export function parseDatingTranscript(input: unknown): ParsedTranscript {
+  const text = String(input ?? '').replace(/\r\n?/g, '\n').trim();
+  if (text.length < 10 || text.length > MAX_TRANSCRIPT) throw new Error('Enter a transcript of 10 to 60,000 characters.');
+  const turns: TranscriptTurn[] = [];
+  const speakers = new Set<string>();
+  for (const line of text.split('\n')) {
+    if (!line.trim()) continue;
+    const match = line.match(SPEAKER_LINE);
+    // New turns must have an explicit speaker label. Unlabelled lines belong to the preceding turn only.
+    if (match && match[1].trim() && !/^https?$/i.test(match[1].trim())) {
+      const speaker = match[1].trim();
+      if (/[<>]/.test(speaker)) throw new Error('Invalid speaker label.');
+      if (speakers.size >= 8 && !speakers.has(speaker)) throw new Error('Only eight distinct speaker labels are supported.');
+      speakers.add(speaker);
+      turns.push({ speaker, text: line });
+    } else if (turns.length) {
+      // Preserve the original line exactly, including any quotes and speaker references.
+      turns[turns.length - 1].text += `\n${line}`;
+    } else {
+      throw new Error('Start the transcript with an explicit speaker label such as "Alex: ...".');
+    }
+    if (turns.length > 600) throw new Error('Only 600 speaker turns are supported per import.');
+  }
+  if (!turns.length || !speakers.size) throw new Error('No labelled speaker turns were found.');
+  return { text, turns, speakers: [...speakers] };
+}
+
+// Each private excerpt contains only the selected speaker's verbatim turns, never other speakers' words.
+// The full original is retained separately and private; excerpts are bounded for the existing AI pathway.
+export function speakerExcerptChunks(turns: TranscriptTurn[], speaker: string, limit = 4800): string[] {
+  const result: string[] = [];
+  let chunk = '';
+  for (const turn of turns.filter(t => t.speaker === speaker)) {
+    if (turn.text.length > limit) throw new Error('A single speaker turn exceeds 4,800 characters. Divide that turn before importing.');
+    if (chunk && `${chunk}\n\n${turn.text}`.length > limit) { result.push(chunk); chunk = ''; }
+    chunk = chunk ? `${chunk}\n\n${turn.text}` : turn.text;
+  }
+  if (chunk) result.push(chunk);
+  if (result.length > 16) throw new Error('A speaker has more than 16 excerpts. Divide this conversation into smaller imports.');
+  return result;
+}
+
+export function validateSpeakerMapping(speakers: string[], mapping: Record<string, string>, validContactIds: Set<string>) {
+  const selected = new Set<string>();
+  for (const speaker of speakers) {
+    const id = mapping[speaker];
+    if (id === 'SKIP') continue;
+    if (!id || !validContactIds.has(id)) throw new Error(`Choose a person or skip speaker ${speaker}.`);
+    if (selected.has(id)) throw new Error('Each speaker must have a different person. Review speaker attribution before saving.');
+    selected.add(id);
+  }
+  if (!selected.size) throw new Error('Map at least one speaker to a person.');
+  return selected;
+}

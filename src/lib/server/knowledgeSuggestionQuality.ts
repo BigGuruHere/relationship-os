@@ -10,6 +10,32 @@ const KINDS = new Set(['FACT', 'WANT', 'OFFER', 'PREFERENCE', 'CONSTRAINT', 'OBJ
 const ORDER: CandidateSuggestion['kind'][] = ['CONSTRAINT', 'WANT', 'PREFERENCE', 'OBJECTIVE', 'FACT', 'OFFER', 'OTHER'];
 const normalized = (s: string) => s.replace(/\s+/g, ' ').trim().toLocaleLowerCase();
 
+// Accept punctuation/whitespace variants only when the same sequence of words occurs
+// contiguously in the original. Return ORIGINAL source bytes, never a model paraphrase.
+// No semantic/fuzzy fallback: evidence must remain independently verifiable.
+export function sourceEvidenceMatch(source: string, quote: string): string | null {
+  const literal = normalized(quote);
+  if (!literal) return null;
+  const index = normalized(source).indexOf(literal);
+  if (index !== -1) {
+    // Use the supplied quote only when it really is a literal (whitespace-normalised) source excerpt.
+    return quote.trim();
+  }
+  const tokenPattern = /[\p{L}\p{N}]+/gu;
+  const sourceTokens = [...source.matchAll(tokenPattern)];
+  const quoteTokens = [...quote.matchAll(tokenPattern)].map(match => match[0].toLocaleLowerCase());
+  // Short phrases are too ambiguous to recover safely from punctuation differences.
+  if (quoteTokens.length < 4 || quoteTokens.length > 130) return null;
+  for (let start = 0; start + quoteTokens.length <= sourceTokens.length; start++) {
+    if (!quoteTokens.every((word, offset) => sourceTokens[start + offset][0].toLocaleLowerCase() === word)) continue;
+    const first = sourceTokens[start];
+    const last = sourceTokens[start + quoteTokens.length - 1];
+    return source.slice(first.index ?? 0, (last.index ?? 0) + last[0].length);
+  }
+  return null;
+}
+
+
 export function selectKnowledgeSuggestions(rawItems: unknown[], source: string, limit = 12): CandidateSuggestion[] {
   return inspectKnowledgeSelection(rawItems, source, limit).selected;
 }
@@ -23,31 +49,47 @@ export type KnowledgeSelectionReport = {
   selectedByKind: Record<CandidateSuggestion['kind'], number>;
   quoteReusedAcrossSelected: number; sourceMentionsUncertainty: boolean; selectedMentionsUncertainty: boolean;
 };
-export function inspectKnowledgeSelection(rawItems: unknown[], source: string, limit = 12): { selected: CandidateSuggestion[]; report: KnowledgeSelectionReport } {
+// Diagnostic details exist only in this function's return value when explicitly requested.
+// Never write them to server logs, persistent storage, analytics or model audit data.
+export type RejectedKnowledgeCandidate = { pass?: string; reason: string; kind: string; statement: string; evidenceQuote: string; overlapsWith?: string };
+export function inspectKnowledgeSelection(rawItems: unknown[], source: string, limit = 12, inspectRejected = false): { selected: CandidateSuggestion[]; report: KnowledgeSelectionReport; rejected: RejectedKnowledgeCandidate[] } {
   const candidates: CandidateSuggestion[] = [];
+  const rejected: RejectedKnowledgeCandidate[] = [];
   const seen = new Set<string>();
-  const sourceNormalized = normalized(source);
   let invalid = 0;
   let exactDuplicates = 0;
   let nearDuplicates = 0;
   const reasons = { malformedItem: 0, invalidKind: 0, invalidStatement: 0, invalidSourcePassage: 0, exactDuplicate: 0, nearDuplicate: 0, reviewLimitDeferred: 0 };
   // Record a count, never the rejected private material.
-  const reject = (reason: 'malformedItem' | 'invalidKind' | 'invalidStatement' | 'invalidSourcePassage') => { invalid++; reasons[reason]++; };
+  const reject = (reason: 'malformedItem' | 'invalidKind' | 'invalidStatement' | 'invalidSourcePassage', raw: unknown) => {
+    invalid++; reasons[reason]++;
+    if (inspectRejected && rejected.length < 80) {
+      const item = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw as Record<string, unknown> : {};
+      rejected.push({ reason, kind: typeof item.kind === 'string' ? item.kind.slice(0, 50) : '',
+        statement: typeof item.statement === 'string' ? item.statement.slice(0, 650) : '',
+        evidenceQuote: typeof item.evidenceQuote === 'string' ? item.evidenceQuote.slice(0, 850) : '' });
+    }
+  };
   for (const raw of rawItems.slice(0, 80)) {
-    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) { reject('malformedItem'); continue; }
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) { reject('malformedItem', raw); continue; }
     const item = raw as Record<string, unknown>;
-    if (typeof item.kind !== 'string' || !KINDS.has(item.kind)) { reject('invalidKind'); continue; }
-    if (typeof item.statement !== 'string' || typeof item.evidenceQuote !== 'string') { reject('malformedItem'); continue; }
+    if (typeof item.kind !== 'string' || !KINDS.has(item.kind)) { reject('invalidKind', raw); continue; }
+    if (typeof item.statement !== 'string' || typeof item.evidenceQuote !== 'string') { reject('malformedItem', raw); continue; }
     const statement = item.statement.trim();
     const quote = item.evidenceQuote.trim();
     // Do not let a plausible-sounding model inference through without literal source evidence.
-    if (!statement || statement.length > 600) { reject('invalidStatement'); continue; }
-    if (!quote || quote.length > 800 || !sourceNormalized.includes(normalized(quote))) { reject('invalidSourcePassage'); continue; }
+    if (!statement || statement.length > 600) { reject('invalidStatement', raw); continue; }
+    const verifiedQuote = quote.length <= 800 ? sourceEvidenceMatch(source, quote) : null;
+    if (!verifiedQuote) { reject('invalidSourcePassage', raw); continue; }
     const kind = item.kind as CandidateSuggestion['kind'];
     const key = `${kind}:${normalized(statement)}`;
-    if (seen.has(key)) { exactDuplicates++; reasons.exactDuplicate++; continue; }
+    if (seen.has(key)) {
+      exactDuplicates++; reasons.exactDuplicate++;
+      if (inspectRejected && rejected.length < 80) rejected.push({ reason: 'exactDuplicate', kind, statement, evidenceQuote: quote, overlapsWith: statement });
+      continue;
+    }
     seen.add(key);
-    candidates.push({ kind, statement, evidenceQuote: quote });
+    candidates.push({ kind, statement, evidenceQuote: verifiedQuote });
   }
 
   // Prefer durable, current, qualified understanding to an isolated attendance fact.
@@ -78,7 +120,12 @@ export function inspectKnowledgeSelection(rawItems: unknown[], source: string, l
   const sameQualification = (a: string, b: string) => JSON.stringify(qualificationSignature(a)) === JSON.stringify(qualificationSignature(b));
   const distinct: CandidateSuggestion[] = [];
   for (const candidate of [...candidates].sort((a,b) => qualify(b) - qualify(a))) {
-    if (distinct.some(previous => previous.kind === candidate.kind && sameQualification(previous.statement, candidate.statement) && overlap(previous.statement, candidate.statement) >= 0.82)) { nearDuplicates++; reasons.nearDuplicate++; continue; }
+    const duplicate = distinct.find(previous => previous.kind === candidate.kind && sameQualification(previous.statement, candidate.statement) && overlap(previous.statement, candidate.statement) >= 0.82);
+    if (duplicate) {
+      nearDuplicates++; reasons.nearDuplicate++;
+      if (inspectRejected && rejected.length < 80) rejected.push({ reason: 'nearDuplicate', kind: candidate.kind, statement: candidate.statement, evidenceQuote: candidate.evidenceQuote, overlapsWith: duplicate.statement });
+      continue;
+    }
     distinct.push(candidate);
   }
   // First-page diversity is preserved, but additional valid statements are kept
@@ -106,7 +153,10 @@ export function inspectKnowledgeSelection(rawItems: unknown[], source: string, l
     quotes.add(quote);
   }
   const explicitUncertainty = /\b(unsure|uncertain|not sure|hesitant|might|may|not ready|whether|perhaps|not entirely sure)\b/i;
-  return { selected, report: {
+  if (inspectRejected) for (const candidate of distinct.filter(item => !selected.includes(item)).slice(0, 80 - rejected.length)) {
+    rejected.push({ reason: 'reviewLimitDeferred', kind: candidate.kind, statement: candidate.statement, evidenceQuote: candidate.evidenceQuote });
+  }
+  return { selected, rejected, report: {
     inputCount: rawItems.length, examinedCount: Math.min(rawItems.length, 80),
     invalidOrUnsupportedCount: invalid, exactDuplicateCount: exactDuplicates,
     nearDuplicateCount: nearDuplicates, eligibleCount: distinct.length, rejectionReasons: reasons,

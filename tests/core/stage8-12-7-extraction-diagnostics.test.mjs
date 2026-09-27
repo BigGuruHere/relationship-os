@@ -57,14 +57,16 @@ test('records when the review limit hides additional eligible proposals without 
   assert.equal(full.report.displayedCount,full.report.eligibleCount);
 });
 
-test('diagnostics require explicit development flag, are not logged, and surface only counts', () => {
+test('diagnostics require explicit development flag; count reports stay private-data-free, with gated inspection details', () => {
   const extraction=readFileSync('src/lib/server/datingKnowledgeExtraction.ts','utf8');
   const ui=readFileSync('src/routes/dating/people/[id]/understanding/+page.svelte','utf8');
   const route=readFileSync('src/routes/dating/people/[id]/understanding/+page.server.ts','utf8');
   const packageJson=JSON.parse(readFileSync('package.json','utf8'));
   assert.match(extraction,/NODE_ENV !== 'production' && process\.env\.DATING_KNOWLEDGE_DIAGNOSTICS === 'YES'/);
-  assert.match(ui,/Development diagnostics - candidate counts only/);
+  assert.match(ui,/Development diagnostics - rejected proposal inspection/);
   assert.match(route,/return \{ suggestions, diagnostics, suggestionSourceId:/);
+  assert.match(extraction, /inspectKnowledgeSelection\(candidates, text, 32, inspectPrivate\)/);
+  assert.doesNotMatch(extraction, /console\.log\(.*rejectedCandidates/);
   assert.match(packageJson.scripts.test,/\.test\.mjs/);
   assert.match(packageJson.scripts['check:stage8.12.7'],/stage8-12-7-extraction-diagnostics/);
 });

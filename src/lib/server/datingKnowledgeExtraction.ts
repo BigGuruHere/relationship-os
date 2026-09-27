@@ -1,13 +1,13 @@
-// PURPOSE: Stage 8.12.7 - evidence-backed extraction with count-only, opt-in development diagnostics.
+// PURPOSE: Evidence-backed extraction with opt-in development-only rejection inspection.
 // SECURITY: The selected reflection is custody-validated before any opt-in model processing.
 // Only explicit operator reviews can promote suggestions; no disclosure or cross-context use is granted.
 import { generateStructured } from '$lib/server/agents/modelGateway';
 import { requireSourceReflection, type DatingKnowledgeKind } from './datingLivingUnderstanding';
-import { selectKnowledgeSuggestions, suggestedCoverage, inspectKnowledgeSelection, type KnowledgeSelectionReport } from './knowledgeSuggestionQuality';
+import { selectKnowledgeSuggestions, suggestedCoverage, inspectKnowledgeSelection, type KnowledgeSelectionReport, type RejectedKnowledgeCandidate } from './knowledgeSuggestionQuality';
 
 export type KnowledgeSuggestion = { kind: DatingKnowledgeKind; statement: string; evidenceQuote: string };
 type Scope = { userId: string; contextSpaceId: string; contactId: string };
-export type ExtractionDiagnostics = { firstPass: KnowledgeSelectionReport; secondPass: KnowledgeSelectionReport | null; combined: KnowledgeSelectionReport; returnedCount: number; secondPassAttempted: boolean; secondPassSucceeded: boolean; reviewPageCount: number };
+export type ExtractionDiagnostics = { firstPass: KnowledgeSelectionReport; secondPass: KnowledgeSelectionReport | null; combined: KnowledgeSelectionReport; returnedCount: number; secondPassAttempted: boolean; secondPassSucceeded: boolean; reviewPageCount: number; rejectedCandidates?: RejectedKnowledgeCandidate[] };
 export type ExtractionResult = { suggestions: KnowledgeSuggestion[]; diagnostics: ExtractionDiagnostics | null };
 const diagnosticsEnabled = () => process.env.NODE_ENV !== 'production' && process.env.DATING_KNOWLEDGE_DIAGNOSTICS === 'YES';
 const KNOWN_KINDS = ['FACT', 'WANT', 'OFFER', 'PREFERENCE', 'CONSTRAINT', 'OBJECTIVE', 'OTHER'];
@@ -64,7 +64,8 @@ export async function suggestDatingKnowledge(scope: Scope, sourceInteractionId: 
     'Do not invent facts, diagnoses, personality traits or permissions. If nothing is supported, return an empty array.'
   ].join('\n'), 'dating_private_person_knowledge_suggestions');
 
-  const firstInspection = inspectKnowledgeSelection(first, text, 32);
+  const inspectPrivate = diagnosticsEnabled();
+  const firstInspection = inspectKnowledgeSelection(first, text, 32, inspectPrivate);
   let candidates: unknown[] = first;
   let secondInspection: ReturnType<typeof inspectKnowledgeSelection> | null = null;
   let secondPassAttempted = false;
@@ -95,18 +96,28 @@ export async function suggestDatingKnowledge(scope: Scope, sourceInteractionId: 
       // A failed coverage pass must not discard a valid first-pass result.
       console.warn('[dating knowledge coverage] second pass unavailable');
     }
-    secondInspection = inspectKnowledgeSelection(second, text, 32);
+    secondInspection = inspectKnowledgeSelection(second, text, 32, inspectPrivate);
     candidates = [...first, ...second];
   }
 
   // Compare the combined candidate pool before enforcing the 12-item review-screen limit.
-  const combinedInspection = inspectKnowledgeSelection(candidates, text, 32);
+  const combinedInspection = inspectKnowledgeSelection(candidates, text, 32, inspectPrivate);
   return { suggestions: combinedInspection.selected, diagnostics: diagnosticsEnabled() ? {
     firstPass: firstInspection.report,
     secondPass: secondInspection?.report ?? null,
     combined: combinedInspection.report,
     returnedCount: combinedInspection.selected.length,
     reviewPageCount: Math.ceil(combinedInspection.selected.length / 12),
+    // Only return details on the explicitly gated development response. Never log or persist them.
+    rejectedCandidates: [
+      ...firstInspection.rejected.map(item => ({ ...item, pass: 'First pass' })),
+      ...(secondInspection?.rejected ?? []).map(item => ({ ...item, pass: 'Coverage pass' })),
+      // Show only genuinely new cross-pass duplicates; do not repeat first-pass rejections.
+      ...combinedInspection.rejected.filter(item => ['exactDuplicate', 'nearDuplicate'].includes(item.reason) &&
+        ![...firstInspection.rejected, ...(secondInspection?.rejected ?? [])].some(earlier =>
+          earlier.reason === item.reason && earlier.kind === item.kind && earlier.statement === item.statement && earlier.evidenceQuote === item.evidenceQuote))
+        .map(item => ({ ...item, pass: 'Combined review' }))
+    ].slice(0, 160),
     secondPassAttempted, secondPassSucceeded
   } : null };
 }

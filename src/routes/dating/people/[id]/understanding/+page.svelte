@@ -218,8 +218,8 @@
       {#if form?.suggestionError}<p class="error" role="alert">{form.suggestionError}</p>{/if}
       {#if form?.diagnostics && form?.suggestionSourceId === data.selectedSource.id}
         <details class="card diagnostic-panel">
-          <summary>Development diagnostics - candidate counts only</summary>
-          <p class="muted small">Available only when DATING_KNOWLEDGE_DIAGNOSTICS=YES outside production. Counts do not include the reflection or proposed statement text. These checks cannot determine whether Dorian missed information it never proposed, or whether a proposed statement is actually entailed by its quoted passage.</p>
+          <summary>Development diagnostics - rejected proposal inspection</summary>
+          <p class="muted small">Available only when DATING_KNOWLEDGE_DIAGNOSTICS=YES outside production. Counts are followed by private rejected candidate details on this page only; do not screenshot, export or share these details without consent. These checks cannot determine whether Dorian missed information it never proposed, or whether a proposed statement is actually entailed by its quoted passage.</p>
           <table>
             <thead><tr><th>Measure</th><th>First pass</th><th>Coverage pass</th><th>Combined</th></tr></thead>
             <tbody>
@@ -238,6 +238,19 @@
           </table>
           <p class="muted small">Second pass: {form.diagnostics.secondPassAttempted ? (form.diagnostics.secondPassSucceeded ? 'completed' : 'unavailable') : 'not needed'}. Review pages: {form.diagnostics.reviewPageCount}. Repeated evidence passage among selected proposals: {form.diagnostics.combined.quoteReusedAcrossSelected}.</p>
           <p class="muted small">Heuristic uncertainty check: mentioned in source - {form.diagnostics.combined.sourceMentionsUncertainty ? 'yes' : 'no'}; present in selected supporting material - {form.diagnostics.combined.selectedMentionsUncertainty ? 'yes' : 'no'}. This only detects wording, not preservation of meaning.</p>
+          <h3>Rejected and deferred proposals ({form.diagnostics.rejectedCandidates?.length ?? 0})</h3>
+          <p class="muted small">Development-only private view. Shows the AI's original proposed statement and supplied quote. An invalid quote does not prove the statement is false; compare it with the original source above. These details are not stored in normal logs or the database. Refreshing this page clears the inspection response.</p>
+          {#each form.diagnostics.rejectedCandidates ?? [] as rejected, index}
+            <article class="card diagnostic-rejection">
+              <h4>Candidate {index + 1}: {rejected.reason} ({rejected.pass ?? 'Review'})</h4>
+              <p><strong>Knowledge type:</strong> {rejected.kind || 'Not supplied'}</p>
+              <p><strong>Original proposed statement:</strong> {rejected.statement || 'Not supplied'}</p>
+              <p><strong>AI-supplied evidence:</strong></p>
+              <blockquote>{rejected.evidenceQuote || 'Not supplied'}</blockquote>
+              {#if rejected.overlapsWith}<p><strong>Overlaps with:</strong> {rejected.overlapsWith}</p>{/if}
+              {#if rejected.reason === 'invalidSourcePassage'}<p class="muted small">This supplied quote did not pass literal source validation. Consult the original reflection above; it may be a punctuation mismatch, transcription variation or unsupported wording. Do not confirm without valid evidence.</p>{/if}
+            </article>
+          {/each}
         </details>
       {/if}
       {#if form?.suggestions && form?.suggestionSourceId === data.selectedSource.id}

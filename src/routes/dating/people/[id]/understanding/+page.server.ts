@@ -4,6 +4,7 @@ import { fail, redirect } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import { prisma } from '$lib/db';
 import { suggestDatingKnowledge } from '$lib/server/datingKnowledgeExtraction';
+import { sourceEvidenceMatch } from '$lib/server/knowledgeSuggestionQuality';
 import { REALMS, possibleRealmHint, listUnderstandingTopics, createUnderstandingTopic, assignKnowledgeTopic, unassignKnowledgeTopic, requireDatingPerson } from '$lib/server/datingUnderstandingTopics';
 import { suggestTopicPlacement } from '$lib/server/datingTopicPlacement';
 import { compareDatingKnowledge, listDatingKnowledgeComparisons, sharedTopicCandidates } from '$lib/server/datingKnowledgeComparison';
@@ -115,7 +116,7 @@ export const actions: Actions = {
         if (!['FACT','WANT','OFFER','PREFERENCE','CONSTRAINT','OBJECTIVE','OTHER'].includes(kind)) throw new Error('Invalid knowledge type.');
         const statement = validateUnderstandingStatement(form.get(`statement_${i}`));
         const quote = String(form.get(`evidence_${i}`) || '').trim();
-        if (!quote || quote.length > 800 || !normalize(source.text).includes(normalize(quote))) throw new Error('Missing or invalid supporting passage.');
+        if (!quote || quote.length > 800 || !sourceEvidenceMatch(source.text, quote)) throw new Error('Missing or invalid supporting passage.');
         const fingerprint = `${kind}:${normalize(statement)}`;
         if (!seen.has(fingerprint)) { proposed.push({ statement, kind, decision, quote }); seen.add(fingerprint); }
       }

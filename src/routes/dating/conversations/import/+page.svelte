@@ -22,8 +22,12 @@
   {#if form?.imported}
     <section class="card"><h2>{form.imported.alreadyImported ? 'Previously imported' : 'Conversation saved'}</h2>
       <p>{form.imported.excerpts.length} private speaker excerpt(s) are available. Open each one to request AI extraction with separate permission, then review proposed statements and topics.</p>
+      {#if form.imported.excludedSpeakers?.length}
+        <p><strong>Retained in the original transcript only, not extracted:</strong> {form.imported.excludedSpeakers.join(', ')}.</p>
+        <p>No person-level excerpt or review link is created for these speakers. Their dialogue remains in the encrypted original for conversation context.</p>
+      {/if}
       {#each form.imported.excerpts as excerpt, index}
-        <p><a href={`/dating/people/${excerpt.contactId}/understanding?sourceInteractionId=${excerpt.id}`}>Review excerpt {index + 1} for this person →</a></p>
+        <p><a href={`/dating/people/${excerpt.contactId}/understanding?sourceInteractionId=${excerpt.id}`}>Review excerpt {index + 1} from {excerpt.speaker} →</a></p>
       {/each}
     </section>
   {:else}
@@ -46,7 +50,7 @@
           <label for={`speaker-${i}`}>{speaker}</label>
           <select id={`speaker-${i}`} name={`speaker_${i}`} required>
             <option value="" selected disabled>Choose the correct person</option>
-            <option value="SKIP">Do not extract this speaker</option>
+            <option value="SKIP">Do not extract this speaker (keep in original only)</option>
             {#each data.people as person}<option value={person.id}>{person.name}</option>{/each}
           </select>
         {/each}

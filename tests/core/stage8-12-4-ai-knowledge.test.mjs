@@ -19,8 +19,8 @@ test('AI suggestions are not directly promoted to active knowledge', () => {
   assert.match(route, /createDatingUnderstanding\(scope/);
 });
 test('every suggestion retains literal reflection evidence and known category', () => {
-  assert.match(selector, /sourceNormalized\.includes\(normalized\(quote\)\)/);
-  assert.match(route, /normalize\(source\.text\)\.includes\(normalize\(quote\)\)/);
+  assert.match(selector, /sourceEvidenceMatch\(source, quote\)/);
+  assert.match(route, /sourceEvidenceMatch\(source\.text, quote\)/);
   assert.match(route, /\['FACT','WANT','OFFER','PREFERENCE','CONSTRAINT','OBJECTIVE','OTHER'\]/);
 });
 test('operator attribution and sensitive audit remain enforced', () => {

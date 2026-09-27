@@ -12,6 +12,8 @@ export function parseDatingTranscript(input: unknown): ParsedTranscript {
   const speakers = new Set<string>();
   for (const line of text.split('\n')) {
     if (!line.trim()) continue;
+    // IT: An export heading is metadata, never a speaker. Keep it unchanged in the encrypted original.
+    if (!turns.length && /^\s*(?:#{1,6}\s*)?conversation transcript\s*:\s*$/i.test(line)) continue;
     const match = line.match(SPEAKER_LINE);
     // New turns must have an explicit speaker label. Unlabelled lines belong to the preceding turn only.
     if (match && match[1].trim() && !/^https?$/i.test(match[1].trim())) {

@@ -10,6 +10,18 @@
   let showAllTopics = false;
   let comparisonOlderId = "";
   let comparisonRelationship = "";
+  // Show chronological eligibility before submission. The server retains the authoritative check.
+  $: selectedComparisonCandidate = data.comparisonCandidates[selectedClaimId]?.find((candidate: any) => candidate.id === comparisonOlderId) ?? null;
+  $: comparisonChronologyInvalid = Boolean(selectedClaim && selectedComparisonCandidate &&
+    new Date(selectedClaim.createdAt).getTime() < new Date(selectedComparisonCandidate.createdAt).getTime());
+  // Reversing the selection is useful when the operator started with the earlier claim.
+  function reverseComparison() {
+    if (!selectedComparisonCandidate) return;
+    const previousSelected = selectedClaimId;
+    selectedClaimId = comparisonOlderId;
+    comparisonOlderId = previousSelected;
+    comparisonRelationship = "";
+  }
   $: selectedClaim = data.currentKnowledge.find((claim: any) => claim.id === selectedClaimId) ?? null;
   $: selectedClaimAssignments = data.topicTree.flatMap((realm: any) => realm.topics.flatMap((topic: any) => topic.claims.some((claim: any) => claim.id === selectedClaimId) ? [{ realm: realm.name, topic: topic.name, topicId: topic.id }] : []));
   const SUGGESTIONS_PER_PAGE = 12;
@@ -117,7 +129,7 @@
     </section>
     <section class="card panel" id="compare-knowledge">
       <h2>Compare new knowledge with earlier understanding</h2>
-      <p class="muted">Choose an active statement and an earlier statement that shares at least one topic. Compare their wording and source before deciding whether the newer statement is independent, supporting, refining, potentially conflicting or explicitly superseding. No automated decision is made.</p>
+      <p class="muted">Choose two active statements sharing a topic. Relish displays their entry dates so you can choose the later statement as the replacement when retiring earlier knowledge. Entry dates may differ from when a real-world change occurred. No automated decision is made.</p>
       {#if form?.comparisonError}<p role="alert" class="error">{form.comparisonError}</p>{/if}
       {#if data.comparisonSaved}<p role="status" class="saved-message">Comparison recorded. Historical source and evidence have been retained.</p>{/if}
       <label for="comparison-newer">Newer statement to consider</label>
@@ -126,7 +138,8 @@
         {#each data.currentKnowledge as claim (claim.id)}<option value={claim.id}>{claim.statement}</option>{/each}
       </select>
       {#if selectedClaim}
-        <div class="selected-statement"><p class="eyebrow">Newer statement</p><p class="selected-text">{selectedClaim.statement}</p>
+        <div class="selected-statement"><p class="eyebrow">Selected statement</p><p class="selected-text">{selectedClaim.statement}</p>
+          <p class="muted small">Entered in Relish: {new Date(selectedClaim.createdAt).toLocaleString()}</p>
           {#if selectedClaim.sourceReflectionId}<a href={`/dating/people/${data.personId}/understanding?sourceInteractionId=${encodeURIComponent(selectedClaim.sourceReflectionId)}`}>Read its original private reflection</a>{/if}
         </div>
         {#if !(data.comparisonCandidates[selectedClaimId]?.length)}
@@ -135,17 +148,23 @@
           <label for="comparison-older">Earlier statement</label>
           <select id="comparison-older" bind:value={comparisonOlderId} on:change={() => comparisonRelationship = ""}>
             <option value="">Choose a related statement…</option>
-            {#each data.comparisonCandidates[selectedClaimId] as candidate (candidate.id)}<option value={candidate.id}>{candidate.statement}</option>{/each}
+            {#each data.comparisonCandidates[selectedClaimId] as candidate (candidate.id)}<option value={candidate.id}>{candidate.statement} (entered {new Date(candidate.createdAt).toLocaleDateString()})</option>{/each}
           </select>
           {#each data.comparisonCandidates[selectedClaimId] as candidate (candidate.id)}
             {#if comparisonOlderId === candidate.id}
               <div class="selected-statement"><p class="eyebrow">Existing statement</p><p class="selected-text">{candidate.statement}</p>
-                <p class="muted small">Shared topics: {candidate.topics.join(', ')}</p>
+                <p class="muted small">Entered in Relish: {new Date(candidate.createdAt).toLocaleString()} · Shared topics: {candidate.topics.join(', ')}</p>
                 {#if data.currentKnowledge.find((claim: any) => claim.id === candidate.id)?.sourceReflectionId}<a href={`/dating/people/${data.personId}/understanding?sourceInteractionId=${encodeURIComponent(data.currentKnowledge.find((claim: any) => claim.id === candidate.id).sourceReflectionId)}`}>Read its original private reflection</a>{/if}
               </div>
             {/if}
           {/each}
           {#if comparisonOlderId}
+            {#if comparisonChronologyInvalid}
+              <div class="supersession-warning" role="status">
+                <p>This selected replacement was entered before the other statement. You can still record a supporting, refining or conflicting relationship, but you cannot retire the later-entered statement with it.</p>
+                <button type="button" class="btn" on:click={reverseComparison}>Swap statements to retire the earlier-entered one</button>
+              </div>
+            {/if}
             <form method="POST" action="?/compareKnowledge#compare-knowledge" class="review-form">
               <input type="hidden" name="newerClaimId" value={selectedClaimId} />
               <input type="hidden" name="olderClaimId" value={comparisonOlderId} />
@@ -156,7 +175,7 @@
                 <option value="SUPPORTS">Supports the earlier statement</option>
                 <option value="REFINES">Refines or qualifies the earlier statement</option>
                 <option value="POTENTIAL_CONFLICT">Potential conflict, keep both active</option>
-                <option value="SUPERSEDES">New statement supersedes the earlier one</option>
+                <option value="SUPERSEDES" disabled={comparisonChronologyInvalid}>New statement supersedes the earlier one{comparisonChronologyInvalid ? " (swap statements first)" : ""}</option>
               </select>
               <label for="comparison-note">Reason for this interpretation (optional)</label>
               <textarea id="comparison-note" name="note" rows="2" maxlength="1000" placeholder="What changed or how does this new evidence qualify the old statement?"></textarea>

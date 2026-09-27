@@ -81,7 +81,8 @@
     "check:stage8.12.10": "node --experimental-strip-types --test tests/core/stage8-12-10-extraction-accuracy.test.mjs",
     "check:stage8.12.11": "node --experimental-strip-types --test tests/core/stage8-12-11-topic-placement.test.mjs",
     "check:stage8.12.12": "node --experimental-strip-types --test tests/core/stage8-12-12-knowledge-comparison.test.mjs",
-    "check:stage8.12.13": "node --experimental-strip-types --test tests/core/stage8-12-13-transcript-import.test.mjs"
+    "check:stage8.12.13": "node --experimental-strip-types --test tests/core/stage8-12-13-transcript-import.test.mjs",
+    "check:stage8.12.13.2": "node --experimental-strip-types --test tests/core/stage8-12-13-transcript-import.test.mjs tests/core/stage8-12-13-2-transcript-subject.test.mjs"
   },
   "engines": {
     "node": ">=22.13.1 <23"

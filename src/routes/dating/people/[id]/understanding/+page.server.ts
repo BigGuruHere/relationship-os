@@ -32,7 +32,8 @@ export const load: PageServerLoad = async ({ locals, params, url }) => {
   // Only active, same-person claims that share a topic are shown as comparison candidates.
   const comparisonCandidates = Object.fromEntries(namedKnowledge.map(claim => [claim.id,
     sharedTopicCandidates(topicTree, claim.id).map(candidate => ({ ...candidate,
-      statement: namedKnowledge.find(item => item.id === candidate.id)?.statement ?? '' }))
+      statement: namedKnowledge.find(item => item.id === candidate.id)?.statement ?? '',
+      createdAt: namedKnowledge.find(item => item.id === candidate.id)?.createdAt ?? null }))
       .filter(candidate => candidate.statement)]));
   const comparisonHistory = await listDatingKnowledgeComparisons(scope);
   const focusClaimId = url.searchParams.get('claimId');

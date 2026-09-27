@@ -61,10 +61,10 @@ export async function listCurrentDatingKnowledge(scope: Scope) {
   const rows = await prisma.knowledgeClaim.findMany({ where: {
     userId: scope.userId, contextSpaceId: scope.contextSpaceId, contactId: scope.contactId, status: 'ACTIVE'
   }, select: { id: true, kind: true, statementEnc: true, authority: true, confidence: true,
-    updatedAt: true, evidence: { where: { userId: scope.userId, contextSpaceId: scope.contextSpaceId, status: 'ACTIVE' },
+    createdAt: true, updatedAt: true, evidence: { where: { userId: scope.userId, contextSpaceId: scope.contextSpaceId, status: 'ACTIVE' },
       select: { sourceInteractionId: true }, take: 8 } }, orderBy: { updatedAt: 'desc' }, take: 150 });
   return rows.map(row => ({ id: row.id, kind: row.kind, statement: decrypt(row.statementEnc, 'knowledge.claim_statement'),
-    authority: row.authority, confidence: row.confidence, updatedAt: row.updatedAt,
+    authority: row.authority, confidence: row.confidence, createdAt: row.createdAt, updatedAt: row.updatedAt,
     evidenceCount: row.evidence.length, sourceReflectionId: row.evidence.find(item => item.sourceInteractionId)?.sourceInteractionId ?? null }));
 }
 

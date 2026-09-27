@@ -51,3 +51,11 @@ test('separate permission to retain a transcript and permission to invoke AI sug
   assert.match(ui, /AI processing permission/);
   assert.doesNotMatch(service, /generateStructured|suggestDatingKnowledge/);
 });
+
+// Stage 8.12.13.2: avoid the false third speaker from exported transcripts.
+test('ignores a leading conversation heading but retains it in encrypted original text', () => {
+  const parsed = parseDatingTranscript('Conversation Transcript:\n\nUser: Hello there.\nAgent: Welcome.');
+  assert.deepEqual(parsed.speakers, ['User', 'Agent']);
+  assert.equal(parsed.turns.length, 2);
+  assert.match(parsed.text, /^Conversation Transcript:/);
+});

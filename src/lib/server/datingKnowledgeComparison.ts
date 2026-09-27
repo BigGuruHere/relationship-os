@@ -23,7 +23,7 @@ export async function compareDatingKnowledge(scope: Scope, raw: { newerClaimId: 
       tx.knowledgeClaim.findFirst({ where: { id: input.olderClaimId, ...scope, status: 'ACTIVE' }, select: { id: true, statementEnc: true, createdAt: true } })
     ]);
     if (!newer || !older) throw new Error('Both statements must still be active and belong to the same person. Reload the page.');
-    if (input.relationship === 'SUPERSEDES' && newer.createdAt < older.createdAt) throw new Error('To retire knowledge, the replacement must not predate the earlier claim.');
+    if (input.relationship === 'SUPERSEDES' && newer.createdAt < older.createdAt) throw new Error('The replacement was entered before the statement you are retiring. Swap their positions or keep both active.');
     const links = await tx.understandingTopicClaim.findMany({ where: { ...scope, claimId: { in: [newer.id, older.id] } }, select: { claimId: true, topicId: true } });
     const newerTopicIds = new Set(links.filter(link => link.claimId === newer.id).map(link => link.topicId));
     if (!links.some(link => link.claimId === older.id && newerTopicIds.has(link.topicId))) throw new Error('Assign both statements to at least one common topic before comparing them.');

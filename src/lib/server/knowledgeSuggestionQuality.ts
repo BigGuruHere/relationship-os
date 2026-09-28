@@ -16,11 +16,9 @@ const normalized = (s: string) => s.replace(/\s+/g, ' ').trim().toLocaleLowerCas
 export function sourceEvidenceMatch(source: string, quote: string): string | null {
   const literal = normalized(quote);
   if (!literal) return null;
-  const index = normalized(source).indexOf(literal);
-  if (index !== -1) {
-    // Use the supplied quote only when it really is a literal (whitespace-normalised) source excerpt.
-    return quote.trim();
-  }
+  // Preserve the actual source bytes: a whitespace-normalised model quote is not
+  // itself verbatim evidence unless the raw source contains it exactly.
+  if (source.includes(quote.trim())) return quote.trim();
   const tokenPattern = /[\p{L}\p{N}]+/gu;
   const sourceTokens = [...source.matchAll(tokenPattern)];
   const quoteTokens = [...quote.matchAll(tokenPattern)].map(match => match[0].toLocaleLowerCase());
@@ -31,6 +29,26 @@ export function sourceEvidenceMatch(source: string, quote: string): string | nul
     const first = sourceTokens[start];
     const last = sourceTokens[start + quoteTokens.length - 1];
     return source.slice(first.index ?? 0, (last.index ?? 0) + last[0].length);
+  }
+  // IT: Speech-to-text sometimes joins two words ("alsobring") while the model
+  // splits them ("also bring"). Recover ONLY one continuous, exact source
+  // substring with at least 30 alphanumeric characters and no elision markers.
+  // Never bridge turns or infer a quote assembled from separate passages.
+  if (quote.length >= 30 && !/[.\u2026]{2,}/.test(quote)) {
+    const letters = /[\p{L}\p{N}]/u;
+    const key = [...quote.toLocaleLowerCase()].filter(c => letters.test(c)).join('');
+    if (key.length >= 30) for (const passage of source.split(/\n\n+/)) {
+      const positions: number[] = [];
+      let condensed = '';
+      for (let i = 0; i < passage.length; i++) {
+        const char = passage[i];
+        if (letters.test(char)) { condensed += char.toLocaleLowerCase(); positions.push(i); }
+      }
+      const at = condensed.indexOf(key);
+      if (at >= 0 && condensed.indexOf(key, at + 1) < 0) {
+        return passage.slice(positions[at], positions[at + key.length - 1] + 1);
+      }
+    }
   }
   return null;
 }

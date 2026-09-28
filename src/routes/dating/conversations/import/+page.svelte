@@ -21,13 +21,13 @@
   {#if form?.error}<p class="error" role="alert">{form.error}</p>{/if}
   {#if form?.imported}
     <section class="card"><h2>{form.imported.alreadyImported ? 'Previously imported' : 'Conversation saved'}</h2>
-      <p>{form.imported.excerpts.length} private speaker excerpt(s) are available. Open each one to request AI extraction with separate permission, then review proposed statements and topics.</p>
+      <p>{form.imported.excerpts.length} private person review(s) are available. Open each one to request AI extraction with separate permission, then review proposed statements and topics.</p>
       {#if form.imported.excludedSpeakers?.length}
         <p><strong>Retained in the original transcript only, not extracted:</strong> {form.imported.excludedSpeakers.join(', ')}.</p>
-        <p>No person-level excerpt or review link is created for these speakers. Their dialogue remains in the encrypted original for conversation context.</p>
+        <p>No person-level excerpt or review link is created for these speakers. Their dialogue remains in the encrypted original and can be supplied to AI as context only after separate processing permission.</p>
       {/if}
       {#each form.imported.excerpts as excerpt, index}
-        <p><a href={`/dating/people/${excerpt.contactId}/understanding?sourceInteractionId=${excerpt.id}`}>Review excerpt {index + 1} from {excerpt.speaker} →</a></p>
+        <p><a href={`/dating/people/${excerpt.contactId}/understanding?sourceInteractionId=${excerpt.id}`}>Review conversation for {excerpt.speaker} →</a></p>
       {/each}
     </section>
   {:else}

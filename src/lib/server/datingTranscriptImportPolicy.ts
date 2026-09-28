@@ -61,3 +61,56 @@ export function validateSpeakerMapping(speakers: string[], mapping: Record<strin
   if (!selected.size) throw new Error('Map at least one speaker to a person.');
   return selected;
 }
+
+
+// Stage 8.12.13.4: One source per speaker. Conversation windows retain adjacent
+// turns for context but do not make another speaker's dialogue first-person evidence.
+export function speakerSource(turns: TranscriptTurn[], speaker: string): string {
+  return turns.filter(turn => turn.speaker === speaker).map(turn => turn.text).join('\n\n');
+}
+
+export function conversationWindows(turns: TranscriptTurn[], speaker: string, maxChars = 11500):
+  { context: string; speakerSource: string }[] {
+  if (maxChars < 1000) throw new Error('Conversation context window is too small.');
+  const windows: { context: string; speakerSource: string }[] = [];
+  let batch: TranscriptTurn[] = [];
+  let size = 0;
+  let preceding: TranscriptTurn | undefined;
+  const flush = () => {
+    if (!batch.some(turn => turn.speaker === speaker)) return;
+    // Include the immediately preceding prompt at a chunk boundary, if available.
+    const room = maxChars - size - 2;
+    const previousContext = preceding && preceding.speaker !== speaker && room >= 100
+      ? { speaker: preceding.speaker, text: preceding.text.length <= room ? preceding.text :
+        `${preceding.speaker}: ${preceding.text.slice(preceding.speaker.length + 2, Math.max(preceding.speaker.length + 2, room - 3))}...` }
+      : null;
+    const context = previousContext ? [previousContext, ...batch] : batch;
+    windows.push({ context: context.map(turn => turn.text).join('\n\n'),
+      speakerSource: speakerSource(batch, speaker) });
+  };
+  // Split unusually long monologues for model context only. The encrypted source
+  // and the single person-level review retain the original turn unchanged.
+  const modelTurns: TranscriptTurn[] = turns.flatMap(turn => {
+    if (turn.text.length <= maxChars) return [turn];
+    const prefix = `${turn.speaker}: `;
+    const body = turn.text.slice(prefix.length);
+    const step = maxChars - prefix.length - 10;
+    const segments: TranscriptTurn[] = [];
+    for (let offset = 0; offset < body.length; offset += step) {
+      segments.push({ speaker: turn.speaker, text: prefix + body.slice(offset, offset + step) });
+    }
+    return segments;
+  });
+  for (const turn of modelTurns) {
+    if (batch.length && size + turn.text.length + 2 > maxChars) {
+      flush();
+      preceding = batch[batch.length - 1];
+      batch = [];
+      size = 0;
+    }
+    batch.push(turn);
+    size += turn.text.length + 2;
+  }
+  flush();
+  return windows;
+}

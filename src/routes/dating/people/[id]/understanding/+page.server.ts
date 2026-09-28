@@ -149,8 +149,14 @@ export const actions: Actions = {
       return { suggestions, diagnostics, suggestionSourceId: sourceInteractionId };
     } catch (error: any) {
       // Provider errors stay generic: do not return private transcript or upstream error text.
-      console.error('[dating knowledge suggestions] failed', error?.name || 'unknown');
-      return fail(400, { suggestionError: 'Suggestions could not be generated. You can still add knowledge manually.' });
+// Development-only diagnostics: display the provider error without
+// logging the private transcript or complete request.
+if (process.env.NODE_ENV !== 'production') {
+  console.error('[dating knowledge suggestions] failed', {
+    name: error instanceof Error ? error.name : 'Unknown',
+    message: error instanceof Error ? error.message : 'Unknown error'
+  });
+}      return fail(400, { suggestionError: 'Suggestions could not be generated. You can still add knowledge manually.' });
     }
   },
   propose: async ({ locals, params, request }) => {

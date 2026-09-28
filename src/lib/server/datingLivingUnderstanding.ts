@@ -48,11 +48,25 @@ export async function requireSourceReflection(scope: Scope, sourceId: string, tx
     contactId: scope.contactId, channel: 'DATING_PERSON_REFLECTION'
   }, select: { id: true, rawTextEnc: true, occurredAt: true } });
   if (!source) throw new Error('The source reflection is not accessible for this person.');
-  const payload = JSON.parse(decrypt(source.rawTextEnc, AAD)) as { version?: number; kind?: string; actor?: string; text?: string };
+  const payload = JSON.parse(decrypt(source.rawTextEnc, AAD)) as { version?: number; kind?: string; actor?: string; text?: string; transcriptId?: string; speaker?: string };
   if (payload.version !== 1 || !['PERSONAL_REFLECTION', 'CONVERSATION_EXCERPT'].includes(payload.kind || '') || payload.actor !== 'OPERATOR' || !payload.text) {
     throw new Error('The source is not a valid private reflection.');
   }
-  return { id: source.id, text: payload.text, at: source.occurredAt, sourceKind: payload.kind };
+  let conversationContext: string | null = null;
+  if (payload.kind === 'CONVERSATION_EXCERPT' && payload.transcriptId) {
+    // Validate parent custody and channel before decrypting conversation context.
+    const parent = await tx.interaction.findFirst({ where: {
+      id: payload.transcriptId, userId: scope.userId, contextSpaceId: scope.contextSpaceId,
+      channel: 'DATING_CONVERSATION_TRANSCRIPT'
+    }, select: { rawTextEnc: true } });
+    if (!parent) throw new Error('The parent conversation is not accessible.');
+    const original = JSON.parse(decrypt(parent.rawTextEnc, AAD)) as { kind?: string; text?: string; speakers?: string[] };
+    if (original.kind !== 'CONVERSATION_TRANSCRIPT' || !original.text ||
+      !original.speakers?.includes(payload.speaker || '')) throw new Error('Invalid parent conversation provenance.');
+    conversationContext = original.text;
+  }
+  return { id: source.id, text: payload.text, at: source.occurredAt,
+    sourceKind: payload.kind, speaker: payload.speaker || null, conversationContext };
 }
 
 // Current person-level view: reads active, context-scoped claims directly, not the historical transcript.

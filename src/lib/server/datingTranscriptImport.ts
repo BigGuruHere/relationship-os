@@ -3,7 +3,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { prisma } from '$lib/db';
 import { encrypt } from '$lib/crypto';
-import { parseDatingTranscript, speakerExcerptChunks, validateSpeakerMapping } from './datingTranscriptImportPolicy';
+import { parseDatingTranscript, speakerSource, validateSpeakerMapping } from './datingTranscriptImportPolicy';
 
 type Scope = { userId: string; contextSpaceId: string };
 export async function importDatingTranscript(scope: Scope, raw: unknown, mapping: Record<string, string>) {
@@ -14,11 +14,11 @@ export async function importDatingTranscript(scope: Scope, raw: unknown, mapping
   validateSpeakerMapping(parsed.speakers, mapping, new Set(people.map(p => p.id)));
   // A skipped speaker remains in the original transcript but receives no private excerpt.
   const excludedSpeakers = parsed.speakers.filter(speaker => mapping[speaker] === 'SKIP');
-  const excerpts = parsed.speakers.filter(speaker => mapping[speaker] !== 'SKIP').flatMap(speaker =>
-    speakerExcerptChunks(parsed.turns, speaker).map((text, index) => ({ contactId: mapping[speaker], speaker, text, index })));
-  if (!excerpts.length || excerpts.length > 50) throw new Error('Import exceeds the 50 excerpt limit. Divide the transcript.');
+  const excerpts = parsed.speakers.filter(speaker => mapping[speaker] !== 'SKIP').map(speaker =>
+    ({ contactId: mapping[speaker], speaker, text: speakerSource(parsed.turns, speaker) }));
+  if (!excerpts.length || excerpts.length > 50) throw new Error('Import exceeds the 50-person excerpt limit. Divide the transcript.');
   // Idempotency is scoped to the owner and space as well as exact transcript and explicit mapping.
-  const fingerprint = createHash('sha256').update(JSON.stringify({ text: parsed.text, mapping: parsed.speakers.map(s => [s, mapping[s]]) })).digest('hex');
+  const fingerprint = createHash('sha256').update(JSON.stringify({ importVersion: 2, text: parsed.text, mapping: parsed.speakers.map(s => [s, mapping[s]]) })).digest('hex');
   const externalRef = `dating:transcript:${fingerprint}`;
   return prisma.$transaction(async tx => {
     await tx.$queryRaw`SELECT 1 AS locked FROM (SELECT pg_advisory_xact_lock(hashtext(${scope.contextSpaceId}), hashtext(${fingerprint}))) AS lock_row`;
@@ -34,7 +34,7 @@ export async function importDatingTranscript(scope: Scope, raw: unknown, mapping
       // No speaker shares another speaker's evidence. The parent transcript is never a proposal source.
       const result = await tx.interaction.create({ data: { userId: scope.userId, contextSpaceId: scope.contextSpaceId, contactId: excerpt.contactId,
         channel: 'DATING_PERSON_REFLECTION', sourceType: 'WORKSPACE', externalRef: `dating:transcript-excerpt:${original.id}:${randomUUID()}`,
-        rawTextEnc: encrypt(JSON.stringify({ version: 1, kind: 'CONVERSATION_EXCERPT', actor: 'OPERATOR', text: excerpt.text, touchpointId: null, transcriptId: original.id, speaker: excerpt.speaker, chunkIndex: excerpt.index }), 'interaction.raw_text') }, select: { id: true, contactId: true } });
+        rawTextEnc: encrypt(JSON.stringify({ version: 1, kind: 'CONVERSATION_EXCERPT', actor: 'OPERATOR', text: excerpt.text, touchpointId: null, transcriptId: original.id, speaker: excerpt.speaker, conversationVersion: 2 }), 'interaction.raw_text') }, select: { id: true, contactId: true } });
       created.push({ ...result, speaker: excerpt.speaker });
     }
     return { transcriptId: original.id, excerpts: created, alreadyImported: false, excludedSpeakers };

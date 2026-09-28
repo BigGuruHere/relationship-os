@@ -138,7 +138,6 @@ async function generateWithOpenAI<T>(input: GenerateStructuredInput): Promise<Ge
     },
     body: JSON.stringify({
       model: input.model,
-      temperature: 0.2,
       response_format: { type: 'json_object' },
       messages: [
         { role: 'system', content: input.systemPrompt },

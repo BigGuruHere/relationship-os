@@ -209,10 +209,16 @@
   {#if data.selectedSource}
     <section class="card panel" id="knowledge-suggestions">
       <h2>1. Extract individual knowledge</h2>
+      {#if data.selectedSource.conversationContext}
+        <p class="muted small">This review includes the complete conversation as context. Only statements by {data.selectedSource.speaker || 'the selected person'} can support their knowledge. Other speakers are not imported as people.</p>
+        <details><summary>Read original conversation with all speakers</summary>
+          <pre class="conversation-source">{data.selectedSource.conversationContext}</pre>
+        </details>
+      {/if}
       <p class="muted small">With your permission, Dorian checks the full reflection for distinct, evidence-backed knowledge and, for longer reflections, makes a second pass for missed topics. The first page prioritises distinct, current understanding. Additional supported suggestions remain available on subsequent review pages. Review each independently; no suggestion is confirmed or shared automatically.</p>
       <form method="POST" action={`?/suggest&sourceInteractionId=${encodeURIComponent(data.selectedSource.id)}#knowledge-suggestions`}>
         <input type="hidden" name="sourceInteractionId" value={data.selectedSource.id} />
-        <label><input type="checkbox" name="allowModelProcessing" value="YES" required /> Allow AI processing of this private reflection for knowledge suggestions.</label>
+        <label><input type="checkbox" name="allowModelProcessing" value="YES" required /> Allow AI processing of this {data.selectedSource.conversationContext ? 'entire conversation, including excluded speakers as context' : 'private reflection'} for knowledge suggestions.</label>
         <button type="submit" class="btn">Suggest knowledge from reflection</button>
       </form>
       {#if form?.suggestionError}<p class="error" role="alert">{form.suggestionError}</p>{/if}
@@ -371,6 +377,8 @@
   <p class="muted"><strong>Privacy:</strong> Operator confirmation is not independently verified by the participant and does not grant permission to use this information in other spaces or disclose it to anyone.</p>
 </div>
 <style>
+  /* IT: Keep full conversational turns readable without overflowing the review page. */
+  .conversation-source { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 520px; overflow-y: auto; }
   .understanding-page { max-width: 920px; padding: 14px; }
   .workflow-nav { display:flex; flex-wrap:wrap; justify-content:space-between; gap:12px; margin: 8px 0 22px; }
   .focus-heading { margin: 18px 0 24px; } .eyebrow { text-transform: uppercase; letter-spacing: .07em; font-size: .78rem; font-weight: 700; color: var(--muted); }
@@ -409,3 +417,4 @@
   .diagnostic-panel table { border-collapse: collapse; width: 100%; font-size: .88rem; }
   .diagnostic-panel th, .diagnostic-panel td { padding: 7px; border-bottom: 1px solid var(--border); text-align: left; }
 </style>
+

@@ -84,3 +84,11 @@ test('topic revisions are bounded and hidden topic IDs are revalidated server-si
   assert.match(svc, /topics\.find\(item => item\.id === topicId\)/);
   assert.match(svc, /existing\.length > 45/);
 });
+
+test('stage 8.12.13.6.1 keeps the authorised source URL stable during experiment form posts', () => {
+  const page = fs.readFileSync(new URL('../../src/routes/dating/people/[id]/understanding/revision-experiment/+page.svelte', import.meta.url), 'utf8');
+  // IT: SvelteKit enhanced forms post to named actions without replacing the browser query string.
+  assert.match(page, /import \{ enhance \} from '\$app\/forms'/);
+  assert.match(page, /action="\?\/analyseTopics"[^>]*use:enhance/);
+  assert.match(page, /action="\?\/reviseTopics"[^>]*use:enhance/);
+});

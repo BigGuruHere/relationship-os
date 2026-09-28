@@ -1,4 +1,7 @@
 <script lang="ts">
+  // IT: Enhanced form submissions keep the authorised sourceInteractionId in the browser URL.
+  import { enhance } from '$app/forms';
+
   // This route is explicitly opt-in and read-only. Never add direct confirmation or sharing here.
   export let data: any;
   export let form: any;
@@ -17,7 +20,7 @@
   {:else if !data.topics.length}
     <p class="warning">Create at least one topic in Living Understanding first. This experiment compares a new source with existing topic knowledge.</p>
   {:else}
-    <form method="POST" action="?/analyseTopics" class="panel">
+    <form method="POST" action="?/analyseTopics" class="panel" use:enhance>
       <input type="hidden" name="sourceInteractionId" value={data.sourceId} />
       <h2>1. Identify affected topics</h2>
       <p>Dorian receives the selected private source plus this person's current topic names and statements. It proposes which topic understandings appear materially affected and may suggest a new topic where nothing suitable exists.</p>
@@ -36,7 +39,7 @@
         <div class="warning"><strong>Validation warnings</strong><ul>{#each form.topicAnalysis.analysis.errors as item}<li>{item}</li>{/each}</ul></div>
       {/if}
       {#if form.topicAnalysis.analysis.impacts.length}
-        <form method="POST" action="?/reviseTopics" class="revision-form">
+        <form method="POST" action="?/reviseTopics" class="revision-form" use:enhance>
           <input type="hidden" name="sourceInteractionId" value={data.sourceId} />
           {#each form.topicAnalysis.analysis.impacts as item (item.topicId)}
             <label class="topic-card">

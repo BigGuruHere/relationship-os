@@ -84,7 +84,8 @@
     "check:stage8.12.13": "node --experimental-strip-types --test tests/core/stage8-12-13-transcript-import.test.mjs",
     "check:stage8.12.13.2": "node --experimental-strip-types --test tests/core/stage8-12-13-transcript-import.test.mjs tests/core/stage8-12-13-2-transcript-subject.test.mjs",
     "check:stage8.12.13.3": "node --experimental-strip-types --test tests/core/stage8-12-13-3-conversation-extraction-inspection.test.mjs",
-    "check:stage8.12.13.4": "node --experimental-strip-types --test tests/core/stage8-12-13-4-conversation-first.test.mjs"
+    "check:stage8.12.13.4": "node --experimental-strip-types --test tests/core/stage8-12-13-4-conversation-first.test.mjs",
+    "check:stage8.12.13.5": "node --test tests/core/stage8-12-13-5-revision-experiment.test.mjs"
   },
   "engines": {
     "node": ">=22.13.1 <23"

@@ -32,7 +32,7 @@ async function extractPass(scope: Scope, sourceText: string, systemPrompt: strin
   const answer = await generateStructured<{ items?: unknown }>({
     userId: scope.userId,
     provider: 'openai',
-    model: process.env.DATING_KNOWLEDGE_MODEL || 'gpt-6-luna',
+    model: process.env.DATING_KNOWLEDGE_MODEL || 'gpt-4o-mini',
     purpose,
     auditDataClass: 'sensitive',
     systemPrompt,

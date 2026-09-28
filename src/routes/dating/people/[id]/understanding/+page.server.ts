@@ -4,6 +4,7 @@ import { fail, redirect } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import { prisma } from '$lib/db';
 import { suggestDatingKnowledge } from '$lib/server/datingKnowledgeExtraction';
+import { revisionExperimentEnabled } from '$lib/server/datingUnderstandingRevisionExperiment';
 import { sourceEvidenceMatch } from '$lib/server/knowledgeSuggestionQuality';
 import { REALMS, possibleRealmHint, listUnderstandingTopics, createUnderstandingTopic, assignKnowledgeTopic, unassignKnowledgeTopic, requireDatingPerson } from '$lib/server/datingUnderstandingTopics';
 import { suggestTopicPlacement } from '$lib/server/datingTopicPlacement';
@@ -42,7 +43,7 @@ export const load: PageServerLoad = async ({ locals, params, url }) => {
   const assignedIds = new Set(topicTree.flatMap(realm => realm.topics.flatMap(topic => topic.claims.map(claim => claim.id))));
   const suggestedFocusClaimId = url.searchParams.get('reviewSaved') === '1'
     ? namedKnowledge.find(claim => !assignedIds.has(claim.id))?.id ?? null : null;
-  return { personId: scope.contactId, focusClaimId: namedKnowledge.some(claim => claim.id === focusClaimId) ? focusClaimId : null, suggestedFocusClaimId, name: await contactDisplayName(contact),
+  return { revisionExperimentEnabled: revisionExperimentEnabled(), personId: scope.contactId, focusClaimId: namedKnowledge.some(claim => claim.id === focusClaimId) ? focusClaimId : null, suggestedFocusClaimId, name: await contactDisplayName(contact),
     reviewSaved: url.searchParams.get('reviewSaved') === '1', entries: await listDatingUnderstanding(scope), currentKnowledge: namedKnowledge,
     realms: REALMS, topicTree, selectedSource, comparisonCandidates, comparisonHistory, comparisonSaved: url.searchParams.get('comparisonSaved') === '1' }; 
 };
@@ -149,14 +150,8 @@ export const actions: Actions = {
       return { suggestions, diagnostics, suggestionSourceId: sourceInteractionId };
     } catch (error: any) {
       // Provider errors stay generic: do not return private transcript or upstream error text.
-// Development-only diagnostics: display the provider error without
-// logging the private transcript or complete request.
-if (process.env.NODE_ENV !== 'production') {
-  console.error('[dating knowledge suggestions] failed', {
-    name: error instanceof Error ? error.name : 'Unknown',
-    message: error instanceof Error ? error.message : 'Unknown error'
-  });
-}      return fail(400, { suggestionError: 'Suggestions could not be generated. You can still add knowledge manually.' });
+      console.error('[dating knowledge suggestions] failed', error?.name || 'unknown');
+      return fail(400, { suggestionError: 'Suggestions could not be generated. You can still add knowledge manually.' });
     }
   },
   propose: async ({ locals, params, request }) => {

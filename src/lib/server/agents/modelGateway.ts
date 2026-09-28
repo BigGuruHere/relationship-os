@@ -138,6 +138,8 @@ async function generateWithOpenAI<T>(input: GenerateStructuredInput): Promise<Ge
     },
     body: JSON.stringify({
       model: input.model,
+      // GPT-6 models only accept the default sampling temperature.
+      ...(/^gpt-6-/i.test(input.model) ? {} : { temperature: 0.2 }),
       response_format: { type: 'json_object' },
       messages: [
         { role: 'system', content: input.systemPrompt },

@@ -129,7 +129,7 @@ export function validateTurnAnchoredRevisionDraft(raw, existing, targetTurns, al
 }
 
 // Topic discovery is advisory only. Unknown topic IDs are rejected rather than silently mapped.
-export function validateTopicImpactDraft(raw, authorisedTopics) {
+export function validateTopicImpactDraft(raw, authorisedTopics, targetTurns = [], allTurns = []) {
   if (!raw || typeof raw !== 'object') throw new Error('The model did not provide a topic analysis.');
   const byId = new Map(authorisedTopics.map(topic => [topic.id, topic]));
   const seen = new Set();
@@ -142,8 +142,13 @@ export function validateTopicImpactDraft(raw, authorisedTopics) {
     if (seen.has(id)) { errors.push('The model repeated an affected topic.'); continue; }
     seen.add(id);
     const impact = TOPIC_IMPACTS.includes(row.impact) ? row.impact : 'POSSIBLE';
+    const evidence = targetTurns.length && allTurns.length
+      ? resolveEvidence(row.relevantTurnIds, targetTurns, allTurns)
+      : { valid: true, ids: normalizeTurnIds(row.relevantTurnIds), turns: [], reason: '' };
+    if (!evidence.valid) errors.push(`Invalid topic evidence for ${byId.get(id).label}: ${evidence.reason}`);
     impacts.push({ topicId: id, label: byId.get(id).label, impact,
-      reason: String(row.reason ?? '').trim().slice(0, 800) });
+      reason: String(row.reason ?? '').trim().slice(0, 800),
+      relevantTurnIds: evidence.ids, relevantTurns: evidence.turns, evidenceValid: evidence.valid });
   }
   const newTopics = [];
   for (const row of (Array.isArray(raw.suggestedNewTopics) ? raw.suggestedNewTopics.slice(0, 8) : [])) {
@@ -151,7 +156,11 @@ export function validateTopicImpactDraft(raw, authorisedTopics) {
     const realm = String(row.realm ?? '').trim().slice(0, 100);
     const name = String(row.name ?? '').trim().slice(0, 100);
     const reason = String(row.reason ?? '').trim().slice(0, 800);
-    if (realm && name) newTopics.push({ realm, name, reason });
+    const evidence = targetTurns.length && allTurns.length
+      ? resolveEvidence(row.relevantTurnIds, targetTurns, allTurns)
+      : { valid: true, ids: normalizeTurnIds(row.relevantTurnIds), turns: [], reason: '' };
+    if (!evidence.valid) errors.push(`Invalid suggested-topic evidence for ${realm || 'unknown realm'} / ${name || 'unknown topic'}: ${evidence.reason}`);
+    if (realm && name) newTopics.push({ realm, name, reason, relevantTurnIds: evidence.ids, relevantTurns: evidence.turns, evidenceValid: evidence.valid });
   }
   return { impacts, newTopics, errors };
 }

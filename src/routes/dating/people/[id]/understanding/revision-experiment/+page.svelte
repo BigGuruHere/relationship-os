@@ -44,7 +44,14 @@
           {#each form.topicAnalysis.analysis.impacts as item (item.topicId)}
             <label class="topic-card">
               <input type="checkbox" name="topicId" value={item.topicId} checked />
-              <span><strong>{item.label}</strong> <span class="impact">{item.impact}</span><br />{item.reason}</span>
+              <span><strong>{item.label}</strong> <span class="impact">{item.impact}</span><br />{item.reason}
+                {#if item.relevantTurns?.length}
+                  <span class="evidence-preview"><strong>Relevant source:</strong> {item.relevantTurns.map((turn: any) => turn.id).join(', ')}</span>
+                {/if}
+              </span>
+              {#each item.relevantTurnIds ?? [] as turnId}
+                <input type="hidden" name={`relevantTurnId:${item.topicId}`} value={turnId} />
+              {/each}
             </label>
           {/each}
           <label class="consent"><input name="consent" type="checkbox" value="YES" required /> I authorise sending the selected topic claims and this private source to the configured AI provider for read-only revision.</label>
@@ -91,9 +98,9 @@
                 {#if change.reason}<p><strong>Reason:</strong> {change.reason}</p>{/if}
                 {#if change.action !== 'UNCHANGED'}
                   {#if change.evidenceValid && change.evidenceTurns?.length}
-                    <details><summary><strong>Source evidence ({change.evidenceTurns.map((turn: any) => turn.id).join(', ')})</strong></summary>
-                      {#each change.evidenceTurns as turn}<blockquote><span class="turn-id">{turn.id}</span> {turn.text}</blockquote>{/each}
-                    </details>
+                    <div class="evidence-block"><strong>Source evidence ({change.evidenceTurns.map((turn: any) => turn.id).join(', ')})</strong>
+                      {#each change.evidenceTurns as turn}<blockquote><span class="turn-id">{turn.id}</span><span class="turn-text">{turn.text || '[Source turn text unavailable]'} </span></blockquote>{/each}
+                    </div>
                   {:else}
                     <p class="warning">No valid target-speaker turn evidence was recovered. Do not adopt this proposal.</p>
                   {/if}
@@ -110,9 +117,9 @@
               <p><strong>{item.kind}</strong> · {item.certainty}</p>
               <p>{item.statement}</p>
               {#if item.evidenceValid && item.evidenceTurns?.length}
-                <details><summary><strong>Source evidence ({item.evidenceTurns.map((turn: any) => turn.id).join(', ')})</strong></summary>
-                  {#each item.evidenceTurns as turn}<blockquote><span class="turn-id">{turn.id}</span> {turn.text}</blockquote>{/each}
-                </details>
+                <div class="evidence-block"><strong>Source evidence ({item.evidenceTurns.map((turn: any) => turn.id).join(', ')})</strong>
+                  {#each item.evidenceTurns as turn}<blockquote><span class="turn-id">{turn.id}</span><span class="turn-text">{turn.text || '[Source turn text unavailable]'}</span></blockquote>{/each}
+                </div>
               {:else}
                 <p class="warning">No valid target-speaker turn evidence was recovered. Do not adopt this proposal.</p>
               {/if}
@@ -140,6 +147,9 @@
   .muted { opacity: .8; }
   .eyebrow { font-size: .8rem; font-weight: bold; letter-spacing: .04em; }
   .impact { font-size: .75rem; font-weight: bold; margin-left: .5rem; }
+  .evidence-preview { display: block; margin-top: .4rem; font-size: .85rem; opacity: .8; }
+  .evidence-block { margin-top: .75rem; }
+  .turn-text { margin-left: .5rem; }
   blockquote { margin: .6rem 0; padding: .75rem 1rem; border-left: 3px solid var(--border-color, #aaa); white-space: pre-wrap; }
   .turn-id { font-size: .75rem; font-weight: bold; opacity: .7; }
 </style>

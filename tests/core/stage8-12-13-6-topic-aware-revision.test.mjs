@@ -80,7 +80,7 @@ test('topic revisions are bounded and hidden topic IDs are revalidated server-si
   const route = fs.readFileSync(new URL('../../src/routes/dating/people/[id]/understanding/revision-experiment/+page.server.ts', import.meta.url), 'utf8');
   const svc = fs.readFileSync(new URL('../../src/lib/server/datingUnderstandingRevisionExperiment.ts', import.meta.url), 'utf8');
   assert.match(route, /topicIds\.length > 6/);
-  assert.match(route, /reviseTopicReadOnly\(scope, sourceId, topicId\)/);
+  assert.match(route, /reviseTopicReadOnly\(scope, sourceId, topicId, relevantTurnIds\)/);
   assert.match(svc, /topics\.find\(item => item\.id === topicId\)/);
   assert.match(svc, /existing\.length > 45/);
 });
@@ -91,4 +91,37 @@ test('stage 8.12.13.6.1 keeps the authorised source URL stable during experiment
   assert.match(page, /import \{ enhance \} from '\$app\/forms'/);
   assert.match(page, /action="\?\/analyseTopics"[^>]*use:enhance/);
   assert.match(page, /action="\?\/reviseTopics"[^>]*use:enhance/);
+});
+
+test('stage 8.12.13.6.2 topic analysis carries validated relevant source turns', () => {
+  const result = validateTopicImpactDraft({
+    affectedTopics: [{ topicId: 'topic-relationship', impact: 'SIGNIFICANT', reason: 'Explicit desire.', relevantTurnIds: ['T002'] }],
+    suggestedNewTopics: []
+  }, topics, targetTurns, allTurns);
+  assert.equal(result.impacts[0].evidenceValid, true);
+  assert.equal(result.impacts[0].relevantTurns[0].text, 'User: I would like a strong relationship.');
+});
+
+test('stage 8.12.13.6.2 topic analysis rejects agent turns as topic evidence', () => {
+  const result = validateTopicImpactDraft({
+    affectedTopics: [{ topicId: 'topic-relationship', impact: 'SIGNIFICANT', reason: 'Bad evidence.', relevantTurnIds: ['T001'] }],
+    suggestedNewTopics: []
+  }, topics, targetTurns, allTurns);
+  assert.equal(result.impacts[0].evidenceValid, false);
+  assert.match(result.errors.join(' '), /non-target speaker/);
+});
+
+test('stage 8.12.13.6.2 renders exact source turn text visibly and carries topic-specific turn IDs', () => {
+  const page = fs.readFileSync(new URL('../../src/routes/dating/people/[id]/understanding/revision-experiment/+page.svelte', import.meta.url), 'utf8');
+  const route = fs.readFileSync(new URL('../../src/routes/dating/people/[id]/understanding/revision-experiment/+page.server.ts', import.meta.url), 'utf8');
+  assert.match(page, /turn\.text \|\| '\[Source turn text unavailable\]'/);
+  assert.match(page, /relevantTurnId:\$\{item\.topicId\}/);
+  assert.match(route, /form\.getAll\(`relevantTurnId:\$\{topicId\}`\)/);
+});
+
+test('stage 8.12.13.6.2 explicitly asks discovery for multiple narrow topic impacts', () => {
+  const svc = fs.readFileSync(new URL('../../src/lib/server/datingUnderstandingRevisionExperiment.ts', import.meta.url), 'utf8');
+  assert.match(svc, /Identify ALL materially affected existing topics/);
+  assert.match(svc, /Prefer the narrowest semantically appropriate topic/);
+  assert.match(svc, /TOPIC-RELEVANT TARGET-SPEAKER TURNS/);
 });

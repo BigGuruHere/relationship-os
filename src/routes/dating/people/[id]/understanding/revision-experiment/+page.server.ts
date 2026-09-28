@@ -56,9 +56,12 @@ export const actions: Actions = {
     if (!topicIds.length) return fail(400, { revisionError: 'Choose at least one affected topic to revise.' });
     if (topicIds.length > 6) return fail(400, { revisionError: 'Revise at most six topics in one experiment run.' });
     try {
-      // IT: Revalidate each topic server-side. Hidden form values never establish custody or authorisation.
+      // IT: Revalidate each topic server-side. Turn IDs can only narrow to authorised target-speaker turns.
       const revisions = [];
-      for (const topicId of [...new Set(topicIds)]) revisions.push(await reviseTopicReadOnly(scope, sourceId, topicId));
+      for (const topicId of [...new Set(topicIds)]) {
+        const relevantTurnIds = form.getAll(`relevantTurnId:${topicId}`).map(value => String(value)).filter(Boolean);
+        revisions.push(await reviseTopicReadOnly(scope, sourceId, topicId, relevantTurnIds));
+      }
       return { revisions };
     } catch (err) {
       return fail(502, { revisionError: safeExperimentError(err) });

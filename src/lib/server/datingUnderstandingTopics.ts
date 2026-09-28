@@ -50,14 +50,14 @@ export async function listUnderstandingTopics(scope: Scope) {
     select: { id: true, key: true, nameEnc: true, topics: {
       select: { id: true, nameEnc: true, links: {
         where: { ...scope, claim: { status: 'ACTIVE' } },
-        select: { id: true, claimId: true, claim: { select: { kind: true, statementEnc: true, authority: true } } }
+        select: { id: true, claimId: true, claim: { select: { kind: true, statementEnc: true, authority: true, confidence: true } } }
       } }, orderBy: { createdAt: 'asc' }
     } }, orderBy: { createdAt: 'asc' }
   });
   return realms.map(realm => ({ id: realm.id, key: realm.key, name: decrypt(realm.nameEnc, LABEL_AAD),
     topics: realm.topics.map(topic => ({ id: topic.id, name: decrypt(topic.nameEnc, LABEL_AAD),
       claims: topic.links.map(link => ({ id: link.claimId, kind: link.claim.kind,
-        statement: decrypt(link.claim.statementEnc, 'knowledge.claim_statement'), authority: link.claim.authority })) })) }));
+        statement: decrypt(link.claim.statementEnc, 'knowledge.claim_statement'), authority: link.claim.authority, confidence: link.claim.confidence })) })) }));
 }
 
 export async function createUnderstandingTopic(scope: Scope, realmKey: string, rawName: unknown) {

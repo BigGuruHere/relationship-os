@@ -1,9 +1,9 @@
-// PURPOSE: Operator-only side-by-side revision trial, with NO persistence of AI-generated changes.
+// PURPOSE: Operator-only topic-aware revision trial, with NO persistence of AI-generated changes.
 import { error, fail, redirect } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import { requireSourceReflection } from '$lib/server/datingLivingUnderstanding';
 import { listUnderstandingTopics } from '$lib/server/datingUnderstandingTopics';
-import { revisionExperimentEnabled, reviseTopicReadOnly } from '$lib/server/datingUnderstandingRevisionExperiment';
+import { identifyAffectedTopicsReadOnly, revisionExperimentEnabled, reviseTopicReadOnly } from '$lib/server/datingUnderstandingRevisionExperiment';
 
 function authorisedScope(locals: App.Locals, id: string) {
   if (!locals.user) throw redirect(303, '/auth/login');
@@ -19,27 +19,49 @@ export const load: PageServerLoad = async ({ locals, params, url }) => {
     listUnderstandingTopics(scope),
     sourceId ? requireSourceReflection(scope, sourceId) : Promise.resolve(null)
   ]);
-  return { personId: params.id, sourceId: source?.id ?? '',
+  return {
+    personId: params.id,
+    sourceId: source?.id ?? '',
     sourceKind: source?.sourceKind ?? null,
-    topics: tree.flatMap(realm => realm.topics.map(topic => ({ id: topic.id, label: `${realm.name} / ${topic.name}`, count: topic.claims.length }))) };
+    topics: tree.flatMap(realm => realm.topics.map(topic => ({ id: topic.id, label: `${realm.name} / ${topic.name}`, count: topic.claims.length })))
+  };
 };
 
+function safeExperimentError(err: unknown) {
+  if (err instanceof Error && /exceeds the experiment limit|too many|too large|disabled|OPENAI_API_KEY|Choose an authorised topic|not accessible|inventory/.test(err.message)) {
+    return err.message;
+  }
+  return 'The experimental revision was unavailable or malformed. No stored knowledge was changed.';
+}
+
 export const actions: Actions = {
-  run: async ({ locals, params, request }) => {
+  analyseTopics: async ({ locals, params, request }) => {
     const scope = authorisedScope(locals, params.id);
     const form = await request.formData();
-    if (form.get('consent') !== 'YES') return fail(400, { revisionError: 'Explicitly authorise sending the selected transcript and topic claims to the AI provider.' });
+    if (form.get('consent') !== 'YES') return fail(400, { revisionError: 'Explicitly authorise sending the selected transcript and current topic inventory to the AI provider.' });
     const sourceId = String(form.get('sourceInteractionId') || '');
-    const topicId = String(form.get('topicId') || '');
     try {
-      const revision = await reviseTopicReadOnly(scope, sourceId, topicId);
-      return { revision };
+      const topicAnalysis = await identifyAffectedTopicsReadOnly(scope, sourceId);
+      return { topicAnalysis };
     } catch (err) {
-      // IT: No raw model error, transcript, private statement or API response is logged or reflected to the UI.
-      if (err instanceof Error && /exceeds the experiment limit|contains too many claims|too large for this experiment|disabled|OPENAI_API_KEY|Choose an authorised topic|not accessible/.test(err.message)) {
-        return fail(400, { revisionError: err.message });
-      }
-      return fail(502, { revisionError: 'The experimental revision was unavailable or malformed. No stored knowledge was changed.' });
+      return fail(502, { revisionError: safeExperimentError(err) });
+    }
+  },
+  reviseTopics: async ({ locals, params, request }) => {
+    const scope = authorisedScope(locals, params.id);
+    const form = await request.formData();
+    if (form.get('consent') !== 'YES') return fail(400, { revisionError: 'Explicitly authorise sending the selected transcript and selected topic claims to the AI provider.' });
+    const sourceId = String(form.get('sourceInteractionId') || '');
+    const topicIds = form.getAll('topicId').map(value => String(value)).filter(Boolean);
+    if (!topicIds.length) return fail(400, { revisionError: 'Choose at least one affected topic to revise.' });
+    if (topicIds.length > 6) return fail(400, { revisionError: 'Revise at most six topics in one experiment run.' });
+    try {
+      // IT: Revalidate each topic server-side. Hidden form values never establish custody or authorisation.
+      const revisions = [];
+      for (const topicId of [...new Set(topicIds)]) revisions.push(await reviseTopicReadOnly(scope, sourceId, topicId));
+      return { revisions };
+    } catch (err) {
+      return fail(502, { revisionError: safeExperimentError(err) });
     }
   }
 };

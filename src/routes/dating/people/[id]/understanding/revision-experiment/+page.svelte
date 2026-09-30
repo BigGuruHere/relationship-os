@@ -48,6 +48,12 @@
   function priorOperationalStatement(unitId: string) {
     return form?.longitudinal?.priorOperationalUnits?.find((unit: any) => unit.unitId === unitId)?.statement ?? unitId;
   }
+
+  function remainingLongitudinalSources() {
+    // IT: Keep this derived list in script rather than using {@const} inside a DOM element.
+    // Svelte only permits {@const} as the immediate child of specific block/component constructs.
+    return laterSourcesAfter(form?.longitudinal?.nextSourceDate, form?.longitudinal?.nextSourceInteractionId);
+  }
 </script>
 
 <svelte:head><title>Semantic Living Understanding experiment - Relish</title></svelte:head>
@@ -341,11 +347,10 @@
         </div>
       {/if}
 
-      {@const remainingSources = laterSourcesAfter(form.longitudinal.nextSourceDate, form.longitudinal.nextSourceInteractionId)}
       <div class="longitudinal continue-chain">
         <h3>Continue with another later source</h3>
         <p>Carry this proposed version forward as the temporary baseline, then compare the next conversation or reflection. Nothing is saved as authoritative knowledge.</p>
-        {#if remainingSources.length}
+        {#if remainingLongitudinalSources().length}
           <form method="POST" action="?/compareLongitudinal" use:enhance>
             <input type="hidden" name="baselineSourceInteractionId" value={form.longitudinal.nextSourceInteractionId} />
             <input type="hidden" name="longitudinalSeedJson" value={serialiseLongitudinalSeed(form.longitudinal.nextLongitudinalSeed)} />
@@ -354,7 +359,7 @@
             <label>Next later source
               <select name="nextSourceInteractionId" required>
                 <option value="">Choose the next source</option>
-                {#each remainingSources as source}
+                {#each remainingLongitudinalSources() as source}
                   <option value={source.id}>{new Date(source.at).toLocaleString()} · {source.sourceKind === 'CONVERSATION_EXCERPT' ? `Conversation${source.speaker ? ` - ${source.speaker}` : ''}` : 'Reflection'}</option>
                 {/each}
               </select>

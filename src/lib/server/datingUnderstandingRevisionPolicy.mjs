@@ -383,6 +383,7 @@ export function validateLongitudinalSeed(rawSeed) {
       proposedUnderstanding,
       sourceInteractionId,
       sourceDate,
+      sourceInteractionIds: Array.isArray(row.sourceInteractionIds) ? [...new Set(row.sourceInteractionIds.map(value => String(value ?? '').trim().slice(0, 120)).filter(Boolean))].slice(-12) : [sourceInteractionId],
       semanticBoundary: Array.isArray(row.semanticBoundary) ? row.semanticBoundary.map(value => String(value ?? '').trim().slice(0, 1200)).filter(Boolean).slice(0, 8) : [],
       excludedTopicHints: Array.isArray(row.excludedTopicHints) ? row.excludedTopicHints.map(value => String(value ?? '').trim().slice(0, 1200)).filter(Boolean).slice(0, 16) : []
     });

@@ -15,7 +15,8 @@
       statement: unit.statement,
       operationalReasons: unit.operationalReasons,
       areaIds: unit.areaIds,
-      evidenceTurnIds: unit.evidenceTurnIds
+      evidenceTurnIds: unit.evidenceTurnIds,
+      status: unit.status
     })));
   }
 
@@ -30,6 +31,18 @@
   function serialiseLongitudinalSeed(seed: any[]) {
     // IT: The seed contains only prior experimental topic summaries and provenance, never raw source text.
     return JSON.stringify(seed ?? []);
+  }
+
+  function serialiseChainHistory(history: any[]) {
+    // IT: History contains concise proposed understanding snapshots only, never raw transcript text.
+    return JSON.stringify(history ?? []);
+  }
+
+  function laterSourcesAfter(sourceDate: string, sourceId: string) {
+    const after = new Date(sourceDate).getTime();
+    return (data?.laterSources ?? []).filter((source: any) =>
+      source.id !== sourceId && Number.isFinite(after) && new Date(source.at).getTime() > after
+    );
   }
 
   function priorOperationalStatement(unitId: string) {
@@ -309,6 +322,51 @@
           </article>
         {/each}
       {/if}
+
+      {#if form.longitudinal.chainHistory?.length}
+        <div class="chain-history">
+          <h3>Read-only evolution chain</h3>
+          <p class="muted">Each version is temporary experiment state. The next comparison starts from the latest proposed understanding, not from the raw previous conversation alone.</p>
+          {#each form.longitudinal.chainHistory as version}
+            <details class="chain-version" open={version.version === form.longitudinal.chainHistory[form.longitudinal.chainHistory.length - 1]?.version}>
+              <summary><strong>v{version.version}</strong> · {new Date(version.sourceDate).toLocaleString()} · {version.topics.length} topic{version.topics.length === 1 ? '' : 's'}{version.version > 1 ? ` · ${version.changedTopicCount} changed · ${version.newTopicCount} new` : ' · baseline'}</summary>
+              {#each version.topics as topic (topic.targetKey)}
+                <article class="chain-topic">
+                  <strong>{topic.topicName}</strong>
+                  <p>{topic.proposedUnderstanding}</p>
+                </article>
+              {/each}
+            </details>
+          {/each}
+        </div>
+      {/if}
+
+      {@const remainingSources = laterSourcesAfter(form.longitudinal.nextSourceDate, form.longitudinal.nextSourceInteractionId)}
+      <div class="longitudinal continue-chain">
+        <h3>Continue with another later source</h3>
+        <p>Carry this proposed version forward as the temporary baseline, then compare the next conversation or reflection. Nothing is saved as authoritative knowledge.</p>
+        {#if remainingSources.length}
+          <form method="POST" action="?/compareLongitudinal" use:enhance>
+            <input type="hidden" name="baselineSourceInteractionId" value={form.longitudinal.nextSourceInteractionId} />
+            <input type="hidden" name="longitudinalSeedJson" value={serialiseLongitudinalSeed(form.longitudinal.nextLongitudinalSeed)} />
+            <input type="hidden" name="priorOperationalUnitsJson" value={serialiseOperationalUnits(form.longitudinal.nextOperationalUnits)} />
+            <input type="hidden" name="chainHistoryJson" value={serialiseChainHistory(form.longitudinal.chainHistory)} />
+            <label>Next later source
+              <select name="nextSourceInteractionId" required>
+                <option value="">Choose the next source</option>
+                {#each remainingSources as source}
+                  <option value={source.id}>{new Date(source.at).toLocaleString()} · {source.sourceKind === 'CONVERSATION_EXCERPT' ? `Conversation${source.speaker ? ` - ${source.speaker}` : ''}` : 'Reflection'}</option>
+                {/each}
+              </select>
+            </label>
+            <label class="consent"><input name="consent" type="checkbox" value="YES" required /> I authorise sending this next private source and the latest temporary read-only understanding to the configured AI provider.</label>
+            <button type="submit">Continue chain with this source</button>
+          </form>
+        {:else}
+          <p class="muted">There is no private source later than the one just compared. Add or import another later source for this person, then reopen the experiment chain.</p>
+        {/if}
+      </div>
+
       <p class="muted"><strong>Read-only:</strong> this comparison has not created, changed, retired, confirmed or shared any stored knowledge or temporary interaction state.</p>
     </section>
   {/if}
@@ -338,6 +396,12 @@
   .turn-text { margin-left: .5rem; }
   blockquote { margin: .6rem 0; padding: .75rem 1rem; border-left: 3px solid var(--border-color, #aaa); white-space: pre-wrap; }
   .turn-id { font-size: .75rem; font-weight: bold; opacity: .7; }
+  .chain-history { margin-top: 2rem; border-top: 2px solid var(--border-color, #aaa); padding-top: 1rem; }
+  .chain-version { border: 1px solid var(--border-color, #aaa); border-radius: 8px; padding: .75rem; margin: .75rem 0; }
+  .chain-version summary { cursor: pointer; }
+  .chain-topic { border-top: 1px solid var(--border-color, #aaa); padding-top: .65rem; margin-top: .65rem; }
+  .chain-topic p { margin-bottom: 0; white-space: pre-wrap; }
+  .continue-chain { margin-top: 2rem; border-top: 2px solid var(--border-color, #aaa); padding-top: 1rem; }
   .operational-preview, .longitudinal { margin-top: 1rem; padding-top: .75rem; border-top: 2px solid var(--border-color, #aaa); }
   select { width: 100%; padding: .6rem; margin-top: .35rem; }
 </style>

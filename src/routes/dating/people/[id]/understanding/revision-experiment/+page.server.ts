@@ -62,6 +62,22 @@ function parseJsonArray(value: unknown) {
   }
 }
 
+function sanitiseChainHistory(raw: unknown) {
+  const rows = Array.isArray(raw) ? raw.slice(-6) : [];
+  return rows.map((row: any, index: number) => ({
+    version: Number.isFinite(Number(row?.version)) ? Math.max(1, Math.min(99, Number(row.version))) : index + 1,
+    sourceInteractionId: String(row?.sourceInteractionId || '').slice(0, 120),
+    sourceDate: String(row?.sourceDate || '').slice(0, 80),
+    changedTopicCount: Math.max(0, Math.min(99, Number(row?.changedTopicCount) || 0)),
+    newTopicCount: Math.max(0, Math.min(99, Number(row?.newTopicCount) || 0)),
+    topics: Array.isArray(row?.topics) ? row.topics.slice(0, 24).map((topic: any) => ({
+      targetKey: String(topic?.targetKey || '').slice(0, 220),
+      topicName: String(topic?.topicName || '').slice(0, 220),
+      proposedUnderstanding: String(topic?.proposedUnderstanding || '').trim().slice(0, 1800)
+    })).filter((topic: any) => topic.targetKey && topic.topicName && topic.proposedUnderstanding) : []
+  })).filter((row: any) => row.sourceInteractionId && row.topics.length);
+}
+
 export const actions: Actions = {
   analyseTopics: async ({ locals, params, request }) => {
     const scope = authorisedScope(locals, params.id);
@@ -213,7 +229,8 @@ export const actions: Actions = {
         kind: String(row?.kind || 'OTHER').slice(0, 30),
         certainty: String(row?.certainty || 'UNCERTAIN').slice(0, 30),
         statement: String(row?.statement || '').trim().slice(0, 600),
-        operationalReasons: Array.isArray(row?.operationalReasons) ? row.operationalReasons.map((value: unknown) => String(value)).slice(0, 6) : []
+        operationalReasons: Array.isArray(row?.operationalReasons) ? row.operationalReasons.map((value: unknown) => String(value)).slice(0, 6) : [],
+        status: ['ACTIVE', 'POTENTIAL_CONFLICT', 'POTENTIAL_RETIREMENT'].includes(String(row?.status)) ? String(row.status) : 'ACTIVE'
       })).filter((row: any) => row.statement);
 
       const longitudinal = await evolveLongitudinalUnderstandingReadOnly(
@@ -222,6 +239,38 @@ export const actions: Actions = {
         seedValidation.seeds,
         priorOperationalUnits
       );
+
+      // IT: Chain history is browser-carried experiment state only. It contains concise proposed
+      // understandings and source IDs/dates, never decrypted transcript text. This lets the operator
+      // continue v1 -> v2 -> v3 without writing experimental knowledge to authoritative tables.
+      const suppliedHistory = sanitiseChainHistory(parseJsonArray(form.get('chainHistoryJson')));
+      const baselineTopics = seedValidation.seeds.map(seed => ({
+        targetKey: seed.targetKey,
+        topicName: seed.topicName,
+        proposedUnderstanding: seed.proposedUnderstanding
+      }));
+      const chainHistory = suppliedHistory.length ? [...suppliedHistory] : [{
+        version: 1,
+        sourceInteractionId: baselineSourceId,
+        sourceDate: seedValidation.seeds[0]?.sourceDate || baselineSource.at.toISOString(),
+        changedTopicCount: 0,
+        newTopicCount: 0,
+        topics: baselineTopics
+      }];
+      const latestVersion = Math.max(...chainHistory.map(item => item.version), 0) + 1;
+      chainHistory.push({
+        version: latestVersion,
+        sourceInteractionId: nextSourceId,
+        sourceDate: longitudinal.nextSourceDate,
+        changedTopicCount: longitudinal.evolutions.filter(item => item.effect !== 'UNCHANGED' && item.effect !== 'NEW_TOPIC').length,
+        newTopicCount: longitudinal.evolutions.filter(item => item.effect === 'NEW_TOPIC').length,
+        topics: longitudinal.nextLongitudinalSeed.map(seed => ({
+          targetKey: seed.targetKey,
+          topicName: seed.topicName,
+          proposedUnderstanding: seed.proposedUnderstanding
+        }))
+      });
+      longitudinal.chainHistory = chainHistory.slice(-6);
       return { longitudinal };
     } catch (err) {
       return fail(502, { revisionError: safeExperimentError(err) });

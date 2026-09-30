@@ -378,6 +378,7 @@ export async function evolveLongitudinalUnderstandingReadOnly(
     certainty: string;
     statement: string;
     operationalReasons?: string[];
+    status?: string;
   }> = []
 ) {
   const data = await authorisedExperimentData(scope, sourceInteractionId);
@@ -400,7 +401,8 @@ export async function evolveLongitudinalUnderstandingReadOnly(
     kind: unit.kind,
     certainty: unit.certainty,
     statement: unit.statement,
-    operationalReasons: unit.operationalReasons ?? []
+    operationalReasons: unit.operationalReasons ?? [],
+    status: unit.status ?? 'ACTIVE'
   })));
   if (priorTopicText.length > 36000 || priorOperationalText.length > 18000) {
     throw new Error('The prior experimental understanding is too large for this longitudinal experiment.');
@@ -431,6 +433,7 @@ export async function evolveLongitudinalUnderstandingReadOnly(
       'For every effect other than UNCHANGED, cite target-speaker turn IDs that directly support the effect.',
       'Suggest a new topic only for an enduring area materially present in the new source that does not fit a prior topic target.',
       'Also account for EVERY prior operational knowledge unit. Do not retire it merely because it is absent from the new source.',
+      'A prior operational unit may carry ACTIVE, POTENTIAL_CONFLICT, or POTENTIAL_RETIREMENT status from an earlier experimental step. Treat that status as provisional context, not authoritative truth.',
       'Operational actions are UNCHANGED, REINFORCED, REFINED, POTENTIAL_CONFLICT, or POTENTIAL_RETIREMENT. Retirement requires explicit evidence that the earlier operational proposition no longer applies.',
       'Create new operational knowledge only when the proposition genuinely needs its OWN persistent matching, permission, disclosure, verification, retrieval or action rule.',
       'Do not create a persistent operational unit merely because information could influence matching in some way. Prefer fewer durable units.',
@@ -496,7 +499,9 @@ export async function evolveLongitudinalUnderstandingReadOnly(
         relevantTurnIds: [],
         relevantTurns: [],
         evidenceValid: true,
-        proposedNewTopic: Boolean(previous.proposedNewTopic)
+        proposedNewTopic: Boolean(previous.proposedNewTopic),
+        semanticBoundary: previous.semanticBoundary ?? [],
+        excludedTopicHints: previous.excludedTopicHints ?? []
       });
       continue;
     }
@@ -511,7 +516,9 @@ export async function evolveLongitudinalUnderstandingReadOnly(
         relevantTurnIds: effect.relevantTurnIds,
         relevantTurns: effect.relevantTurns,
         evidenceValid: false,
-        proposedNewTopic: Boolean(previous.proposedNewTopic)
+        proposedNewTopic: Boolean(previous.proposedNewTopic),
+        semanticBoundary: previous.semanticBoundary ?? [],
+        excludedTopicHints: previous.excludedTopicHints ?? []
       });
       continue;
     }
@@ -557,7 +564,9 @@ export async function evolveLongitudinalUnderstandingReadOnly(
       relevantTurnIds: effect.relevantTurnIds,
       relevantTurns: effect.relevantTurns,
       evidenceValid: effect.evidenceValid,
-      proposedNewTopic: Boolean(previous.proposedNewTopic)
+      proposedNewTopic: Boolean(previous.proposedNewTopic),
+      semanticBoundary: previous.semanticBoundary ?? [],
+      excludedTopicHints: previous.excludedTopicHints ?? []
     });
   }
 
@@ -592,8 +601,66 @@ export async function evolveLongitudinalUnderstandingReadOnly(
       relevantTurnIds: newTopic.relevantTurnIds,
       relevantTurns: newTopic.relevantTurns,
       evidenceValid: newTopic.evidenceValid,
-      proposedNewTopic: true
+      proposedNewTopic: true,
+      semanticBoundary: [newTopic.reason || `Keep the understanding strictly within ${newTopic.topicName}.`],
+      excludedTopicHints: priorSeeds.map(seed => seed.topicName).filter(Boolean).slice(0, 16)
     });
+  }
+
+  // Stage 8.12.13.8.2: carry the read-only result forward as the next temporary baseline.
+  // Every topic is stamped with the latest applied source because the baseline now represents the
+  // person's proposed state *as of* this source. Original provenance remains in sourceInteractionIds.
+  const previousByKey = new Map(priorSeeds.map(seed => [seed.targetKey, seed]));
+  const nextLongitudinalSeed = evolutions.map(evolution => {
+    const previous = previousByKey.get(evolution.targetKey);
+    const priorProvenance = Array.isArray((previous as any)?.sourceInteractionIds)
+      ? (previous as any).sourceInteractionIds
+      : previous?.sourceInteractionId ? [previous.sourceInteractionId] : [];
+    return {
+      targetKey: evolution.targetKey,
+      topicId: previous?.topicId ?? '',
+      topicName: evolution.topicName,
+      proposedNewTopic: Boolean(evolution.proposedNewTopic),
+      proposedUnderstanding: evolution.proposedUnderstanding,
+      sourceInteractionId,
+      sourceDate: data.source.at.toISOString(),
+      sourceInteractionIds: [...new Set([...priorProvenance, sourceInteractionId])].slice(-12),
+      semanticBoundary: evolution.semanticBoundary ?? previous?.semanticBoundary ?? [],
+      excludedTopicHints: evolution.excludedTopicHints ?? previous?.excludedTopicHints ?? []
+    };
+  });
+
+  const changeById = new Map(operationalAnalysis.changes.map(change => [change.unitId, change]));
+  const nextOperationalUnits = priorOperationalUnits.map(unit => {
+    const change = changeById.get(unit.unitId);
+    if (!change) return { ...unit, status: unit.status ?? 'ACTIVE' };
+    const useProposed = ['REINFORCED', 'REFINED'].includes(change.action) && change.proposedStatement;
+    return {
+      ...unit,
+      statement: useProposed ? change.proposedStatement : unit.statement,
+      status: change.action === 'POTENTIAL_CONFLICT'
+        ? 'POTENTIAL_CONFLICT'
+        : change.action === 'POTENTIAL_RETIREMENT'
+          ? 'POTENTIAL_RETIREMENT'
+          : 'ACTIVE'
+    };
+  });
+  let nextUnitNumber = nextOperationalUnits.length + 1;
+  for (const addition of operationalAnalysis.additions) {
+    let unitId = `L${String(nextUnitNumber).padStart(3, '0')}`;
+    while (nextOperationalUnits.some(unit => unit.unitId === unitId)) {
+      nextUnitNumber += 1;
+      unitId = `L${String(nextUnitNumber).padStart(3, '0')}`;
+    }
+    nextOperationalUnits.push({
+      unitId,
+      kind: addition.kind,
+      certainty: addition.certainty,
+      statement: addition.statement,
+      operationalReasons: addition.operationalReasons,
+      status: 'ACTIVE'
+    });
+    nextUnitNumber += 1;
   }
 
   return {
@@ -604,7 +671,9 @@ export async function evolveLongitudinalUnderstandingReadOnly(
     topicAnalysis,
     evolutions,
     operationalAnalysis,
-    priorOperationalUnits
+    priorOperationalUnits,
+    nextLongitudinalSeed,
+    nextOperationalUnits
   };
 }
 

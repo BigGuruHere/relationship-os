@@ -167,3 +167,79 @@ test('stage 8.12.13.7.3 carries stable topic target keys for longitudinal follow
   assert.match(route, /longitudinalSeed/);
   assert.match(route, /targetKey: revision\.targetKey/);
 });
+
+test('stage 8.12.13.8 longitudinal seed rejects duplicate topic targets', async () => {
+  const policy = await import('../../src/lib/server/datingUnderstandingRevisionPolicy.mjs');
+  const result = policy.validateLongitudinalSeed([
+    { targetKey: 'existing:t1', topicName: 'Romantic / Goal', proposedUnderstanding: 'This is a sufficiently long prior understanding for testing.', sourceInteractionId: 'source-1' },
+    { targetKey: 'existing:t1', topicName: 'Romantic / Goal', proposedUnderstanding: 'This is another sufficiently long prior understanding for testing.', sourceInteractionId: 'source-1' }
+  ]);
+  assert.equal(result.seeds.length, 1);
+  assert.ok(result.errors.some(item => item.includes('repeated')));
+});
+
+test('stage 8.12.13.8 longitudinal analysis accounts for every prior topic and preserves unchanged without evidence', async () => {
+  const policy = await import('../../src/lib/server/datingUnderstandingRevisionPolicy.mjs');
+  const seeds = [
+    { targetKey: 'existing:t1', topicName: 'Romantic / Goal', proposedUnderstanding: 'Wants a strong relationship.' },
+    { targetKey: 'suggested:family::children', topicName: 'Family / Children', proposedUnderstanding: 'Probably wants children.' }
+  ];
+  const result = policy.validateLongitudinalAnalysisDraft({
+    topicEffects: [
+      { targetKey: 'existing:t1', effect: 'REINFORCED', reason: 'Restated directly', relevantTurnIds: ['T002'] },
+      { targetKey: 'suggested:family::children', effect: 'UNCHANGED', reason: 'Not discussed', relevantTurnIds: [] }
+    ],
+    newTopics: []
+  }, seeds, targetTurns, allTurns);
+  assert.equal(result.topicEffects.length, 2);
+  assert.equal(result.topicEffects[1].effect, 'UNCHANGED');
+  assert.deepEqual(result.topicEffects[1].relevantTurnIds, []);
+  assert.equal(result.validForReview, true);
+});
+
+test('stage 8.12.13.8 flags silently omitted prior topic and non-target longitudinal evidence', async () => {
+  const policy = await import('../../src/lib/server/datingUnderstandingRevisionPolicy.mjs');
+  const seeds = [
+    { targetKey: 'existing:t1', topicName: 'Romantic / Goal', proposedUnderstanding: 'Wants a strong relationship.' },
+    { targetKey: 'existing:t2', topicName: 'Romantic / Values', proposedUnderstanding: 'Values mutual care.' }
+  ];
+  const result = policy.validateLongitudinalAnalysisDraft({
+    topicEffects: [
+      { targetKey: 'existing:t1', effect: 'REFINED', reason: 'Changed', relevantTurnIds: ['T001'] }
+    ],
+    newTopics: []
+  }, seeds, targetTurns, allTurns);
+  assert.ok(result.errors.some(item => item.includes('non-target speaker')));
+  assert.ok(result.errors.some(item => item.includes('omitted')));
+  assert.equal(result.validForReview, false);
+});
+
+test('stage 8.12.13.8 operational evolution cannot silently retire or omit prior units', async () => {
+  const policy = await import('../../src/lib/server/datingUnderstandingRevisionPolicy.mjs');
+  const prior = [
+    { unitId: 'K01', statement: 'Wants a strong relationship.' },
+    { unitId: 'K02', statement: 'Probably wants children.' }
+  ];
+  const result = policy.validateLongitudinalOperationalDraft({
+    existingOperationalKnowledge: [
+      { unitId: 'K01', action: 'POTENTIAL_RETIREMENT', reason: 'Explicitly changed', evidenceTurnIds: ['T002'] }
+    ],
+    newOperationalKnowledge: []
+  }, prior, targetTurns, allTurns);
+  assert.equal(result.changes.length, 1);
+  assert.ok(result.errors.some(item => item.includes('omitted')));
+});
+
+test('stage 8.12.13.8 route exposes later-source comparison and remains read-only', () => {
+  const service = fs.readFileSync(new URL('../../src/lib/server/datingUnderstandingRevisionExperiment.ts', import.meta.url), 'utf8');
+  const route = fs.readFileSync(new URL('../../src/routes/dating/people/[id]/understanding/revision-experiment/+page.server.ts', import.meta.url), 'utf8');
+  const page = fs.readFileSync(new URL('../../src/routes/dating/people/[id]/understanding/revision-experiment/+page.svelte', import.meta.url), 'utf8');
+  assert.match(service, /evolveLongitudinalUnderstandingReadOnly/);
+  assert.match(service, /For EVERY prior topic target return exactly one topicEffects row/);
+  assert.match(service, /Do not treat absence from the new source as contradiction or supersession/);
+  assert.match(route, /compareLongitudinal/);
+  assert.match(route, /nextSource\.at\.getTime\(\) <= baselineSource\.at\.getTime\(\)/);
+  assert.match(page, /EXPERIMENTAL LONGITUDINAL EVOLUTION - NOT SAVED/);
+  assert.match(page, /Compare later source with this understanding/);
+  assert.match(page, /has not created, changed, retired, confirmed or shared any stored knowledge/);
+});

@@ -4,11 +4,13 @@ import { error, fail, redirect } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import { requireSourceReflection } from '$lib/server/datingLivingUnderstanding';
 import { listUnderstandingTopics } from '$lib/server/datingUnderstandingTopics';
-import { batchRevisionTargets, consolidateSemanticAreasForRevision, validateOperationalUnitsFromForm } from '$lib/server/datingUnderstandingRevisionPolicy.mjs';
+import { loadPersonHistory } from '$lib/server/datingPersonHistory';
+import { batchRevisionTargets, consolidateSemanticAreasForRevision, validateOperationalUnitsFromForm, validateLongitudinalSeed } from '$lib/server/datingUnderstandingRevisionPolicy.mjs';
 import {
   identifySemanticAreasReadOnly,
   revisionExperimentEnabled,
-  reviseSemanticAreaReadOnly
+  reviseSemanticAreaReadOnly,
+  evolveLongitudinalUnderstandingReadOnly
 } from '$lib/server/datingUnderstandingRevisionExperiment';
 
 function authorisedScope(locals: App.Locals, id: string) {
@@ -21,20 +23,30 @@ function authorisedScope(locals: App.Locals, id: string) {
 export const load: PageServerLoad = async ({ locals, params, url }) => {
   const scope = authorisedScope(locals, params.id);
   const sourceId = String(url.searchParams.get('sourceInteractionId') || '');
-  const [tree, source] = await Promise.all([
+  const [tree, source, history] = await Promise.all([
     listUnderstandingTopics(scope),
-    sourceId ? requireSourceReflection(scope, sourceId) : Promise.resolve(null)
+    sourceId ? requireSourceReflection(scope, sourceId) : Promise.resolve(null),
+    loadPersonHistory(scope)
   ]);
+  // IT: Longitudinal follow-up remains source-custody local. Only later private reflections or
+  // conversation excerpts for this same person are offered as the second source. Text is not
+  // returned in this selector because the action re-authorises and decrypts the chosen source.
+  const laterSources = source
+    ? history.reflections
+        .filter(item => item.id !== source.id && item.at.getTime() > source.at.getTime())
+        .map(item => ({ id: item.id, at: item.at.toISOString(), sourceKind: item.sourceKind, speaker: item.speaker }))
+    : [];
   return {
     personId: params.id,
     sourceId: source?.id ?? '',
     sourceKind: source?.sourceKind ?? null,
+    laterSources,
     topics: tree.flatMap(realm => realm.topics.map(topic => ({ id: topic.id, label: `${realm.name} / ${topic.name}`, count: topic.claims.length })))
   };
 };
 
 function safeExperimentError(err: unknown) {
-  if (err instanceof Error && /exceeds the experiment limit|too many|too large|disabled|OPENAI_API_KEY|Choose an authorised topic|not accessible|inventory|semantic area/.test(err.message)) {
+  if (err instanceof Error && /exceeds the experiment limit|too many|too large|disabled|OPENAI_API_KEY|Choose an authorised topic|not accessible|inventory|semantic area|longitudinal|later source|prior Living/.test(err.message)) {
     return err.message;
   }
   return 'The experimental revision was unavailable or malformed. No stored knowledge was changed.';
@@ -154,6 +166,61 @@ export const actions: Actions = {
         revisionBatchSummary: { selectedAreaCount: selectedAreas.length, targetCount: revisionTargets.length, batchCount: revisionBatches.length, batchSize: 8 },
         longitudinalSeed
       };
+    } catch (err) {
+      return fail(502, { revisionError: safeExperimentError(err) });
+    }
+  }
+,
+
+  compareLongitudinal: async ({ locals, params, request }) => {
+    const scope = authorisedScope(locals, params.id);
+    const form = await request.formData();
+    if (form.get('consent') !== 'YES') {
+      return fail(400, { revisionError: 'Explicitly authorise sending the later private source and prior experimental understanding to the AI provider.' });
+    }
+    const baselineSourceId = String(form.get('baselineSourceInteractionId') || '');
+    const nextSourceId = String(form.get('nextSourceInteractionId') || '');
+    if (!baselineSourceId || !nextSourceId || baselineSourceId === nextSourceId) {
+      return fail(400, { revisionError: 'Choose a different later private source for longitudinal comparison.' });
+    }
+    const rawSeed = parseJsonArray(form.get('longitudinalSeedJson'));
+    const seedValidation = validateLongitudinalSeed(rawSeed);
+    if (!seedValidation.validForReview) {
+      return fail(400, { revisionError: seedValidation.errors[0] || 'The prior experimental understanding was invalid.' });
+    }
+    if (seedValidation.seeds.some(seed => seed.sourceInteractionId !== baselineSourceId)) {
+      return fail(400, { revisionError: 'The longitudinal baseline does not match the source that produced the prior understanding.' });
+    }
+
+    try {
+      // IT: Re-authorise both sources against this same person/context before using any browser-carried
+      // experimental state. This prevents a hidden-form payload from crossing custody boundaries.
+      const [baselineSource, nextSource] = await Promise.all([
+        requireSourceReflection(scope, baselineSourceId),
+        requireSourceReflection(scope, nextSourceId)
+      ]);
+      if (nextSource.at.getTime() <= baselineSource.at.getTime()) {
+        return fail(400, { revisionError: 'Choose a source later than the baseline source for this longitudinal experiment.' });
+      }
+
+      const rawPriorOperational = parseJsonArray(form.get('priorOperationalUnitsJson'));
+      // The prior units are experimental, not authoritative. Sanitise their addressable fields before
+      // sending them back to the model; the later source will independently validate any claimed change.
+      const priorOperationalUnits = rawPriorOperational.slice(0, 40).map((row: any, index: number) => ({
+        unitId: String(row?.unitId || `K${String(index + 1).padStart(2, '0')}`).slice(0, 20),
+        kind: String(row?.kind || 'OTHER').slice(0, 30),
+        certainty: String(row?.certainty || 'UNCERTAIN').slice(0, 30),
+        statement: String(row?.statement || '').trim().slice(0, 600),
+        operationalReasons: Array.isArray(row?.operationalReasons) ? row.operationalReasons.map((value: unknown) => String(value)).slice(0, 6) : []
+      })).filter((row: any) => row.statement);
+
+      const longitudinal = await evolveLongitudinalUnderstandingReadOnly(
+        scope,
+        nextSourceId,
+        seedValidation.seeds,
+        priorOperationalUnits
+      );
+      return { longitudinal };
     } catch (err) {
       return fail(502, { revisionError: safeExperimentError(err) });
     }

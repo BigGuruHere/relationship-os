@@ -347,3 +347,161 @@ export function validateOperationalUnitsFromForm(rawUnits, selectedAreas, target
   }
   return { units, errors };
 }
+
+
+// Stage 8.12.13.8: longitudinal experiment classifications. Every previous topic target must
+// be explicitly accounted for so a later source can never silently erase earlier understanding.
+export const LONGITUDINAL_EFFECTS = ['UNCHANGED', 'REINFORCED', 'REFINED', 'EXPANDED', 'QUALIFIED', 'CONTRADICTED', 'SUPERSEDED'];
+export const LONGITUDINAL_OPERATIONAL_ACTIONS = ['UNCHANGED', 'REINFORCED', 'REFINED', 'POTENTIAL_CONFLICT', 'POTENTIAL_RETIREMENT'];
+
+export function validateLongitudinalSeed(rawSeed) {
+  const rows = Array.isArray(rawSeed) ? rawSeed.slice(0, 24) : [];
+  const seeds = [];
+  const seen = new Set();
+  const errors = [];
+  for (const row of rows) {
+    if (!row || typeof row !== 'object') continue;
+    const targetKey = String(row.targetKey ?? '').trim().slice(0, 220);
+    const topicName = String(row.topicName ?? '').trim().slice(0, 220);
+    const proposedUnderstanding = String(row.proposedUnderstanding ?? '').trim().slice(0, 6500);
+    const sourceInteractionId = String(row.sourceInteractionId ?? '').trim().slice(0, 120);
+    const sourceDate = String(row.sourceDate ?? '').trim().slice(0, 80);
+    if (!targetKey || !topicName || proposedUnderstanding.length < 20 || !sourceInteractionId) {
+      errors.push('A longitudinal seed row was incomplete.');
+      continue;
+    }
+    if (seen.has(targetKey)) {
+      errors.push('A longitudinal seed repeated a topic target.');
+      continue;
+    }
+    seen.add(targetKey);
+    seeds.push({
+      targetKey,
+      topicId: String(row.topicId ?? '').trim().slice(0, 120),
+      topicName,
+      proposedNewTopic: Boolean(row.proposedNewTopic),
+      proposedUnderstanding,
+      sourceInteractionId,
+      sourceDate
+    });
+  }
+  if (!seeds.length) errors.push('No valid prior Living Understanding was supplied for longitudinal comparison.');
+  return { seeds, errors, validForReview: seeds.length > 0 && errors.length === 0 };
+}
+
+export function validateLongitudinalAnalysisDraft(raw, priorSeeds, targetTurns = [], allTurns = []) {
+  if (!raw || typeof raw !== 'object') throw new Error('The model did not provide a longitudinal analysis.');
+  const seedByKey = new Map(priorSeeds.map(seed => [seed.targetKey, seed]));
+  const seen = new Set();
+  const topicEffects = [];
+  const newTopics = [];
+  const errors = [];
+
+  for (const row of (Array.isArray(raw.topicEffects) ? raw.topicEffects.slice(0, 40) : [])) {
+    if (!row || typeof row !== 'object') continue;
+    const targetKey = String(row.targetKey ?? '').trim();
+    if (!seedByKey.has(targetKey) || seen.has(targetKey)) {
+      errors.push('The longitudinal analysis returned an unknown or repeated topic target.');
+      continue;
+    }
+    seen.add(targetKey);
+    const effect = LONGITUDINAL_EFFECTS.includes(row.effect) ? row.effect : 'UNCHANGED';
+    const evidence = effect === 'UNCHANGED'
+      ? { valid: true, ids: [], turns: [], reason: '' }
+      : resolveEvidence(row.relevantTurnIds, targetTurns, allTurns);
+    if (!evidence.valid) errors.push(`Invalid longitudinal evidence for ${seedByKey.get(targetKey).topicName}: ${evidence.reason}`);
+    topicEffects.push({
+      targetKey,
+      topicName: seedByKey.get(targetKey).topicName,
+      effect,
+      reason: String(row.reason ?? '').trim().slice(0, 1200),
+      relevantTurnIds: evidence.ids,
+      relevantTurns: evidence.turns,
+      evidenceValid: evidence.valid
+    });
+  }
+
+  const omitted = priorSeeds.filter(seed => !seen.has(seed.targetKey)).map(seed => seed.targetKey);
+  if (omitted.length) errors.push(`${omitted.length} prior topic understandings were omitted from the longitudinal change record.`);
+
+  for (const row of (Array.isArray(raw.newTopics) ? raw.newTopics.slice(0, 12) : [])) {
+    if (!row || typeof row !== 'object') continue;
+    const realm = String(row.realm ?? '').trim().slice(0, 100);
+    const topicName = String(row.topicName ?? '').trim().slice(0, 100);
+    if (!realm || !topicName) continue;
+    const targetKey = `suggested:${realm.toLocaleLowerCase()}::${topicName.toLocaleLowerCase()}`;
+    if (seedByKey.has(targetKey)) {
+      errors.push(`A proposed new longitudinal topic duplicates an existing prior topic target: ${realm} / ${topicName}.`);
+      continue;
+    }
+    const evidence = resolveEvidence(row.relevantTurnIds, targetTurns, allTurns);
+    if (!evidence.valid) errors.push(`Invalid longitudinal evidence for new topic ${realm} / ${topicName}: ${evidence.reason}`);
+    newTopics.push({
+      targetKey,
+      topicName: `${realm} / ${topicName}`,
+      realm,
+      name: topicName,
+      reason: String(row.reason ?? '').trim().slice(0, 1200),
+      relevantTurnIds: evidence.ids,
+      relevantTurns: evidence.turns,
+      evidenceValid: evidence.valid
+    });
+  }
+  return { topicEffects, newTopics, omittedTargetKeys: omitted, errors, validForReview: errors.length === 0 };
+}
+
+export function validateLongitudinalOperationalDraft(raw, priorUnits, targetTurns = [], allTurns = []) {
+  const previous = Array.isArray(priorUnits) ? priorUnits.slice(0, 40) : [];
+  const byId = new Map(previous.map(unit => [unit.unitId, unit]));
+  const seen = new Set();
+  const changes = [];
+  const additions = [];
+  const errors = [];
+
+  for (const row of (Array.isArray(raw?.existingOperationalKnowledge) ? raw.existingOperationalKnowledge.slice(0, 60) : [])) {
+    if (!row || typeof row !== 'object') continue;
+    const unitId = String(row.unitId ?? '').trim();
+    if (!byId.has(unitId) || seen.has(unitId)) {
+      errors.push('The longitudinal operational analysis returned an unknown or repeated prior unit.');
+      continue;
+    }
+    seen.add(unitId);
+    const action = LONGITUDINAL_OPERATIONAL_ACTIONS.includes(row.action) ? row.action : 'UNCHANGED';
+    const evidence = action === 'UNCHANGED'
+      ? { valid: true, ids: [], turns: [], reason: '' }
+      : resolveEvidence(row.evidenceTurnIds, targetTurns, allTurns);
+    if (!evidence.valid) errors.push(`Invalid operational evidence for ${unitId}: ${evidence.reason}`);
+    changes.push({
+      unitId,
+      action,
+      proposedStatement: String(row.proposedStatement ?? '').trim().slice(0, 600),
+      reason: String(row.reason ?? '').trim().slice(0, 1000),
+      evidenceTurnIds: evidence.ids,
+      evidenceTurns: evidence.turns,
+      evidenceValid: evidence.valid
+    });
+  }
+  const omittedUnitIds = previous.filter(unit => !seen.has(unit.unitId)).map(unit => unit.unitId);
+  if (omittedUnitIds.length) errors.push(`${omittedUnitIds.length} prior operational units were omitted from the longitudinal change record.`);
+
+  for (const row of (Array.isArray(raw?.newOperationalKnowledge) ? raw.newOperationalKnowledge.slice(0, 30) : [])) {
+    if (!row || typeof row !== 'object') continue;
+    const statement = String(row.statement ?? '').trim().slice(0, 600);
+    if (!statement) continue;
+    const operationalReasons = normalizeOperationalReasons(row.operationalReasons);
+    if (!operationalReasons.length) { errors.push('A new longitudinal operational unit had no valid operational reason.'); continue; }
+    const evidence = resolveEvidence(row.evidenceTurnIds, targetTurns, allTurns);
+    if (!evidence.valid) errors.push(`Invalid evidence for new longitudinal operational knowledge: ${evidence.reason}`);
+    additions.push({
+      unitId: `N${String(additions.length + 1).padStart(2, '0')}`,
+      kind: EXPERIMENT_KINDS.includes(row.kind) ? row.kind : 'OTHER',
+      certainty: EXPERIMENT_CERTAINTIES.includes(row.certainty) ? row.certainty : 'UNCERTAIN',
+      statement,
+      operationalReasons,
+      evidenceTurnIds: evidence.ids,
+      evidenceTurns: evidence.turns,
+      evidenceValid: evidence.valid
+    });
+  }
+  return { changes, additions, omittedUnitIds, errors, validForReview: errors.length === 0 };
+}

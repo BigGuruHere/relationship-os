@@ -26,6 +26,15 @@
       .filter(Boolean))]
       .join(', ');
   }
+
+  function serialiseLongitudinalSeed(seed: any[]) {
+    // IT: The seed contains only prior experimental topic summaries and provenance, never raw source text.
+    return JSON.stringify(seed ?? []);
+  }
+
+  function priorOperationalStatement(unitId: string) {
+    return form?.longitudinal?.priorOperationalUnits?.find((unit: any) => unit.unitId === unitId)?.statement ?? unitId;
+  }
 </script>
 
 <svelte:head><title>Semantic Living Understanding experiment - Relish</title></svelte:head>
@@ -197,9 +206,97 @@
         <p>No separate operational knowledge units were proposed for the selected areas.</p>
       {/if}
       {#if form.longitudinalSeed?.length}
-        <p class="muted"><strong>Longitudinal test preparation:</strong> this read-only result now carries stable topic-target keys and source provenance so a later experiment can compare a second conversation against these proposed understandings without saving them as authoritative knowledge.</p>
+        <p class="muted"><strong>Longitudinal test preparation:</strong> this read-only result carries stable topic-target keys and source provenance so a later source can be compared without saving this baseline as authoritative knowledge.</p>
+
+        <div class="longitudinal">
+          <h3>2. Test a later conversation or reflection</h3>
+          <p>Choose a later private source for this same person. Relish will explicitly account for every topic understanding above and classify the later source as unchanged, reinforced, refined, expanded, qualified, contradicted or superseded.</p>
+          {#if data.laterSources?.length}
+            <form method="POST" action="?/compareLongitudinal" use:enhance>
+              <input type="hidden" name="baselineSourceInteractionId" value={data.sourceId} />
+              <input type="hidden" name="longitudinalSeedJson" value={serialiseLongitudinalSeed(form.longitudinalSeed)} />
+              <input type="hidden" name="priorOperationalUnitsJson" value={serialiseOperationalUnits(form.operationalUnits ?? [])} />
+              <label>Later source
+                <select name="nextSourceInteractionId" required>
+                  <option value="">Choose a later source</option>
+                  {#each data.laterSources as source}
+                    <option value={source.id}>{new Date(source.at).toLocaleString()} · {source.sourceKind === 'CONVERSATION_EXCERPT' ? `Conversation${source.speaker ? ` - ${source.speaker}` : ''}` : 'Reflection'}</option>
+                  {/each}
+                </select>
+              </label>
+              <label class="consent"><input name="consent" type="checkbox" value="YES" required /> I authorise sending the selected later source and this read-only experimental baseline to the configured AI provider for longitudinal comparison.</label>
+              <button type="submit">Compare later source with this understanding</button>
+            </form>
+          {:else}
+            <p class="muted">There is no later private conversation or reflection for this person yet. Add or import a later source, then reopen this baseline experiment to continue the longitudinal test.</p>
+          {/if}
+        </div>
       {/if}
       <p class="muted">No understanding, topic, statement, permission or sharing rule has been written to the database.</p>
+    </section>
+  {/if}
+
+  {#if form?.longitudinal}
+    <section class="panel">
+      <p class="eyebrow">EXPERIMENTAL LONGITUDINAL EVOLUTION - NOT SAVED</p>
+      <h2>How the later source changes the Living Understanding</h2>
+      <p class="muted">Every prior topic target is explicitly accounted for. Absence from the later source is not treated as contradiction or supersession.</p>
+
+      {#if form.longitudinal.topicAnalysis.errors?.length}
+        <div class="warning"><strong>Topic evolution validation warnings</strong><ul>{#each form.longitudinal.topicAnalysis.errors as item}<li>{item}</li>{/each}</ul></div>
+      {/if}
+
+      {#each form.longitudinal.evolutions as evolution (evolution.targetKey)}
+        <article class="revision">
+          <h3>{evolution.topicName} <span class="impact">{evolution.effect}</span></h3>
+          {#if evolution.effect === 'NEW_TOPIC'}<p class="new-topic">SUGGESTED NEW TOPIC - NOT CREATED</p>{/if}
+          {#if evolution.previousUnderstanding}
+            <h4>Previous understanding</h4>
+            <p class="understanding">{evolution.previousUnderstanding}</p>
+          {/if}
+          <h4>Proposed current understanding</h4>
+          <p class="understanding">{evolution.proposedUnderstanding}</p>
+          <p><strong>What changed:</strong> {evolution.reason || 'No material change reported.'}</p>
+          {#if evolution.relevantTurns?.length}
+            <div class="evidence-block"><strong>Later source evidence ({evolution.relevantTurns.map((turn: any) => turn.id).join(', ')})</strong>
+              {#each evolution.relevantTurns as turn}<blockquote><span class="turn-id">{turn.id}</span><span class="turn-text">{turn.text}</span></blockquote>{/each}
+            </div>
+          {:else if evolution.effect !== 'UNCHANGED'}
+            <p class="warning">No valid later-source evidence was recovered for this proposed change. Do not adopt it.</p>
+          {/if}
+        </article>
+      {/each}
+
+      <h3>Operational knowledge evolution</h3>
+      <p class="muted">These are still experimental proposals. A later source cannot silently retire a prior permissionable unit.</p>
+      {#if form.longitudinal.operationalAnalysis.errors?.length}
+        <div class="warning"><strong>Operational validation warnings</strong><ul>{#each form.longitudinal.operationalAnalysis.errors as item}<li>{item}</li>{/each}</ul></div>
+      {/if}
+      {#each form.longitudinal.operationalAnalysis.changes as change (change.unitId)}
+        <article class="item">
+          <p><strong>{change.action}</strong></p>
+          <p><strong>Previous:</strong> {priorOperationalStatement(change.unitId)}</p>
+          {#if change.proposedStatement}<p><strong>Proposed:</strong> {change.proposedStatement}</p>{/if}
+          {#if change.reason}<p>{change.reason}</p>{/if}
+          {#if change.evidenceTurns?.length}
+            <div class="evidence-block"><strong>Later source evidence</strong>{#each change.evidenceTurns as turn}<blockquote><span class="turn-id">{turn.id}</span><span class="turn-text">{turn.text}</span></blockquote>{/each}</div>
+          {/if}
+        </article>
+      {/each}
+      {#if form.longitudinal.operationalAnalysis.additions?.length}
+        <h4>Proposed new independently controllable knowledge</h4>
+        {#each form.longitudinal.operationalAnalysis.additions as unit (unit.unitId)}
+          <article class="item">
+            <p><strong>{unit.kind}</strong> · {unit.certainty}</p>
+            <p>{unit.statement}</p>
+            <p class="muted"><strong>Why atomic:</strong> {unit.operationalReasons.join(', ')}</p>
+            {#if unit.evidenceTurns?.length}
+              <div class="evidence-block"><strong>Later source evidence</strong>{#each unit.evidenceTurns as turn}<blockquote><span class="turn-id">{turn.id}</span><span class="turn-text">{turn.text}</span></blockquote>{/each}</div>
+            {/if}
+          </article>
+        {/each}
+      {/if}
+      <p class="muted"><strong>Read-only:</strong> this comparison has not created, changed, retired, confirmed or shared any stored knowledge.</p>
     </section>
   {/if}
 </main>
@@ -228,5 +325,6 @@
   .turn-text { margin-left: .5rem; }
   blockquote { margin: .6rem 0; padding: .75rem 1rem; border-left: 3px solid var(--border-color, #aaa); white-space: pre-wrap; }
   .turn-id { font-size: .75rem; font-weight: bold; opacity: .7; }
-  .operational-preview { margin-top: 1rem; padding-top: .5rem; border-top: 2px solid var(--border-color, #aaa); }
+  .operational-preview, .longitudinal { margin-top: 1rem; padding-top: .75rem; border-top: 2px solid var(--border-color, #aaa); }
+  select { width: 100%; padding: .6rem; margin-top: .35rem; }
 </style>

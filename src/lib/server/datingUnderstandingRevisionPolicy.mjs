@@ -164,3 +164,122 @@ export function validateTopicImpactDraft(raw, authorisedTopics, targetTurns = []
   }
   return { impacts, newTopics, errors };
 }
+
+// Stage 8.12.13.7: semantic decomposition keeps rich topic understanding separate from
+// the smaller set of knowledge units that need their own operational/permission boundary.
+export const OPERATIONAL_REASONS = ['MATCHING', 'PERMISSION', 'DISCLOSURE', 'VERIFICATION', 'RETRIEVAL', 'ACTION'];
+
+function normalizeOperationalReasons(value) {
+  if (!Array.isArray(value)) return [];
+  return [...new Set(value.map(item => String(item ?? '').trim()).filter(item => OPERATIONAL_REASONS.includes(item)))].slice(0, 6);
+}
+
+export function validateSemanticDecompositionDraft(raw, authorisedTopics, targetTurns = [], allTurns = []) {
+  if (!raw || typeof raw !== 'object') throw new Error('The model did not provide a semantic decomposition.');
+  const byId = new Map(authorisedTopics.map(topic => [topic.id, topic]));
+  const areas = [];
+  const errors = [];
+  const rows = Array.isArray(raw.areas) ? raw.areas.slice(0, 12) : [];
+
+  for (let index = 0; index < rows.length; index += 1) {
+    const row = rows[index];
+    if (!row || typeof row !== 'object') continue;
+    const requestedTopicId = String(row.existingTopicId ?? '').trim();
+    const existingTopic = requestedTopicId ? byId.get(requestedTopicId) : null;
+    const suggestedRealm = String(row.suggestedRealm ?? '').trim().slice(0, 100);
+    const suggestedTopic = String(row.suggestedTopic ?? '').trim().slice(0, 100);
+
+    if (requestedTopicId && !existingTopic) {
+      errors.push('A semantic area referenced an unknown existing topic.');
+      continue;
+    }
+    if (!existingTopic && (!suggestedRealm || !suggestedTopic)) {
+      errors.push('A semantic area without an existing topic must contain a suggested realm and topic.');
+      continue;
+    }
+
+    const evidence = targetTurns.length && allTurns.length
+      ? resolveEvidence(row.relevantTurnIds, targetTurns, allTurns)
+      : { valid: true, ids: normalizeTurnIds(row.relevantTurnIds), turns: [], reason: '' };
+    if (!evidence.valid) errors.push(`Invalid semantic-area evidence: ${evidence.reason}`);
+
+    const areaId = `A${String(areas.length + 1).padStart(2, '0')}`;
+    const label = existingTopic ? existingTopic.label : `${suggestedRealm} / ${suggestedTopic}`;
+    areas.push({
+      areaId,
+      sourceIndex: index + 1,
+      existingTopicId: existingTopic?.id ?? '',
+      label,
+      realm: existingTopic?.realmName ?? suggestedRealm,
+      topicName: existingTopic?.topicName ?? suggestedTopic,
+      proposedNewTopic: !existingTopic,
+      impact: TOPIC_IMPACTS.includes(row.impact) ? row.impact : 'POSSIBLE',
+      reason: String(row.reason ?? '').trim().slice(0, 1000),
+      relevantTurnIds: evidence.ids,
+      relevantTurns: evidence.turns,
+      evidenceValid: evidence.valid
+    });
+  }
+
+  const sourceIndexToAreaId = new Map(areas.map(area => [area.sourceIndex, area.areaId]));
+  const units = [];
+  for (const row of (Array.isArray(raw.operationalKnowledge) ? raw.operationalKnowledge.slice(0, 30) : [])) {
+    if (!row || typeof row !== 'object') continue;
+    const statement = String(row.statement ?? '').trim().slice(0, 600);
+    if (!statement) { errors.push('An operational knowledge proposal lacked a statement.'); continue; }
+    const areaIndexes = Array.isArray(row.areaIndexes)
+      ? [...new Set(row.areaIndexes.map(value => Number(value)).filter(value => Number.isInteger(value) && sourceIndexToAreaId.has(value)))].slice(0, 8)
+      : [];
+    if (!areaIndexes.length) { errors.push('An operational knowledge proposal was not linked to a valid semantic area.'); continue; }
+    const operationalReasons = normalizeOperationalReasons(row.operationalReasons);
+    if (!operationalReasons.length) { errors.push('An operational knowledge proposal had no valid operational reason.'); continue; }
+    const evidence = targetTurns.length && allTurns.length
+      ? resolveEvidence(row.evidenceTurnIds, targetTurns, allTurns)
+      : { valid: true, ids: normalizeTurnIds(row.evidenceTurnIds), turns: [], reason: '' };
+    if (!evidence.valid) errors.push(`Invalid operational knowledge evidence: ${evidence.reason}`);
+    units.push({
+      unitId: `K${String(units.length + 1).padStart(2, '0')}`,
+      kind: EXPERIMENT_KINDS.includes(row.kind) ? row.kind : 'OTHER',
+      certainty: EXPERIMENT_CERTAINTIES.includes(row.certainty) ? row.certainty : 'UNCERTAIN',
+      statement,
+      operationalReasons,
+      areaIds: areaIndexes.map(value => sourceIndexToAreaId.get(value)).filter(Boolean),
+      evidenceTurnIds: evidence.ids,
+      evidenceTurns: evidence.turns,
+      evidenceValid: evidence.valid
+    });
+  }
+
+  return { areas, operationalUnits: units, errors, validForReview: errors.length === 0 };
+}
+
+export function validateOperationalUnitsFromForm(rawUnits, selectedAreas, targetTurns = [], allTurns = []) {
+  const selectedIds = new Set(selectedAreas.map(area => area.areaId));
+  const units = [];
+  const errors = [];
+  for (const row of (Array.isArray(rawUnits) ? rawUnits.slice(0, 30) : [])) {
+    if (!row || typeof row !== 'object') continue;
+    const statement = String(row.statement ?? '').trim().slice(0, 600);
+    if (!statement) continue;
+    const areaIds = Array.isArray(row.areaIds)
+      ? [...new Set(row.areaIds.map(value => String(value ?? '').trim()).filter(value => selectedIds.has(value)))].slice(0, 8)
+      : [];
+    if (!areaIds.length) continue;
+    const operationalReasons = normalizeOperationalReasons(row.operationalReasons);
+    if (!operationalReasons.length) continue;
+    const evidence = resolveEvidence(row.evidenceTurnIds, targetTurns, allTurns);
+    if (!evidence.valid) errors.push(`Invalid operational knowledge evidence: ${evidence.reason}`);
+    units.push({
+      unitId: String(row.unitId ?? '').trim().slice(0, 20) || `K${String(units.length + 1).padStart(2, '0')}`,
+      kind: EXPERIMENT_KINDS.includes(row.kind) ? row.kind : 'OTHER',
+      certainty: EXPERIMENT_CERTAINTIES.includes(row.certainty) ? row.certainty : 'UNCERTAIN',
+      statement,
+      operationalReasons,
+      areaIds,
+      evidenceTurnIds: evidence.ids,
+      evidenceTurns: evidence.turns,
+      evidenceValid: evidence.valid
+    });
+  }
+  return { units, errors };
+}

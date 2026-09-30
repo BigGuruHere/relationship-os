@@ -76,12 +76,12 @@ test('service performs topic discovery before scoped topic revision and remains 
   assert.match(route, /form\.get\('consent'\) !== 'YES'/);
 });
 
-test('topic revisions are bounded and hidden topic IDs are revalidated server-side', () => {
+test('topic or semantic-area revisions are bounded and identifiers are revalidated server-side', () => {
   const route = fs.readFileSync(new URL('../../src/routes/dating/people/[id]/understanding/revision-experiment/+page.server.ts', import.meta.url), 'utf8');
   const svc = fs.readFileSync(new URL('../../src/lib/server/datingUnderstandingRevisionExperiment.ts', import.meta.url), 'utf8');
-  assert.match(route, /topicIds\.length > 6/);
-  assert.match(route, /reviseTopicReadOnly\(scope, sourceId, topicId, relevantTurnIds\)/);
-  assert.match(svc, /topics\.find\(item => item\.id === topicId\)/);
+  assert.match(route, /areaIds\.length > 8/);
+  assert.match(route, /reviseSemanticAreaReadOnly\(scope, sourceId/);
+  assert.match(svc, /data\.topics\.find\(item => item\.id === existingTopicId\)/);
   assert.match(svc, /existing\.length > 45/);
 });
 
@@ -115,8 +115,8 @@ test('stage 8.12.13.6.2 renders exact source turn text visibly and carries topic
   const page = fs.readFileSync(new URL('../../src/routes/dating/people/[id]/understanding/revision-experiment/+page.svelte', import.meta.url), 'utf8');
   const route = fs.readFileSync(new URL('../../src/routes/dating/people/[id]/understanding/revision-experiment/+page.server.ts', import.meta.url), 'utf8');
   assert.match(page, /turn\.text \|\| '\[Source turn text unavailable\]'/);
-  assert.match(page, /relevantTurnId:\$\{item\.topicId\}/);
-  assert.match(route, /form\.getAll\(`relevantTurnId:\$\{topicId\}`\)/);
+  assert.match(page, /relevantTurnId:\$\{area\.areaId\}/);
+  assert.match(route, /form\.getAll\(`relevantTurnId:\$\{areaId\}`\)/);
 });
 
 test('stage 8.12.13.6.2 explicitly asks discovery for multiple narrow topic impacts', () => {

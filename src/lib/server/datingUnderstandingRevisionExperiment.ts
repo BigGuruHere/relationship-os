@@ -741,8 +741,9 @@ export async function restructureLivingUnderstandingReadOnly(
       'This is STRUCTURAL ONLY. Do not add new facts, delete facts, resolve contradictions, strengthen certainty, weaken uncertainty, or change temporal meaning.',
       'Every prior topic must remain represented in at least one proposed topic. Never silently drop prior meaning.',
       'Before proposing the structure, audit EVERY prior topic for structural contamination. Check five things: (1) multiple semantically distinct enduring concepts, (2) concepts that could reasonably evolve independently, (3) concepts whose main meaning belongs in another existing or proposed topic, (4) mismatch between the topic name and some of its contents, and (5) duplicated meaning across topics.',
+      'Also test whether the TOPIC TITLE still fits the CURRENT state. A historical title such as Desire to have children again becomes misleading after the current understanding says the person no longer wants more children. Preserve that historical meaning in the understanding and provenance, but prefer a neutral durable title such as Having more children.',
       'KEEP is a strong conclusion, not the default. Use KEEP only when the topic is semantically coherent: its durable concepts belong to one enduring area, normally evolve together, fit the topic name, and do not duplicate material whose main home is another topic.',
-      'If any contamination check is positive, do NOT mark the topic KEEP. Use NARROW, SPLIT, MOVE, MERGE, RENAME or RECLASSIFY as appropriate.',
+      'If any contamination check is positive, or the topic title asserts an outdated current state, do NOT mark the topic KEEP. Use NARROW, SPLIT, MOVE, MERGE, RENAME or RECLASSIFY as appropriate.',
       'Split a topic when it contains durable material whose main meanings belong in different stable topics or could evolve independently.',
       'When a topic mixes partner attributes with relationship dynamics, family intentions, readiness, or reciprocity, separate those meanings unless there is a compelling semantic reason they truly form one enduring area.',
       'Merge topics only when they substantially describe the same enduring area and keeping them separate would create duplicate understanding.',
@@ -766,6 +767,8 @@ export async function restructureLivingUnderstandingReadOnly(
         overlappingTargetKeys: ['Exact prior targetKeys whose meaning overlaps or is a better main home; empty when none'],
         recommendedOperation: 'KEEP | NARROW | SPLIT | MERGE | MOVE | RENAME | RECLASSIFY',
         keepCoherent: 'true only when KEEP would satisfy every coherence test',
+        titleFitsCurrentState: 'true only when the topic title accurately describes the current state without asserting a superseded or outdated position',
+        titleCurrentStateConcern: 'If false, explain how the title is misleading and suggest a neutral durable naming direction; otherwise empty',
         explanation: 'Short explanation of the structural audit'
       }],
       proposedTopics: [{

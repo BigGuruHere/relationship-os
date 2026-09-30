@@ -409,7 +409,8 @@
           <article class="item">
             <p><strong>{audit.topicName}</strong> → recommended {audit.recommendedOperation}</p>
             {#if audit.semanticConcepts?.length}<p class="muted"><strong>Concepts:</strong> {audit.semanticConcepts.join(' · ')}</p>{/if}
-            <p class="muted"><strong>Flags:</strong> {audit.contaminationFlags.join(', ')} · <strong>KEEP coherent:</strong> {audit.keepCoherent ? 'yes' : 'no'}</p>
+            <p class="muted"><strong>Flags:</strong> {audit.contaminationFlags.join(', ')} · <strong>KEEP coherent:</strong> {audit.keepCoherent ? 'yes' : 'no'} · <strong>Title fits current state:</strong> {audit.titleFitsCurrentState ? 'yes' : 'no'}</p>
+            {#if audit.titleCurrentStateConcern}<p class="muted"><strong>Title concern:</strong> {audit.titleCurrentStateConcern}</p>{/if}
             {#if audit.explanation}<p>{audit.explanation}</p>{/if}
           </article>
         {/each}

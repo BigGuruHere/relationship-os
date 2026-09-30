@@ -15,6 +15,8 @@ const cleanFamilyAudit = {
   overlappingTargetKeys: [],
   recommendedOperation: 'KEEP',
   keepCoherent: true,
+  titleFitsCurrentState: true,
+  titleCurrentStateConcern: '',
   explanation: 'One coherent family-planning topic.'
 };
 
@@ -25,6 +27,8 @@ const contaminatedPartnerAudit = {
   overlappingTargetKeys: [],
   recommendedOperation: 'SPLIT',
   keepCoherent: false,
+  titleFitsCurrentState: true,
+  titleCurrentStateConcern: '',
   explanation: 'Partner traits and reciprocity can evolve independently.'
 };
 
@@ -89,4 +93,49 @@ test('8.12.13.8.3.1 route reauthorises provenance and UI exposes contamination a
   assert.match(page, /Structural contamination audit/);
   assert.match(page, /KEEP coherent/);
   assert.match(page, /Continue from the restructured baseline/);
+});
+
+
+test('8.12.13.8.3.2 normalizes a contradictory false KEEP boolean when the audit facts are clean', () => {
+  const result = validateTopicRestructureDraft({
+    topicAudits: [
+      contaminatedPartnerAudit,
+      { ...cleanFamilyAudit, keepCoherent: false }
+    ],
+    proposedTopics: [
+      { targetKey: 'rel:partner', realm: 'Romantic relationships', topicName: 'Desired partner qualities', operation: 'NARROW', sourceTargetKeys: ['rel:partner'], proposedUnderstanding: 'Wants an intelligent partner and other enduring partner qualities only.', reason: 'Narrow.' },
+      { targetKey: 'family:kids', realm: 'Family', topicName: 'Children', operation: 'KEEP', sourceTargetKeys: ['family:kids'], proposedUnderstanding: 'Previously considered more children but now does not want to pursue having more children.', reason: 'Coherent.' }
+    ]
+  }, prior);
+  assert.equal(result.validForReview, true);
+  assert.equal(result.audits.find(row => row.targetKey === 'family:kids').keepCoherent, true);
+});
+
+test('8.12.13.8.3.2 rejects KEEP when the topic title no longer fits current state', () => {
+  const staleTitleAudit = {
+    ...cleanFamilyAudit,
+    recommendedOperation: 'RENAME',
+    keepCoherent: false,
+    titleFitsCurrentState: false,
+    titleCurrentStateConcern: 'Desire to have children again implies a current desire that has been superseded.'
+  };
+  const result = validateTopicRestructureDraft({
+    topicAudits: [contaminatedPartnerAudit, staleTitleAudit],
+    proposedTopics: [
+      { targetKey: 'rel:partner', realm: 'Romantic relationships', topicName: 'Desired partner qualities', operation: 'NARROW', sourceTargetKeys: ['rel:partner'], proposedUnderstanding: 'Wants an intelligent partner and other enduring partner qualities only.', reason: 'Narrow.' },
+      { targetKey: 'family:kids', realm: 'Family', topicName: 'Desire to have children again', operation: 'KEEP', sourceTargetKeys: ['family:kids'], proposedUnderstanding: 'Previously considered more children but now does not want to pursue having more children.', reason: 'Keep.' }
+    ]
+  }, prior);
+  assert.equal(result.validForReview, false);
+  assert.ok(result.errors.some(item => item.includes('conflicts with its structural contamination audit')));
+});
+
+test('8.12.13.8.3.2 prompt explicitly checks current-state title fit and UI exposes it', () => {
+  const service = fs.readFileSync(new URL('../../src/lib/server/datingUnderstandingRevisionExperiment.ts', import.meta.url), 'utf8');
+  const page = fs.readFileSync(new URL('../../src/routes/dating/people/[id]/understanding/revision-experiment/+page.svelte', import.meta.url), 'utf8');
+  assert.match(service, /TOPIC TITLE still fits the CURRENT state/);
+  assert.match(service, /titleFitsCurrentState/);
+  assert.match(service, /neutral durable title/);
+  assert.match(page, /Title fits current state/);
+  assert.match(page, /Title concern/);
 });

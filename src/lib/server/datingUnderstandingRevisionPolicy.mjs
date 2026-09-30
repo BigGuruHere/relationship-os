@@ -562,7 +562,13 @@ export function validateTopicRestructureDraft(raw, priorSeeds) {
     const recommendedOperation = ['KEEP', 'NARROW', 'SPLIT', 'MERGE', 'MOVE', 'RENAME', 'RECLASSIFY'].includes(String(row.recommendedOperation))
       ? String(row.recommendedOperation)
       : 'RECLASSIFY';
-    const keepCoherent = row.keepCoherent === true;
+    const positiveFlags = contaminationFlags.filter(flag => flag !== 'NONE');
+    const titleFitsCurrentState = row.titleFitsCurrentState !== false;
+    const titleCurrentStateConcern = String(row.titleCurrentStateConcern ?? '').trim().slice(0, 1200);
+    // Stage 8.12.13.8.3.2: normalize KEEP coherence from the structural facts instead of
+    // trusting a contradictory model boolean. A clean KEEP recommendation with no overlap
+    // or contamination flags is coherent even if the model accidentally emitted false.
+    const keepCoherent = recommendedOperation === 'KEEP' && positiveFlags.length === 0 && overlappingTargetKeys.length === 0 && titleFitsCurrentState;
     const audit = {
       targetKey,
       topicName: byKey.get(targetKey)?.topicName ?? targetKey,
@@ -571,6 +577,8 @@ export function validateTopicRestructureDraft(raw, priorSeeds) {
       overlappingTargetKeys,
       recommendedOperation,
       keepCoherent,
+      titleFitsCurrentState,
+      titleCurrentStateConcern,
       explanation: String(row.explanation ?? '').trim().slice(0, 1600)
     };
     audits.push(audit);
@@ -607,7 +615,7 @@ export function validateTopicRestructureDraft(raw, priorSeeds) {
         errors.push(`KEEP for ${realm} / ${topicName} has no structural contamination audit.`);
       } else {
         const positiveFlags = audit.contaminationFlags.filter(flag => flag !== 'NONE');
-        if (!audit.keepCoherent || positiveFlags.length || audit.overlappingTargetKeys.length || audit.recommendedOperation !== 'KEEP') {
+        if (!audit.keepCoherent || !audit.titleFitsCurrentState || positiveFlags.length || audit.overlappingTargetKeys.length || audit.recommendedOperation !== 'KEEP') {
           errors.push(`KEEP for ${realm} / ${topicName} conflicts with its structural contamination audit.`);
         }
       }

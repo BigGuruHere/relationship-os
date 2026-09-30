@@ -539,6 +539,47 @@ export function validateTopicRestructureDraft(raw, priorSeeds) {
   const errors = [];
   const seenTargetKeys = new Set();
 
+  // Stage 8.12.13.8.3.1: require an explicit contamination audit for every prior topic before
+  // accepting KEEP. This does not try to semantically judge the model with heuristics. Instead,
+  // it makes the model expose its own structural tests and rejects internally inconsistent KEEP decisions.
+  const allowedFlags = new Set(['NONE', 'MULTIPLE_INDEPENDENT_CONCEPTS', 'BELONGS_ELSEWHERE', 'TOPIC_NAME_MISMATCH', 'DUPLICATES_OTHER_TOPIC']);
+  const audits = [];
+  const auditByKey = new Map();
+  for (const row of (Array.isArray(raw.topicAudits) ? raw.topicAudits.slice(0, 30) : [])) {
+    if (!row || typeof row !== 'object') continue;
+    const targetKey = String(row.targetKey ?? '').trim().slice(0, 220);
+    if (!byKey.has(targetKey) || auditByKey.has(targetKey)) continue;
+    const semanticConcepts = Array.isArray(row.semanticConcepts)
+      ? [...new Set(row.semanticConcepts.map(value => String(value ?? '').trim()).filter(Boolean))].slice(0, 12)
+      : [];
+    const rawFlags = Array.isArray(row.contaminationFlags)
+      ? [...new Set(row.contaminationFlags.map(value => String(value ?? '').trim()).filter(value => allowedFlags.has(value)))].slice(0, 5)
+      : [];
+    const contaminationFlags = rawFlags.length ? rawFlags : ['NONE'];
+    const overlappingTargetKeys = Array.isArray(row.overlappingTargetKeys)
+      ? [...new Set(row.overlappingTargetKeys.map(value => String(value ?? '').trim()).filter(value => value !== targetKey && byKey.has(value)))].slice(0, 12)
+      : [];
+    const recommendedOperation = ['KEEP', 'NARROW', 'SPLIT', 'MERGE', 'MOVE', 'RENAME', 'RECLASSIFY'].includes(String(row.recommendedOperation))
+      ? String(row.recommendedOperation)
+      : 'RECLASSIFY';
+    const keepCoherent = row.keepCoherent === true;
+    const audit = {
+      targetKey,
+      topicName: byKey.get(targetKey)?.topicName ?? targetKey,
+      semanticConcepts,
+      contaminationFlags,
+      overlappingTargetKeys,
+      recommendedOperation,
+      keepCoherent,
+      explanation: String(row.explanation ?? '').trim().slice(0, 1600)
+    };
+    audits.push(audit);
+    auditByKey.set(targetKey, audit);
+  }
+  for (const seed of previous) {
+    if (!auditByKey.has(seed.targetKey)) errors.push(`Missing structural contamination audit for ${seed.topicName}.`);
+  }
+
   for (const row of (Array.isArray(raw.proposedTopics) ? raw.proposedTopics.slice(0, 36) : [])) {
     if (!row || typeof row !== 'object') continue;
     const realm = String(row.realm ?? '').trim().slice(0, 100);
@@ -559,6 +600,18 @@ export function validateTopicRestructureDraft(raw, priorSeeds) {
       continue;
     }
     seenTargetKeys.add(targetKey);
+    const operation = ['KEEP', 'NARROW', 'SPLIT', 'MERGE', 'MOVE', 'RENAME', 'RECLASSIFY'].includes(String(row.operation)) ? String(row.operation) : 'RECLASSIFY';
+    if (operation === 'KEEP' && sourceTargetKeys.length === 1) {
+      const audit = auditByKey.get(sourceTargetKeys[0]);
+      if (!audit) {
+        errors.push(`KEEP for ${realm} / ${topicName} has no structural contamination audit.`);
+      } else {
+        const positiveFlags = audit.contaminationFlags.filter(flag => flag !== 'NONE');
+        if (!audit.keepCoherent || positiveFlags.length || audit.overlappingTargetKeys.length || audit.recommendedOperation !== 'KEEP') {
+          errors.push(`KEEP for ${realm} / ${topicName} conflicts with its structural contamination audit.`);
+        }
+      }
+    }
     proposedTopics.push({
       targetKey,
       realm,
@@ -567,7 +620,7 @@ export function validateTopicRestructureDraft(raw, priorSeeds) {
       proposedUnderstanding,
       sourceTargetKeys,
       reason: String(row.reason ?? '').trim().slice(0, 1600),
-      operation: ['KEEP', 'NARROW', 'SPLIT', 'MERGE', 'MOVE', 'RENAME', 'RECLASSIFY'].includes(String(row.operation)) ? String(row.operation) : 'RECLASSIFY'
+      operation
     });
   }
 
@@ -576,6 +629,7 @@ export function validateTopicRestructureDraft(raw, priorSeeds) {
   if (!proposedTopics.length) errors.push('No valid restructured topic was proposed.');
 
   return {
+    audits,
     proposedTopics,
     coverage: previous.map(seed => ({
       targetKey: seed.targetKey,

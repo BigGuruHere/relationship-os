@@ -402,6 +402,19 @@
         <div class="warning"><strong>Structural validation warnings. Do not adopt this proposal.</strong><ul>{#each form.restructuring.analysis.errors as item}<li>{item}</li>{/each}</ul></div>
       {/if}
 
+      {#if form.restructuring.analysis.audits?.length}
+        <h3>Structural contamination audit</h3>
+        <p class="muted">Before choosing KEEP, Dorian checks whether each prior topic contains distinct concepts that could evolve independently, belong elsewhere, mismatch the topic name, or duplicate another topic.</p>
+        {#each form.restructuring.analysis.audits as audit (audit.targetKey)}
+          <article class="item">
+            <p><strong>{audit.topicName}</strong> → recommended {audit.recommendedOperation}</p>
+            {#if audit.semanticConcepts?.length}<p class="muted"><strong>Concepts:</strong> {audit.semanticConcepts.join(' · ')}</p>{/if}
+            <p class="muted"><strong>Flags:</strong> {audit.contaminationFlags.join(', ')} · <strong>KEEP coherent:</strong> {audit.keepCoherent ? 'yes' : 'no'}</p>
+            {#if audit.explanation}<p>{audit.explanation}</p>{/if}
+          </article>
+        {/each}
+      {/if}
+
       {#each form.restructuring.analysis.proposedTopics as topic (topic.targetKey)}
         <article class="revision">
           <h3>{topic.label} <span class="impact">{topic.operation}</span></h3>

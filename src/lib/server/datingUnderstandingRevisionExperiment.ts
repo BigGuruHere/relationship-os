@@ -4,7 +4,7 @@ import { generateStructured } from '$lib/server/agents/modelGateway';
 import { listUnderstandingTopics } from './datingUnderstandingTopics';
 import { requireSourceReflection } from './datingLivingUnderstanding';
 import { parseDatingTranscript } from './datingTranscriptImportPolicy';
-import { validateRevisionDraft, validateTurnAnchoredRevisionDraft, validateTopicImpactDraft, validateSemanticDecompositionDraft, validateOperationalUnitsFromForm } from './datingUnderstandingRevisionPolicy.mjs';
+import { validateRevisionDraft, validateTurnAnchoredRevisionDraft, validateTopicImpactDraft, validateSemanticDecompositionDraft } from './datingUnderstandingRevisionPolicy.mjs';
 import { sourceEvidenceMatch } from './knowledgeSuggestionQuality';
 
 type Scope = { userId: string; contextSpaceId: string; contactId: string };
@@ -207,6 +207,8 @@ export async function identifySemanticAreasReadOnly(scope: Scope, sourceInteract
       'Use the full conversation for context, but ONLY target-speaker turns directly describe the target person.',
       'Identify ALL materially distinct enduring areas. Do not collapse relationship goals, partner qualities, family intentions, readiness concerns, values, or other concepts into one broad topic merely because they occur in the same conversation.',
       'For each area, prefer the narrowest suitable EXISTING topic. If no existing topic is semantically suitable, leave existingTopicId empty and suggest a concise stable realm/topic instead.',
+      'Use each existing topic at most once in the areas array. If two distinct enduring areas would otherwise map to the same existing topic, keep the best-fitting area on that existing topic and suggest a new narrow topic for the other area or areas.',
+      'Do not map an area to an existing topic merely because it shares the same broad realm. The topic itself must be a good semantic home for that area.',
       'Do not invent a new topic when an existing narrow topic fits. Do not force an important idea into an ill-fitting existing topic merely to avoid suggesting a new one.',
       'Each area must cite only the target-speaker turn IDs that make that area relevant.',
       'Separately propose a SMALL set of atomic operational knowledge units. These are NOT the complete memory of the person.',
@@ -255,8 +257,7 @@ export async function identifySemanticAreasReadOnly(scope: Scope, sourceInteract
 export async function reviseSemanticAreaReadOnly(
   scope: Scope,
   sourceInteractionId: string,
-  area: { areaId: string; existingTopicId?: string; realm?: string; topicName?: string; relevantTurnIds?: string[] },
-  rawOperationalUnits: unknown[] = []
+  area: { areaId: string; sourceAreaIds?: string[]; existingTopicId?: string; realm?: string; topicName?: string; relevantTurnIds?: string[] }
 ) {
   const data = await authorisedExperimentData(scope, sourceInteractionId);
   const existingTopicId = String(area.existingTopicId ?? '').trim();
@@ -315,17 +316,14 @@ export async function reviseSemanticAreaReadOnly(
   });
 
   const draft = validateTurnAnchoredRevisionDraft(result.structured, existing, data.packet.targetTurns, data.packet.turns);
-  // IT: Hidden form data is untrusted. Revalidate operational units against the authorised source before display.
-  const operational = validateOperationalUnitsFromForm(rawOperationalUnits, [{ areaId: area.areaId }], data.packet.targetTurns, data.packet.turns);
   return {
     areaId: area.areaId,
+    sourceAreaIds: Array.isArray(area.sourceAreaIds) && area.sourceAreaIds.length ? area.sourceAreaIds : [area.areaId],
     topicId: topic?.id ?? '',
     topicName: label,
     proposedNewTopic: !topic,
     existing,
     draft,
-    operationalUnits: operational.units,
-    operationalErrors: operational.errors,
     sourceInteractionId,
     sourceDate: data.source.at.toISOString()
   };

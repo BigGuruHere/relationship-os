@@ -4,6 +4,7 @@ import { error, fail, redirect } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import { requireSourceReflection } from '$lib/server/datingLivingUnderstanding';
 import { listUnderstandingTopics } from '$lib/server/datingUnderstandingTopics';
+import { consolidateSemanticAreasForRevision, validateOperationalUnitsFromForm } from '$lib/server/datingUnderstandingRevisionPolicy.mjs';
 import {
   identifySemanticAreasReadOnly,
   revisionExperimentEnabled,
@@ -78,39 +79,44 @@ export const actions: Actions = {
 
     const rawOperationalUnits = parseJsonArray(form.get('operationalUnitsJson'));
     try {
+      // IT: Never ask the model for two revisions of the same topic. Semantic areas remain
+      // distinct in the decomposition UI, but duplicate topic targets are consolidated here.
+      const selectedAreas = areaIds.map(areaId => ({
+        areaId,
+        existingTopicId: String(form.get(`existingTopicId:${areaId}`) || ''),
+        realm: String(form.get(`realm:${areaId}`) || ''),
+        topicName: String(form.get(`topicName:${areaId}`) || ''),
+        impact: String(form.get(`impact:${areaId}`) || ''),
+        reason: String(form.get(`reason:${areaId}`) || ''),
+        relevantTurnIds: form.getAll(`relevantTurnId:${areaId}`).map(value => String(value)).filter(Boolean)
+      }));
+      const revisionTargets = consolidateSemanticAreasForRevision(selectedAreas);
+      if (!revisionTargets.length) return fail(400, { revisionError: 'No valid semantic area remained after consolidation.' });
+
       const revisions = [];
-      for (const areaId of areaIds) {
-        const existingTopicId = String(form.get(`existingTopicId:${areaId}`) || '');
-        const realm = String(form.get(`realm:${areaId}`) || '');
-        const topicName = String(form.get(`topicName:${areaId}`) || '');
-        const relevantTurnIds = form.getAll(`relevantTurnId:${areaId}`).map(value => String(value)).filter(Boolean);
-        const unitsForArea = rawOperationalUnits.filter((unit: any) => Array.isArray(unit?.areaIds) && unit.areaIds.includes(areaId));
-        revisions.push(await reviseSemanticAreaReadOnly(scope, sourceId, {
-          areaId,
-          existingTopicId,
-          realm,
-          topicName,
-          relevantTurnIds
-        }, unitsForArea));
+      for (const target of revisionTargets) {
+        revisions.push(await reviseSemanticAreaReadOnly(scope, sourceId, target));
       }
 
-      const operationalUnits: any[] = [];
-      const seenUnits = new Set<string>();
-      const operationalErrors: string[] = [];
-      for (const revision of revisions) {
-        operationalErrors.push(...revision.operationalErrors);
-        for (const unit of revision.operationalUnits) {
-          const key = `${unit.unitId}:${unit.statement}`;
-          if (seenUnits.has(key)) {
-            const existing = operationalUnits.find((item: any) => `${item.unitId}:${item.statement}` === key);
-            if (existing) existing.areaIds = [...new Set([...existing.areaIds, ...unit.areaIds])];
-            continue;
-          }
-          seenUnits.add(key);
-          operationalUnits.push({ ...unit });
-        }
-      }
-      return { revisions, operationalUnits, operationalErrors };
+      // IT: Operational units retain their original semantic-area links. Revalidate the hidden
+      // form payload once against all selected areas and the authorised source before display.
+      const source = await requireSourceReflection(scope, sourceId);
+      const { parseDatingTranscript } = await import('$lib/server/datingTranscriptImportPolicy');
+      const turns = source.conversationContext && source.speaker
+        ? parseDatingTranscript(source.conversationContext).turns.map((turn, index) => ({
+            id: `T${String(index + 1).padStart(3, '0')}`,
+            speaker: turn.speaker,
+            text: turn.text,
+            target: turn.speaker === source.speaker
+          }))
+        : [{ id: 'T001', speaker: 'reflection author', text: source.text, target: true }];
+      const operational = validateOperationalUnitsFromForm(
+        rawOperationalUnits,
+        selectedAreas.map(area => ({ areaId: area.areaId })),
+        turns.filter(turn => turn.target),
+        turns
+      );
+      return { revisions, operationalUnits: operational.units, operationalErrors: operational.errors };
     } catch (err) {
       return fail(502, { revisionError: safeExperimentError(err) });
     }

@@ -21,9 +21,9 @@
 
   function linkedAreaLabels(unit: any) {
     const revisions = form?.revisions ?? [];
-    return (unit?.areaIds ?? [])
-      .map((id: string) => revisions.find((revision: any) => revision.areaId === id)?.topicName)
-      .filter(Boolean)
+    return [...new Set((unit?.areaIds ?? [])
+      .map((id: string) => revisions.find((revision: any) => (revision.sourceAreaIds ?? [revision.areaId]).includes(id))?.topicName)
+      .filter(Boolean))]
       .join(', ');
   }
 </script>
@@ -81,6 +81,8 @@
             <input type="hidden" name={`existingTopicId:${area.areaId}`} value={area.existingTopicId} />
             <input type="hidden" name={`realm:${area.areaId}`} value={area.realm} />
             <input type="hidden" name={`topicName:${area.areaId}`} value={area.topicName} />
+            <input type="hidden" name={`impact:${area.areaId}`} value={area.impact} />
+            <input type="hidden" name={`reason:${area.areaId}`} value={area.reason} />
             {#each area.relevantTurnIds ?? [] as turnId}
               <input type="hidden" name={`relevantTurnId:${area.areaId}`} value={turnId} />
             {/each}
@@ -120,11 +122,13 @@
   {#if form?.revisions}
     <section class="panel">
       <p class="eyebrow">EXPERIMENTAL TOPIC UNDERSTANDINGS - NOT SAVED</p>
-      <h2>Proposed Living Understanding by semantic area</h2>
+      <h2>Proposed Living Understanding by topic target</h2>
+      <p class="muted">Relish consolidates multiple selected semantic areas when they target the same topic, so one topic receives only one proposed current understanding.</p>
       {#each form.revisions as revision (revision.areaId)}
         <article class="revision">
           <h3>{revision.topicName}</h3>
           {#if revision.proposedNewTopic}<p class="new-topic">SUGGESTED NEW TOPIC - NOT CREATED</p>{/if}
+          {#if revision.sourceAreaIds?.length > 1}<p class="muted"><strong>Combined semantic areas:</strong> {revision.sourceAreaIds.join(', ')}</p>{/if}
           <h4>Proposed current understanding</h4>
           <p class="understanding">{revision.draft.summary}</p>
 

@@ -253,6 +253,55 @@ export function validateSemanticDecompositionDraft(raw, authorisedTopics, target
   return { areas, operationalUnits: units, errors, validForReview: errors.length === 0 };
 }
 
+// Stage 8.12.13.7.1: one topic target must produce one Living Understanding revision.
+// Distinct semantic areas may still be shown separately, but selected areas that target the
+// same existing topic (or the same proposed realm/topic) are consolidated before model revision.
+export function consolidateSemanticAreasForRevision(selectedAreas) {
+  const groups = [];
+  const byKey = new Map();
+  const impactRank = { SUPPORTING: 1, POSSIBLE: 2, SIGNIFICANT: 3 };
+
+  for (const raw of Array.isArray(selectedAreas) ? selectedAreas : []) {
+    if (!raw || typeof raw !== 'object') continue;
+    const sourceAreaId = String(raw.areaId ?? '').trim();
+    if (!sourceAreaId) continue;
+    const existingTopicId = String(raw.existingTopicId ?? '').trim();
+    const realm = String(raw.realm ?? '').trim().slice(0, 100);
+    const topicName = String(raw.topicName ?? '').trim().slice(0, 100);
+    if (!existingTopicId && (!realm || !topicName)) continue;
+
+    const key = existingTopicId
+      ? `existing:${existingTopicId}`
+      : `suggested:${realm.toLocaleLowerCase()}::${topicName.toLocaleLowerCase()}`;
+    let group = byKey.get(key);
+    if (!group) {
+      group = {
+        areaId: `R${String(groups.length + 1).padStart(2, '0')}`,
+        sourceAreaIds: [],
+        existingTopicId,
+        realm,
+        topicName,
+        relevantTurnIds: [],
+        impact: TOPIC_IMPACTS.includes(raw.impact) ? raw.impact : 'POSSIBLE',
+        reasons: []
+      };
+      groups.push(group);
+      byKey.set(key, group);
+    }
+
+    group.sourceAreaIds.push(sourceAreaId);
+    group.relevantTurnIds = [...new Set([
+      ...group.relevantTurnIds,
+      ...(Array.isArray(raw.relevantTurnIds) ? raw.relevantTurnIds.map(value => String(value ?? '').trim()).filter(Boolean) : [])
+    ])].slice(0, 30);
+    const nextImpact = TOPIC_IMPACTS.includes(raw.impact) ? raw.impact : 'POSSIBLE';
+    if ((impactRank[nextImpact] ?? 0) > (impactRank[group.impact] ?? 0)) group.impact = nextImpact;
+    const reason = String(raw.reason ?? '').trim().slice(0, 1000);
+    if (reason && !group.reasons.includes(reason)) group.reasons.push(reason);
+  }
+  return groups;
+}
+
 export function validateOperationalUnitsFromForm(rawUnits, selectedAreas, targetTurns = [], allTurns = []) {
   const selectedIds = new Set(selectedAreas.map(area => area.areaId));
   const units = [];

@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import {
   validateSemanticDecompositionDraft,
-  validateOperationalUnitsFromForm
+  validateOperationalUnitsFromForm,
+  consolidateSemanticAreasForRevision
 } from '../../src/lib/server/datingUnderstandingRevisionPolicy.mjs';
 
 const topics = [
@@ -75,6 +76,34 @@ test('hidden operational units are revalidated against selected area and source 
   assert.equal(result.units[0].evidenceTurns[0].text, 'I want a strong relationship.');
 });
 
+
+
+test('duplicate semantic areas targeting one existing topic consolidate before revision', () => {
+  const groups = consolidateSemanticAreasForRevision([
+    { areaId: 'A01', existingTopicId: 'topic-relationship', realm: 'Romantic relationships', topicName: 'Desired relationship', impact: 'POSSIBLE', reason: 'Relationship goal', relevantTurnIds: ['T002'] },
+    { areaId: 'A03', existingTopicId: 'topic-relationship', realm: 'Romantic relationships', topicName: 'Desired relationship', impact: 'SIGNIFICANT', reason: 'Additional relationship material', relevantTurnIds: ['T004', 'T002'] },
+    { areaId: 'A04', existingTopicId: 'topic-partner', realm: 'Romantic relationships', topicName: 'Preferred partner', impact: 'SIGNIFICANT', reason: 'Partner qualities', relevantTurnIds: ['T006'] }
+  ]);
+
+  assert.equal(groups.length, 2);
+  assert.deepEqual(groups[0].sourceAreaIds, ['A01', 'A03']);
+  assert.deepEqual(groups[0].relevantTurnIds, ['T002', 'T004']);
+  assert.equal(groups[0].impact, 'SIGNIFICANT');
+  assert.equal(groups[0].existingTopicId, 'topic-relationship');
+  assert.deepEqual(groups[1].sourceAreaIds, ['A04']);
+});
+
+test('duplicate proposed realm/topic targets consolidate without creating a stored topic', () => {
+  const groups = consolidateSemanticAreasForRevision([
+    { areaId: 'A02', existingTopicId: '', realm: 'Family', topicName: 'Having more children', impact: 'POSSIBLE', relevantTurnIds: ['T004'] },
+    { areaId: 'A05', existingTopicId: '', realm: ' family ', topicName: 'Having More Children', impact: 'SUPPORTING', relevantTurnIds: ['T006'] }
+  ]);
+  assert.equal(groups.length, 1);
+  assert.deepEqual(groups[0].sourceAreaIds, ['A02', 'A05']);
+  assert.deepEqual(groups[0].relevantTurnIds, ['T004', 'T006']);
+  assert.equal(groups[0].existingTopicId, '');
+});
+
 test('stage 8.12.13.7 service and UI describe selective operational atomicity and read-only suggested topics', () => {
   const service = fs.readFileSync(new URL('../../src/lib/server/datingUnderstandingRevisionExperiment.ts', import.meta.url), 'utf8');
   const page = fs.readFileSync(new URL('../../src/routes/dating/people/[id]/understanding/revision-experiment/+page.svelte', import.meta.url), 'utf8');
@@ -83,7 +112,10 @@ test('stage 8.12.13.7 service and UI describe selective operational atomicity an
   assert.match(service, /Create an operational unit only when the knowledge may need independent verification, matching, permissioning, retrieval, disclosure, or action/);
   assert.match(service, /One operational unit may belong to multiple semantic areas/);
   assert.match(service, /Do not generate a comprehensive list of new atomic claims/);
+  assert.match(service, /Use each existing topic at most once in the areas array/);
   assert.match(page, /SUGGESTED NEW TOPIC - NOT CREATED/);
   assert.match(page, /not every useful piece of understanding needs to become an atomic record/);
   assert.match(route, /reviseTopics/);
+  assert.match(route, /consolidateSemanticAreasForRevision/);
+  assert.match(page, /one topic receives only one proposed current understanding/);
 });

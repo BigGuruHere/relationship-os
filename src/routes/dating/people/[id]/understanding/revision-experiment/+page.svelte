@@ -124,6 +124,9 @@
       <p class="eyebrow">EXPERIMENTAL TOPIC UNDERSTANDINGS - NOT SAVED</p>
       <h2>Proposed Living Understanding by topic target</h2>
       <p class="muted">Relish consolidates multiple selected semantic areas when they target the same topic, so one topic receives only one proposed current understanding. Each revision is then bounded to that topic's validated source turns and semantic scope rather than re-reading the whole conversation.</p>
+      {#if form.revisionBatchSummary}
+        <p class="muted"><strong>Safe batching:</strong> {form.revisionBatchSummary.selectedAreaCount} selected semantic areas became {form.revisionBatchSummary.targetCount} topic targets and were processed in {form.revisionBatchSummary.batchCount} batch{form.revisionBatchSummary.batchCount === 1 ? '' : 'es'} of at most {form.revisionBatchSummary.batchSize}. The eight-area batch size is no longer a selection limit.</p>
+      {/if}
       {#each form.revisions as revision (revision.areaId)}
         <article class="revision">
           <h3>{revision.topicName}</h3>
@@ -192,6 +195,9 @@
         {/each}
       {:else}
         <p>No separate operational knowledge units were proposed for the selected areas.</p>
+      {/if}
+      {#if form.longitudinalSeed?.length}
+        <p class="muted"><strong>Longitudinal test preparation:</strong> this read-only result now carries stable topic-target keys and source provenance so a later experiment can compare a second conversation against these proposed understandings without saving them as authoritative knowledge.</p>
       {/if}
       <p class="muted">No understanding, topic, statement, permission or sharing rule has been written to the database.</p>
     </section>

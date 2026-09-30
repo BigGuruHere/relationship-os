@@ -79,7 +79,8 @@ test('service performs topic discovery before scoped topic revision and remains 
 test('topic or semantic-area revisions are bounded and identifiers are revalidated server-side', () => {
   const route = fs.readFileSync(new URL('../../src/routes/dating/people/[id]/understanding/revision-experiment/+page.server.ts', import.meta.url), 'utf8');
   const svc = fs.readFileSync(new URL('../../src/lib/server/datingUnderstandingRevisionExperiment.ts', import.meta.url), 'utf8');
-  assert.match(route, /areaIds\.length > 8/);
+  assert.match(route, /areaIds\.length > 32/);
+  assert.match(route, /batchRevisionTargets\(revisionTargets, 8\)/);
   assert.match(route, /reviseSemanticAreaReadOnly\(scope, sourceId/);
   assert.match(svc, /data\.topics\.find\(item => item\.id === existingTopicId\)/);
   assert.match(svc, /existing\.length > 45/);

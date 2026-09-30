@@ -141,3 +141,29 @@ test('stage 8.12.13.7.2 asks for permissionable operational units without atomis
   assert.match(service, /If a proposed unit combines ideas that could reasonably have different matching, permission, disclosure, verification, retrieval, or action rules, split them/);
   assert.match(service, /Do not split merely for stylistic granularity/);
 });
+
+test('stage 8.12.13.7.3 treats eight as a processing batch size rather than a selection limit', async () => {
+  const policy = await import('../../src/lib/server/datingUnderstandingRevisionPolicy.mjs');
+  const targets = Array.from({ length: 19 }, (_, index) => ({ areaId: `R${index + 1}` }));
+  const batches = policy.batchRevisionTargets(targets, 8);
+  assert.equal(batches.length, 3);
+  assert.deepEqual(batches.map(batch => batch.length), [8, 8, 3]);
+
+  const route = fs.readFileSync(new URL('../../src/routes/dating/people/[id]/understanding/revision-experiment/+page.server.ts', import.meta.url), 'utf8');
+  assert.doesNotMatch(route, /Revise at most eight semantic areas/);
+  assert.match(route, /batchRevisionTargets\(revisionTargets, 8\)/);
+});
+
+test('stage 8.12.13.7.3 carries stable topic target keys for longitudinal follow-up', async () => {
+  const policy = await import('../../src/lib/server/datingUnderstandingRevisionPolicy.mjs');
+  const groups = policy.consolidateSemanticAreasForRevision([
+    { areaId: 'A01', existingTopicId: 'topic-1', realm: 'Romantic relationships', topicName: 'Desired relationship', relevantTurnIds: ['T001'] },
+    { areaId: 'A02', existingTopicId: '', realm: 'Family', topicName: 'Family intentions', relevantTurnIds: ['T002'] }
+  ]);
+  assert.equal(groups[0].targetKey, 'existing:topic-1');
+  assert.equal(groups[1].targetKey, 'suggested:family::family intentions');
+
+  const route = fs.readFileSync(new URL('../../src/routes/dating/people/[id]/understanding/revision-experiment/+page.server.ts', import.meta.url), 'utf8');
+  assert.match(route, /longitudinalSeed/);
+  assert.match(route, /targetKey: revision\.targetKey/);
+});

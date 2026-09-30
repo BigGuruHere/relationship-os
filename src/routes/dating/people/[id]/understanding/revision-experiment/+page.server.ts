@@ -4,7 +4,7 @@ import { error, fail, redirect } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import { requireSourceReflection } from '$lib/server/datingLivingUnderstanding';
 import { listUnderstandingTopics } from '$lib/server/datingUnderstandingTopics';
-import { consolidateSemanticAreasForRevision, validateOperationalUnitsFromForm } from '$lib/server/datingUnderstandingRevisionPolicy.mjs';
+import { batchRevisionTargets, consolidateSemanticAreasForRevision, validateOperationalUnitsFromForm } from '$lib/server/datingUnderstandingRevisionPolicy.mjs';
 import {
   identifySemanticAreasReadOnly,
   revisionExperimentEnabled,
@@ -75,7 +75,9 @@ export const actions: Actions = {
     const sourceId = String(form.get('sourceInteractionId') || '');
     const areaIds = [...new Set(form.getAll('areaId').map(value => String(value)).filter(Boolean))];
     if (!areaIds.length) return fail(400, { revisionError: 'Choose at least one semantic area to revise.' });
-    if (areaIds.length > 8) return fail(400, { revisionError: 'Revise at most eight semantic areas in one experiment run.' });
+    // IT: Eight is now a processing batch size, not a user-facing semantic limit. Keep a generous
+    // hard ceiling only to protect this development-only experiment from malformed form payloads.
+    if (areaIds.length > 32) return fail(400, { revisionError: 'This development experiment can revise at most 32 selected semantic areas in one request.' });
 
     const rawOperationalUnits = parseJsonArray(form.get('operationalUnitsJson'));
     try {
@@ -97,16 +99,22 @@ export const actions: Actions = {
       // model with sibling-area descriptions as exclusion boundaries, never as evidence. This keeps
       // a long source turn from pulling partner traits into family intentions, or vice versa.
       const revisions = [];
-      for (const target of revisionTargets) {
-        const ownSourceIds = new Set(target.sourceAreaIds ?? []);
-        const excludedAreaSummaries = selectedAreas
-          .filter(area => !ownSourceIds.has(area.areaId))
-          .map(area => `${area.realm} / ${area.topicName}: ${area.reason}`)
-          .filter(value => value.trim().length > 3);
-        revisions.push(await reviseSemanticAreaReadOnly(scope, sourceId, {
-          ...target,
-          excludedAreaSummaries
-        }));
+      const revisionBatches = batchRevisionTargets(revisionTargets, 8);
+      for (let batchIndex = 0; batchIndex < revisionBatches.length; batchIndex += 1) {
+        const batch = revisionBatches[batchIndex];
+        // IT: Batches are processed sequentially so one large decomposition does not create an
+        // unbounded burst of sensitive external model calls. Each topic target is still revised once.
+        for (const target of batch) {
+          const ownSourceIds = new Set(target.sourceAreaIds ?? []);
+          const excludedAreaSummaries = selectedAreas
+            .filter(area => !ownSourceIds.has(area.areaId))
+            .map(area => `${area.realm} / ${area.topicName}: ${area.reason}`)
+            .filter(value => value.trim().length > 3);
+          revisions.push(await reviseSemanticAreaReadOnly(scope, sourceId, {
+            ...target,
+            excludedAreaSummaries
+          }));
+        }
       }
 
       // IT: Operational units retain their original semantic-area links. Revalidate the hidden
@@ -127,7 +135,25 @@ export const actions: Actions = {
         turns.filter(turn => turn.target),
         turns
       );
-      return { revisions, operationalUnits: operational.units, operationalErrors: operational.errors };
+      // IT: This snapshot is returned to the browser only. It is not persisted. The stable target
+      // keys and source provenance prepare the next experiment to carry an understanding forward
+      // across a second and third conversation without confusing topic identity.
+      const longitudinalSeed = revisions.map(revision => ({
+        targetKey: revision.targetKey,
+        topicId: revision.topicId,
+        topicName: revision.topicName,
+        proposedNewTopic: revision.proposedNewTopic,
+        proposedUnderstanding: revision.draft.summary,
+        sourceInteractionId: revision.sourceInteractionId,
+        sourceDate: revision.sourceDate
+      }));
+      return {
+        revisions,
+        operationalUnits: operational.units,
+        operationalErrors: operational.errors,
+        revisionBatchSummary: { selectedAreaCount: selectedAreas.length, targetCount: revisionTargets.length, batchCount: revisionBatches.length, batchSize: 8 },
+        longitudinalSeed
+      };
     } catch (err) {
       return fail(502, { revisionError: safeExperimentError(err) });
     }

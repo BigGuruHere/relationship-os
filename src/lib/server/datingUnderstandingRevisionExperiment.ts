@@ -260,6 +260,7 @@ export async function reviseSemanticAreaReadOnly(
   sourceInteractionId: string,
   area: {
     areaId: string;
+    targetKey?: string;
     sourceAreaIds?: string[];
     existingTopicId?: string;
     realm?: string;
@@ -338,6 +339,7 @@ export async function reviseSemanticAreaReadOnly(
   const draft = validateTurnAnchoredRevisionDraft(result.structured, existing, data.packet.targetTurns, data.packet.turns);
   return {
     areaId: area.areaId,
+    targetKey: String((area as { targetKey?: string }).targetKey ?? (topic?.id ? `existing:${topic.id}` : `suggested:${realm.toLocaleLowerCase()}::${topicName.toLocaleLowerCase()}`)),
     sourceAreaIds: Array.isArray(area.sourceAreaIds) && area.sourceAreaIds.length ? area.sourceAreaIds : [area.areaId],
     topicId: topic?.id ?? '',
     topicName: label,

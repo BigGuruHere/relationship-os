@@ -277,6 +277,7 @@ export function consolidateSemanticAreasForRevision(selectedAreas) {
     if (!group) {
       group = {
         areaId: `R${String(groups.length + 1).padStart(2, '0')}`,
+        targetKey: key,
         sourceAreaIds: [],
         existingTopicId,
         realm,
@@ -300,6 +301,20 @@ export function consolidateSemanticAreasForRevision(selectedAreas) {
     if (reason && !group.reasons.includes(reason)) group.reasons.push(reason);
   }
   return groups;
+}
+
+
+// Stage 8.12.13.7.3: retain a small model-call batch size without turning it into a UI limit.
+// The experiment can therefore revise more than eight selected semantic areas safely, while
+// keeping each batch bounded and preserving one consolidated revision per topic target.
+export function batchRevisionTargets(targets, batchSize = 8) {
+  const safeSize = Number.isInteger(batchSize) && batchSize > 0 ? Math.min(batchSize, 12) : 8;
+  const clean = Array.isArray(targets) ? targets.filter(Boolean) : [];
+  const batches = [];
+  for (let index = 0; index < clean.length; index += safeSize) {
+    batches.push(clean.slice(index, index + safeSize));
+  }
+  return batches;
 }
 
 export function validateOperationalUnitsFromForm(rawUnits, selectedAreas, targetTurns = [], allTurns = []) {

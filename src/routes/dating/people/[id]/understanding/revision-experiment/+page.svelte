@@ -54,6 +54,10 @@
     // Svelte only permits {@const} as the immediate child of specific block/component constructs.
     return laterSourcesAfter(form?.longitudinal?.nextSourceDate, form?.longitudinal?.nextSourceInteractionId);
   }
+
+  function remainingRestructureSources() {
+    return laterSourcesAfter(form?.restructuring?.latestSourceDate, form?.restructuring?.latestSourceInteractionId);
+  }
 </script>
 
 <svelte:head><title>Semantic Living Understanding experiment - Relish</title></svelte:head>
@@ -372,7 +376,77 @@
         {/if}
       </div>
 
+      <div class="restructure-start">
+        <h3>Review the topic structure</h3>
+        <p class="muted">Run a structural review of the latest proposed Living Understanding. This can suggest splitting, narrowing, merging, moving or renaming topics without changing the underlying meaning.</p>
+        <form method="POST" action="?/restructureTopics" use:enhance>
+          <input type="hidden" name="longitudinalSeedJson" value={serialiseLongitudinalSeed(form.longitudinal.nextLongitudinalSeed)} />
+          <input type="hidden" name="priorOperationalUnitsJson" value={serialiseOperationalUnits(form.longitudinal.nextOperationalUnits)} />
+          <input type="hidden" name="chainHistoryJson" value={serialiseChainHistory(form.longitudinal.chainHistory)} />
+          <label class="consent"><input name="consent" type="checkbox" value="YES" required /> I authorise sending the current temporary read-only understanding to the configured AI provider for structural review.</label>
+          <button type="submit">Review topic structure</button>
+        </form>
+      </div>
+
       <p class="muted"><strong>Read-only:</strong> this comparison has not created, changed, retired, confirmed or shared any stored knowledge or temporary interaction state.</p>
+    </section>
+  {/if}
+
+  {#if form?.restructuring}
+    <section class="panel">
+      <p class="eyebrow">EXPERIMENTAL TOPIC RESTRUCTURING - NOT SAVED</p>
+      <h2>Proposed cleaner Living Understanding structure</h2>
+      <p class="muted">This is a structural proposal only. It may split, narrow, merge, move or rename topics, but it must not add facts, erase prior meaning, resolve contradictions or change uncertainty.</p>
+
+      {#if form.restructuring.analysis.errors?.length}
+        <div class="warning"><strong>Structural validation warnings. Do not adopt this proposal.</strong><ul>{#each form.restructuring.analysis.errors as item}<li>{item}</li>{/each}</ul></div>
+      {/if}
+
+      {#each form.restructuring.analysis.proposedTopics as topic (topic.targetKey)}
+        <article class="revision">
+          <h3>{topic.label} <span class="impact">{topic.operation}</span></h3>
+          <p class="muted"><strong>Built from:</strong> {topic.sourceTargetKeys.map((key: string) => form.restructuring.priorSeeds.find((seed: any) => seed.targetKey === key)?.topicName ?? key).join(' + ')}</p>
+          <p class="understanding">{topic.proposedUnderstanding}</p>
+          {#if topic.reason}<p><strong>Why restructure:</strong> {topic.reason}</p>{/if}
+        </article>
+      {/each}
+
+      <h3>Coverage check</h3>
+      <p class="muted">Every prior topic must be represented. A count above one means a prior topic was deliberately split across multiple proposed topics.</p>
+      {#each form.restructuring.analysis.coverage as row (row.targetKey)}
+        <article class="item">
+          <p><strong>{row.topicName}</strong> → {row.proposedTopicCount} proposed topic{row.proposedTopicCount === 1 ? '' : 's'}</p>
+        </article>
+      {/each}
+
+      {#if form.restructuring.chainHistory?.length}
+        <p class="muted"><strong>Longitudinal history preserved:</strong> this restructuring proposal keeps the existing read-only evolution chain and source provenance. It does not rewrite the historical versions.</p>
+      {/if}
+
+      {#if remainingRestructureSources().length}
+        <div class="continue-chain">
+          <h3>Continue from the restructured baseline</h3>
+          <p class="muted">The next later source will be compared with this proposed cleaner structure, while the earlier evolution history remains unchanged.</p>
+          <form method="POST" action="?/compareLongitudinal" use:enhance>
+            <input type="hidden" name="baselineSourceInteractionId" value={form.restructuring.latestSourceInteractionId} />
+            <input type="hidden" name="longitudinalSeedJson" value={serialiseLongitudinalSeed(form.restructuring.restructuredLongitudinalSeed)} />
+            <input type="hidden" name="priorOperationalUnitsJson" value={serialiseOperationalUnits(form.restructuring.priorOperationalUnits)} />
+            <input type="hidden" name="chainHistoryJson" value={serialiseChainHistory(form.restructuring.chainHistory)} />
+            <label>Next later source
+              <select name="nextSourceInteractionId" required>
+                <option value="">Choose the next source</option>
+                {#each remainingRestructureSources() as source}
+                  <option value={source.id}>{new Date(source.at).toLocaleString()} · {source.sourceKind === 'CONVERSATION_EXCERPT' ? `Conversation${source.speaker ? ` - ${source.speaker}` : ''}` : 'Reflection'}</option>
+                {/each}
+              </select>
+            </label>
+            <label class="consent"><input name="consent" type="checkbox" value="YES" required /> I authorise sending the next private source and this restructured temporary baseline to the configured AI provider.</label>
+            <button type="submit">Continue chain from restructured baseline</button>
+          </form>
+        </div>
+      {/if}
+
+      <p class="muted"><strong>Read-only:</strong> no stored topic, understanding, statement, permission, sharing rule or historical version has been changed.</p>
     </section>
   {/if}
 </main>
@@ -406,7 +480,7 @@
   .chain-version summary { cursor: pointer; }
   .chain-topic { border-top: 1px solid var(--border-color, #aaa); padding-top: .65rem; margin-top: .65rem; }
   .chain-topic p { margin-bottom: 0; white-space: pre-wrap; }
-  .continue-chain { margin-top: 2rem; border-top: 2px solid var(--border-color, #aaa); padding-top: 1rem; }
+  .continue-chain, .restructure-start { margin-top: 2rem; border-top: 2px solid var(--border-color, #aaa); padding-top: 1rem; }
   .operational-preview, .longitudinal { margin-top: 1rem; padding-top: .75rem; border-top: 2px solid var(--border-color, #aaa); }
   select { width: 100%; padding: .6rem; margin-top: .35rem; }
 </style>

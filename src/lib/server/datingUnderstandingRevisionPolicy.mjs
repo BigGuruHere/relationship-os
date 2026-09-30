@@ -524,3 +524,66 @@ export function validateLongitudinalOperationalDraft(raw, priorUnits, targetTurn
   }
   return { changes, additions, interactionState, omittedUnitIds, errors, validForReview: errors.length === 0 };
 }
+
+
+// Stage 8.12.13.8.3: validate a read-only restructuring proposal. This is structural only:
+// every prior topic must remain represented in at least one proposed topic so restructuring
+// cannot silently erase current understanding. One prior topic may map to several proposed
+// topics (split), and several prior topics may map to one proposed topic (merge/reclassification).
+export function validateTopicRestructureDraft(raw, priorSeeds) {
+  if (!raw || typeof raw !== 'object') throw new Error('The model did not provide a topic restructuring proposal.');
+  const previous = Array.isArray(priorSeeds) ? priorSeeds.slice(0, 24) : [];
+  const byKey = new Map(previous.map(seed => [seed.targetKey, seed]));
+  const coverage = new Map(previous.map(seed => [seed.targetKey, 0]));
+  const proposedTopics = [];
+  const errors = [];
+  const seenTargetKeys = new Set();
+
+  for (const row of (Array.isArray(raw.proposedTopics) ? raw.proposedTopics.slice(0, 36) : [])) {
+    if (!row || typeof row !== 'object') continue;
+    const realm = String(row.realm ?? '').trim().slice(0, 100);
+    const topicName = String(row.topicName ?? '').trim().slice(0, 120);
+    const proposedUnderstanding = String(row.proposedUnderstanding ?? '').trim().slice(0, 6500);
+    const sourceTargetKeys = Array.isArray(row.sourceTargetKeys)
+      ? [...new Set(row.sourceTargetKeys.map(value => String(value ?? '').trim()).filter(value => byKey.has(value)))].slice(0, 12)
+      : [];
+    if (!realm || !topicName || proposedUnderstanding.length < 20 || !sourceTargetKeys.length) {
+      errors.push('A proposed restructured topic was incomplete or did not reference a known prior topic.');
+      continue;
+    }
+    for (const key of sourceTargetKeys) coverage.set(key, (coverage.get(key) ?? 0) + 1);
+    let targetKey = String(row.targetKey ?? '').trim().slice(0, 220);
+    if (!targetKey) targetKey = `restructured:${realm.toLocaleLowerCase()}::${topicName.toLocaleLowerCase()}`;
+    if (seenTargetKeys.has(targetKey)) {
+      errors.push(`The restructuring proposal repeated target ${realm} / ${topicName}.`);
+      continue;
+    }
+    seenTargetKeys.add(targetKey);
+    proposedTopics.push({
+      targetKey,
+      realm,
+      topicName,
+      label: `${realm} / ${topicName}`,
+      proposedUnderstanding,
+      sourceTargetKeys,
+      reason: String(row.reason ?? '').trim().slice(0, 1600),
+      operation: ['KEEP', 'NARROW', 'SPLIT', 'MERGE', 'MOVE', 'RENAME', 'RECLASSIFY'].includes(String(row.operation)) ? String(row.operation) : 'RECLASSIFY'
+    });
+  }
+
+  const omittedTargetKeys = previous.filter(seed => !(coverage.get(seed.targetKey) > 0)).map(seed => seed.targetKey);
+  if (omittedTargetKeys.length) errors.push(`${omittedTargetKeys.length} prior topic understandings were omitted from the restructuring proposal.`);
+  if (!proposedTopics.length) errors.push('No valid restructured topic was proposed.');
+
+  return {
+    proposedTopics,
+    coverage: previous.map(seed => ({
+      targetKey: seed.targetKey,
+      topicName: seed.topicName,
+      proposedTopicCount: coverage.get(seed.targetKey) ?? 0
+    })),
+    omittedTargetKeys,
+    errors,
+    validForReview: proposedTopics.length > 0 && omittedTargetKeys.length === 0 && errors.length === 0
+  };
+}

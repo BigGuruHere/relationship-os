@@ -10,7 +10,8 @@ import {
   identifySemanticAreasReadOnly,
   revisionExperimentEnabled,
   reviseSemanticAreaReadOnly,
-  evolveLongitudinalUnderstandingReadOnly
+  evolveLongitudinalUnderstandingReadOnly,
+  restructureLivingUnderstandingReadOnly
 } from '$lib/server/datingUnderstandingRevisionExperiment';
 
 function authorisedScope(locals: App.Locals, id: string) {
@@ -46,7 +47,7 @@ export const load: PageServerLoad = async ({ locals, params, url }) => {
 };
 
 function safeExperimentError(err: unknown) {
-  if (err instanceof Error && /exceeds the experiment limit|too many|too large|disabled|OPENAI_API_KEY|Choose an authorised topic|not accessible|inventory|semantic area|longitudinal|later source|prior Living/.test(err.message)) {
+  if (err instanceof Error && /exceeds the experiment limit|too many|too large|disabled|OPENAI_API_KEY|Choose an authorised topic|not accessible|inventory|semantic area|longitudinal|later source|prior Living|restructur/.test(err.message)) {
     return err.message;
   }
   return 'The experimental revision was unavailable or malformed. No stored knowledge was changed.';
@@ -272,6 +273,43 @@ export const actions: Actions = {
       });
       longitudinal.chainHistory = chainHistory.slice(-6);
       return { longitudinal };
+    } catch (err) {
+      return fail(502, { revisionError: safeExperimentError(err) });
+    }
+  },
+
+  restructureTopics: async ({ locals, params, request }) => {
+    const scope = authorisedScope(locals, params.id);
+    const form = await request.formData();
+    if (form.get('consent') !== 'YES') {
+      return fail(400, { revisionError: 'Explicitly authorise sending the current read-only Living Understanding to the AI provider for restructuring.' });
+    }
+    const rawSeed = parseJsonArray(form.get('longitudinalSeedJson'));
+    const seedValidation = validateLongitudinalSeed(rawSeed);
+    if (!seedValidation.validForReview) {
+      return fail(400, { revisionError: seedValidation.errors[0] || 'The current experimental understanding was invalid.' });
+    }
+
+    try {
+      // SECURITY: Browser-carried restructuring state is never trusted for custody. Re-authorise
+      // every source referenced by the temporary baseline before sending derived understanding out.
+      const provenanceIds = [...new Set(seedValidation.seeds.flatMap(seed =>
+        seed.sourceInteractionIds?.length ? seed.sourceInteractionIds : [seed.sourceInteractionId]
+      ))].slice(0, 24);
+      await Promise.all(provenanceIds.map(sourceId => requireSourceReflection(scope, sourceId)));
+
+      const priorOperationalUnits = parseJsonArray(form.get('priorOperationalUnitsJson')).slice(0, 40).map((row: any, index: number) => ({
+        unitId: String(row?.unitId || `K${String(index + 1).padStart(2, '0')}`).slice(0, 20),
+        kind: String(row?.kind || 'OTHER').slice(0, 30),
+        certainty: String(row?.certainty || 'UNCERTAIN').slice(0, 30),
+        statement: String(row?.statement || '').trim().slice(0, 600),
+        operationalReasons: Array.isArray(row?.operationalReasons) ? row.operationalReasons.map((value: unknown) => String(value)).slice(0, 6) : [],
+        status: ['ACTIVE', 'POTENTIAL_CONFLICT', 'POTENTIAL_RETIREMENT'].includes(String(row?.status)) ? String(row.status) : 'ACTIVE'
+      })).filter((row: any) => row.statement);
+
+      const restructuring = await restructureLivingUnderstandingReadOnly(scope, seedValidation.seeds, priorOperationalUnits);
+      restructuring.chainHistory = sanitiseChainHistory(parseJsonArray(form.get('chainHistoryJson')));
+      return { restructuring };
     } catch (err) {
       return fail(502, { revisionError: safeExperimentError(err) });
     }

@@ -157,7 +157,9 @@ export const actions: Actions = {
         proposedNewTopic: revision.proposedNewTopic,
         proposedUnderstanding: revision.draft.summary,
         sourceInteractionId: revision.sourceInteractionId,
-        sourceDate: revision.sourceDate
+        sourceDate: revision.sourceDate,
+        semanticBoundary: revision.semanticBoundary,
+        excludedTopicHints: revision.excludedTopicHints
       }));
       return {
         revisions,

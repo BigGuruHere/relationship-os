@@ -90,7 +90,8 @@
     "check:stage8.12.13.6.1": "node --test tests/core/stage8-12-13-5-revision-experiment.test.mjs tests/core/stage8-12-13-6-topic-aware-revision.test.mjs",
     "check:stage8.12.13.7": "node --experimental-strip-types --test tests/core/stage8-12-13-5-revision-experiment.test.mjs tests/core/stage8-12-13-6-topic-aware-revision.test.mjs tests/core/stage8-12-13-7-semantic-decomposition.test.mjs",
     "check:stage8.12.13.7.2": "node --experimental-strip-types --test tests/core/stage8-12-13-5-revision-experiment.test.mjs tests/core/stage8-12-13-6-topic-aware-revision.test.mjs tests/core/stage8-12-13-7-semantic-decomposition.test.mjs",
-    "check:stage8.12.13.7.3": "node --experimental-strip-types --test tests/core/stage8-12-13-5-revision-experiment.test.mjs tests/core/stage8-12-13-6-topic-aware-revision.test.mjs tests/core/stage8-12-13-7-semantic-decomposition.test.mjs"
+    "check:stage8.12.13.7.3": "node --experimental-strip-types --test tests/core/stage8-12-13-5-revision-experiment.test.mjs tests/core/stage8-12-13-6-topic-aware-revision.test.mjs tests/core/stage8-12-13-7-semantic-decomposition.test.mjs",
+    "check:stage8.12.13.8.1": "node --experimental-strip-types --test tests/core/stage8-12-13-5-revision-experiment.test.mjs tests/core/stage8-12-13-6-topic-aware-revision.test.mjs tests/core/stage8-12-13-7-semantic-decomposition.test.mjs"
   },
   "engines": {
     "node": ">=22.13.1 <23"

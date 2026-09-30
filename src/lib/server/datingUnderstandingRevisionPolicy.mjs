@@ -382,7 +382,9 @@ export function validateLongitudinalSeed(rawSeed) {
       proposedNewTopic: Boolean(row.proposedNewTopic),
       proposedUnderstanding,
       sourceInteractionId,
-      sourceDate
+      sourceDate,
+      semanticBoundary: Array.isArray(row.semanticBoundary) ? row.semanticBoundary.map(value => String(value ?? '').trim().slice(0, 1200)).filter(Boolean).slice(0, 8) : [],
+      excludedTopicHints: Array.isArray(row.excludedTopicHints) ? row.excludedTopicHints.map(value => String(value ?? '').trim().slice(0, 1200)).filter(Boolean).slice(0, 16) : []
     });
   }
   if (!seeds.length) errors.push('No valid prior Living Understanding was supplied for longitudinal comparison.');
@@ -503,5 +505,21 @@ export function validateLongitudinalOperationalDraft(raw, priorUnits, targetTurn
       evidenceValid: evidence.valid
     });
   }
-  return { changes, additions, omittedUnitIds, errors, validForReview: errors.length === 0 };
+
+  const interactionState = [];
+  for (const row of (Array.isArray(raw?.newInteractionState) ? raw.newInteractionState.slice(0, 20) : [])) {
+    if (!row || typeof row !== 'object') continue;
+    const statement = String(row.statement ?? '').trim().slice(0, 600);
+    if (!statement) continue;
+    const evidence = resolveEvidence(row.evidenceTurnIds, targetTurns, allTurns);
+    if (!evidence.valid) errors.push(`Invalid evidence for temporary interaction state: ${evidence.reason}`);
+    interactionState.push({
+      stateId: `S${String(interactionState.length + 1).padStart(2, '0')}`,
+      statement,
+      evidenceTurnIds: evidence.ids,
+      evidenceTurns: evidence.turns,
+      evidenceValid: evidence.valid
+    });
+  }
+  return { changes, additions, interactionState, omittedUnitIds, errors, validForReview: errors.length === 0 };
 }

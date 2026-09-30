@@ -285,6 +285,7 @@
       {/each}
       {#if form.longitudinal.operationalAnalysis.additions?.length}
         <h4>Proposed new independently controllable knowledge</h4>
+        <p class="muted">Only durable propositions that may genuinely need their own persistent rule belong here.</p>
         {#each form.longitudinal.operationalAnalysis.additions as unit (unit.unitId)}
           <article class="item">
             <p><strong>{unit.kind}</strong> · {unit.certainty}</p>
@@ -296,7 +297,19 @@
           </article>
         {/each}
       {/if}
-      <p class="muted"><strong>Read-only:</strong> this comparison has not created, changed, retired, confirmed or shared any stored knowledge.</p>
+      {#if form.longitudinal.operationalAnalysis.interactionState?.length}
+        <h4>Temporary interaction state</h4>
+        <p class="muted">These are session-level choices or instructions. They are shown for review but are not proposed as enduring person knowledge.</p>
+        {#each form.longitudinal.operationalAnalysis.interactionState as state (state.stateId)}
+          <article class="item">
+            <p>{state.statement}</p>
+            {#if state.evidenceTurns?.length}
+              <div class="evidence-block"><strong>Later source evidence</strong>{#each state.evidenceTurns as turn}<blockquote><span class="turn-id">{turn.id}</span><span class="turn-text">{turn.text}</span></blockquote>{/each}</div>
+            {/if}
+          </article>
+        {/each}
+      {/if}
+      <p class="muted"><strong>Read-only:</strong> this comparison has not created, changed, retired, confirmed or shared any stored knowledge or temporary interaction state.</p>
     </section>
   {/if}
 </main>

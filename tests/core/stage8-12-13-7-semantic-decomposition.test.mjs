@@ -243,3 +243,49 @@ test('stage 8.12.13.8 route exposes later-source comparison and remains read-onl
   assert.match(page, /Compare later source with this understanding/);
   assert.match(page, /has not created, changed, retired, confirmed or shared any stored knowledge/);
 });
+
+test('stage 8.12.13.8.1 longitudinal seed preserves semantic scope boundaries', async () => {
+  const policy = await import('../../src/lib/server/datingUnderstandingRevisionPolicy.mjs');
+  const result = policy.validateLongitudinalSeed([
+    {
+      targetKey: 'existing:t1',
+      topicName: 'Romantic / Partner qualities',
+      proposedUnderstanding: 'The speaker values intelligence and health-consciousness in a partner.',
+      sourceInteractionId: 'source-1',
+      semanticBoundary: ['Partner-selection traits only.'],
+      excludedTopicHints: ['Family / Family plans: wanting children belongs elsewhere.']
+    }
+  ]);
+  assert.equal(result.validForReview, true);
+  assert.deepEqual(result.seeds[0].semanticBoundary, ['Partner-selection traits only.']);
+  assert.deepEqual(result.seeds[0].excludedTopicHints, ['Family / Family plans: wanting children belongs elsewhere.']);
+});
+
+test('stage 8.12.13.8.1 separates temporary interaction state from persistent operational knowledge', async () => {
+  const policy = await import('../../src/lib/server/datingUnderstandingRevisionPolicy.mjs');
+  const result = policy.validateLongitudinalOperationalDraft({
+    existingOperationalKnowledge: [],
+    newOperationalKnowledge: [
+      { kind: 'WANT', certainty: 'DIRECT', statement: 'Wants a committed relationship.', operationalReasons: ['MATCHING'], evidenceTurnIds: ['T002'] }
+    ],
+    newInteractionState: [
+      { statement: 'Keep exploring before running another search.', evidenceTurnIds: ['T004'] }
+    ]
+  }, [], targetTurns, allTurns);
+  assert.equal(result.additions.length, 1);
+  assert.equal(result.interactionState.length, 1);
+  assert.equal(result.interactionState[0].statement, 'Keep exploring before running another search.');
+  assert.equal(result.interactionState[0].evidenceTurns[0].id, 'T004');
+});
+
+test('stage 8.12.13.8.1 longitudinal service enforces topic boundaries and stricter persistent atomicity', () => {
+  const service = fs.readFileSync(new URL('../../src/lib/server/datingUnderstandingRevisionExperiment.ts', import.meta.url), 'utf8');
+  const page = fs.readFileSync(new URL('../../src/routes/dating/people/[id]/understanding/revision-experiment/+page.svelte', import.meta.url), 'utf8');
+  assert.match(service, /Each prior topic includes a semantic boundary/);
+  assert.match(service, /suggest a new topic instead of importing the other area into it/);
+  assert.match(service, /genuinely needs its OWN persistent matching, permission, disclosure, verification, retrieval or action rule/);
+  assert.match(service, /TEMPORARY INTERACTION STATE/);
+  assert.match(service, /A supplied evidence turn may contain multiple ideas/);
+  assert.match(page, /Temporary interaction state/);
+  assert.match(page, /not proposed as enduring person knowledge/);
+});

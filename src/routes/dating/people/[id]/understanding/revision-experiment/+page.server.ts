@@ -93,9 +93,20 @@ export const actions: Actions = {
       const revisionTargets = consolidateSemanticAreasForRevision(selectedAreas);
       if (!revisionTargets.length) return fail(400, { revisionError: 'No valid semantic area remained after consolidation.' });
 
+      // IT: Topic revisions receive only their own validated evidence turns. We also provide the
+      // model with sibling-area descriptions as exclusion boundaries, never as evidence. This keeps
+      // a long source turn from pulling partner traits into family intentions, or vice versa.
       const revisions = [];
       for (const target of revisionTargets) {
-        revisions.push(await reviseSemanticAreaReadOnly(scope, sourceId, target));
+        const ownSourceIds = new Set(target.sourceAreaIds ?? []);
+        const excludedAreaSummaries = selectedAreas
+          .filter(area => !ownSourceIds.has(area.areaId))
+          .map(area => `${area.realm} / ${area.topicName}: ${area.reason}`)
+          .filter(value => value.trim().length > 3);
+        revisions.push(await reviseSemanticAreaReadOnly(scope, sourceId, {
+          ...target,
+          excludedAreaSummaries
+        }));
       }
 
       // IT: Operational units retain their original semantic-area links. Revalidate the hidden

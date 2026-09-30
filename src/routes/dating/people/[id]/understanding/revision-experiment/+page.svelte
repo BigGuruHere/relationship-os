@@ -123,7 +123,7 @@
     <section class="panel">
       <p class="eyebrow">EXPERIMENTAL TOPIC UNDERSTANDINGS - NOT SAVED</p>
       <h2>Proposed Living Understanding by topic target</h2>
-      <p class="muted">Relish consolidates multiple selected semantic areas when they target the same topic, so one topic receives only one proposed current understanding.</p>
+      <p class="muted">Relish consolidates multiple selected semantic areas when they target the same topic, so one topic receives only one proposed current understanding. Each revision is then bounded to that topic's validated source turns and semantic scope rather than re-reading the whole conversation.</p>
       {#each form.revisions as revision (revision.areaId)}
         <article class="revision">
           <h3>{revision.topicName}</h3>

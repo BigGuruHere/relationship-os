@@ -119,3 +119,25 @@ test('stage 8.12.13.7 service and UI describe selective operational atomicity an
   assert.match(route, /consolidateSemanticAreasForRevision/);
   assert.match(page, /one topic receives only one proposed current understanding/);
 });
+
+test('stage 8.12.13.7.2 semantic revision is topic-bounded and never falls back to all target turns', () => {
+  const service = fs.readFileSync(new URL('../../src/lib/server/datingUnderstandingRevisionExperiment.ts', import.meta.url), 'utf8');
+  assert.match(service, /selected semantic area has no validated target-speaker evidence turns/);
+  assert.match(service, /A supplied source turn may contain several different ideas/);
+  assert.match(service, /OTHER AREAS FROM THIS SOURCE - EXCLUDE THEIR MAIN MEANING/);
+  const boundedSection = service.split('export async function reviseSemanticAreaReadOnly')[1].split('// Kept for direct Stage 8.12.13.5 regression comparisons only.')[0];
+  assert.match(boundedSection, /const topicTurns = selectedIds\.map\(id => targetById\.get\(id\)!\)\.filter\(Boolean\)/);
+  assert.doesNotMatch(boundedSection, /selectedIds\.length \?.*: data\.packet\.targetTurns/);
+});
+
+test('stage 8.12.13.7.2 passes sibling semantic areas as exclusion boundaries, not evidence', () => {
+  const route = fs.readFileSync(new URL('../../src/routes/dating/people/[id]/understanding/revision-experiment/+page.server.ts', import.meta.url), 'utf8');
+  assert.match(route, /excludedAreaSummaries/);
+  assert.match(route, /sibling-area descriptions as exclusion boundaries, never as evidence/);
+});
+
+test('stage 8.12.13.7.2 asks for permissionable operational units without atomising stylistically', () => {
+  const service = fs.readFileSync(new URL('../../src/lib/server/datingUnderstandingRevisionExperiment.ts', import.meta.url), 'utf8');
+  assert.match(service, /If a proposed unit combines ideas that could reasonably have different matching, permission, disclosure, verification, retrieval, or action rules, split them/);
+  assert.match(service, /Do not split merely for stylistic granularity/);
+});

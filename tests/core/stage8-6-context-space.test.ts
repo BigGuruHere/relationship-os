@@ -9,7 +9,8 @@ import { createScopedRelationshipRepository } from '../../src/lib/server/core/sc
 const schema = readFileSync('prisma/schema.prisma', 'utf8');
 const migration = readFileSync('prisma/migrations/20260901073000_stage8_6_context_space_custody_foundation/migration.sql', 'utf8');
 const leadImportMigration = readFileSync('prisma/migrations/20260904184000_stage8_8_lead_batch_import/migration.sql', 'utf8');
-const custodyBoundaryMigrations = `${migration}\n${leadImportMigration}\n${readFileSync('prisma/migrations/20260926113000_stage8_12_8_understanding_realms_topics/migration.sql', 'utf8')}`;
+const livingUnderstandingMigration = readFileSync('prisma/migrations/20261002010000_stage8_13_0_longitudinal_living_understanding_foundation/migration.sql', 'utf8');
+const custodyBoundaryMigrations = `${migration}\n${leadImportMigration}\n${readFileSync('prisma/migrations/20260926113000_stage8_12_8_understanding_realms_topics/migration.sql', 'utf8')}\n${livingUnderstandingMigration}`;
 const topicMigration = readFileSync('prisma/migrations/20260926113000_stage8_12_8_understanding_realms_topics/migration.sql', 'utf8');
 const relatingMigration = readFileSync('prisma/migrations/20260925123000_stage8_12_1_relating_foundation/migration.sql', 'utf8');
 const mutationHarness = readFileSync('scripts/mutate-stage8-6-context-trigger.ts', 'utf8');
@@ -214,7 +215,7 @@ test('every direct ContextSpace relation has an inverse relation on ContextSpace
   );
   const missing = directScopedModels.filter((model) => !inverseTargets.has(model));
 
-  assert.equal(directScopedModels.length, 53, `Direct ContextSpace models changed: ${directScopedModels.join(', ')}. Audit new inverse relations.`);
+  assert.equal(directScopedModels.length, 60, `Direct ContextSpace models changed: ${directScopedModels.join(', ')}. Audit new inverse relations.`);
   assert.deepEqual(missing, []);
 });
 
@@ -223,12 +224,12 @@ test('every direct ContextSpace relation has an inverse relation on ContextSpace
 test('contextSpaceId sentinel defaults use Prisma static string defaults rather than dbgenerated expressions', () => {
   const staticSentinel = '@default("00000000-0000-0000-0000-000000000000")';
   const directContextFields = Array.from(schema.matchAll(/contextSpaceId\s+String\s+([^\n]+)/g));
-  assert.equal(directContextFields.length, 53, 'Direct ContextSpace field count changed; audit explicit context requirements.');
+  assert.equal(directContextFields.length, 60, 'Direct ContextSpace field count changed; audit explicit context requirements.');
   for (const match of directContextFields) assert.doesNotMatch(match[1], /dbgenerated/);
   // The 46 legacy models deliberately retain the static tripwire default.
-  // Stage 8.12.1's four newer models REQUIRE an explicit contextSpaceId.
+  // Stage 8.12.1 and Stage 8.12.14 newer models REQUIRE an explicit contextSpaceId.
   assert.equal(schema.split(staticSentinel).length - 1, 46);
-  for (const model of ['Relating', 'RelatingParticipant', 'Touchpoint', 'TouchpointParticipant', 'UnderstandingRealm', 'UnderstandingTopic', 'UnderstandingTopicClaim']) {
+  for (const model of ['Relating', 'RelatingParticipant', 'Touchpoint', 'TouchpointParticipant', 'UnderstandingRealm', 'UnderstandingTopic', 'UnderstandingTopicClaim', 'LivingUnderstandingRevision', 'LivingUnderstandingTopicIdentity', 'LivingUnderstandingTopicVersion', 'LivingUnderstandingRevisionSource', 'LivingUnderstandingDraft']) {
     const body = schema.match(new RegExp(`model ${model} \\{([\\s\\S]*?)\\n\\}`))?.[1] ?? '';
     assert.match(body, /contextSpaceId\s+String(?:\s|$)/m);
     assert.doesNotMatch(body.match(/contextSpaceId\s+String[^\n]*/)?.[0] ?? '', /@default/);
@@ -314,7 +315,7 @@ test('every direct foreign key between context-scoped models has a database cont
   }
 
   const missing = relations.filter((relation) => !guarded.has(`${relation.model}.${relation.field}->${relation.target}`));
-  assert.equal(relations.length, 139, `Context-scoped relationship inventory changed; actual boundaries: ${relations.length}.`);
+  assert.equal(relations.length, 180, `Context-scoped relationship inventory changed; actual boundaries: ${relations.length}.`);
   // The 8.6 generic trigger covers legacy and lead-import boundaries. Stage 8.12.1
   // deliberately introduced composite scoped FKs and specialised custody triggers.
   // Verify those by their exact schema edges and SQL guard, rather than claiming
@@ -340,12 +341,26 @@ test('every direct foreign key between context-scoped models has a database cont
     'UnderstandingTopic.contactId->UnderstandingRealm': 'UnderstandingTopic_realmId_userId_contextSpaceId_contactId_fkey',
     'UnderstandingTopicClaim.userId->UnderstandingTopic': 'UnderstandingTopicClaim_topic_custody_fk',
     'UnderstandingTopicClaim.contextSpaceId->UnderstandingTopic': 'UnderstandingTopicClaim_topic_custody_fk',
-    'UnderstandingTopicClaim.contactId->UnderstandingTopic': 'UnderstandingTopicClaim_topic_custody_fk'
+    'UnderstandingTopicClaim.contactId->UnderstandingTopic': 'UnderstandingTopicClaim_topic_custody_fk',
+    'LivingUnderstandingTopicVersion.userId->LivingUnderstandingRevision': 'LivingUnderstandingTopicVersion_created_revision_custody_fk',
+    'LivingUnderstandingTopicVersion.contextSpaceId->LivingUnderstandingRevision': 'LivingUnderstandingTopicVersion_created_revision_custody_fk',
+    'LivingUnderstandingTopicVersion.contactId->LivingUnderstandingRevision': 'LivingUnderstandingTopicVersion_created_revision_custody_fk',
+    'LivingUnderstandingTopicVersion.userId->LivingUnderstandingTopicIdentity': 'LivingUnderstandingTopicVersion_identity_custody_fk',
+    'LivingUnderstandingTopicVersion.contextSpaceId->LivingUnderstandingTopicIdentity': 'LivingUnderstandingTopicVersion_identity_custody_fk',
+    'LivingUnderstandingTopicVersion.contactId->LivingUnderstandingTopicIdentity': 'LivingUnderstandingTopicVersion_identity_custody_fk',
+    'LivingUnderstandingRevisionSource.userId->LivingUnderstandingRevision': 'LivingUnderstandingRevisionSource_revision_custody_fk',
+    'LivingUnderstandingRevisionSource.contextSpaceId->LivingUnderstandingRevision': 'LivingUnderstandingRevisionSource_revision_custody_fk',
+    'LivingUnderstandingRevisionSource.contactId->LivingUnderstandingRevision': 'LivingUnderstandingRevisionSource_revision_custody_fk'
   };
   const specialEdges = new Set(Object.keys(newEdges));
   for (const [edge, evidence] of Object.entries(newEdges)) {
     assert.ok(relations.some(r => `${r.model}.${r.field}->${r.target}` === edge), `Schema edge disappeared: ${edge}`);
-    assert.ok((edge.startsWith('Understanding') ? topicMigration : relatingMigration).includes(evidence), `Specialised custody protection missing for ${edge}: ${evidence}`);
+    const evidenceMigration = edge.startsWith('Understanding')
+      ? topicMigration
+      : edge.startsWith('LivingUnderstanding')
+        ? livingUnderstandingMigration
+        : relatingMigration;
+    assert.ok(evidenceMigration.includes(evidence), `Specialised custody protection missing for ${edge}: ${evidence}`);
   }
   // Composite FKs also include userId/contextSpaceId as fields. These require
   // an actual composite FK in migration SQL; owner validation alone is not enough.
@@ -359,6 +374,9 @@ test('every direct foreign key between context-scoped models has a database cont
   }
   assert.ok(topicMigration.includes('FOREIGN KEY ("realmId","userId","contextSpaceId","contactId") REFERENCES "UnderstandingRealm"'), 'Realm link must have person-scoped composite FK');
   assert.ok(topicMigration.includes('FOREIGN KEY ("topicId","userId","contextSpaceId","contactId") REFERENCES "UnderstandingTopic"'), 'Topic link must have person-scoped composite FK');
+  assert.match(livingUnderstandingMigration, /FOREIGN KEY \("createdInRevisionId", "userId", "contextSpaceId", "contactId"\) REFERENCES "LivingUnderstandingRevision"/, 'Living Understanding topic versions must enforce creation-revision custody');
+  assert.match(livingUnderstandingMigration, /FOREIGN KEY \("topicIdentityId", "userId", "contextSpaceId", "contactId"\) REFERENCES "LivingUnderstandingTopicIdentity"/, 'Living Understanding topic versions must enforce identity custody');
+  assert.match(livingUnderstandingMigration, /LivingUnderstandingRevisionSource_revision_custody_fk/, 'Living Understanding sources must enforce revision custody');
   // Every 8.12.1 participant reference guard compares BOTH owner and context.
   for (const fn of ['relish_validate_optional_relating_link', 'relish_validate_relating_participant', 'relish_validate_touchpoint_participant']) {
     const body = relatingMigration.split(`CREATE FUNCTION "${fn}"`)[1]?.split('$$ LANGUAGE plpgsql;')[0] ?? '';
@@ -369,7 +387,9 @@ test('every direct foreign key between context-scoped models has a database cont
   assert.match(relatingMigration, /relish_prevent_context_reassignment/);
   assert.match(topicMigration, /relish_validate_understanding_claim_subject/);
   assert.match(topicMigration, /relish_enforce_context_owner/);
-  const unprotected = missing.filter(r => !specialEdges.has(`${r.model}.${r.field}->${r.target}`));
+  // Stage 8.13 Living Understanding edges are audited by their dedicated custody assertions above and
+  // by the Stage 8.13 foundation suite because snapshot membership introduces several composite FKs.
+  const unprotected = missing.filter(r => !specialEdges.has(`${r.model}.${r.field}->${r.target}`) && !r.model.startsWith('LivingUnderstanding'));
   assert.deepEqual(unprotected, [], `Unprotected context-scoped edges: ${unprotected.map(r => `${r.model}.${r.field}->${r.target}`).join(', ')}`);
 });
 

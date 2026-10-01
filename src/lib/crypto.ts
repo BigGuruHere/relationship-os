@@ -68,6 +68,12 @@ export function buildScopedIndexToken(input: string, scope: string) {
   return hmacIndexBytes(norm, scope || 'generic').toString('hex');
 }
 
+// IT: Opaque integrity MAC for server-issued payloads. Unlike index tokens, this preserves case
+// and whitespace exactly and must never be used as a searchable equality index.
+export function buildScopedMacToken(input: string, scope: string) {
+  return hmacIndexBytes(input, scope || 'generic').toString('hex');
+}
+
 // IT: New generic bytes helper for Prisma Bytes columns.
 export function buildIndexTokenBytes(input: string, scope = 'generic') {
   const norm = normalizeForIndex(input);

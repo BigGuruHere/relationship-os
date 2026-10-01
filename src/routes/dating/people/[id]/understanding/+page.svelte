@@ -36,6 +36,27 @@
   {:else}
     <header class="focus-heading"><p class="eyebrow">Living Understanding</p><h1>{data.name}</h1><p class="muted">Organise this person's current knowledge by realm and topic. Proposed statements and source history remain below.</p></header>
     {#if data.reviewSaved}<p class="saved-message" role="status">Knowledge review saved. Select a statement below to review suggested topic placements before assigning anything.</p>{/if}
+    {#if data.livingSaved}<p class="saved-message" role="status">Living Understanding saved as a new authorised revision.</p>{/if}
+    {#if data.persistedLivingUnderstanding}
+      <section class="card panel current-living-understanding" id="current-living-understanding">
+        <div class="section-heading"><div><h2>Current Living Understanding</h2><p class="muted">Authorised revision v{data.persistedLivingUnderstanding.revisionNumber} · saved {new Date(data.persistedLivingUnderstanding.authorisedAt).toLocaleString()}. This text is authoritative. Matching and embeddings remain derived layers.</p></div></div>
+        {#each data.persistedLivingUnderstanding.topics as topic (topic.id)}
+          <article class="persisted-topic">
+            <p class="eyebrow">{topic.realm}</p>
+            <h3>{topic.topicName}</h3>
+            <p class="current-statement">{topic.understanding}</p>
+            <p class="muted small">{topic.temporalScope.toLowerCase()}</p>
+          </article>
+        {/each}
+        <details class="revision-history"><summary>Revision history ({data.livingRevisionHistory.length})</summary>
+          {#each data.livingRevisionHistory as revision}
+            <p class="muted small">v{revision.revisionNumber} · {new Date(revision.authorisedAt).toLocaleString()} · {revision._count.topics} topics · {revision._count.sources} source{revision._count.sources === 1 ? '' : 's'}</p>
+          {/each}
+        </details>
+      </section>
+    {:else}
+      <section class="card panel"><h2>Current Living Understanding</h2><p class="muted">No authoritative Living Understanding revision has been saved yet. Validated structural reviews remain read-only until explicitly approved.</p></section>
+    {/if}
     {#if data.currentKnowledge.length}<p><a class="btn" href="#assign-knowledge">Assign an existing statement to a topic ↓</a></p>{/if}
   {/if}
   {#if !data.selectedSource}
@@ -417,5 +438,8 @@
   .diagnostic-panel { margin-top: 12px; padding: 12px; overflow-x: auto; }
   .diagnostic-panel table { border-collapse: collapse; width: 100%; font-size: .88rem; }
   .diagnostic-panel th, .diagnostic-panel td { padding: 7px; border-bottom: 1px solid var(--border); text-align: left; }
+  .persisted-topic { border-top: 1px solid var(--border-color, #aaa); padding: 1rem 0; }
+  .persisted-topic h3 { margin: .15rem 0 .5rem; }
+  .revision-history { margin-top: 1rem; }
 </style>
 

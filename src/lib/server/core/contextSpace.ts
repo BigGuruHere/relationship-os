@@ -206,6 +206,11 @@ export const CONTEXT_SCOPED_MODELS = new Set([
   'Company', 'CompanyExternalIdentifier', 'CompanyNote', 'CompanyContact', 'CompanyContactNote', 'DealCompany', 'CompanyRelationship',
   'Objective', 'KnowledgeClaim', 'KnowledgeEvidence',
   'UnderstandingRealm', 'UnderstandingTopic', 'UnderstandingTopicClaim',
+  // Stage 8.13.0: canonical Living Understanding persistence is directly context-owned and must
+  // receive the same request scoping/fail-closed treatment as the older knowledge tables.
+  'LivingUnderstandingRevision', 'LivingUnderstandingTopicIdentity',
+  'LivingUnderstandingTopicVersion', 'LivingUnderstandingRevisionTopic',
+  'LivingUnderstandingRevisionSource', 'LivingUnderstandingTopicVersionSource', 'LivingUnderstandingDraft',
   'Want', 'WantNote', 'Offer', 'OfferNote',
   'Relating', 'RelatingParticipant', 'Touchpoint', 'TouchpointParticipant',
   'Introduction', 'IntroductionParticipant', 'Outcome',

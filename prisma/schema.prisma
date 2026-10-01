@@ -102,6 +102,13 @@ model User {
   understandingTopics UnderstandingTopic[]
   understandingLinks UnderstandingTopicClaim[]
   knowledgeEvidence     KnowledgeEvidence[]
+  livingUnderstandingRevisions LivingUnderstandingRevision[]
+  livingUnderstandingTopicIdentities LivingUnderstandingTopicIdentity[]
+  livingUnderstandingTopicVersions LivingUnderstandingTopicVersion[]
+  livingUnderstandingRevisionTopics LivingUnderstandingRevisionTopic[]
+  livingUnderstandingRevisionSources LivingUnderstandingRevisionSource[]
+  livingUnderstandingTopicVersionSources LivingUnderstandingTopicVersionSource[]
+  livingUnderstandingDrafts LivingUnderstandingDraft[]
 
   // IT: agent framework records. Agents read/write through Relish services and every run is logged.
   agentDefinitions     AgentDefinition[]
@@ -203,6 +210,13 @@ model ContextSpace {
   understandingTopics UnderstandingTopic[]
   understandingLinks UnderstandingTopicClaim[]
   knowledgeEvidence KnowledgeEvidence[]
+  livingUnderstandingRevisions LivingUnderstandingRevision[]
+  livingUnderstandingTopicIdentities LivingUnderstandingTopicIdentity[]
+  livingUnderstandingTopicVersions LivingUnderstandingTopicVersion[]
+  livingUnderstandingRevisionTopics LivingUnderstandingRevisionTopic[]
+  livingUnderstandingRevisionSources LivingUnderstandingRevisionSource[]
+  livingUnderstandingTopicVersionSources LivingUnderstandingTopicVersionSource[]
+  livingUnderstandingDrafts LivingUnderstandingDraft[]
   wants Want[]
   wantNotes WantNote[]
   offers Offer[]
@@ -505,6 +519,13 @@ model Contact {
   understandingRealms UnderstandingRealm[]
   understandingTopics UnderstandingTopic[]
   understandingLinks UnderstandingTopicClaim[]
+  livingUnderstandingRevisions LivingUnderstandingRevision[]
+  livingUnderstandingTopicIdentities LivingUnderstandingTopicIdentity[]
+  livingUnderstandingTopicVersions LivingUnderstandingTopicVersion[]
+  livingUnderstandingRevisionTopics LivingUnderstandingRevisionTopic[]
+  livingUnderstandingRevisionSources LivingUnderstandingRevisionSource[]
+  livingUnderstandingTopicVersionSources LivingUnderstandingTopicVersionSource[]
+  livingUnderstandingDrafts LivingUnderstandingDraft[]
   tags         ContactTag[]
   linkedUserId String?
 
@@ -621,6 +642,9 @@ model Interaction {
   sourcedIntroductions Introduction[] @relation("IntroductionSourceInteraction")
   sourcedOutcomes      Outcome[]      @relation("OutcomeSourceInteraction")
   knowledgeEvidence    KnowledgeEvidence[] @relation("KnowledgeEvidenceSourceInteraction")
+  livingUnderstandingRevisionSources LivingUnderstandingRevisionSource[] @relation("LivingUnderstandingRevisionSourceInteraction")
+  livingUnderstandingTopicVersionSources LivingUnderstandingTopicVersionSource[] @relation("LivingUnderstandingTopicVersionSourceInteraction")
+  livingUnderstandingDraftSources LivingUnderstandingDraft[] @relation("LivingUnderstandingDraftSourceInteraction")
 
   @@index([userId])
   @@index([userId, contactId])
@@ -1576,6 +1600,165 @@ model UnderstandingTopicClaim {
   createdAt DateTime @default(now())
   @@unique([userId, contextSpaceId, contactId, topicId, claimId], map: "UnderstandingTopicClaim_unique_link")
   @@index([userId, contextSpaceId, contactId, claimId], map: "UnderstandingTopicClaim_claim_idx")
+}
+
+
+// Stage 8.13.0 - canonical longitudinal Living Understanding persistence.
+// IT: A revision is an immutable snapshot. Topic versions are immutable units of change and may
+// be carried forward into later revisions through LivingUnderstandingRevisionTopic membership.
+model LivingUnderstandingRevision {
+  id String @id @default(uuid())
+  userId String
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  contextSpaceId String
+  contextSpace ContextSpace @relation(fields: [contextSpaceId], references: [id], onDelete: Cascade)
+  contactId String
+  contact Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  revisionNumber Int
+  adoptionKey String @unique
+  previousRevisionId String? @unique
+  previousRevision LivingUnderstandingRevision? @relation("LivingUnderstandingRevisionLineage", fields: [previousRevisionId], references: [id], onDelete: Restrict)
+  nextRevision LivingUnderstandingRevision? @relation("LivingUnderstandingRevisionLineage")
+  authorisedAt DateTime @default(now())
+  createdAt DateTime @default(now())
+  memberships LivingUnderstandingRevisionTopic[]
+  createdTopicVersions LivingUnderstandingTopicVersion[] @relation("LivingUnderstandingTopicVersionCreatedInRevision")
+  sources LivingUnderstandingRevisionSource[]
+  draftsBasedOnThis LivingUnderstandingDraft[] @relation("LivingUnderstandingDraftBaseline")
+  @@unique([userId, contextSpaceId, contactId, revisionNumber], map: "LivingUnderstandingRevision_scope_number")
+  @@unique([id, userId, contextSpaceId, contactId])
+  @@index([userId, contextSpaceId, contactId, authorisedAt])
+}
+
+model LivingUnderstandingTopicIdentity {
+  id String @id @default(uuid())
+  userId String
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  contextSpaceId String
+  contextSpace ContextSpace @relation(fields: [contextSpaceId], references: [id], onDelete: Cascade)
+  contactId String
+  contact Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  nameIdx String
+  realmNameEnc String
+  topicNameEnc String
+  createdAt DateTime @default(now())
+  versions LivingUnderstandingTopicVersion[]
+  memberships LivingUnderstandingRevisionTopic[]
+  @@unique([userId, contextSpaceId, contactId, nameIdx], map: "LivingUnderstandingTopicIdentity_scope_name")
+  @@unique([id, userId, contextSpaceId, contactId])
+  @@index([userId, contextSpaceId, contactId])
+}
+
+model LivingUnderstandingTopicVersion {
+  id String @id @default(uuid())
+  userId String
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  contextSpaceId String
+  contextSpace ContextSpace @relation(fields: [contextSpaceId], references: [id], onDelete: Cascade)
+  contactId String
+  contact Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  topicIdentityId String
+  topicIdentity LivingUnderstandingTopicIdentity @relation(fields: [topicIdentityId, userId, contextSpaceId, contactId], references: [id, userId, contextSpaceId, contactId], onDelete: Restrict, map: "LivingUnderstandingTopicVersion_identity_custody_fk")
+  versionNumber Int
+  createdInRevisionId String
+  createdInRevision LivingUnderstandingRevision @relation("LivingUnderstandingTopicVersionCreatedInRevision", fields: [createdInRevisionId, userId, contextSpaceId, contactId], references: [id, userId, contextSpaceId, contactId], onDelete: Restrict, map: "LivingUnderstandingTopicVersion_created_revision_custody_fk")
+  understandingEnc String
+  temporalScope String
+  operation String
+  createdAt DateTime @default(now())
+  memberships LivingUnderstandingRevisionTopic[]
+  sources LivingUnderstandingTopicVersionSource[]
+  @@unique([topicIdentityId, versionNumber], map: "LivingUnderstandingTopicVersion_identity_number")
+  @@unique([id, userId, contextSpaceId, contactId])
+  @@unique([id, topicIdentityId, userId, contextSpaceId, contactId], map: "LivingUnderstandingTopicVersion_identity_scope_key")
+  @@index([userId, contextSpaceId, contactId, topicIdentityId])
+  @@index([createdInRevisionId])
+}
+
+model LivingUnderstandingRevisionTopic {
+  id String @id @default(uuid())
+  userId String
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  contextSpaceId String
+  contextSpace ContextSpace @relation(fields: [contextSpaceId], references: [id], onDelete: Cascade)
+  contactId String
+  contact Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  revisionId String
+  revision LivingUnderstandingRevision @relation(fields: [revisionId, userId, contextSpaceId, contactId], references: [id, userId, contextSpaceId, contactId], onDelete: Cascade, map: "LivingUnderstandingRevisionTopic_revision_custody_fk")
+  topicIdentityId String
+  topicIdentity LivingUnderstandingTopicIdentity @relation(fields: [topicIdentityId, userId, contextSpaceId, contactId], references: [id, userId, contextSpaceId, contactId], onDelete: Restrict, map: "LivingUnderstandingRevisionTopic_identity_custody_fk")
+  topicVersionId String
+  topicVersion LivingUnderstandingTopicVersion @relation(fields: [topicVersionId, topicIdentityId, userId, contextSpaceId, contactId], references: [id, topicIdentityId, userId, contextSpaceId, contactId], onDelete: Restrict, map: "LivingUnderstandingRevisionTopic_version_custody_fk")
+  position Int
+  createdAt DateTime @default(now())
+  @@unique([revisionId, topicIdentityId], map: "LivingUnderstandingRevisionTopic_revision_identity")
+  @@unique([revisionId, topicVersionId], map: "LivingUnderstandingRevisionTopic_revision_version")
+  @@unique([id, userId, contextSpaceId, contactId])
+  @@index([userId, contextSpaceId, contactId, revisionId, position])
+}
+
+model LivingUnderstandingRevisionSource {
+  id String @id @default(uuid())
+  userId String
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  contextSpaceId String
+  contextSpace ContextSpace @relation(fields: [contextSpaceId], references: [id], onDelete: Cascade)
+  contactId String
+  contact Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  revisionId String
+  revision LivingUnderstandingRevision @relation(fields: [revisionId, userId, contextSpaceId, contactId], references: [id, userId, contextSpaceId, contactId], onDelete: Cascade, map: "LivingUnderstandingRevisionSource_revision_custody_fk")
+  sourceInteractionId String
+  sourceInteraction Interaction @relation("LivingUnderstandingRevisionSourceInteraction", fields: [sourceInteractionId], references: [id], onDelete: Restrict)
+  sourceObservedAt DateTime
+  createdAt DateTime @default(now())
+  @@unique([revisionId, sourceInteractionId], map: "LivingUnderstandingRevisionSource_unique")
+  @@index([userId, contextSpaceId, contactId, sourceObservedAt])
+}
+
+model LivingUnderstandingTopicVersionSource {
+  id String @id @default(uuid())
+  userId String
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  contextSpaceId String
+  contextSpace ContextSpace @relation(fields: [contextSpaceId], references: [id], onDelete: Cascade)
+  contactId String
+  contact Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  topicVersionId String
+  topicVersion LivingUnderstandingTopicVersion @relation(fields: [topicVersionId, userId, contextSpaceId, contactId], references: [id, userId, contextSpaceId, contactId], onDelete: Cascade, map: "LivingUnderstandingTopicVersionSource_version_custody_fk")
+  sourceInteractionId String
+  sourceInteraction Interaction @relation("LivingUnderstandingTopicVersionSourceInteraction", fields: [sourceInteractionId], references: [id], onDelete: Restrict)
+  relationshipType String @default("INFORMED")
+  sourceObservedAt DateTime
+  createdAt DateTime @default(now())
+  @@unique([topicVersionId, sourceInteractionId], map: "LivingUnderstandingTopicVersionSource_unique")
+  @@index([userId, contextSpaceId, contactId, sourceObservedAt])
+}
+
+model LivingUnderstandingDraft {
+  id String @id @default(uuid())
+  userId String
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  contextSpaceId String
+  contextSpace ContextSpace @relation(fields: [contextSpaceId], references: [id], onDelete: Cascade)
+  contactId String
+  contact Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  sourceInteractionId String?
+  sourceInteraction Interaction? @relation("LivingUnderstandingDraftSourceInteraction", fields: [sourceInteractionId], references: [id], onDelete: Restrict)
+  baselineRevisionId String?
+  baselineRevision LivingUnderstandingRevision? @relation("LivingUnderstandingDraftBaseline", fields: [baselineRevisionId], references: [id], onDelete: Restrict)
+  baselineRevisionNumber Int?
+  stage String
+  status String @default("WORKING")
+  stateEnc String
+  sourceIdsEnc String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  expiresAt DateTime
+  completedAt DateTime?
+  @@unique([id, userId, contextSpaceId, contactId])
+  @@index([userId, contextSpaceId, contactId, sourceInteractionId, updatedAt], map: "LivingUnderstandingDraft_bound_work_idx")
+  @@index([baselineRevisionId])
+  @@index([expiresAt])
 }
 
 // IT: Source evidence for a KnowledgeClaim. Multiple interactions can support the same claim.

@@ -13,6 +13,8 @@ import {
   evolveLongitudinalUnderstandingReadOnly,
   restructureLivingUnderstandingReadOnly
 } from '$lib/server/datingUnderstandingRevisionExperiment';
+import { createLivingUnderstandingAdoptionToken, adoptLivingUnderstanding, describeLivingUnderstandingPersistenceError } from '$lib/server/datingPersistedLivingUnderstanding';
+import { saveLivingUnderstandingDraft, loadLivingUnderstandingDraft, completeLivingUnderstandingDraft, getLatestLivingUnderstandingDraftSummary } from '$lib/server/datingLivingUnderstandingDraft';
 
 function authorisedScope(locals: App.Locals, id: string) {
   if (!locals.user) throw redirect(303, '/auth/login');
@@ -24,10 +26,11 @@ function authorisedScope(locals: App.Locals, id: string) {
 export const load: PageServerLoad = async ({ locals, params, url }) => {
   const scope = authorisedScope(locals, params.id);
   const sourceId = String(url.searchParams.get('sourceInteractionId') || '');
-  const [tree, source, history] = await Promise.all([
+  const [tree, source, history, latestDraft] = await Promise.all([
     listUnderstandingTopics(scope),
     sourceId ? requireSourceReflection(scope, sourceId) : Promise.resolve(null),
-    loadPersonHistory(scope)
+    loadPersonHistory(scope),
+    getLatestLivingUnderstandingDraftSummary(scope)
   ]);
   // IT: Longitudinal follow-up remains source-custody local. Only later private reflections or
   // conversation excerpts for this same person are offered as the second source. Text is not
@@ -42,6 +45,7 @@ export const load: PageServerLoad = async ({ locals, params, url }) => {
     sourceId: source?.id ?? '',
     sourceKind: source?.sourceKind ?? null,
     laterSources,
+    latestDraft,
     topics: tree.flatMap(realm => realm.topics.map(topic => ({ id: topic.id, label: `${realm.name} / ${topic.name}`, count: topic.claims.length })))
   };
 };
@@ -178,12 +182,18 @@ export const actions: Actions = {
         semanticBoundary: revision.semanticBoundary,
         excludedTopicHints: revision.excludedTopicHints
       }));
+      const draftCheckpoint = await saveLivingUnderstandingDraft(scope, 'BASELINE_READY', {
+        longitudinalSeed,
+        priorOperationalUnits: operational.units,
+        chainHistory: []
+      });
       return {
         revisions,
         operationalUnits: operational.units,
         operationalErrors: operational.errors,
         revisionBatchSummary: { selectedAreaCount: selectedAreas.length, targetCount: revisionTargets.length, batchCount: revisionBatches.length, batchSize: 8 },
-        longitudinalSeed
+        longitudinalSeed,
+        draftCheckpoint
       };
     } catch (err) {
       return fail(502, { revisionError: safeExperimentError(err) });
@@ -272,7 +282,12 @@ export const actions: Actions = {
         }))
       });
       longitudinal.chainHistory = chainHistory.slice(-6);
-      return { longitudinal };
+      const draftCheckpoint = await saveLivingUnderstandingDraft(scope, 'LONGITUDINAL_READY', {
+        longitudinalSeed: longitudinal.nextLongitudinalSeed,
+        priorOperationalUnits: longitudinal.nextOperationalUnits ?? priorOperationalUnits,
+        chainHistory: longitudinal.chainHistory
+      }, String(form.get('draftCheckpointId') || ''));
+      return { longitudinal, draftCheckpoint };
     } catch (err) {
       return fail(502, { revisionError: safeExperimentError(err) });
     }
@@ -307,11 +322,66 @@ export const actions: Actions = {
         status: ['ACTIVE', 'POTENTIAL_CONFLICT', 'POTENTIAL_RETIREMENT'].includes(String(row?.status)) ? String(row.status) : 'ACTIVE'
       })).filter((row: any) => row.statement);
 
+      const chainHistory = sanitiseChainHistory(parseJsonArray(form.get('chainHistoryJson')));
+      const draftCheckpoint = await saveLivingUnderstandingDraft(scope, 'STRUCTURE_READY', {
+        longitudinalSeed: seedValidation.seeds,
+        priorOperationalUnits,
+        chainHistory
+      }, String(form.get('draftCheckpointId') || ''));
       const restructuring = await restructureLivingUnderstandingReadOnly(scope, seedValidation.seeds, priorOperationalUnits);
-      restructuring.chainHistory = sanitiseChainHistory(parseJsonArray(form.get('chainHistoryJson')));
-      return { restructuring };
+      restructuring.chainHistory = chainHistory;
+      (restructuring as any).draftCheckpointId = draftCheckpoint.id;
+      if (restructuring.analysis.validForReview && !restructuring.analysis.errors.length) {
+        (restructuring as any).adoptionToken = createLivingUnderstandingAdoptionToken(scope, restructuring);
+      }
+      return { restructuring, draftCheckpoint };
     } catch (err) {
       return fail(502, { revisionError: safeExperimentError(err) });
     }
+  },
+
+  retryRestructuring: async ({ locals, params, request }) => {
+    const scope = authorisedScope(locals, params.id);
+    const form = await request.formData();
+    if (form.get('consent') !== 'YES') {
+      return fail(400, { revisionError: 'Explicitly authorise retrying structural review from the saved working checkpoint.' });
+    }
+    try {
+      const draft = await loadLivingUnderstandingDraft(scope, String(form.get('draftCheckpointId') || ''));
+      const seedValidation = validateLongitudinalSeed(draft.longitudinalSeed);
+      if (!seedValidation.validForReview) return fail(400, { revisionError: seedValidation.errors[0] || 'The saved working checkpoint is invalid.' });
+      const restructuring = await restructureLivingUnderstandingReadOnly(scope, seedValidation.seeds, draft.priorOperationalUnits as any[]);
+      restructuring.chainHistory = sanitiseChainHistory(draft.chainHistory);
+      (restructuring as any).draftCheckpointId = draft.id;
+      if (restructuring.analysis.validForReview && !restructuring.analysis.errors.length) {
+        (restructuring as any).adoptionToken = createLivingUnderstandingAdoptionToken(scope, restructuring);
+      }
+      await saveLivingUnderstandingDraft(scope, restructuring.analysis.validForReview ? 'STRUCTURE_VALID' : 'STRUCTURE_NEEDS_REPAIR', {
+        longitudinalSeed: seedValidation.seeds,
+        priorOperationalUnits: draft.priorOperationalUnits,
+        chainHistory: restructuring.chainHistory
+      }, draft.id);
+      return { restructuring, draftCheckpoint: { id: draft.id, stage: restructuring.analysis.validForReview ? 'STRUCTURE_VALID' : 'STRUCTURE_NEEDS_REPAIR' } };
+    } catch (err) {
+      return fail(502, { revisionError: safeExperimentError(err) });
+    }
+  },
+
+  adoptRestructuring: async ({ locals, params, request }) => {
+    const scope = authorisedScope(locals, params.id);
+    const form = await request.formData();
+    if (form.get('approve') !== 'YES') return fail(400, { revisionError: 'Explicitly approve this validated Living Understanding before saving it.' });
+    try {
+      await adoptLivingUnderstanding(scope, String(form.get('adoptionToken') || ''));
+      await completeLivingUnderstandingDraft(scope, String(form.get('draftCheckpointId') || ''));
+    } catch (err) {
+      if (process.env.NODE_ENV !== 'production') {
+        const diagnostic = describeLivingUnderstandingPersistenceError(err);
+        console.error('[living-understanding] adoption failed:', diagnostic);
+        return fail(400, { revisionError: `Living Understanding save failed in development: ${diagnostic}. No stored knowledge was changed.` });
+      }
+      return fail(400, { revisionError: 'Living Understanding could not be saved. No stored knowledge was changed.' });
+    }
+    throw redirect(303, `/dating/people/${params.id}/understanding?livingSaved=1`);
   }
 };

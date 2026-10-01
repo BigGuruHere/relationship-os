@@ -66,7 +66,19 @@
   <a href={`/dating/people/${data.personId}/understanding${data.sourceId ? `?sourceInteractionId=${encodeURIComponent(data.sourceId)}` : ''}`}>← Return to existing understanding workflow</a>
   <h1>Semantic Living Understanding experiment</h1>
   <p>This read-only experiment separates a private source into distinct areas of understanding before proposing topic revisions. It also distinguishes rich Living Understanding from the smaller set of knowledge that may need its own operational or permission boundary.</p>
-  <p><strong>Nothing here is saved, confirmed, retired, moved between topics, made discoverable or made shareable.</strong> Suggested topics and operational knowledge units are experimental proposals only.</p>
+  <p><strong>Nothing here is authoritative, confirmed, retired, made discoverable or made shareable.</strong> Relish may save short-lived encrypted working checkpoints so a failed later stage does not force you to repeat successful comparisons. Suggested topics and operational knowledge units remain experimental until explicitly approved.</p>
+
+  {#if data.latestDraft && String(data.latestDraft.stage || '').startsWith('STRUCTURE')}
+    <section class="panel">
+      <h2>Resume saved structural checkpoint</h2>
+      <p class="muted">A short-lived encrypted working checkpoint exists for this person. Retrying from it does not repeat the earlier comparison chain and does not make any knowledge authoritative.</p>
+      <form method="POST" action="?/retryRestructuring" use:enhance>
+        <input type="hidden" name="draftCheckpointId" value={data.latestDraft.id} />
+        <label class="consent"><input name="consent" type="checkbox" value="YES" required /> I authorise retrying structural review from the saved private working checkpoint.</label>
+        <button type="submit">Resume structural review</button>
+      </form>
+    </section>
+  {/if}
 
   {#if !data.sourceId}
     <p class="warning">Open this experiment from a person's original reflection or conversation review to select an authorised source.</p>
@@ -239,6 +251,7 @@
               <input type="hidden" name="baselineSourceInteractionId" value={data.sourceId} />
               <input type="hidden" name="longitudinalSeedJson" value={serialiseLongitudinalSeed(form.longitudinalSeed)} />
               <input type="hidden" name="priorOperationalUnitsJson" value={serialiseOperationalUnits(form.operationalUnits ?? [])} />
+              <input type="hidden" name="draftCheckpointId" value={form.draftCheckpoint?.id || ''} />
               <label>Later source
                 <select name="nextSourceInteractionId" required>
                   <option value="">Choose a later source</option>
@@ -360,6 +373,7 @@
             <input type="hidden" name="longitudinalSeedJson" value={serialiseLongitudinalSeed(form.longitudinal.nextLongitudinalSeed)} />
             <input type="hidden" name="priorOperationalUnitsJson" value={serialiseOperationalUnits(form.longitudinal.nextOperationalUnits)} />
             <input type="hidden" name="chainHistoryJson" value={serialiseChainHistory(form.longitudinal.chainHistory)} />
+            <input type="hidden" name="draftCheckpointId" value={form.draftCheckpoint?.id || ''} />
             <label>Next later source
               <select name="nextSourceInteractionId" required>
                 <option value="">Choose the next source</option>
@@ -383,6 +397,7 @@
           <input type="hidden" name="longitudinalSeedJson" value={serialiseLongitudinalSeed(form.longitudinal.nextLongitudinalSeed)} />
           <input type="hidden" name="priorOperationalUnitsJson" value={serialiseOperationalUnits(form.longitudinal.nextOperationalUnits)} />
           <input type="hidden" name="chainHistoryJson" value={serialiseChainHistory(form.longitudinal.chainHistory)} />
+            <input type="hidden" name="draftCheckpointId" value={form.draftCheckpoint?.id || ''} />
           <label class="consent"><input name="consent" type="checkbox" value="YES" required /> I authorise sending the current temporary read-only understanding to the configured AI provider for structural review.</label>
           <button type="submit">Review topic structure</button>
         </form>
@@ -398,8 +413,23 @@
       <h2>Proposed cleaner Living Understanding structure</h2>
       <p class="muted">This is a structural proposal only. It may split, narrow, merge, move or rename topics, but it must not add facts, erase prior meaning, resolve contradictions or change uncertainty.</p>
 
+      {#if form.restructuring.repairAttempted}
+        <p class="muted"><strong>Validator-guided repair:</strong> {form.restructuring.repairSucceeded ? 'The first structural response failed deterministic validation, so Relish ran one bounded repair pass and this is the repaired result.' : 'The first structural response failed deterministic validation and one bounded repair pass was attempted. The result still has blocking validation warnings below.'}</p>
+      {/if}
+
       {#if form.restructuring.analysis.errors?.length}
         <div class="warning"><strong>Structural validation warnings. Do not adopt this proposal.</strong><ul>{#each form.restructuring.analysis.errors as item}<li>{item}</li>{/each}</ul></div>
+        {#if form.restructuring.draftCheckpointId}
+          <div class="continue-chain">
+            <h3>Retry only the structural stage</h3>
+            <p class="muted">The successful comparison chain is saved as a temporary encrypted checkpoint. You do not need to repeat the earlier source comparisons. Relish will retry structural review from that checkpoint and preserve all validated earlier work.</p>
+            <form method="POST" action="?/retryRestructuring" use:enhance>
+              <input type="hidden" name="draftCheckpointId" value={form.restructuring.draftCheckpointId} />
+              <label class="consent"><input name="consent" type="checkbox" value="YES" required /> I authorise retrying structural review from this saved private working checkpoint.</label>
+              <button type="submit">Retry structural review only</button>
+            </form>
+          </div>
+        {/if}
       {/if}
 
       {#if form.restructuring.analysis.audits?.length}
@@ -409,17 +439,46 @@
           <article class="item">
             <p><strong>{audit.topicName}</strong> → recommended {audit.recommendedOperation}</p>
             {#if audit.semanticConcepts?.length}<p class="muted"><strong>Concepts:</strong> {audit.semanticConcepts.join(' · ')}</p>{/if}
-            <p class="muted"><strong>Flags:</strong> {audit.contaminationFlags.join(', ')} · <strong>KEEP coherent:</strong> {audit.keepCoherent ? 'yes' : 'no'} · <strong>Title fits current state:</strong> {audit.titleFitsCurrentState ? 'yes' : 'no'}</p>
+            <p class="muted"><strong>Flags:</strong> {audit.contaminationFlags.join(', ')} · <strong>KEEP coherent:</strong> {audit.keepCoherent ? 'yes' : 'no'} · <strong>Title fits current state:</strong> {audit.titleFitsCurrentState ? 'yes' : 'no'}{form.restructuring.analysis.identityContract ? ` · Meaning coverage: ${audit.meaningUnitsComplete ? 'complete' : 'incomplete'}` : ''}</p>
             {#if audit.titleCurrentStateConcern}<p class="muted"><strong>Title concern:</strong> {audit.titleCurrentStateConcern}</p>{/if}
             {#if audit.explanation}<p>{audit.explanation}</p>{/if}
           </article>
         {/each}
       {/if}
 
+      {#if form.restructuring.analysis.ownershipContract}
+        <h3>Temporal and semantic ownership validation</h3>
+        <p class="muted">Every durable meaning unit must have exactly one primary semantic home, retain its temporal role, and pass a no-mutation fidelity check.</p>
+        {#each form.restructuring.analysis.ownership as item (item.ref)}
+          <article class="item">
+            <p><strong>{item.sourceTopicName}</strong> · {item.temporalRole}</p>
+            <p>{item.sourceExcerpt}</p>
+            {#if item.purposeContext}<p class="muted"><strong>Purpose/context:</strong> {item.purposeContext}</p>{/if}
+            <p class="muted"><strong>Primary home:</strong> {item.primaryHome || 'missing'}{item.primaryHomeFit ? ` · ${item.primaryHomeFit}` : ''}{item.primaryHomeSource === 'OVERLAP_GROUP' || item.primaryHomeSource === 'OVERLAP_GROUP_IDENTITY' ? ' · server-resolved from semantic identity group' : ''}{item.representedBy?.length > 1 ? ` · referenced by ${item.representedBy.length} topics` : ''}</p>
+          </article>
+        {/each}
+      {/if}
+
+      {#if form.restructuring.analysis.identityContract}
+        <h3>Semantic identity validation</h3>
+        <p class="muted">Equivalent or substantially overlapping meaning across prior topics must converge on one primary semantic home. Completion is derived by the server from validated coverage, group consistency and an independent lexical-overlap backstop, rather than trusted from a model completion flag.</p>
+        {#if form.restructuring.analysis.semanticOverlapGroups?.length}
+          {#each form.restructuring.analysis.semanticOverlapGroups as group (group.groupId)}
+            <article class="item">
+              <p><strong>{group.groupId}</strong> · {group.relationship}</p>
+              <p>{group.canonicalMeaning}</p>
+              <p class="muted">{group.meaningUnitRefs.join(' · ')}</p>
+            </article>
+          {/each}
+        {:else}
+          <p class="muted">No cross-topic semantic overlap groups were declared.</p>
+        {/if}
+      {/if}
+
       {#each form.restructuring.analysis.proposedTopics as topic (topic.targetKey)}
         <article class="revision">
           <h3>{topic.label} <span class="impact">{topic.operation}</span></h3>
-          <p class="muted"><strong>Built from:</strong> {topic.sourceTargetKeys.map((key: string) => form.restructuring.priorSeeds.find((seed: any) => seed.targetKey === key)?.topicName ?? key).join(' + ')}</p>
+          <p class="muted"><strong>Built from:</strong> {topic.sourceTargetKeys.map((key: string) => form.restructuring.priorSeeds.find((seed: any) => seed.targetKey === key)?.topicName ?? key).join(' + ')}{topic.temporalScope ? ` · ${topic.temporalScope}` : ''}</p>
           <p class="understanding">{topic.proposedUnderstanding}</p>
           {#if topic.reason}<p><strong>Why restructure:</strong> {topic.reason}</p>{/if}
         </article>
@@ -437,6 +496,19 @@
         <p class="muted"><strong>Longitudinal history preserved:</strong> this restructuring proposal keeps the existing read-only evolution chain and source provenance. It does not rewrite the historical versions.</p>
       {/if}
 
+      {#if form.restructuring.adoptionToken && !form.restructuring.analysis.errors?.length}
+        <div class="adoption-panel">
+          <h3>Approve and save this Living Understanding</h3>
+          <p class="muted">This is the authoritative persistence step. The displayed topic understandings will be stored as a new immutable revision. Earlier revisions and source history remain intact. This does not grant matching, sharing or disclosure permission.</p>
+          <form method="POST" action="?/adoptRestructuring">
+            <input type="hidden" name="adoptionToken" value={form.restructuring.adoptionToken} />
+            <input type="hidden" name="draftCheckpointId" value={form.restructuring.draftCheckpointId || ''} />
+            <label class="consent"><input name="approve" type="checkbox" value="YES" required /> I have reviewed this validated structure and approve saving it as the current Living Understanding.</label>
+            <button type="submit">Approve and save Living Understanding</button>
+          </form>
+        </div>
+      {/if}
+
       {#if remainingRestructureSources().length}
         <div class="continue-chain">
           <h3>Continue from the restructured baseline</h3>
@@ -446,6 +518,7 @@
             <input type="hidden" name="longitudinalSeedJson" value={serialiseLongitudinalSeed(form.restructuring.restructuredLongitudinalSeed)} />
             <input type="hidden" name="priorOperationalUnitsJson" value={serialiseOperationalUnits(form.restructuring.priorOperationalUnits)} />
             <input type="hidden" name="chainHistoryJson" value={serialiseChainHistory(form.restructuring.chainHistory)} />
+            <input type="hidden" name="draftCheckpointId" value={form.restructuring.draftCheckpointId || form.draftCheckpoint?.id || ''} />
             <label>Next later source
               <select name="nextSourceInteractionId" required>
                 <option value="">Choose the next source</option>
@@ -494,7 +567,7 @@
   .chain-version summary { cursor: pointer; }
   .chain-topic { border-top: 1px solid var(--border-color, #aaa); padding-top: .65rem; margin-top: .65rem; }
   .chain-topic p { margin-bottom: 0; white-space: pre-wrap; }
-  .continue-chain, .restructure-start { margin-top: 2rem; border-top: 2px solid var(--border-color, #aaa); padding-top: 1rem; }
+  .continue-chain, .restructure-start, .adoption-panel { margin-top: 2rem; border-top: 2px solid var(--border-color, #aaa); padding-top: 1rem; }
   .operational-preview, .longitudinal { margin-top: 1rem; padding-top: .75rem; border-top: 2px solid var(--border-color, #aaa); }
   select { width: 100%; padding: .6rem; margin-top: .35rem; }
 </style>

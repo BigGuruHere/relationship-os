@@ -526,6 +526,64 @@ export function validateLongitudinalOperationalDraft(raw, priorUnits, targetTurn
 }
 
 
+// Stage 8.12.13.9.1: normalization used only to verify that a model-supplied meaning-unit
+// excerpt really came from the prior read-only understanding. It deliberately normalizes only
+// whitespace and quote glyphs, not words or meaning.
+function normalizeMeaningExcerpt(value) {
+  return String(value ?? '')
+    .replace(/[‘’]/g, "'")
+    .replace(/[“”]/g, '"')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+
+// Stage 8.12.13.9.2: deterministic coverage and duplicate guards. The model still proposes
+// semantic structure, but the validator independently verifies that declared meaning-unit
+// excerpts cover the full source understanding and that obvious paraphrase duplicates cannot
+// acquire different primary homes.
+function normaliseCoverageText(value) {
+  return normalizeMeaningExcerpt(value).toLocaleLowerCase();
+}
+
+function uncoveredCoverageText(source, excerpts) {
+  const normalisedSource = normaliseCoverageText(source);
+  if (!normalisedSource) return '';
+  const covered = new Array(normalisedSource.length).fill(false);
+  for (const excerpt of excerpts) {
+    const target = normaliseCoverageText(excerpt);
+    if (!target) continue;
+    let start = 0;
+    while (start <= normalisedSource.length - target.length) {
+      const index = normalisedSource.indexOf(target, start);
+      if (index < 0) break;
+      for (let i = index; i < index + target.length; i += 1) covered[i] = true;
+      start = index + Math.max(target.length, 1);
+    }
+  }
+  const residual = [...normalisedSource].map((char, index) => covered[index] ? ' ' : char).join('');
+  // Ignore only punctuation/spacing and grammatical glue. Any remaining content word means
+  // the model failed to inventory part of the prior understanding.
+  const glue = new Set(['a','an','and','as','at','but','by','for','from','he','her','his','i','if','in','is','it','of','on','or','she','that','the','their','them','they','this','to','was','were','while','with']);
+  return (residual.match(/[a-z0-9]+(?:'[a-z0-9]+)?/g) ?? []).filter(token => !glue.has(token)).join(' ');
+}
+
+function semanticTokens(value) {
+  const stop = new Set(['a','an','and','as','at','be','been','being','but','by','can','could','for','from','had','has','have','he','her','his','i','if','in','is','it','may','might','of','on','or','she','should','that','the','their','them','they','this','to','was','were','while','will','with','would']);
+  return new Set((normaliseCoverageText(value).match(/[a-z0-9]+(?:'[a-z0-9]+)?/g) ?? []).filter(token => token.length > 2 && !stop.has(token)));
+}
+
+function semanticOverlapScore(a, b) {
+  const left = semanticTokens(a);
+  const right = semanticTokens(b);
+  if (left.size < 4 || right.size < 4) return 0;
+  const intersection = [...left].filter(token => right.has(token)).length;
+  const union = new Set([...left, ...right]).size;
+  const jaccard = union ? intersection / union : 0;
+  const containment = intersection / Math.min(left.size, right.size);
+  return Math.max(jaccard, containment * 0.9);
+}
+
 // Stage 8.12.13.8.3: validate a read-only restructuring proposal. This is structural only:
 // every prior topic must remain represented in at least one proposed topic so restructuring
 // cannot silently erase current understanding. One prior topic may map to several proposed
@@ -538,11 +596,18 @@ export function validateTopicRestructureDraft(raw, priorSeeds) {
   const proposedTopics = [];
   const errors = [];
   const seenTargetKeys = new Set();
+  const ownershipContract = ['8.12.13.9.1', '8.12.13.9.2', '8.12.13.9.2.1', '8.12.13.9.2.2', '8.12.15'].includes(String(raw.validationContractVersion ?? ''));
+  const identityContract = ['8.12.13.9.2', '8.12.13.9.2.1', '8.12.13.9.2.2', '8.12.15'].includes(String(raw.validationContractVersion ?? ''));
+  const closureContract = ['8.12.13.9.2.1', '8.12.13.9.2.2', '8.12.15'].includes(String(raw.validationContractVersion ?? ''));
+  const primaryHomeCompletionContract = ['8.12.13.9.2.2', '8.12.15'].includes(String(raw.validationContractVersion ?? ''));
+  const incrementalRecoveryContract = String(raw.validationContractVersion ?? '') === '8.12.15';
+  const meaningUnitByRef = new Map();
+  const meaningUnitRefsBySource = new Map();
 
   // Stage 8.12.13.8.3.1: require an explicit contamination audit for every prior topic before
   // accepting KEEP. This does not try to semantically judge the model with heuristics. Instead,
   // it makes the model expose its own structural tests and rejects internally inconsistent KEEP decisions.
-  const allowedFlags = new Set(['NONE', 'MULTIPLE_INDEPENDENT_CONCEPTS', 'BELONGS_ELSEWHERE', 'TOPIC_NAME_MISMATCH', 'DUPLICATES_OTHER_TOPIC']);
+  const allowedFlags = new Set(['NONE', 'MULTIPLE_INDEPENDENT_CONCEPTS', 'COHERENT_MULTI_DIMENSIONAL', 'BELONGS_ELSEWHERE', 'TOPIC_NAME_MISMATCH', 'DUPLICATES_OTHER_TOPIC']);
   const audits = [];
   const auditByKey = new Map();
   for (const row of (Array.isArray(raw.topicAudits) ? raw.topicAudits.slice(0, 30) : [])) {
@@ -569,6 +634,35 @@ export function validateTopicRestructureDraft(raw, priorSeeds) {
     // trusting a contradictory model boolean. A clean KEEP recommendation with no overlap
     // or contamination flags is coherent even if the model accidentally emitted false.
     const keepCoherent = recommendedOperation === 'KEEP' && positiveFlags.length === 0 && overlappingTargetKeys.length === 0 && titleFitsCurrentState;
+    const meaningUnits = [];
+    if (ownershipContract) {
+      const sourceUnderstanding = normalizeMeaningExcerpt(byKey.get(targetKey)?.proposedUnderstanding ?? '');
+      const seenUnitIds = new Set();
+      for (const unit of (Array.isArray(row.meaningUnits) ? row.meaningUnits.slice(0, 30) : [])) {
+        if (!unit || typeof unit !== 'object') continue;
+        const unitId = String(unit.unitId ?? '').trim().slice(0, 40);
+        const sourceExcerpt = String(unit.sourceExcerpt ?? '').trim().slice(0, 1800);
+        const temporalRole = ['CURRENT', 'HISTORICAL', 'MIXED'].includes(String(unit.temporalRole)) ? String(unit.temporalRole) : '';
+        const purposeContext = String(unit.purposeContext ?? '').trim().slice(0, 1000);
+        if (!unitId || seenUnitIds.has(unitId) || sourceExcerpt.length < 8 || !temporalRole || (identityContract && purposeContext.length < 8)) continue;
+        const normalizedExcerpt = normalizeMeaningExcerpt(sourceExcerpt);
+        if (!sourceUnderstanding.includes(normalizedExcerpt)) {
+          errors.push(`Meaning unit ${targetKey}#${unitId} is not an exact excerpt of its prior understanding.`);
+          continue;
+        }
+        seenUnitIds.add(unitId);
+        const ref = `${targetKey}#${unitId}`;
+        const parsed = { ref, targetKey, unitId, sourceExcerpt, temporalRole, purposeContext };
+        meaningUnits.push(parsed);
+        meaningUnitByRef.set(ref, parsed);
+      }
+      meaningUnitRefsBySource.set(targetKey, meaningUnits.map(unit => unit.ref));
+      if (!meaningUnits.length) errors.push(`No validated meaning units were supplied for ${byKey.get(targetKey)?.topicName ?? targetKey}.`);
+      if (identityContract && meaningUnits.length) {
+        const uncovered = uncoveredCoverageText(byKey.get(targetKey)?.proposedUnderstanding ?? '', meaningUnits.map(unit => unit.sourceExcerpt));
+        if (uncovered) errors.push(`Meaning-unit coverage for ${byKey.get(targetKey)?.topicName ?? targetKey} is incomplete; uncovered content: ${uncovered.slice(0, 180)}.`);
+      }
+    }
     const audit = {
       targetKey,
       topicName: byKey.get(targetKey)?.topicName ?? targetKey,
@@ -579,7 +673,9 @@ export function validateTopicRestructureDraft(raw, priorSeeds) {
       keepCoherent,
       titleFitsCurrentState,
       titleCurrentStateConcern,
-      explanation: String(row.explanation ?? '').trim().slice(0, 1600)
+      explanation: String(row.explanation ?? '').trim().slice(0, 1600),
+      meaningUnitsComplete: identityContract ? !uncoveredCoverageText(byKey.get(targetKey)?.proposedUnderstanding ?? '', meaningUnits.map(unit => unit.sourceExcerpt)) : row.meaningUnitsComplete === true,
+      meaningUnits
     };
     audits.push(audit);
     auditByKey.set(targetKey, audit);
@@ -620,6 +716,58 @@ export function validateTopicRestructureDraft(raw, priorSeeds) {
         }
       }
     }
+    const temporalScope = ['CURRENT', 'HISTORICAL', 'MIXED'].includes(String(row.temporalScope)) ? String(row.temporalScope) : '';
+    const meaningUnitRefs = Array.isArray(row.meaningUnitRefs)
+      ? [...new Set(row.meaningUnitRefs.map(value => String(value ?? '').trim()).filter(value => meaningUnitByRef.has(value)))].slice(0, 60)
+      : [];
+    const primaryMeaningUnitRefs = Array.isArray(row.primaryMeaningUnitRefs)
+      ? [...new Set(row.primaryMeaningUnitRefs.map(value => String(value ?? '').trim()).filter(value => meaningUnitByRef.has(value)))].slice(0, 60)
+      : [];
+    const meaningChecks = [];
+    if (ownershipContract) {
+      if (!temporalScope) errors.push(`Proposed topic ${realm} / ${topicName} has no temporal scope.`);
+      if (!meaningUnitRefs.length) errors.push(`Proposed topic ${realm} / ${topicName} has no validated meaning-unit references.`);
+      if (primaryMeaningUnitRefs.some(ref => !meaningUnitRefs.includes(ref))) errors.push(`Proposed topic ${realm} / ${topicName} claims primary ownership of meaning it does not represent.`);
+      const checksByRef = new Map();
+      for (const check of (Array.isArray(row.meaningChecks) ? row.meaningChecks.slice(0, 70) : [])) {
+        if (!check || typeof check !== 'object') continue;
+        const meaningUnitRef = String(check.meaningUnitRef ?? '').trim();
+        if (!meaningUnitRefs.includes(meaningUnitRef) || checksByRef.has(meaningUnitRef)) continue;
+        const fidelity = ['SAME_MEANING', 'STRENGTHENED', 'WEAKENED', 'INFERRED', 'TEMPORAL_SHIFT'].includes(String(check.fidelity)) ? String(check.fidelity) : '';
+        if (!fidelity) continue;
+        const primaryHomeFit = ['PURPOSE_CONTEXT_FIT', 'SURFACE_ONLY', 'AMBIGUOUS'].includes(String(check.primaryHomeFit)) ? String(check.primaryHomeFit) : '';
+        const parsed = {
+          meaningUnitRef,
+          proposedMeaning: String(check.proposedMeaning ?? '').trim().slice(0, 1600),
+          fidelity,
+          primaryHomeFit,
+          explanation: String(check.explanation ?? '').trim().slice(0, 1200)
+        };
+        meaningChecks.push(parsed);
+        checksByRef.set(meaningUnitRef, parsed);
+        if (fidelity !== 'SAME_MEANING') errors.push(`Semantic mutation ${fidelity} detected for ${meaningUnitRef} in ${realm} / ${topicName}.`);
+        if (identityContract && primaryMeaningUnitRefs.includes(meaningUnitRef) && primaryHomeFit !== 'PURPOSE_CONTEXT_FIT') {
+          errors.push(`Primary-home assignment for ${meaningUnitRef} in ${realm} / ${topicName} is not grounded in purpose/context (${primaryHomeFit || 'missing'}).`);
+        }
+        if (closureContract && primaryMeaningUnitRefs.includes(meaningUnitRef) && primaryHomeFit === 'PURPOSE_CONTEXT_FIT') {
+          const unit = meaningUnitByRef.get(meaningUnitRef);
+          const purpose = String(unit?.purposeContext ?? '');
+          const purposeSignals = /\b(goal|preference|readiness|history|priority|pattern|intention|tactic|plan|purpose|attribute|dynamic|recreation|social|work|family)\b/i;
+          const homeRationale = `${realm} ${topicName} ${String(row.reason ?? '')}`;
+          if (purposeSignals.test(purpose) && semanticOverlapScore(purpose, homeRationale) === 0) {
+            errors.push(`Primary-home purpose backstop found no semantic support for ${meaningUnitRef} in ${realm} / ${topicName}.`);
+          }
+        }
+      }
+      for (const ref of meaningUnitRefs) {
+        if (!checksByRef.has(ref)) errors.push(`Missing semantic-fidelity check for ${ref} in ${realm} / ${topicName}.`);
+      }
+      for (const ref of primaryMeaningUnitRefs) {
+        const unit = meaningUnitByRef.get(ref);
+        if (unit?.temporalRole === 'CURRENT' && temporalScope === 'HISTORICAL') errors.push(`Current meaning ${ref} cannot have a historical primary home (${realm} / ${topicName}).`);
+        if (unit?.temporalRole === 'HISTORICAL' && temporalScope === 'CURRENT') errors.push(`Historical meaning ${ref} cannot have a current-only primary home (${realm} / ${topicName}).`);
+      }
+    }
     proposedTopics.push({
       targetKey,
       realm,
@@ -628,8 +776,171 @@ export function validateTopicRestructureDraft(raw, priorSeeds) {
       proposedUnderstanding,
       sourceTargetKeys,
       reason: String(row.reason ?? '').trim().slice(0, 1600),
-      operation
+      operation,
+      temporalScope,
+      meaningUnitRefs,
+      primaryMeaningUnitRefs,
+      meaningChecks
     });
+  }
+
+  const ownership = [];
+  const representedCount = new Map([...meaningUnitByRef.keys()].map(ref => [ref, 0]));
+  const primaryOwners = new Map([...meaningUnitByRef.keys()].map(ref => [ref, []]));
+  if (ownershipContract) {
+    for (const topic of proposedTopics) {
+      for (const ref of topic.meaningUnitRefs) representedCount.set(ref, (representedCount.get(ref) ?? 0) + 1);
+      for (const ref of topic.primaryMeaningUnitRefs) primaryOwners.get(ref)?.push(topic.label);
+    }
+    for (const [ref, unit] of meaningUnitByRef.entries()) {
+      const representedBy = proposedTopics.filter(topic => topic.meaningUnitRefs.includes(ref)).map(topic => topic.label);
+      if (!(representedCount.get(ref) > 0)) errors.push(`Meaning unit ${ref} was silently omitted from the proposed structure.`);
+      ownership.push({
+        ref,
+        sourceTopicName: byKey.get(unit.targetKey)?.topicName ?? unit.targetKey,
+        sourceExcerpt: unit.sourceExcerpt,
+        temporalRole: unit.temporalRole,
+        purposeContext: unit.purposeContext ?? '',
+        primaryHome: '',
+        primaryHomeFit: '',
+        primaryHomeSource: '',
+        representedBy
+      });
+    }
+    for (const seed of previous) {
+      if (!(meaningUnitRefsBySource.get(seed.targetKey)?.length)) errors.push(`No durable meaning-unit inventory exists for ${seed.topicName}.`);
+    }
+  }
+
+  const semanticOverlapGroups = [];
+  if (identityContract) {
+    const groupByRef = new Map();
+    for (const row of (Array.isArray(raw.semanticOverlapGroups) ? raw.semanticOverlapGroups.slice(0, 40) : [])) {
+      if (!row || typeof row !== 'object') continue;
+      const groupId = String(row.groupId ?? '').trim().slice(0, 80);
+      const refs = Array.isArray(row.meaningUnitRefs)
+        ? [...new Set(row.meaningUnitRefs.map(value => String(value ?? '').trim()).filter(value => meaningUnitByRef.has(value)))].slice(0, 12)
+        : [];
+      if (!groupId || refs.length < 2) continue;
+      const relationship = ['EQUIVALENT', 'SUBSTANTIALLY_OVERLAPPING'].includes(String(row.relationship)) ? String(row.relationship) : '';
+      if (!relationship) continue;
+      const group = { groupId, meaningUnitRefs: refs, relationship, canonicalMeaning: String(row.canonicalMeaning ?? '').trim().slice(0, 1200) };
+      semanticOverlapGroups.push(group);
+      for (const ref of refs) {
+        if (!groupByRef.has(ref)) groupByRef.set(ref, []);
+        groupByRef.get(ref).push(groupId);
+      }
+      const homes = [...new Set(refs.flatMap(ref => primaryOwners.get(ref) ?? []).filter(Boolean))];
+      if (homes.length > 1) errors.push(`Semantic overlap group ${groupId} has multiple primary homes: ${homes.join(' | ')}.`);
+    }
+    // Stage 8.12.13.9.2.1: semantic-identity completion is server-derived. For the prior
+    // 9.2 contract retain its original explicit completion requirement for regression safety;
+    // under 9.2.1+ the model field is compatibility/debug metadata only.
+    if (!closureContract && raw.semanticIdentityAuditComplete !== true) errors.push('Semantic identity audit was not declared complete.');
+
+    // Stage 8.12.13.9.2.2: close a narrow model-output gap. If a meaning unit is represented
+    // by the same proposed topic as the other members of a declared overlap group, and that group
+    // already has exactly one validated primary home, inherit that home deterministically.
+    // This never invents a home: the topic must already represent the meaning and its mapping must
+    // preserve meaning and be grounded in purpose/context.
+    if (primaryHomeCompletionContract) {
+      for (const group of semanticOverlapGroups) {
+        const declaredHomes = [...new Set(group.meaningUnitRefs.flatMap(ref => primaryOwners.get(ref) ?? []).filter(Boolean))];
+        if (declaredHomes.length !== 1) continue;
+        const inheritedHome = declaredHomes[0];
+        const inheritedTopic = proposedTopics.find(topic => topic.label === inheritedHome);
+        if (!inheritedTopic) continue;
+        for (const ref of group.meaningUnitRefs) {
+          const owners = primaryOwners.get(ref) ?? [];
+          if (owners.length !== 0) continue;
+          if (inheritedTopic.meaningUnitRefs.includes(ref)) {
+            const check = inheritedTopic.meaningChecks.find(item => item.meaningUnitRef === ref);
+            if (!check || check.fidelity !== 'SAME_MEANING' || check.primaryHomeFit !== 'PURPOSE_CONTEXT_FIT') continue;
+            inheritedTopic.primaryMeaningUnitRefs = [...new Set([...inheritedTopic.primaryMeaningUnitRefs, ref])];
+            primaryOwners.set(ref, [inheritedHome]);
+            continue;
+          }
+          // Stage 8.12.15: ownership is metadata, not duplicated prose. When a declared semantic
+          // identity group already has one safe primary home, a duplicate unit does not need to be
+          // copied into that topic merely to acquire ownership. Resolve the owner from the group
+          // when the canonical group meaning is visibly represented by the destination topic.
+          if (!incrementalRecoveryContract) continue;
+          const canonical = String(group.canonicalMeaning ?? '').trim();
+          if (!canonical || semanticOverlapScore(canonical, inheritedTopic.proposedUnderstanding) < 0.28) continue;
+          primaryOwners.set(ref, [inheritedHome]);
+        }
+      }
+    }
+
+    // Resolve ownership only after overlap-group inheritance has had a chance to close a missing
+    // primary home. More than one owner is never repaired automatically.
+    for (const item of ownership) {
+      const owners = primaryOwners.get(item.ref) ?? [];
+      if (owners.length !== 1) errors.push(`Meaning unit ${item.ref} must have exactly one primary semantic home; found ${owners.length}.`);
+      const ownerTopic = owners.length === 1 ? proposedTopics.find(topic => topic.label === owners[0]) : null;
+      const ownerCheck = ownerTopic?.meaningChecks?.find(check => check.meaningUnitRef === item.ref);
+      item.primaryHome = owners[0] ?? '';
+      item.primaryHomeFit = ownerCheck?.primaryHomeFit ?? '';
+      item.primaryHomeSource = owners.length === 1 && primaryHomeCompletionContract && !(Array.isArray(raw.proposedTopics)
+        && raw.proposedTopics.some(topic => Array.isArray(topic?.primaryMeaningUnitRefs) && topic.primaryMeaningUnitRefs.includes(item.ref)))
+        ? 'OVERLAP_GROUP'
+        : owners.length === 1 && (groupByRef.get(item.ref) ?? []).length && !(Array.isArray(raw.proposedTopics)
+          && raw.proposedTopics.some(topic => Array.isArray(topic?.primaryMeaningUnitRefs) && topic.primaryMeaningUnitRefs.includes(item.ref)))
+          ? 'OVERLAP_GROUP_IDENTITY'
+          : owners.length === 1 ? 'MODEL' : '';
+    }
+
+    // Independent lexical backstop: if two units from different source topics are near-duplicates,
+    // they must either share one primary home or be explicitly grouped as equivalent/overlapping.
+    const units = [...meaningUnitByRef.values()];
+    const homeByRef = new Map(ownership.map(item => [item.ref, item.primaryHome]));
+    for (let i = 0; i < units.length; i += 1) {
+      for (let j = i + 1; j < units.length; j += 1) {
+        const a = units[i];
+        const b = units[j];
+        if (a.targetKey === b.targetKey) continue;
+        const score = semanticOverlapScore(a.sourceExcerpt, b.sourceExcerpt);
+        if (score < 0.74) continue;
+        const sameDeclaredGroup = (groupByRef.get(a.ref) ?? []).some(groupId => (groupByRef.get(b.ref) ?? []).includes(groupId));
+        const samePrimaryHome = homeByRef.get(a.ref) && homeByRef.get(a.ref) === homeByRef.get(b.ref);
+        if (!sameDeclaredGroup && !samePrimaryHome) errors.push(`Likely duplicate meaning ${a.ref} and ${b.ref} has different or undeclared semantic identity (overlap ${score.toFixed(2)}).`);
+      }
+    }
+  }
+
+  if (ownershipContract && !identityContract) {
+    // Preserve the original 9.1 ownership contract, which predates semantic-overlap groups.
+    for (const item of ownership) {
+      const owners = primaryOwners.get(item.ref) ?? [];
+      if (owners.length !== 1) errors.push(`Meaning unit ${item.ref} must have exactly one primary semantic home; found ${owners.length}.`);
+      const ownerTopic = owners.length === 1 ? proposedTopics.find(topic => topic.label === owners[0]) : null;
+      const ownerCheck = ownerTopic?.meaningChecks?.find(check => check.meaningUnitRef === item.ref);
+      item.primaryHome = owners[0] ?? '';
+      item.primaryHomeFit = ownerCheck?.primaryHomeFit ?? '';
+      item.primaryHomeSource = owners.length === 1 ? 'MODEL' : '';
+    }
+  }
+
+  if (closureContract) {
+    // A topic that the audit itself says contains independently evolving concepts must actually
+    // distribute those meanings across more than one primary semantic home. Renaming or keeping
+    // the same mixed topic does not resolve the contamination.
+    const primaryHomeByRef = new Map(ownership.map(item => [item.ref, item.primaryHome]));
+    for (const audit of audits) {
+      if (audit.contaminationFlags.includes('MULTIPLE_INDEPENDENT_CONCEPTS') && audit.contaminationFlags.includes('COHERENT_MULTI_DIMENSIONAL')) {
+        errors.push(`Structural audit for ${audit.topicName} cannot classify the same topic as both independent and coherently multi-dimensional.`);
+        continue;
+      }
+      if (!audit.contaminationFlags.includes('MULTIPLE_INDEPENDENT_CONCEPTS')) continue;
+      const refs = meaningUnitRefsBySource.get(audit.targetKey) ?? [];
+      const homes = [...new Set(refs.map(ref => primaryHomeByRef.get(ref)).filter(Boolean))];
+      if (homes.length < 2) {
+        errors.push(`Independent concepts in ${audit.topicName} were not separated into distinct primary semantic homes.`);
+      }
+      if (['KEEP', 'RENAME'].includes(audit.recommendedOperation)) {
+        errors.push(`Structural audit for ${audit.topicName} identifies multiple independent concepts but recommends ${audit.recommendedOperation}; use a separating operation.`);
+      }
+    }
   }
 
   const omittedTargetKeys = previous.filter(seed => !(coverage.get(seed.targetKey) > 0)).map(seed => seed.targetKey);
@@ -645,6 +956,14 @@ export function validateTopicRestructureDraft(raw, priorSeeds) {
       proposedTopicCount: coverage.get(seed.targetKey) ?? 0
     })),
     omittedTargetKeys,
+    ownershipContract,
+    identityContract,
+    closureContract,
+    primaryHomeCompletionContract,
+    incrementalRecoveryContract,
+    semanticIdentityComplete: identityContract && !errors.some(error => error.includes('Semantic overlap group') || error.includes('Likely duplicate meaning')),
+    ownership,
+    semanticOverlapGroups,
     errors,
     validForReview: proposedTopics.length > 0 && omittedTargetKeys.length === 0 && errors.length === 0
   };

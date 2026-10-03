@@ -35,9 +35,9 @@ test('unchanged topics are carried forward server-side using the same topicVersi
 });
 
 test('changed topics create a new version and topic-specific relational provenance', () => {
-  assert.match(service, /livingUnderstandingTopicVersion\.create/);
-  assert.match(service, /versionNumber: \(latestTopicVersion\?\.versionNumber \?\? 0\) \+ 1/);
-  assert.match(service, /livingUnderstandingTopicVersionSource\.create/);
+  assert.match(service, /livingUnderstandingTopicVersion\.createMany/);
+  assert.match(service, /versionNumber: \(changedMaxByIdentity\.get\(prior\.topicIdentityId\) \?\? 0\) \+ 1/);
+  assert.match(service, /livingUnderstandingTopicVersionSource\.createMany/);
   assert.match(schema, /model LivingUnderstandingTopicVersionSource \{/);
   assert.match(schema, /relationshipType String @default\("INFORMED"\)/);
 });

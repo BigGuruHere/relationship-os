@@ -1,7 +1,7 @@
 // Stage 8.13.0 - authoritative longitudinal Living Understanding persistence.
 // SECURITY: authoritative text remains encrypted. Revision snapshots are immutable, topic versions
 // are immutable, and every source is re-authorised inside the persistence transaction.
-import { timingSafeEqual } from 'node:crypto';
+import { randomUUID, timingSafeEqual } from 'node:crypto';
 import { prisma } from '$lib/db';
 import { encrypt, decrypt, buildScopedIndexToken, buildScopedMacToken } from '$lib/crypto';
 import { requireDatingPerson, type Scope } from './datingUnderstandingTopics';
@@ -11,7 +11,10 @@ const TOKEN_SCOPE = 'dating:living-understanding:adoption:v1';
 const LABEL_AAD = 'dating.living_understanding.label';
 const TEXT_AAD = 'dating.living_understanding.text';
 const MAX_TOKEN_AGE_MS = 2 * 60 * 60 * 1000;
-const ADOPTION_TRANSACTION_TIMEOUT_MS = 15_000;
+// Neon/pooled PostgreSQL can add noticeable round-trip latency. The authoritative save is
+// deliberately transactional, but Stage 8.13.2.1 also batches topic writes so this timeout is a
+// safety margin rather than the normal amount of time required by a save.
+const ADOPTION_TRANSACTION_TIMEOUT_MS = 45_000;
 
 export type LivingUnderstandingTemporalScope = 'CURRENT' | 'HISTORICAL' | 'MIXED';
 
@@ -204,6 +207,8 @@ export async function persistLongitudinalLivingUnderstandingRevision(scope: Scop
     if (existing) return { ...existing, alreadyAdopted: true };
 
     // SECURITY: Re-authorise every source inside the same transaction as the authoritative write.
+    // This intentionally remains inside the transaction. The optimisation below reduces topic-write
+    // round trips without weakening source custody or creating a check-then-write gap.
     const sources = await Promise.all(allSourceIds.map(id => requireSourceReflection(scope, id, tx)));
     const sourceDates = new Map(sources.map(source => [source.id, source.at]));
 
@@ -241,131 +246,194 @@ export async function persistLongitudinalLivingUnderstandingRevision(scope: Scop
 
     // IT: RevisionSource records the source(s) that caused this revision event. It does not imply
     // that every topic version in the snapshot was informed by those sources.
-    for (const sourceId of revisionSourceIds) {
-      const sourceObservedAt = sourceDates.get(sourceId);
-      if (!sourceObservedAt) throw new Error('Authorised revision source provenance could not be resolved.');
-      await tx.livingUnderstandingRevisionSource.create({
-        data: { ...scope, revisionId: revision.id, sourceInteractionId: sourceId, sourceObservedAt }
+    if (revisionSourceIds.length) {
+      await tx.livingUnderstandingRevisionSource.createMany({
+        data: revisionSourceIds.map(sourceId => {
+          const sourceObservedAt = sourceDates.get(sourceId);
+          if (!sourceObservedAt) throw new Error('Authorised revision source provenance could not be resolved.');
+          return { ...scope, revisionId: revision.id, sourceInteractionId: sourceId, sourceObservedAt };
+        })
       });
     }
 
     const changeByIdentity = new Map(changes.map(change => [change.topicIdentityId, change]));
-    let nextPosition = 0;
+    const membershipRows: Array<{
+      userId: string;
+      contextSpaceId: string;
+      contactId: string;
+      revisionId: string;
+      topicIdentityId: string;
+      topicVersionId: string;
+      position: number;
+    }> = [];
+    const topicVersionRows: Array<{
+      id: string;
+      userId: string;
+      contextSpaceId: string;
+      contactId: string;
+      topicIdentityId: string;
+      versionNumber: number;
+      createdInRevisionId: string;
+      understandingEnc: string;
+      temporalScope: string;
+      operation: string;
+    }> = [];
+    const provenanceRows: Array<{
+      userId: string;
+      contextSpaceId: string;
+      contactId: string;
+      topicVersionId: string;
+      sourceInteractionId: string;
+      sourceObservedAt: Date;
+      relationshipType: string;
+    }> = [];
 
-    // IT: Baseline topics are exhaustive. Unchanged topics reuse the exact prior topicVersionId;
-    // affected topics alone receive a new immutable topic version.
+    // IT: Resolve all changed-topic version numbers in one query. Unchanged topics keep their exact
+    // prior topicVersionId; affected topics alone receive a new immutable topic version.
+    const changedIdentityIds = changes.map(change => change.topicIdentityId);
+    const changedVersionMax = changedIdentityIds.length ? await tx.livingUnderstandingTopicVersion.groupBy({
+      by: ['topicIdentityId'],
+      where: { ...scope, topicIdentityId: { in: changedIdentityIds } },
+      _max: { versionNumber: true }
+    }) : [];
+    const changedMaxByIdentity = new Map(changedVersionMax.map(row => [row.topicIdentityId, row._max.versionNumber ?? 0]));
+
+    let nextPosition = 0;
     for (const prior of baselineMemberships) {
       const change = changeByIdentity.get(prior.topicIdentityId);
       if (!change) {
-        await tx.livingUnderstandingRevisionTopic.create({
-          data: {
-            ...scope,
-            revisionId: revision.id,
-            topicIdentityId: prior.topicIdentityId,
-            topicVersionId: prior.topicVersionId,
-            position: nextPosition++
-          }
+        membershipRows.push({
+          ...scope,
+          revisionId: revision.id,
+          topicIdentityId: prior.topicIdentityId,
+          topicVersionId: prior.topicVersionId,
+          position: nextPosition++
         });
         continue;
       }
 
-      const latestTopicVersion = await tx.livingUnderstandingTopicVersion.findFirst({
-        where: { ...scope, topicIdentityId: prior.topicIdentityId },
-        orderBy: { versionNumber: 'desc' },
-        select: { versionNumber: true }
-      });
-      const topicVersion = await tx.livingUnderstandingTopicVersion.create({
-        data: {
-          ...scope,
-          topicIdentityId: prior.topicIdentityId,
-          versionNumber: (latestTopicVersion?.versionNumber ?? 0) + 1,
-          createdInRevisionId: revision.id,
-          understandingEnc: encrypt(change.proposedUnderstanding, TEXT_AAD),
-          temporalScope: change.temporalScope,
-          operation: change.operation
-        },
-        select: { id: true }
+      const topicVersionId = randomUUID();
+      topicVersionRows.push({
+        id: topicVersionId,
+        ...scope,
+        topicIdentityId: prior.topicIdentityId,
+        versionNumber: (changedMaxByIdentity.get(prior.topicIdentityId) ?? 0) + 1,
+        createdInRevisionId: revision.id,
+        understandingEnc: encrypt(change.proposedUnderstanding, TEXT_AAD),
+        temporalScope: change.temporalScope,
+        operation: change.operation
       });
       for (const sourceId of change.sourceInteractionIds) {
         const sourceObservedAt = sourceDates.get(sourceId);
         if (!sourceObservedAt) throw new Error('Authorised topic source provenance could not be resolved.');
-        await tx.livingUnderstandingTopicVersionSource.create({
-          data: {
-            ...scope,
-            topicVersionId: topicVersion.id,
-            sourceInteractionId: sourceId,
-            sourceObservedAt,
-            relationshipType: change.relationshipType
-          }
+        provenanceRows.push({
+          ...scope,
+          topicVersionId,
+          sourceInteractionId: sourceId,
+          sourceObservedAt,
+          relationshipType: change.relationshipType
         });
       }
-      await tx.livingUnderstandingRevisionTopic.create({
-        data: {
-          ...scope,
-          revisionId: revision.id,
-          topicIdentityId: prior.topicIdentityId,
-          topicVersionId: topicVersion.id,
-          position: nextPosition++
-        }
+      membershipRows.push({
+        ...scope,
+        revisionId: revision.id,
+        topicIdentityId: prior.topicIdentityId,
+        topicVersionId,
+        position: nextPosition++
       });
     }
 
-    for (const topic of newTopics) {
-      const nameIdx = buildScopedIndexToken(`${topic.realm}\n${topic.topicName}`, 'dating:living-understanding:topic-identity');
-      const identity = await tx.livingUnderstandingTopicIdentity.upsert({
-        where: { userId_contextSpaceId_contactId_nameIdx: { ...scope, nameIdx } },
-        create: {
-          ...scope,
-          nameIdx,
-          realmNameEnc: encrypt(topic.realm, LABEL_AAD),
-          topicNameEnc: encrypt(topic.topicName, LABEL_AAD)
-        },
-        update: {},
-        select: { id: true }
-      });
-      if (baselineByIdentity.has(identity.id) || changeByIdentity.has(identity.id)) {
+    // IT: New-topic identities are resolved set-wise. createMany(skipDuplicates) preserves the same
+    // deterministic identity semantics as the former per-topic upsert while avoiding one network
+    // round trip per topic on pooled PostgreSQL.
+    const preparedNewTopics = newTopics.map(topic => ({
+      topic,
+      nameIdx: buildScopedIndexToken(`${topic.realm}\n${topic.topicName}`, 'dating:living-understanding:topic-identity')
+    }));
+    if (new Set(preparedNewTopics.map(item => item.nameIdx)).size !== preparedNewTopics.length) {
+      throw new Error('The proposed revision contains duplicate new topic identities.');
+    }
+
+    const existingNewIdentities = preparedNewTopics.length ? await tx.livingUnderstandingTopicIdentity.findMany({
+      where: { ...scope, nameIdx: { in: preparedNewTopics.map(item => item.nameIdx) } },
+      select: { id: true, nameIdx: true }
+    }) : [];
+    const identityByNameIdx = new Map(existingNewIdentities.map(row => [row.nameIdx, row.id]));
+    const missingIdentities = preparedNewTopics
+      .filter(item => !identityByNameIdx.has(item.nameIdx))
+      .map(item => ({
+        id: randomUUID(),
+        ...scope,
+        nameIdx: item.nameIdx,
+        realmNameEnc: encrypt(item.topic.realm, LABEL_AAD),
+        topicNameEnc: encrypt(item.topic.topicName, LABEL_AAD)
+      }));
+    if (missingIdentities.length) {
+      await tx.livingUnderstandingTopicIdentity.createMany({ data: missingIdentities, skipDuplicates: true });
+    }
+
+    // IT: Re-read the small identity set after createMany so a concurrent duplicate insert resolves to
+    // the canonical row selected by the database uniqueness constraint rather than to a guessed id.
+    const resolvedIdentities = preparedNewTopics.length ? await tx.livingUnderstandingTopicIdentity.findMany({
+      where: { ...scope, nameIdx: { in: preparedNewTopics.map(item => item.nameIdx) } },
+      select: { id: true, nameIdx: true }
+    }) : [];
+    const resolvedIdentityByNameIdx = new Map(resolvedIdentities.map(row => [row.nameIdx, row.id]));
+    const newIdentityIds = preparedNewTopics.map(item => {
+      const id = resolvedIdentityByNameIdx.get(item.nameIdx);
+      if (!id) throw new Error('A proposed new topic identity could not be resolved.');
+      if (baselineByIdentity.has(id) || changeByIdentity.has(id)) {
         throw new Error('A proposed new topic already exists in the authoritative baseline.');
       }
-      const latestTopicVersion = await tx.livingUnderstandingTopicVersion.findFirst({
-        where: { ...scope, topicIdentityId: identity.id },
-        orderBy: { versionNumber: 'desc' },
-        select: { versionNumber: true }
-      });
-      const topicVersion = await tx.livingUnderstandingTopicVersion.create({
-        data: {
-          ...scope,
-          topicIdentityId: identity.id,
-          versionNumber: (latestTopicVersion?.versionNumber ?? 0) + 1,
-          createdInRevisionId: revision.id,
-          understandingEnc: encrypt(topic.proposedUnderstanding, TEXT_AAD),
-          temporalScope: topic.temporalScope,
-          operation: topic.operation
-        },
-        select: { id: true }
+      return id;
+    });
+
+    const newVersionMax = newIdentityIds.length ? await tx.livingUnderstandingTopicVersion.groupBy({
+      by: ['topicIdentityId'],
+      where: { ...scope, topicIdentityId: { in: newIdentityIds } },
+      _max: { versionNumber: true }
+    }) : [];
+    const newMaxByIdentity = new Map(newVersionMax.map(row => [row.topicIdentityId, row._max.versionNumber ?? 0]));
+
+    preparedNewTopics.forEach((item, index) => {
+      const topic = item.topic;
+      const identityId = newIdentityIds[index];
+      const topicVersionId = randomUUID();
+      topicVersionRows.push({
+        id: topicVersionId,
+        ...scope,
+        topicIdentityId: identityId,
+        versionNumber: (newMaxByIdentity.get(identityId) ?? 0) + 1,
+        createdInRevisionId: revision.id,
+        understandingEnc: encrypt(topic.proposedUnderstanding, TEXT_AAD),
+        temporalScope: topic.temporalScope,
+        operation: topic.operation
       });
       for (const sourceId of topic.sourceInteractionIds) {
         const sourceObservedAt = sourceDates.get(sourceId);
         if (!sourceObservedAt) throw new Error('Authorised topic source provenance could not be resolved.');
-        await tx.livingUnderstandingTopicVersionSource.create({
-          data: {
-            ...scope,
-            topicVersionId: topicVersion.id,
-            sourceInteractionId: sourceId,
-            sourceObservedAt,
-            relationshipType: topic.relationshipType
-          }
+        provenanceRows.push({
+          ...scope,
+          topicVersionId,
+          sourceInteractionId: sourceId,
+          sourceObservedAt,
+          relationshipType: topic.relationshipType
         });
       }
-      await tx.livingUnderstandingRevisionTopic.create({
-        data: {
-          ...scope,
-          revisionId: revision.id,
-          topicIdentityId: identity.id,
-          topicVersionId: topicVersion.id,
-          position: nextPosition++
-        }
+      membershipRows.push({
+        ...scope,
+        revisionId: revision.id,
+        topicIdentityId: identityId,
+        topicVersionId,
+        position: nextPosition++
       });
-    }
+    });
+
+    // IT: Execute the immutable topic versions, provenance links and revision snapshot memberships in
+    // three set-based writes. Foreign-key constraints still enforce the same custody boundaries.
+    if (topicVersionRows.length) await tx.livingUnderstandingTopicVersion.createMany({ data: topicVersionRows });
+    if (provenanceRows.length) await tx.livingUnderstandingTopicVersionSource.createMany({ data: provenanceRows });
+    if (membershipRows.length) await tx.livingUnderstandingRevisionTopic.createMany({ data: membershipRows });
 
     return { ...revision, alreadyAdopted: false };
   }, { timeout: ADOPTION_TRANSACTION_TIMEOUT_MS });

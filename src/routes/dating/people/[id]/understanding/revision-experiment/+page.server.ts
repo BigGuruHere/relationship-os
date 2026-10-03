@@ -1,5 +1,5 @@
-// PURPOSE: Operator-only semantic decomposition and Living Understanding trial.
-// SECURITY: No AI-generated understanding, topic, statement, permission or relationship data is persisted here.
+// PURPOSE: Stage 8.13.2 first-v1 construction workflow plus retained development diagnostics.
+// SECURITY: AI proposals remain non-authoritative until explicit signed adoption; custody is revalidated server-side.
 import { error, fail, redirect } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import { requireSourceReflection } from '$lib/server/datingLivingUnderstanding';
@@ -13,25 +13,32 @@ import {
   evolveLongitudinalUnderstandingReadOnly,
   restructureLivingUnderstandingReadOnly
 } from '$lib/server/datingUnderstandingRevisionExperiment';
-import { createLivingUnderstandingAdoptionToken, adoptLivingUnderstanding, describeLivingUnderstandingPersistenceError } from '$lib/server/datingPersistedLivingUnderstanding';
+import { createLivingUnderstandingAdoptionToken, adoptLivingUnderstanding, describeLivingUnderstandingPersistenceError, getCurrentLivingUnderstanding } from '$lib/server/datingPersistedLivingUnderstanding';
 import { saveLivingUnderstandingDraft, loadLivingUnderstandingDraft, completeLivingUnderstandingDraft, getLatestLivingUnderstandingDraftSummary } from '$lib/server/datingLivingUnderstandingDraft';
 
-function authorisedScope(locals: App.Locals, id: string) {
+function authorisedScope(locals: App.Locals, id: string, allowInitialCreation = false) {
   if (!locals.user) throw redirect(303, '/auth/login');
   if (locals.contextDomainKey !== 'dating' || !locals.contextSpaceId) throw error(403, 'Select a Dating ContextSpace.');
-  if (!revisionExperimentEnabled()) throw error(404, 'Experiment is not enabled.');
+  if (!allowInitialCreation && !revisionExperimentEnabled()) throw error(404, 'Experiment is not enabled.');
   return { userId: locals.user.id, contextSpaceId: locals.contextSpaceId, contactId: id };
 }
 
 export const load: PageServerLoad = async ({ locals, params, url }) => {
-  const scope = authorisedScope(locals, params.id);
+  const initialCreationMode = url.searchParams.get('initial') === '1';
+  const scope = authorisedScope(locals, params.id, initialCreationMode);
   const sourceId = String(url.searchParams.get('sourceInteractionId') || '');
-  const [tree, source, history, latestDraft] = await Promise.all([
+  const [tree, source, history, latestDraft, currentLivingUnderstanding] = await Promise.all([
     listUnderstandingTopics(scope),
     sourceId ? requireSourceReflection(scope, sourceId) : Promise.resolve(null),
     loadPersonHistory(scope),
-    getLatestLivingUnderstandingDraftSummary(scope)
+    getLatestLivingUnderstandingDraftSummary(scope),
+    initialCreationMode ? getCurrentLivingUnderstanding(scope) : Promise.resolve(null)
   ]);
+  // IT: The production first-time entry point is only valid before an authoritative baseline exists.
+  // Once v1 exists, later sources must use the Stage 8.13 longitudinal impact-review path.
+  if (initialCreationMode && currentLivingUnderstanding && sourceId) {
+    throw redirect(303, `/dating/people/${params.id}/understanding/impact-review?sourceInteractionId=${encodeURIComponent(sourceId)}`);
+  }
   // IT: Longitudinal follow-up remains source-custody local. Only later private reflections or
   // conversation excerpts for this same person are offered as the second source. Text is not
   // returned in this selector because the action re-authorises and decrypts the chosen source.
@@ -42,6 +49,7 @@ export const load: PageServerLoad = async ({ locals, params, url }) => {
     : [];
   return {
     personId: params.id,
+    initialCreationMode,
     sourceId: source?.id ?? '',
     sourceKind: source?.sourceKind ?? null,
     laterSources,
@@ -84,24 +92,26 @@ function sanitiseChainHistory(raw: unknown) {
 }
 
 export const actions: Actions = {
-  analyseTopics: async ({ locals, params, request }) => {
-    const scope = authorisedScope(locals, params.id);
+  analyseTopics: async ({ locals, params, request, url }) => {
     const form = await request.formData();
+    const initialCreationMode = form.get('workflowMode') === 'INITIAL' || url.searchParams.get('initial') === '1';
+    const scope = authorisedScope(locals, params.id, initialCreationMode);
     if (form.get('consent') !== 'YES') {
       return fail(400, { revisionError: 'Explicitly authorise sending the selected transcript and current topic inventory to the AI provider.' });
     }
     const sourceId = String(form.get('sourceInteractionId') || '');
     try {
-      const semanticAnalysis = await identifySemanticAreasReadOnly(scope, sourceId);
+      const semanticAnalysis = await identifySemanticAreasReadOnly(scope, sourceId, initialCreationMode);
       return { semanticAnalysis };
     } catch (err) {
       return fail(502, { revisionError: safeExperimentError(err) });
     }
   },
 
-  reviseTopics: async ({ locals, params, request }) => {
-    const scope = authorisedScope(locals, params.id);
+  reviseTopics: async ({ locals, params, request, url }) => {
     const form = await request.formData();
+    const initialCreationMode = form.get('workflowMode') === 'INITIAL' || url.searchParams.get('initial') === '1';
+    const scope = authorisedScope(locals, params.id, initialCreationMode);
     if (form.get('consent') !== 'YES') {
       return fail(400, { revisionError: 'Explicitly authorise sending the selected source and semantic areas to the AI provider.' });
     }
@@ -146,7 +156,7 @@ export const actions: Actions = {
           revisions.push(await reviseSemanticAreaReadOnly(scope, sourceId, {
             ...target,
             excludedAreaSummaries
-          }));
+          }, initialCreationMode));
         }
       }
 
@@ -201,9 +211,10 @@ export const actions: Actions = {
   }
 ,
 
-  compareLongitudinal: async ({ locals, params, request }) => {
-    const scope = authorisedScope(locals, params.id);
+  compareLongitudinal: async ({ locals, params, request, url }) => {
     const form = await request.formData();
+    const initialCreationMode = form.get('workflowMode') === 'INITIAL' || url.searchParams.get('initial') === '1';
+    const scope = authorisedScope(locals, params.id, initialCreationMode);
     if (form.get('consent') !== 'YES') {
       return fail(400, { revisionError: 'Explicitly authorise sending the later private source and prior experimental understanding to the AI provider.' });
     }
@@ -248,7 +259,8 @@ export const actions: Actions = {
         scope,
         nextSourceId,
         seedValidation.seeds,
-        priorOperationalUnits
+        priorOperationalUnits,
+        initialCreationMode
       );
 
       // IT: Chain history is browser-carried experiment state only. It contains concise proposed
@@ -293,9 +305,10 @@ export const actions: Actions = {
     }
   },
 
-  restructureTopics: async ({ locals, params, request }) => {
-    const scope = authorisedScope(locals, params.id);
+  restructureTopics: async ({ locals, params, request, url }) => {
     const form = await request.formData();
+    const initialCreationMode = form.get('workflowMode') === 'INITIAL' || url.searchParams.get('initial') === '1';
+    const scope = authorisedScope(locals, params.id, initialCreationMode);
     if (form.get('consent') !== 'YES') {
       return fail(400, { revisionError: 'Explicitly authorise sending the current read-only Living Understanding to the AI provider for restructuring.' });
     }
@@ -340,9 +353,10 @@ export const actions: Actions = {
     }
   },
 
-  retryRestructuring: async ({ locals, params, request }) => {
-    const scope = authorisedScope(locals, params.id);
+  retryRestructuring: async ({ locals, params, request, url }) => {
     const form = await request.formData();
+    const initialCreationMode = form.get('workflowMode') === 'INITIAL' || url.searchParams.get('initial') === '1';
+    const scope = authorisedScope(locals, params.id, initialCreationMode);
     if (form.get('consent') !== 'YES') {
       return fail(400, { revisionError: 'Explicitly authorise retrying structural review from the saved working checkpoint.' });
     }
@@ -367,9 +381,10 @@ export const actions: Actions = {
     }
   },
 
-  adoptRestructuring: async ({ locals, params, request }) => {
-    const scope = authorisedScope(locals, params.id);
+  adoptRestructuring: async ({ locals, params, request, url }) => {
     const form = await request.formData();
+    const initialCreationMode = form.get('workflowMode') === 'INITIAL' || url.searchParams.get('initial') === '1';
+    const scope = authorisedScope(locals, params.id, initialCreationMode);
     if (form.get('approve') !== 'YES') return fail(400, { revisionError: 'Explicitly approve this validated Living Understanding before saving it.' });
     try {
       await adoptLivingUnderstanding(scope, String(form.get('adoptionToken') || ''));

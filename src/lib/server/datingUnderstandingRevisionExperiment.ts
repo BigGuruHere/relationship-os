@@ -39,8 +39,10 @@ function renderTurns(turns: EvidenceTurn[]) {
   return turns.map(turn => `[${turn.id}] ${turn.text}`).join('\n\n');
 }
 
-async function authorisedExperimentData(scope: Scope, sourceInteractionId: string) {
-  if (!revisionExperimentEnabled()) throw new Error('The revision experiment is disabled.');
+async function authorisedExperimentData(scope: Scope, sourceInteractionId: string, allowProductionInitial = false) {
+  // IT: Stage 8.13.2 promotes the proven semantic construction pipeline for the explicit first-v1
+  // workflow only. The diagnostic experiment remains disabled in production unless separately enabled.
+  if (!revisionExperimentEnabled() && !allowProductionInitial) throw new Error('The revision experiment is disabled.');
   if (!process.env.OPENAI_API_KEY) throw new Error('OPENAI_API_KEY is required for the experiment.');
   const [source, tree] = await Promise.all([
     requireSourceReflection(scope, sourceInteractionId), listUnderstandingTopics(scope)
@@ -183,8 +185,8 @@ export async function reviseTopicReadOnly(scope: Scope, sourceInteractionId: str
 
 // Stage 8.12.13.7: decompose one source into semantically distinct areas before revising any topic.
 // The model may map an area to an existing topic or suggest a new topic when no narrow fit exists.
-export async function identifySemanticAreasReadOnly(scope: Scope, sourceInteractionId: string) {
-  const data = await authorisedExperimentData(scope, sourceInteractionId);
+export async function identifySemanticAreasReadOnly(scope: Scope, sourceInteractionId: string, allowProductionInitial = false) {
+  const data = await authorisedExperimentData(scope, sourceInteractionId, allowProductionInitial);
   const topicInventory = data.topics.map(topic => ({
     id: topic.id,
     label: topic.label,
@@ -268,9 +270,10 @@ export async function reviseSemanticAreaReadOnly(
     relevantTurnIds?: string[];
     reasons?: string[];
     excludedAreaSummaries?: string[];
-  }
+  },
+  allowProductionInitial = false
 ) {
-  const data = await authorisedExperimentData(scope, sourceInteractionId);
+  const data = await authorisedExperimentData(scope, sourceInteractionId, allowProductionInitial);
   const existingTopicId = String(area.existingTopicId ?? '').trim();
   const topic = existingTopicId ? data.topics.find(item => item.id === existingTopicId) : null;
   if (existingTopicId && !topic) throw new Error('Choose an authorised topic belonging to this person.');
@@ -379,9 +382,10 @@ export async function evolveLongitudinalUnderstandingReadOnly(
     statement: string;
     operationalReasons?: string[];
     status?: string;
-  }> = []
+  }> = [],
+  allowProductionInitial = false
 ) {
-  const data = await authorisedExperimentData(scope, sourceInteractionId);
+  const data = await authorisedExperimentData(scope, sourceInteractionId, allowProductionInitial);
   if (!priorSeeds.length) throw new Error('No prior Living Understanding was supplied for longitudinal comparison.');
   if (priorSeeds.length > 24) throw new Error('The prior Living Understanding is too large for this longitudinal experiment.');
   const priorSourceIds = [...new Set(priorSeeds.map(seed => String(seed.sourceInteractionId || '').trim()).filter(Boolean))];

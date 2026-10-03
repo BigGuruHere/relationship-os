@@ -2,7 +2,8 @@
   // IT: Enhanced form submissions keep the authorised sourceInteractionId in the browser URL.
   import { enhance } from '$app/forms';
 
-  // This route is explicitly opt-in and read-only. Never add direct confirmation or sharing here.
+  // IT: This route supports the production first-v1 workflow when initial=1, while retaining the
+  // development experiment mode for diagnostics. Persistence still requires explicit final approval.
   export let data: any;
   export let form: any;
 
@@ -60,19 +61,30 @@
   }
 </script>
 
-<svelte:head><title>Semantic Living Understanding experiment - Relish</title></svelte:head>
+<svelte:head><title>{data.initialCreationMode ? 'Create initial Living Understanding' : 'Semantic Living Understanding experiment'} - Relish</title></svelte:head>
 
 <main class="experiment">
-  <a href={`/dating/people/${data.personId}/understanding${data.sourceId ? `?sourceInteractionId=${encodeURIComponent(data.sourceId)}` : ''}`}>← Return to existing understanding workflow</a>
-  <h1>Semantic Living Understanding experiment</h1>
-  <p>This read-only experiment separates a private source into distinct areas of understanding before proposing topic revisions. It also distinguishes rich Living Understanding from the smaller set of knowledge that may need its own operational or permission boundary.</p>
-  <p><strong>Nothing here is authoritative, confirmed, retired, made discoverable or made shareable.</strong> Relish may save short-lived encrypted working checkpoints so a failed later stage does not force you to repeat successful comparisons. Suggested topics and operational knowledge units remain experimental until explicitly approved.</p>
+  <a href={`/dating/people/${data.personId}/understanding${data.sourceId ? `?sourceInteractionId=${encodeURIComponent(data.sourceId)}` : ''}`}>← Back to reflection review</a>
+  {#if data.initialCreationMode}
+    <p class="eyebrow">Initial Living Understanding</p>
+    <h1>Create initial Living Understanding</h1>
+    <p>Build the person's first authoritative Living Understanding from this private source. Relish will identify distinct areas, propose topic understandings, validate the topic structure, then ask you to approve the complete result as <strong>authoritative v1</strong>.</p>
+    <div class="workflow-steps" aria-label="Initial Living Understanding workflow">
+      <span>1. Analyse source</span><span>2. Generate topic understandings</span><span>3. Review structure</span><span>4. Approve v1</span>
+    </div>
+    <p class="muted"><strong>Nothing is authoritative until the final approval step.</strong> Working checkpoints may be saved privately so a failed validation step can be retried without repeating successful work. Creating v1 grants no matching, sharing or disclosure permission.</p>
+  {:else}
+    <h1>Semantic Living Understanding experiment</h1>
+    <p>This development experiment separates a private source into distinct areas of understanding before proposing topic revisions. It also distinguishes rich Living Understanding from the smaller set of knowledge that may need its own operational or permission boundary.</p>
+    <p><strong>Nothing here is authoritative, confirmed, retired, made discoverable or made shareable.</strong> Relish may save short-lived encrypted working checkpoints so a failed later stage does not force you to repeat successful comparisons. Suggested topics and operational knowledge units remain experimental until explicitly approved.</p>
+  {/if}
 
   {#if data.latestDraft && String(data.latestDraft.stage || '').startsWith('STRUCTURE')}
     <section class="panel">
-      <h2>Resume saved structural checkpoint</h2>
-      <p class="muted">A short-lived encrypted working checkpoint exists for this person. Retrying from it does not repeat the earlier comparison chain and does not make any knowledge authoritative.</p>
+      <h2>{data.initialCreationMode ? 'Resume initial Living Understanding review' : 'Resume saved structural checkpoint'}</h2>
+      <p class="muted">A short-lived encrypted working checkpoint exists for this person. Retrying resumes the structural validation stage without repeating successful earlier analysis. Nothing becomes authoritative until you approve v1.</p>
       <form method="POST" action="?/retryRestructuring" use:enhance>
+        <input type="hidden" name="workflowMode" value={data.initialCreationMode ? 'INITIAL' : 'EXPERIMENT'} />
         <input type="hidden" name="draftCheckpointId" value={data.latestDraft.id} />
         <label class="consent"><input name="consent" type="checkbox" value="YES" required /> I authorise retrying structural review from the saved private working checkpoint.</label>
         <button type="submit">Resume structural review</button>
@@ -81,15 +93,16 @@
   {/if}
 
   {#if !data.sourceId}
-    <p class="warning">Open this experiment from a person's original reflection or conversation review to select an authorised source.</p>
+    <p class="warning">Open this workflow from a person's original reflection or conversation review to select an authorised source.</p>
   {:else}
     <form method="POST" action="?/analyseTopics" class="panel" use:enhance>
+      <input type="hidden" name="workflowMode" value={data.initialCreationMode ? 'INITIAL' : 'EXPERIMENT'} />
       <input type="hidden" name="sourceInteractionId" value={data.sourceId} />
-      <h2>1. Decompose this source semantically</h2>
-      <p>Dorian receives this private source plus the person's current topic inventory. It should identify all materially distinct areas, use the narrowest suitable existing topic, and suggest a new topic only where no suitable one exists.</p>
+      <h2>1. Analyse this source</h2>
+      <p>Dorian reviews this private source and identifies the materially distinct areas that belong in the person's Living Understanding. Existing topic names may guide placement, but no topic or understanding is saved at this stage.</p>
       <p>It may also propose a small set of independently controllable knowledge units, but only where information may need separate matching, permission, disclosure, verification, retrieval or action.</p>
-      <label class="consent"><input name="consent" type="checkbox" value="YES" required /> I authorise sending this private source and the current topic inventory to the configured AI provider for this read-only experiment.</label>
-      <button type="submit">Analyse semantic areas</button>
+      <label class="consent"><input name="consent" type="checkbox" value="YES" required /> I authorise AI processing of this private source to propose the initial Living Understanding.</label>
+      <button type="submit">Analyse source</button>
     </form>
   {/if}
 
@@ -97,9 +110,9 @@
 
   {#if form?.semanticAnalysis}
     <section class="panel">
-      <p class="eyebrow">EXPERIMENTAL SEMANTIC DECOMPOSITION - NOT SAVED</p>
-      <h2>Distinct areas Dorian found</h2>
-      <p class="muted">An area may map to an existing topic or suggest a new topic. Suggested topics are not created.</p>
+      <p class="eyebrow">STEP 1 RESULT - NOT YET AUTHORITATIVE</p>
+      <h2>Proposed areas of understanding</h2>
+      <p class="muted">Select the areas that should contribute to the initial Living Understanding. Suggested topic names remain proposals until final approval.</p>
 
       {#if form.semanticAnalysis.analysis.errors.length}
         <div class="warning"><strong>Validation warnings</strong><ul>{#each form.semanticAnalysis.analysis.errors as item}<li>{item}</li>{/each}</ul></div>
@@ -107,6 +120,7 @@
 
       {#if form.semanticAnalysis.analysis.areas.length}
         <form method="POST" action="?/reviseTopics" class="revision-form" use:enhance>
+          <input type="hidden" name="workflowMode" value={data.initialCreationMode ? 'INITIAL' : 'EXPERIMENT'} />
           <input type="hidden" name="sourceInteractionId" value={data.sourceId} />
           <input type="hidden" name="operationalUnitsJson" value={serialiseOperationalUnits(form.semanticAnalysis.analysis.operationalUnits)} />
 
@@ -154,8 +168,8 @@
             <p class="muted">No separate operational knowledge unit was proposed. That is valid: not every useful piece of understanding needs to become an atomic record.</p>
           {/if}
 
-          <label class="consent"><input name="consent" type="checkbox" value="YES" required /> I authorise sending the selected semantic areas, their existing claims and this private source to the configured AI provider for read-only revision.</label>
-          <button type="submit">Generate selected topic understandings</button>
+          <label class="consent"><input name="consent" type="checkbox" value="YES" required /> I authorise AI processing of the selected areas and their supporting source material to draft topic understandings.</label>
+          <button type="submit">2. Generate selected topic understandings</button>
         </form>
       {:else}
         <p>No materially distinct enduring area was identified.</p>
@@ -165,8 +179,8 @@
 
   {#if form?.revisions}
     <section class="panel">
-      <p class="eyebrow">EXPERIMENTAL TOPIC UNDERSTANDINGS - NOT SAVED</p>
-      <h2>Proposed Living Understanding by topic target</h2>
+      <p class="eyebrow">STEP 2 RESULT - NOT YET AUTHORITATIVE</p>
+      <h2>Proposed topic understandings</h2>
       <p class="muted">Relish consolidates multiple selected semantic areas when they target the same topic, so one topic receives only one proposed current understanding. Each revision is then bounded to that topic's validated source turns and semantic scope rather than re-reading the whole conversation.</p>
       {#if form.revisionBatchSummary}
         <p class="muted"><strong>Safe batching:</strong> {form.revisionBatchSummary.selectedAreaCount} selected semantic areas became {form.revisionBatchSummary.targetCount} topic targets and were processed in {form.revisionBatchSummary.batchCount} batch{form.revisionBatchSummary.batchCount === 1 ? '' : 'es'} of at most {form.revisionBatchSummary.batchSize}. The eight-area batch size is no longer a selection limit.</p>
@@ -240,7 +254,49 @@
       {:else}
         <p>No separate operational knowledge units were proposed for the selected areas.</p>
       {/if}
-      {#if form.longitudinalSeed?.length}
+
+      {#if data.initialCreationMode && form.longitudinalSeed?.length}
+        <div class="restructure-start production-next-step">
+          <p class="eyebrow">Next step</p>
+          <h3>3. Review the complete topic structure</h3>
+          <p class="muted">Relish will now check whether the proposed topics should be kept, split, narrowed, merged, moved or renamed, while preserving the meaning supported by the source. This validation must pass before v1 can be approved.</p>
+          <form method="POST" action="?/restructureTopics" use:enhance>
+        <input type="hidden" name="workflowMode" value={data.initialCreationMode ? 'INITIAL' : 'EXPERIMENT'} />
+            <input type="hidden" name="longitudinalSeedJson" value={serialiseLongitudinalSeed(form.longitudinalSeed)} />
+            <input type="hidden" name="priorOperationalUnitsJson" value={serialiseOperationalUnits(form.operationalUnits ?? [])} />
+            <input type="hidden" name="chainHistoryJson" value="[]" />
+            <input type="hidden" name="draftCheckpointId" value={form.draftCheckpoint?.id || ''} />
+            <label class="consent"><input name="consent" type="checkbox" value="YES" required /> I authorise AI processing of the proposed topic understandings for structural validation before creating v1.</label>
+            <button type="submit">3. Review topic structure</button>
+          </form>
+        </div>
+
+        {#if data.laterSources?.length}
+          <details class="optional-source">
+            <summary>Add another source before creating v1</summary>
+            <p class="muted">Optional. If the first Living Understanding should incorporate another later reflection or conversation before approval, compare it here. Otherwise continue directly to structural review above.</p>
+            <form method="POST" action="?/compareLongitudinal" use:enhance>
+        <input type="hidden" name="workflowMode" value={data.initialCreationMode ? 'INITIAL' : 'EXPERIMENT'} />
+              <input type="hidden" name="baselineSourceInteractionId" value={data.sourceId} />
+              <input type="hidden" name="longitudinalSeedJson" value={serialiseLongitudinalSeed(form.longitudinalSeed)} />
+              <input type="hidden" name="priorOperationalUnitsJson" value={serialiseOperationalUnits(form.operationalUnits ?? [])} />
+              <input type="hidden" name="draftCheckpointId" value={form.draftCheckpoint?.id || ''} />
+              <label>Additional source
+                <select name="nextSourceInteractionId" required>
+                  <option value="">Choose a later source</option>
+                  {#each data.laterSources as source}
+                    <option value={source.id}>{new Date(source.at).toLocaleString()} · {source.sourceKind === 'CONVERSATION_EXCERPT' ? `Conversation${source.speaker ? ` - ${source.speaker}` : ''}` : 'Reflection'}</option>
+                  {/each}
+                </select>
+              </label>
+              <label class="consent"><input name="consent" type="checkbox" value="YES" required /> I authorise AI processing of this additional private source with the current proposed initial understanding.</label>
+              <button type="submit">Add source to proposed v1</button>
+            </form>
+          </details>
+        {/if}
+      {/if}
+
+      {#if form.longitudinalSeed?.length && !data.initialCreationMode}
         <p class="muted"><strong>Longitudinal test preparation:</strong> this read-only result carries stable topic-target keys and source provenance so a later source can be compared without saving this baseline as authoritative knowledge.</p>
 
         <div class="longitudinal">
@@ -248,6 +304,7 @@
           <p>Choose a later private source for this same person. Relish will explicitly account for every topic understanding above and classify the later source as unchanged, reinforced, refined, expanded, qualified, contradicted or superseded.</p>
           {#if data.laterSources?.length}
             <form method="POST" action="?/compareLongitudinal" use:enhance>
+        <input type="hidden" name="workflowMode" value={data.initialCreationMode ? 'INITIAL' : 'EXPERIMENT'} />
               <input type="hidden" name="baselineSourceInteractionId" value={data.sourceId} />
               <input type="hidden" name="longitudinalSeedJson" value={serialiseLongitudinalSeed(form.longitudinalSeed)} />
               <input type="hidden" name="priorOperationalUnitsJson" value={serialiseOperationalUnits(form.operationalUnits ?? [])} />
@@ -369,6 +426,7 @@
         <p>Carry this proposed version forward as the temporary baseline, then compare the next conversation or reflection. Nothing is saved as authoritative knowledge.</p>
         {#if remainingLongitudinalSources().length}
           <form method="POST" action="?/compareLongitudinal" use:enhance>
+        <input type="hidden" name="workflowMode" value={data.initialCreationMode ? 'INITIAL' : 'EXPERIMENT'} />
             <input type="hidden" name="baselineSourceInteractionId" value={form.longitudinal.nextSourceInteractionId} />
             <input type="hidden" name="longitudinalSeedJson" value={serialiseLongitudinalSeed(form.longitudinal.nextLongitudinalSeed)} />
             <input type="hidden" name="priorOperationalUnitsJson" value={serialiseOperationalUnits(form.longitudinal.nextOperationalUnits)} />
@@ -394,6 +452,7 @@
         <h3>Review the topic structure</h3>
         <p class="muted">Run a structural review of the latest proposed Living Understanding. This can suggest splitting, narrowing, merging, moving or renaming topics without changing the underlying meaning.</p>
         <form method="POST" action="?/restructureTopics" use:enhance>
+        <input type="hidden" name="workflowMode" value={data.initialCreationMode ? 'INITIAL' : 'EXPERIMENT'} />
           <input type="hidden" name="longitudinalSeedJson" value={serialiseLongitudinalSeed(form.longitudinal.nextLongitudinalSeed)} />
           <input type="hidden" name="priorOperationalUnitsJson" value={serialiseOperationalUnits(form.longitudinal.nextOperationalUnits)} />
           <input type="hidden" name="chainHistoryJson" value={serialiseChainHistory(form.longitudinal.chainHistory)} />
@@ -409,9 +468,9 @@
 
   {#if form?.restructuring}
     <section class="panel">
-      <p class="eyebrow">EXPERIMENTAL TOPIC RESTRUCTURING - NOT SAVED</p>
-      <h2>Proposed cleaner Living Understanding structure</h2>
-      <p class="muted">This is a structural proposal only. It may split, narrow, merge, move or rename topics, but it must not add facts, erase prior meaning, resolve contradictions or change uncertainty.</p>
+      <p class="eyebrow">{data.initialCreationMode ? 'STEP 3 RESULT - READY FOR FINAL REVIEW' : 'EXPERIMENTAL TOPIC RESTRUCTURING - NOT SAVED'}</p>
+      <h2>{data.initialCreationMode ? 'Final proposed Living Understanding v1' : 'Proposed cleaner Living Understanding structure'}</h2>
+      <p class="muted">{data.initialCreationMode ? 'Review the complete proposed v1 below. Structural validation may split, narrow, merge, move or rename topics, but it must preserve supported meaning. Nothing is authoritative until you approve the final result.' : 'This is a structural proposal only. It may split, narrow, merge, move or rename topics, but it must not add facts, erase prior meaning, resolve contradictions or change uncertainty.'}</p>
 
       {#if form.restructuring.repairAttempted}
         <p class="muted"><strong>Validator-guided repair:</strong> {form.restructuring.repairSucceeded ? 'The first structural response failed deterministic validation, so Relish ran one bounded repair pass and this is the repaired result.' : 'The first structural response failed deterministic validation and one bounded repair pass was attempted. The result still has blocking validation warnings below.'}</p>
@@ -424,6 +483,7 @@
             <h3>Retry only the structural stage</h3>
             <p class="muted">The successful comparison chain is saved as a temporary encrypted checkpoint. You do not need to repeat the earlier source comparisons. Relish will retry structural review from that checkpoint and preserve all validated earlier work.</p>
             <form method="POST" action="?/retryRestructuring" use:enhance>
+        <input type="hidden" name="workflowMode" value={data.initialCreationMode ? 'INITIAL' : 'EXPERIMENT'} />
               <input type="hidden" name="draftCheckpointId" value={form.restructuring.draftCheckpointId} />
               <label class="consent"><input name="consent" type="checkbox" value="YES" required /> I authorise retrying structural review from this saved private working checkpoint.</label>
               <button type="submit">Retry structural review only</button>
@@ -498,22 +558,24 @@
 
       {#if form.restructuring.adoptionToken && !form.restructuring.analysis.errors?.length}
         <div class="adoption-panel">
-          <h3>Approve and save this Living Understanding</h3>
-          <p class="muted">This is the authoritative persistence step. The displayed topic understandings will be stored as a new immutable revision. Earlier revisions and source history remain intact. This does not grant matching, sharing or disclosure permission.</p>
+          <h3>{data.initialCreationMode ? '4. Approve and create authoritative v1' : 'Approve and save this Living Understanding'}</h3>
+          <p class="muted">{data.initialCreationMode ? 'This is the first authoritative persistence step. The displayed topic understandings will be stored as immutable Living Understanding v1 with source provenance and revision history. This does not grant matching, sharing or disclosure permission.' : 'This is the authoritative persistence step. The displayed topic understandings will be stored as a new immutable revision. Earlier revisions and source history remain intact. This does not grant matching, sharing or disclosure permission.'}</p>
           <form method="POST" action="?/adoptRestructuring">
+            <input type="hidden" name="workflowMode" value={data.initialCreationMode ? 'INITIAL' : 'EXPERIMENT'} />
             <input type="hidden" name="adoptionToken" value={form.restructuring.adoptionToken} />
             <input type="hidden" name="draftCheckpointId" value={form.restructuring.draftCheckpointId || ''} />
-            <label class="consent"><input name="approve" type="checkbox" value="YES" required /> I have reviewed this validated structure and approve saving it as the current Living Understanding.</label>
-            <button type="submit">Approve and save Living Understanding</button>
+            <label class="consent"><input name="approve" type="checkbox" value="YES" required /> I have reviewed this validated structure and approve saving it as the current Living Understanding. In initial creation mode this becomes authoritative v1.</label>
+            <button type="submit">{data.initialCreationMode ? 'Approve and create v1' : 'Approve and save Living Understanding'}</button>
           </form>
         </div>
       {/if}
 
-      {#if remainingRestructureSources().length}
+      {#if !data.initialCreationMode && remainingRestructureSources().length}
         <div class="continue-chain">
           <h3>Continue from the restructured baseline</h3>
           <p class="muted">The next later source will be compared with this proposed cleaner structure, while the earlier evolution history remains unchanged.</p>
           <form method="POST" action="?/compareLongitudinal" use:enhance>
+        <input type="hidden" name="workflowMode" value={data.initialCreationMode ? 'INITIAL' : 'EXPERIMENT'} />
             <input type="hidden" name="baselineSourceInteractionId" value={form.restructuring.latestSourceInteractionId} />
             <input type="hidden" name="longitudinalSeedJson" value={serialiseLongitudinalSeed(form.restructuring.restructuredLongitudinalSeed)} />
             <input type="hidden" name="priorOperationalUnitsJson" value={serialiseOperationalUnits(form.restructuring.priorOperationalUnits)} />
@@ -533,13 +595,18 @@
         </div>
       {/if}
 
-      <p class="muted"><strong>Read-only:</strong> no stored topic, understanding, statement, permission, sharing rule or historical version has been changed.</p>
+      <p class="muted"><strong>{data.initialCreationMode ? 'Not yet saved:' : 'Read-only:'}</strong> no stored topic, understanding, statement, permission, sharing rule or historical version has been changed unless you complete the explicit approval action above.</p>
     </section>
   {/if}
 </main>
 
 <style>
   .experiment { max-width: 980px; margin: 2rem auto; padding: 1rem; }
+  .workflow-steps { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:.5rem; margin:1rem 0 1.25rem; }
+  .workflow-steps span { border:1px solid var(--border-color,#ddd); border-radius:10px; padding:.75rem; font-size:.9rem; font-weight:600; }
+  .production-next-step { background:color-mix(in srgb, var(--background-color,#fff) 94%, #4f46e5 6%); }
+  .optional-source { margin-top:1rem; }
+  @media (max-width: 720px) { .workflow-steps { grid-template-columns:1fr 1fr; } }
   .panel { border: 1px solid var(--border-color, #aaa); border-radius: 10px; padding: 1.25rem; margin: 1.5rem 0; }
   form { display: grid; gap: 1rem; }
   button { padding: .65rem; }

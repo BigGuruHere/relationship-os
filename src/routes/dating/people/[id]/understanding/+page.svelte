@@ -31,7 +31,16 @@
   <nav class="workflow-nav"><a href={`/dating/people/${data.personId}#personal-reflections`}>← Personal reflections</a>{#if data.selectedSource}<a href={`/dating/people/${data.personId}/understanding`}>View full Living Understanding →</a>{/if}</nav>
   {#if data.selectedSource}
     <header class="focus-heading"><p class="eyebrow">Reflection → Knowledge</p><h1>{data.selectedSource?.sourceKind === 'CONVERSATION_EXCERPT' ? 'Review this conversation excerpt' : 'Review this reflection'}</h1><p class="muted">Choose which individual pieces of this reflection should become proposed or operator-reviewed knowledge. Organise confirmed statements into topics afterwards.</p></header>
-    {#if data.revisionExperimentEnabled}<p><a href={`/dating/people/${data.personId}/understanding/revision-experiment?sourceInteractionId=${encodeURIComponent(data.selectedSource.id)}`}>Try the read-only Living Understanding revision experiment (development only) →</a></p>{/if}
+    {#if data.persistedLivingUnderstanding}
+      <p><a class="btn primary" href={`/dating/people/${data.personId}/understanding/impact-review?sourceInteractionId=${encodeURIComponent(data.selectedSource.id)}`}>Review impact on Living Understanding →</a></p>
+      <p class="muted small">This compares the new source with authoritative v{data.persistedLivingUnderstanding.revisionNumber} and proposes revisions only for affected persisted topics.</p>
+    {:else}
+      <section class="card initial-living-cta">
+        <h2>No Living Understanding exists yet</h2>
+        <p class="muted">Use this reflection to begin the person's first authoritative Living Understanding. You will review the proposed topics and structure before anything is saved.</p>
+        <p><a class="btn primary" href={`/dating/people/${data.personId}/understanding/revision-experiment?initial=1&sourceInteractionId=${encodeURIComponent(data.selectedSource.id)}`}>Create initial Living Understanding →</a></p>
+      </section>
+    {/if}
     <section class="card source-preview" aria-label="Original reflection"><h2>Original reflection</h2><p class="muted small">Recorded {new Date(data.selectedSource.at).toLocaleString()} · Private to this Dating space</p><blockquote>{data.selectedSource.text}</blockquote></section>
   {:else}
     <header class="focus-heading"><p class="eyebrow">Living Understanding</p><h1>{data.name}</h1><p class="muted">Organise this person's current knowledge by realm and topic. Proposed statements and source history remain below.</p></header>
@@ -55,7 +64,7 @@
         </details>
       </section>
     {:else}
-      <section class="card panel"><h2>Current Living Understanding</h2><p class="muted">No authoritative Living Understanding revision has been saved yet. Validated structural reviews remain read-only until explicitly approved.</p></section>
+      <section class="card panel"><h2>Current Living Understanding</h2><p class="muted">No authoritative Living Understanding has been created yet. Open a reflection or conversation excerpt and choose <strong>Create initial Living Understanding</strong> to build and approve v1.</p></section>
     {/if}
     {#if data.currentKnowledge.length}<p><a class="btn" href="#assign-knowledge">Assign an existing statement to a topic ↓</a></p>{/if}
   {/if}

@@ -53,6 +53,12 @@
       <section class="card result-summary">
         <h2>Proposed authoritative v{proposal.baselineRevisionNumber + 1}</h2>
         <p><strong>{proposal.affectedTopics.length}</strong> affected existing topic(s), <strong>{proposal.newTopics.length}</strong> genuinely new topic(s), and <strong>{proposal.unchangedTopics.length}</strong> unchanged topic(s) carried forward.</p>
+        <p class="muted small">Semantic boundary review checked the changed/new topics against the full resulting snapshot. {proposal.boundaryReview.repairedTopicCount} topic{proposal.boundaryReview.repairedTopicCount === 1 ? '' : 's'} required narrowing or repair before this proposal was shown.</p>
+        {#if proposal.boundaryReview.notes.length}
+          <details><summary>Boundary review details</summary>
+            {#each proposal.boundaryReview.notes as note}<p class="muted small"><strong>{note.status}</strong> · {note.reason}</p>{/each}
+          </details>
+        {/if}
       </section>
 
       <section class="card">

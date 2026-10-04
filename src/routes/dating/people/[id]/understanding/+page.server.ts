@@ -11,7 +11,7 @@ import { suggestTopicPlacement } from '$lib/server/datingTopicPlacement';
 import { compareDatingKnowledge, listDatingKnowledgeComparisons, sharedTopicCandidates } from '$lib/server/datingKnowledgeComparison';
 import { contactDisplayName } from '$lib/server/contactDisplay';
 import { listDatingUnderstanding, createDatingUnderstanding, reviewDatingUnderstanding, listCurrentDatingKnowledge, requireSourceReflection, validateUnderstandingStatement } from '$lib/server/datingLivingUnderstanding';
-import { getCurrentLivingUnderstanding, listLivingUnderstandingRevisionHistory } from '$lib/server/datingPersistedLivingUnderstanding';
+import { getCurrentLivingUnderstanding, getLivingUnderstandingRevision, listLivingUnderstandingRevisionHistory } from '$lib/server/datingPersistedLivingUnderstanding';
 
 function requireDating(locals: App.Locals, contactId: string) {
   if (!locals.user) throw redirect(303, '/auth/login');
@@ -40,13 +40,20 @@ export const load: PageServerLoad = async ({ locals, params, url }) => {
       .filter(candidate => candidate.statement)]));
   const comparisonHistory = await listDatingKnowledgeComparisons(scope);
   const [persistedLivingUnderstanding, livingRevisionHistory] = await Promise.all([getCurrentLivingUnderstanding(scope), listLivingUnderstandingRevisionHistory(scope)]);
+  const requestedRevisionNumber = Number(url.searchParams.get('revision'));
+  const inspectedLivingRevision = Number.isInteger(requestedRevisionNumber) && requestedRevisionNumber > 0
+    ? await getLivingUnderstandingRevision(scope, requestedRevisionNumber)
+    : null;
+  // Legacy atomic knowledge tooling remains available only behind an explicit development flag.
+  // The normal product surface is now the authoritative Living Understanding and its revision history.
+  const legacyKnowledgeToolsEnabled = process.env.NODE_ENV !== 'production' && process.env.DATING_LEGACY_KNOWLEDGE_UI === 'YES';
   const focusClaimId = url.searchParams.get('claimId');
   // After a saved review, open the most recently updated unassigned claim, if one exists.
   const assignedIds = new Set(topicTree.flatMap(realm => realm.topics.flatMap(topic => topic.claims.map(claim => claim.id))));
   const suggestedFocusClaimId = url.searchParams.get('reviewSaved') === '1'
     ? namedKnowledge.find(claim => !assignedIds.has(claim.id))?.id ?? null : null;
   return { revisionExperimentEnabled: revisionExperimentEnabled(), personId: scope.contactId, focusClaimId: namedKnowledge.some(claim => claim.id === focusClaimId) ? focusClaimId : null, suggestedFocusClaimId, name: await contactDisplayName(contact),
-    reviewSaved: url.searchParams.get('reviewSaved') === '1', livingSaved: url.searchParams.get('livingSaved') === '1', persistedLivingUnderstanding, livingRevisionHistory, entries: await listDatingUnderstanding(scope), currentKnowledge: namedKnowledge,
+    reviewSaved: url.searchParams.get('reviewSaved') === '1', livingSaved: url.searchParams.get('livingSaved') === '1', persistedLivingUnderstanding, livingRevisionHistory, inspectedLivingRevision, legacyKnowledgeToolsEnabled, entries: await listDatingUnderstanding(scope), currentKnowledge: namedKnowledge,
     realms: REALMS, topicTree, selectedSource, comparisonCandidates, comparisonHistory, comparisonSaved: url.searchParams.get('comparisonSaved') === '1' }; 
 };
 export const actions: Actions = {

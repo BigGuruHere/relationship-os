@@ -544,6 +544,58 @@ export async function getCurrentLivingUnderstanding(scope: Scope) {
   };
 }
 
+export async function getLivingUnderstandingRevision(scope: Scope, revisionNumber: number) {
+  await requireDatingPerson(scope);
+  if (!Number.isInteger(revisionNumber) || revisionNumber < 1) return null;
+  const revision = await prisma.livingUnderstandingRevision.findFirst({
+    where: { ...scope, revisionNumber },
+    select: {
+      id: true, revisionNumber: true, previousRevisionId: true, authorisedAt: true,
+      memberships: {
+        orderBy: { position: 'asc' },
+        select: {
+          topicIdentityId: true, topicVersionId: true, position: true,
+          topicIdentity: { select: { realmNameEnc: true, topicNameEnc: true } },
+          topicVersion: {
+            select: {
+              versionNumber: true, temporalScope: true, operation: true, understandingEnc: true,
+              sources: {
+                orderBy: { sourceObservedAt: 'asc' },
+                select: { sourceInteractionId: true, sourceObservedAt: true, relationshipType: true }
+              }
+            }
+          }
+        }
+      },
+      sources: {
+        select: { sourceInteractionId: true, sourceObservedAt: true },
+        orderBy: { sourceObservedAt: 'asc' }
+      }
+    }
+  });
+  if (!revision) return null;
+  return {
+    id: revision.id,
+    revisionNumber: revision.revisionNumber,
+    previousRevisionId: revision.previousRevisionId,
+    authorisedAt: revision.authorisedAt,
+    topics: revision.memberships.map(row => ({
+      id: row.topicVersionId,
+      topicVersionId: row.topicVersionId,
+      topicVersionNumber: row.topicVersion.versionNumber,
+      topicIdentityId: row.topicIdentityId,
+      position: row.position,
+      realm: decrypt(row.topicIdentity.realmNameEnc, LABEL_AAD),
+      topicName: decrypt(row.topicIdentity.topicNameEnc, LABEL_AAD),
+      understanding: decrypt(row.topicVersion.understandingEnc, TEXT_AAD),
+      temporalScope: row.topicVersion.temporalScope,
+      operation: row.topicVersion.operation,
+      sources: row.topicVersion.sources
+    })),
+    sources: revision.sources
+  };
+}
+
 // IT: Stage 8.13 production analysis should call this baseline loader rather than rebuilding an
 // inventory from UnderstandingTopic or browser-carried experiment state.
 export const getAuthoritativeLivingUnderstandingBaseline = getCurrentLivingUnderstanding;

@@ -43,7 +43,7 @@
     {/if}
     <section class="card source-preview" aria-label="Original reflection"><h2>Original reflection</h2><p class="muted small">Recorded {new Date(data.selectedSource.at).toLocaleString()} · Private to this Dating space</p><blockquote>{data.selectedSource.text}</blockquote></section>
   {:else}
-    <header class="focus-heading"><p class="eyebrow">Living Understanding</p><h1>{data.name}</h1><p class="muted">Organise this person's current knowledge by realm and topic. Proposed statements and source history remain below.</p></header>
+    <header class="focus-heading"><p class="eyebrow">Living Understanding</p><h1>{data.name}</h1><p class="muted">Review the person's current authoritative Living Understanding and inspect its immutable revision history.</p></header>
     {#if data.reviewSaved}<p class="saved-message" role="status">Knowledge review saved. Select a statement below to review suggested topic placements before assigning anything.</p>{/if}
     {#if data.livingSaved}<p class="saved-message" role="status">Living Understanding saved as a new authorised revision.</p>{/if}
     {#if data.persistedLivingUnderstanding}
@@ -57,17 +57,36 @@
             <p class="muted small">{topic.temporalScope.toLowerCase()}</p>
           </article>
         {/each}
-        <details class="revision-history"><summary>Revision history ({data.livingRevisionHistory.length})</summary>
+        <details class="revision-history" id="revision-history" open={Boolean(data.inspectedLivingRevision)}><summary>Revision history ({data.livingRevisionHistory.length})</summary>
           {#each data.livingRevisionHistory as revision}
-            <p class="muted small">v{revision.revisionNumber} · {new Date(revision.authorisedAt).toLocaleString()} · {revision._count.topics} topics · {revision._count.sources} source{revision._count.sources === 1 ? '' : 's'}</p>
+            <p class="muted small"><a href={`/dating/people/${data.personId}/understanding?revision=${revision.revisionNumber}#revision-history`}>v{revision.revisionNumber}</a> · {new Date(revision.authorisedAt).toLocaleString()} · {revision._count.topics} topics · {revision._count.sources} source{revision._count.sources === 1 ? '' : 's'} · {revision._count.createdTopicVersions} changed/new topic version{revision._count.createdTopicVersions === 1 ? '' : 's'}</p>
           {/each}
+          {#if data.inspectedLivingRevision}
+            <section class="revision-inspector">
+              <h3>Authoritative snapshot v{data.inspectedLivingRevision.revisionNumber}</h3>
+              <p class="muted small">Saved {new Date(data.inspectedLivingRevision.authorisedAt).toLocaleString()} · immutable historical snapshot</p>
+              {#each data.inspectedLivingRevision.topics as topic (topic.topicVersionId)}
+                <article class="persisted-topic historical-topic">
+                  <p class="eyebrow">{topic.realm}</p>
+                  <h4>{topic.topicName} · t{topic.topicVersionNumber}</h4>
+                  <p>{topic.understanding}</p>
+                  <p class="muted small">{topic.temporalScope.toLowerCase()} · {topic.sources.length} source link{topic.sources.length === 1 ? '' : 's'}</p>
+                </article>
+              {/each}
+              <p><a href={`/dating/people/${data.personId}/understanding#revision-history`}>Close historical snapshot</a></p>
+            </section>
+          {/if}
         </details>
       </section>
     {:else}
       <section class="card panel"><h2>Current Living Understanding</h2><p class="muted">No authoritative Living Understanding has been created yet. Open a reflection or conversation excerpt and choose <strong>Create initial Living Understanding</strong> to build and approve v1.</p></section>
     {/if}
-    {#if data.currentKnowledge.length}<p><a class="btn" href="#assign-knowledge">Assign an existing statement to a topic ↓</a></p>{/if}
+    {#if data.legacyKnowledgeToolsEnabled && data.currentKnowledge.length}<p><a class="btn" href="#assign-knowledge">Open legacy statement organisation tools ↓</a></p>{/if}
   {/if}
+  {#if data.legacyKnowledgeToolsEnabled}
+  <details class="legacy-knowledge-tools">
+    <summary>Development tools: legacy individual knowledge workflow</summary>
+    <p class="muted small">These tools belong to the earlier atomic-knowledge workflow and are hidden from the normal Living Understanding experience.</p>
   {#if !data.selectedSource}
     <section class="card panel" id="realms">
       <div class="section-heading"><div><h2>Realms and topics</h2><p class="muted">Each topic groups related, individually recorded knowledge. Assigning a statement does not change its evidence or disclose it.</p></div><button type="button" class="btn" on:click={() => topicPanelOpen = !topicPanelOpen} aria-expanded={topicPanelOpen}>{topicPanelOpen ? 'Close topic form' : '+ Create topic'}</button></div>
@@ -405,7 +424,9 @@
     {/each}
   </details>
   {/if}
-  <p class="muted"><strong>Privacy:</strong> Operator confirmation is not independently verified by the participant and does not grant permission to use this information in other spaces or disclose it to anyone.</p>
+  </details>
+  {/if}
+    <p class="muted"><strong>Privacy:</strong> Operator confirmation is not independently verified by the participant and does not grant permission to use this information in other spaces or disclose it to anyone.</p>
 </div>
 <style>
   /* IT: Keep full conversational turns readable without overflowing the review page. */
@@ -450,5 +471,8 @@
   .persisted-topic { border-top: 1px solid var(--border-color, #aaa); padding: 1rem 0; }
   .persisted-topic h3 { margin: .15rem 0 .5rem; }
   .revision-history { margin-top: 1rem; }
+  .revision-inspector { margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--border-color, #aaa); }
+  .historical-topic { opacity: .94; }
+  .legacy-knowledge-tools { margin: 1.25rem 0; padding: .9rem; border: 1px dashed var(--border-color, #aaa); border-radius: 10px; }
 </style>
 

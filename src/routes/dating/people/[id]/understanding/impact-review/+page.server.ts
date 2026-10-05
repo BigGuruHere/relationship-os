@@ -66,6 +66,14 @@ export const actions: Actions = {
       });
       return { impactProposal: proposal, draftCheckpoint };
     } catch (err) {
+      // Stage 8.13.3.2: keep production errors deliberately generic, but make
+      // development failures observable so semantic/provider defects can be
+      // diagnosed without weakening the fail-closed review path.
+      if (process.env.NODE_ENV !== 'production') {
+        console.error('[living-understanding] impact analysis failed', err);
+        const diagnostic = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
+        return fail(502, { impactError: `${safeError(err)} (${diagnostic})` });
+      }
       return fail(502, { impactError: safeError(err) });
     }
   },

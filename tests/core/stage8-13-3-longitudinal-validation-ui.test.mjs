@@ -11,7 +11,7 @@ const impactPage = fs.readFileSync('src/routes/dating/people/[id]/understanding/
 test('8.13.3 audits changed topics against the complete resulting authoritative snapshot', () => {
   assert.match(service, /auditLongitudinalTopicBoundaries/);
   assert.match(service, /FULL RESULTING SNAPSHOT/);
-  assert.match(service, /Every durable meaning should have one primary semantic home/);
+  assert.match(service, /Topics are coherent views of a person, not mutually exclusive containers/);
   assert.match(service, /Audit ONLY rows marked editable/);
   assert.match(service, /unchanged rows are immutable reference boundaries/i);
   assert.match(service, /boundaryReview = await auditLongitudinalTopicBoundaries/);
@@ -20,12 +20,12 @@ test('8.13.3 audits changed topics against the complete resulting authoritative 
 test('8.13.3 gives topic generation explicit neighbouring authoritative boundaries', () => {
   assert.match(service, /OTHER AUTHORITATIVE TOPIC BOUNDARIES/);
   assert.match(service, /EXISTING AUTHORITATIVE TOPIC BOUNDARIES/);
-  assert.match(service, /extract only the meaning whose primary semantic home is this topic/);
+  assert.match(service, /same evidence may legitimately inform another topic/);
 });
 
-test('8.13.3 includes a deterministic exact-sentence cross-topic duplication backstop', () => {
-  assert.match(service, /rejectExactCrossTopicSentenceDuplication/);
-  assert.match(service, /duplicates the same durable meaning across multiple topic homes/);
+test('8.13.3 includes a deterministic exact-sentence redundancy detector', () => {
+  assert.match(service, /findExactCrossTopicSentenceDuplication/);
+  assert.match(service, /repairExactCrossTopicSentenceDuplication/);
 });
 
 test('8.13.3 impact review exposes whether semantic boundary repair was required', () => {
@@ -51,7 +51,6 @@ test('8.13.3 revision history can inspect immutable historical snapshots and top
 });
 
 
-test('8.13.3.1 boundary-audit prompt remains valid TypeScript around possessive apostrophes', () => {
-  assert.doesNotMatch(service, /'Every durable meaning should have one primary semantic home\.[^\n]*topic's substantive meaning\.'/);
-  assert.match(service, /"Every durable meaning should have one primary semantic home\.[^\n]*topic's substantive meaning\."/);
+test('8.13.3.1 boundary-audit prompt remains parse-safe around apostrophes', () => {
+  assert.doesNotMatch(service, /'[^'\n]*topic's[^'\n]*'/);
 });

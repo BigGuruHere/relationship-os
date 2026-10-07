@@ -1,0 +1,3 @@
+Company Name,Registration Number,Company Phone,Website,State,Contact Name,Role,Email,Contact Phone,AI Research,Research Provider,Research Date,Source URL
+Example Training Group Pty Ltd,12345,03 9000 0001,https://example-training.invalid,VIC,Alex Example,Director,alex@example.invalid,0400 000 001,"Example research only. Replace this row with a selected real prospect.",Claude,2026-09-04,https://training.gov.au/
+Example Care Provider Pty Ltd,ACP-001,03 9000 0002,https://example-care.invalid,VIC,Jordan Example,Owner,jordan@example.invalid,0400 000 002,"Example research only. This template is intended for a tiny dev smoke test.",GPT,2026-09-04,https://www.health.gov.au/

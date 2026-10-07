@@ -38,7 +38,7 @@
       <section class="card initial-living-cta">
         <h2>No Living Understanding exists yet</h2>
         <p class="muted">Use this reflection to begin the person's first authoritative Living Understanding. You will review the proposed topics and structure before anything is saved.</p>
-        <p><a class="btn primary" href={`/dating/people/${data.personId}/understanding/revision-experiment?initial=1&sourceInteractionId=${encodeURIComponent(data.selectedSource.id)}`}>Create initial Living Understanding →</a></p>
+        <p><a class="btn primary" href={`/dating/people/${data.personId}/understanding/initial?initial=1&sourceInteractionId=${encodeURIComponent(data.selectedSource.id)}`}>Create initial Living Understanding →</a></p>
       </section>
     {/if}
     <section class="card source-preview" aria-label="Original reflection"><h2>Original reflection</h2><p class="muted small">Recorded {new Date(data.selectedSource.at).toLocaleString()} · Private to this Dating space</p><blockquote>{data.selectedSource.text}</blockquote></section>
@@ -128,7 +128,7 @@
             <p class="eyebrow">You are assigning this statement</p>
             <p class="selected-text">{selectedClaim.statement}</p>
             <p class="muted small">{selectedClaim.kind.replaceAll('_', ' ')} · {selectedClaim.authority === 'THIRD_PARTY_REPORTED' ? 'Operator reviewed, not participant confirmed' : selectedClaim.authority.replaceAll('_', ' ')}</p>
-            {#if selectedClaimAssignments.length}<p class="small"><strong>Already assigned to:</strong> {selectedClaimAssignments.map((assignment) => `${assignment.realm} → ${assignment.topic}`).join('; ')}</p>{:else}<p class="muted small">This statement has no topic assignments yet.</p>{/if}
+            {#if selectedClaimAssignments.length}<p class="small"><strong>Already assigned to:</strong> {selectedClaimAssignments.map((assignment: any) => `${assignment.realm} → ${assignment.topic}`).join('; ')}</p>{:else}<p class="muted small">This statement has no topic assignments yet.</p>{/if}
             {#if selectedClaim.sourceReflectionId}<p class="small"><a href={`/dating/people/${data.personId}/understanding?sourceInteractionId=${encodeURIComponent(selectedClaim.sourceReflectionId)}`}>Read the original private reflection →</a></p>{:else}<p class="muted small">No source reflection is linked to this active statement.</p>{/if}
           </div>
           <div class="placement-panel" aria-label="Suggested topic placements">
@@ -139,7 +139,7 @@
               <div class="placement-option">
                 <p><strong>{suggestion.realmName} → {suggestion.topicName}</strong> {#if suggestion.isNew}<span class="muted small">(new topic)</span>{:else}<span class="muted small">(existing topic)</span>{/if}</p>
                 <p class="muted small">Why suggested: {suggestion.reason}</p>
-                {#if selectedClaimAssignments.some((assignment) => assignment.topicId === suggestion.topicId) && !suggestion.isNew}
+                {#if selectedClaimAssignments.some((assignment: any) => assignment.topicId === suggestion.topicId) && !suggestion.isNew}
                   <p class="muted small">Already assigned.</p>
                 {:else if suggestion.isNew}
                   <form method="POST" action="?/createAndAssignTopic#assign-knowledge" class="suggestion-form">
@@ -162,13 +162,13 @@
           </div>
           <button type="button" class="btn" on:click={() => showAllTopics = !showAllTopics} aria-expanded={showAllTopics}>{showAllTopics ? 'Hide all topics' : 'Choose another existing topic'}</button>
           {#if showAllTopics}
-          {#if data.topicTree.some((realm) => realm.topics.length)}
+          {#if data.topicTree.some((realm: any) => realm.topics.length)}
             <form method="POST" action="?/assignTopic#assign-knowledge" class="assignment-form">
               <input type="hidden" name="claimId" value={selectedClaimId} />
               <input type="hidden" name="focusClaimId" value={selectedClaimId} />
               <label for="target-topic">2. Topic to add it to</label>
               <select id="target-topic" name="topicId" required><option value="" disabled selected>Choose a topic…</option>
-                {#each data.topicTree as realm}<optgroup label={realm.name}>{#each realm.topics as topic}<option value={topic.id} disabled={selectedClaimAssignments.some((assignment) => assignment.topicId === topic.id)}>{topic.name}{selectedClaimAssignments.some((assignment) => assignment.topicId === topic.id) ? ' (already assigned)' : ''}</option>{/each}</optgroup>{/each}
+                {#each data.topicTree as realm}<optgroup label={realm.name}>{#each realm.topics as topic}<option value={topic.id} disabled={selectedClaimAssignments.some((assignment: any) => assignment.topicId === topic.id)}>{topic.name}{selectedClaimAssignments.some((assignment: any) => assignment.topicId === topic.id) ? ' (already assigned)' : ''}</option>{/each}</optgroup>{/each}
               </select>
               <button type="submit" class="btn primary">Assign this statement</button>
             </form>

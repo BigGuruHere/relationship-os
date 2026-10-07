@@ -376,7 +376,7 @@
   .main-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
   .span2 { grid-column: 1 / span 2; }
   .preline { white-space: pre-wrap; }
-  .mini-list, .lead-list, .workstream-board { display: grid; gap: 8px; }
+  .lead-list, .workstream-board { display: grid; gap: 8px; }
   .workstream-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; }
   .workstream-card, .workstream-section { border: 1px solid var(--border); border-radius: 12px; padding: 12px; background: var(--panel); }
   .workstream-card-main { display: grid; gap: 4px; color: var(--text); text-decoration: none; margin-bottom: 10px; }
@@ -384,14 +384,13 @@
   .mini-stats span { border: 1px solid var(--border); border-radius: 999px; padding: 2px 8px; color: var(--muted); font-size: 0.85rem; }
   .btn.tiny { padding: 3px 8px; font-size: 0.8rem; margin-left: 8px; }
   .lead-row { display: flex; justify-content: space-between; gap: 12px; border-top: 1px solid var(--border); padding: 12px 0; color: var(--text); text-decoration: none; }
-  .mini-row { border-top: 1px solid var(--border); padding: 12px 0; display: flex; justify-content: space-between; gap: 12px; }
   .status-chip, .chip { border: 1px solid var(--border); background: var(--panel); border-radius: 999px; padding: 3px 9px; font-size: 0.85rem; color: var(--muted); }
   .chip { color: var(--text); text-decoration: none; }
   .edit-box { margin-top: 8px; }
   .row-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
   textarea { resize: vertical; }
   @media (max-width: 860px) {
-    .project-header, .section-head, .mini-row { flex-direction: column; }
+    .project-header, .section-head { flex-direction: column; }
     .summary-grid, .grid.two, .grid.three, .main-grid { grid-template-columns: 1fr; }
     .span2 { grid-column: auto; }
   }

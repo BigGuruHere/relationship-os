@@ -170,7 +170,6 @@
   .grid { display: grid; gap: 12px; }
   .grid.two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .grid.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-  textarea { resize: vertical; }
   hr { border: 0; border-top: 1px solid var(--border); margin: 18px 0; }
   .actions { display: flex; gap: 8px; margin-top: 14px; }
   .linked-project-box { border: 1px solid var(--border); background: var(--panel); border-radius: 12px; padding: 10px; margin: 12px 0; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }

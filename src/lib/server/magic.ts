@@ -48,12 +48,12 @@ function resolveOriginFallback(origin?: string): string {
  */
 export async function buildMagicLink(userId: string, origin?: string): Promise<string> {
   // 1 - mint a short lived single use token
-  const token = await createMagicToken({ userId });
+  const issued = await createMagicToken({ userId, ttlMinutes: 15 });
 
   // 2 - compose an absolute link to the API route that exchanges token for a session
   // Using API keeps the page simple and relies on server to set httpOnly cookie
   const base = resolveOriginFallback(origin);
-  const link = absoluteUrlFromOrigin(base, '/api/auth/magic-link', { token });
+  const link = absoluteUrlFromOrigin(base, '/api/auth/magic-link', { token: issued.token });
 
   return link;
 }

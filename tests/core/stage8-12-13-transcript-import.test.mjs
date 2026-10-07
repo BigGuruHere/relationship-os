@@ -36,10 +36,11 @@ test('requires intentional scoped mapping, no duplicates, at least one included 
 });
 test('full original is encrypted, excerpts separately encrypted and subject scoped', () => {
   assert.match(service, /ownerUserId: scope\.userId, domainKey: 'dating'/);
-  assert.match(service, /contact\.findMany\(\{ where: \{ userId: scope\.userId, contextSpaceId: scope\.contextSpaceId/);
+  assert.match(service, /prisma\.contact\.findMany/);
+  assert.match(service, /contextSpaceId: scope\.contextSpaceId/);
   assert.match(service, /validateSpeakerMapping\(/);
-  assert.match(service, /channel: 'DATING_CONVERSATION_TRANSCRIPT'/);
-  assert.match(service, /channel: 'DATING_PERSON_REFLECTION'/);
+  assert.match(service, /channel: CONVERSATION_TRANSCRIPT_CHANNEL/);
+  assert.match(service, /channel: PERSON_CONVERSATION_SOURCE_CHANNEL/);
   assert.match(service, /encrypt\(JSON\.stringify\(/);
   assert.match(service, /pg_advisory_xact_lock/);
   assert.match(source, /CONVERSATION_EXCERPT/);

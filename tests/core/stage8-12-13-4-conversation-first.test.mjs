@@ -23,7 +23,7 @@ test('one complete speaker source for one review, with excluded agent only in en
   assert.doesNotMatch(personal, /Agent:/);
   assert.match(personal, /prefer smaller groups/);
   assert.match(parsed.text, /Would you enjoy hiking together/);
-  assert.match(importer, /importVersion: 2/);
+  assert.match(importer, /importVersion: 3/);
   assert.match(importer, /speakerSource\(parsed\.turns, speaker\)/);
   assert.doesNotMatch(importer, /speakerExcerptChunks/);
 });
@@ -66,7 +66,7 @@ test('exact evidence is retrieved from target speaker, repairing only continuous
 });
 
 test('private parent lookup, consent and retained diagnostics remain explicit', () => {
-  assert.match(sourceService, /channel: 'DATING_CONVERSATION_TRANSCRIPT'/);
+  assert.match(sourceService, /CONVERSATION_TRANSCRIPT_CHANNEL/);
   assert.match(sourceService, /contextSpaceId: scope\.contextSpaceId/);
   assert.match(sourceService, /conversationContext = original\.text/);
   assert.match(extraction, /conversationWindows\(/);

@@ -31,5 +31,5 @@ const fix = run('Apply compatible audit fixes', 'npm', ['audit', 'fix']);
 if (fix !== 0) console.warn('Some advisories remain or npm audit failed. Inspect the generated report; do not force-upgrade Prisma.');
 run('Generate Prisma client', 'npx', ['prisma', 'generate']);
 run('Write post-update audit reports', 'npm', ['run', 'audit:stage8.10.4']);
-console.log('Review package.json/package-lock.json changes and run the verification suite in STAGE8_10_5_CONTROLLED_SECURITY_UPDATE.md.');
+console.log('Review package.json/package-lock.json changes and run the verification suite in docs/stage-history/STAGE8_10_5_CONTROLLED_SECURITY_UPDATE.md.');
 // Leave nonzero audit reporting to the dedicated verification step so residual Prisma alerts are visible.

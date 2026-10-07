@@ -20,6 +20,7 @@ function throttleSecret(): string {
   return secret;
 }
 
+type LoginBucket = 'ip' | 'account';
 type BucketResult = { attempts: number; expiresAt: Date };
 
 async function consumeBucket(kind: LoginBucket, key: string, limit: number): Promise<boolean> {

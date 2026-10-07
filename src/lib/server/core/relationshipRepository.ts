@@ -48,7 +48,7 @@ export function findCoreKnowledgeClaim<T extends Prisma.KnowledgeClaimSelect>(co
 // IT: Person identity is shared, but access remains anchored to this workspace through either
 // the workspace owner's account or a Contact already visible inside the workspace.
 export function findAccessibleCorePerson<T extends Prisma.PersonSelect>(context: CoreAccessContext, personId: string, select: T) {
-  return prisma.person.findFirst({
+  return (prisma.person as any).findFirst({
     where: {
       id: personId,
       OR: [

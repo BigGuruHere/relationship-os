@@ -3,10 +3,14 @@
   // PURPOSE: Share page - show QR and provide a one-tap Copy link action without exposing the raw URL
   // SECURITY: renders only server-provided strings - no secrets or decryption
 
-  export let data;
+  export let data: any;
+
+  // IT: The server redirects when no usable profile exists. Keep a local typed alias so the page
+  // can express that invariant without weakening the server-side guard.
+  const profile: any = data.profile;
 
   // IT: prefer server-provided origin to avoid SSR mismatch - fall back to window at runtime
-  const relPath = '/u/' + data.profile.slug;
+  const relPath = '/u/' + profile.slug;
   let profileUrl = (data.origin || '') + relPath;
 
   if (typeof window !== 'undefined' && (!profileUrl || profileUrl.startsWith('/'))) {
@@ -15,7 +19,7 @@
   }
 
   // IT: stored SVG markup for the QR if available
-  const svg = data.profile.qrSvg || '';
+  const svg = profile.qrSvg || '';
   const hasSvg = typeof svg === 'string' && svg.trim().startsWith('<svg');
 
   // IT: derive a friendly owner name with safe fallbacks
@@ -27,9 +31,8 @@
     s.replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 
   const rawName: string =
-    (data.profile.displayName && data.profile.displayName.trim()) ||
-    (data.owner && data.owner.name && data.owner.name.trim()) ||
-    (data.profile.slug && fromSlug(String(data.profile.slug))) ||
+    (profile.displayName && profile.displayName.trim()) ||
+        (profile.slug && fromSlug(String(profile.slug))) ||
     'Your';
 
   // IT: format possessive correctly: "Chris" -> "Chris'"; "Terence" -> "Terence's"

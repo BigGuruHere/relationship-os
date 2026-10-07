@@ -406,7 +406,6 @@
   .lead-row, .note-row { border-top: 1px solid var(--border); padding: 12px 0; display: flex; justify-content: space-between; gap: 12px; color: var(--text); text-decoration: none; }
   .field { display: grid; gap: 6px; margin-bottom: 10px; }
   input, textarea, select { width: 100%; }
-  .btn.danger { background:#b00020; color:#fff; border-color:#b00020; }
   @media (max-width: 1050px) { .mission-grid { grid-template-columns: 1fr 1fr; } }
   @media (max-width: 780px) { .header-card, .lead-row, .note-row { flex-direction: column; } .grid.two, .grid.three, .mission-grid { grid-template-columns: 1fr; } .span2 { grid-column: auto; } }
 </style>

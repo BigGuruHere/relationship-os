@@ -5,15 +5,16 @@
 import type { RequestHandler } from './$types';
 import { json } from '@sveltejs/kit';
 import { prisma } from '$lib/db';
+import type { Prisma } from '@prisma/client';
 
 export const GET: RequestHandler = async ({ url, locals }) => {
   if (!locals.user) return json({ tags: [] });
 
   const q = (url.searchParams.get('q') || '').toLowerCase().trim();
-  const where = q
+  const where: Prisma.TagWhereInput = q
     ? {
         userId: locals.user.id,
-        OR: [{ slug: { contains: q } }, { name: { contains: q, mode: 'insensitive' } }]
+        OR: [{ slug: { contains: q } }, { name: { contains: q, mode: 'insensitive' as const } }]
       }
     : { userId: locals.user.id };
 

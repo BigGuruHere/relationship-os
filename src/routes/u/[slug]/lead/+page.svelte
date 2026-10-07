@@ -2,8 +2,8 @@
     // src/routes/u/[slug]/lead/+page.svelte
     // PURPOSE: visitor form so a guest can share their details with the profile owner
     // SECURITY: posts to server action - no client crypto or secrets here
-    export let data;
-    export let form;
+    export let data: any;
+    export let form: any;
   
     // IT: owner display name comes from +page.server.ts load result
     const ownerName = data?.owner?.name || 'this contact';
@@ -13,8 +13,8 @@
     const phonePattern = '^[0-9()+\\-\\s]{7,}$';
   
     // IT: preserve previously entered values from the server provided `form.values`
-    const v = form?.values || {};
-    const errors = form?.errors || {};
+    const v: any = form?.values || {};
+    const errors: any = form?.errors || {};
   </script>
   
   <div class="container">

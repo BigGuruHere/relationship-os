@@ -231,7 +231,7 @@ export async function promoteKnowledgeClaim(params: {
   if (params.target === 'WANT') {
     if (claim.wantId) return { targetId: claim.wantId, created: false };
     const created = await createWantFromForm({
-      userId: params.context.workspaceUserId, contextSpaceId: params.context.contextSpaceId,
+      userId: params.context.workspaceUserId,
       form,
       links: { contactId: claim.contactId, personId: claim.personId, companyId: claim.companyId }
     });
@@ -241,7 +241,7 @@ export async function promoteKnowledgeClaim(params: {
 
   if (claim.offerId) return { targetId: claim.offerId, created: false };
   const created = await createOfferFromForm({
-    userId: params.context.workspaceUserId, contextSpaceId: params.context.contextSpaceId,
+    userId: params.context.workspaceUserId,
     form,
     links: { contactId: claim.contactId, personId: claim.personId, companyId: claim.companyId }
   });

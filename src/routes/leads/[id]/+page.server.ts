@@ -218,7 +218,9 @@ export const load: PageServerLoad = async ({ params, locals, url }) => {
       contact: { select: { id: true, fullNameEnc: true } },
       company: { select: { id: true, nameEnc: true, externalIdentifiers: { select: { id: true, scheme: true, valueEnc: true, sourceUrlEnc: true }, orderBy: { scheme: 'asc' } } } },
       deal: { select: { id: true, titleEnc: true } },
-      project: { select: { id: true, titleEnc: true } }
+      project: { select: { id: true, titleEnc: true } },
+      want: { select: { id: true, titleEnc: true } },
+      offer: { select: { id: true, titleEnc: true } }
     }
   });
 

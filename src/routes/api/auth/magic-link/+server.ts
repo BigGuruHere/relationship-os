@@ -21,18 +21,10 @@ import { json, error } from '@sveltejs/kit';
 import { prisma } from '$lib/db';
 import { createSession, setSessionCookie } from '$lib/auth';
 import { linkLeadsForUser } from '$lib/leads/link';
-import { verifyInviteToken } from '$lib/server/tokens';
+import { verifyMagicToken, markMagicTokenUsed } from '$lib/server/tokens';
 
 // IT: encrypted email helpers
-import {
-  normalizeEmail,
-  encrypt
-} from '$lib/crypto';
-import {
-  findUserByEmail,
-  setUserEmail,
-  decryptUserEmail
-} from '$lib/server/userEmail';
+import { decryptUserEmail } from '$lib/server/userEmail';
 
 export const POST: RequestHandler = async ({ request, cookies, locals }) => {
   // 1 - parse body
@@ -46,9 +38,9 @@ export const POST: RequestHandler = async ({ request, cookies, locals }) => {
   if (!token) throw error(400, 'Missing token');
 
   // 2 - verify token issued by our server
-  let payload: { userId?: string; email?: string; meta?: Record<string, any> } | null = null;
+  let payload: { id: string; userId: string } | null = null;
   try {
-    payload = await verifyInviteToken(token);
+    payload = await verifyMagicToken(token);
   } catch {
     throw error(400, 'Invalid or expired token');
   }
@@ -57,34 +49,12 @@ export const POST: RequestHandler = async ({ request, cookies, locals }) => {
   // 3 - resolve or create the user without using plaintext email
   let userId: string;
 
-  if (payload.userId) {
-    // IT: direct user lookup by id
-    const u = await prisma.user.findUnique({
-      where: { id: payload.userId },
-      select: { id: true }
-    });
-    if (!u) throw error(400, 'Invalid token user');
-    userId = u.id;
-  } else if (payload.email) {
-    // IT: upsert by encrypted email
-    const emailNorm = normalizeEmail(payload.email);
-
-    // 3a - try to find existing user by deterministic index
-    const existing = await findUserByEmail(emailNorm);
-    if (existing) {
-      userId = existing.id;
-    } else {
-      // 3b - create a lightweight user record, then set encrypted email fields
-      const created = await prisma.user.create({
-        data: { person: { create: {} } },
-        select: { id: true }
-      });
-      await setUserEmail(created.id, emailNorm);
-      userId = created.id;
-    }
-  } else {
-    throw error(400, 'Token does not contain a login identity');
-  }
+  // Magic tokens are issued to an existing userId. Resolve that user and consume the token
+  // before creating a session so the link remains single-use.
+  const u = await prisma.user.findUnique({ where: { id: payload.userId }, select: { id: true } });
+  if (!u) throw error(400, 'Invalid token user');
+  userId = u.id;
+  await markMagicTokenUsed(payload.id);
 
   // 4 - create a first party session and set the env aware cookie
   const { cookie, expiresAt } = await createSession(userId);

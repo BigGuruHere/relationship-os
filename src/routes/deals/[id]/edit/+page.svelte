@@ -122,7 +122,6 @@
   .grid { display: grid; gap: 12px; }
   .grid.two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .grid.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-  textarea { resize: vertical; }
   .actions { display: flex; gap: 8px; margin-top: 14px; }
   .error { color: var(--danger); margin-top: 12px; }
   .danger { background: var(--danger); border-color: var(--danger); color: white; }

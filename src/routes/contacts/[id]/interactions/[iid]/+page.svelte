@@ -174,7 +174,7 @@
   .warning-pill { border-color:#d97706; color:#b45309; }
   .inner-card { padding:12px; margin-top:12px; }
   pre { white-space:pre-wrap; margin:8px 0 0; font:inherit; }
-  .area,.field input,.field select,.field textarea { width:100%; border:1px solid var(--border); border-radius:10px; padding:9px 11px; background:var(--surface); color:var(--text); font:inherit; }
+  .area,.field select,.field textarea { width:100%; border:1px solid var(--border); border-radius:10px; padding:9px 11px; background:var(--surface); color:var(--text); font:inherit; }
   .stack,.capture-form { display:grid; gap:10px; margin-top:10px; }
   .actions,.title-line,.claim-actions { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
   .grid { display:grid; gap:10px; }.grid.two{grid-template-columns:repeat(2,minmax(0,1fr))}.field{display:grid;gap:5px}

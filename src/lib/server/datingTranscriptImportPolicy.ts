@@ -1,6 +1,6 @@
 // PURPOSE: Strict, deterministic parsing of consented labelled transcripts for the Dating pilot.
 // SECURITY: Do not infer who an unlabelled speaker is or rewrite quoted source passages.
-export type TranscriptTurn = { speaker: string; text: string };
+export type TranscriptTurn = { id: string; speaker: string; text: string };
 export type ParsedTranscript = { speakers: string[]; turns: TranscriptTurn[]; text: string };
 const MAX_TRANSCRIPT = 60000;
 const SPEAKER_LINE = /^(?:\[(?:\d{1,2}:)?\d{1,2}:\d{2}\]\s*)?([^:\n]{1,65}):\s*(.*)$/;
@@ -21,7 +21,7 @@ export function parseDatingTranscript(input: unknown): ParsedTranscript {
       if (/[<>]/.test(speaker)) throw new Error('Invalid speaker label.');
       if (speakers.size >= 8 && !speakers.has(speaker)) throw new Error('Only eight distinct speaker labels are supported.');
       speakers.add(speaker);
-      turns.push({ speaker, text: line });
+      turns.push({ id: `T${String(turns.length + 1).padStart(3, '0')}`, speaker, text: line });
     } else if (turns.length) {
       // Preserve the original line exactly, including any quotes and speaker references.
       turns[turns.length - 1].text += `\n${line}`;
@@ -81,7 +81,7 @@ export function conversationWindows(turns: TranscriptTurn[], speaker: string, ma
     // Include the immediately preceding prompt at a chunk boundary, if available.
     const room = maxChars - size - 2;
     const previousContext = preceding && preceding.speaker !== speaker && room >= 100
-      ? { speaker: preceding.speaker, text: preceding.text.length <= room ? preceding.text :
+      ? { id: preceding.id, speaker: preceding.speaker, text: preceding.text.length <= room ? preceding.text :
         `${preceding.speaker}: ${preceding.text.slice(preceding.speaker.length + 2, Math.max(preceding.speaker.length + 2, room - 3))}...` }
       : null;
     const context = previousContext ? [previousContext, ...batch] : batch;
@@ -97,7 +97,7 @@ export function conversationWindows(turns: TranscriptTurn[], speaker: string, ma
     const step = maxChars - prefix.length - 10;
     const segments: TranscriptTurn[] = [];
     for (let offset = 0; offset < body.length; offset += step) {
-      segments.push({ speaker: turn.speaker, text: prefix + body.slice(offset, offset + step) });
+      segments.push({ id: turn.id, speaker: turn.speaker, text: prefix + body.slice(offset, offset + step) });
     }
     return segments;
   });

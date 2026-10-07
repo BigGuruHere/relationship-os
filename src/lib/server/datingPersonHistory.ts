@@ -5,12 +5,13 @@ import { prisma } from '$lib/db';
 import { encrypt, decrypt } from '$lib/crypto';
 import { contactDisplayName } from '$lib/server/contactDisplay';
 import { createTouchpoint } from '$lib/server/relating';
+import { LEGACY_DATING_PERSON_REFLECTION_CHANNEL, PERSON_CONVERSATION_SOURCE_CHANNEL } from '$lib/server/core/conversationIngestion';
 
 export type HistoryScope = { userId: string; contextSpaceId: string; contactId: string };
-const PERSONAL_CHANNEL = 'DATING_PERSON_REFLECTION';
+const PERSONAL_CHANNEL = LEGACY_DATING_PERSON_REFLECTION_CHANNEL;
 const AAD = 'interaction.raw_text';
 
-type ReflectionPayload = { version: 1; kind: 'PERSONAL_REFLECTION' | 'CONVERSATION_EXCERPT'; text: string; touchpointId: string | null; actor: 'OPERATOR'; transcriptId?: string; speaker?: string };
+type ReflectionPayload = { version: 1 | 2; kind: 'PERSONAL_REFLECTION' | 'CONVERSATION_EXCERPT'; text: string; touchpointId: string | null; actor: 'OPERATOR'; transcriptId?: string; speaker?: string; provider?: string; ingestMethod?: string; sourceTurnIds?: string[] };
 
 export async function requireDatingHistoryContact(scope: HistoryScope) {
   const [space, contact] = await Promise.all([
@@ -71,7 +72,7 @@ export async function loadPersonHistory(scope: HistoryScope) {
   const person = await requireDatingHistoryContact(scope);
   const query = { userId: scope.userId, contextSpaceId: scope.contextSpaceId };
   const [interactions, touchpoints, groups, contacts, introductions] = await Promise.all([
-    prisma.interaction.findMany({ where: { ...query, contactId: scope.contactId, channel: PERSONAL_CHANNEL },
+    prisma.interaction.findMany({ where: { ...query, contactId: scope.contactId, channel: { in: [PERSONAL_CHANNEL, PERSON_CONVERSATION_SOURCE_CHANNEL] } },
       select: { id: true, occurredAt: true, rawTextEnc: true }, orderBy: { occurredAt: 'desc' }, take: 150 }),
     prisma.touchpoint.findMany({ where: { ...query, participants: { some: {
       ...query, OR: [{ contactId: scope.contactId }, { relatingParticipant: { contactId: scope.contactId, ...query } }]
@@ -89,10 +90,10 @@ export async function loadPersonHistory(scope: HistoryScope) {
   const nameById = new Map(contactNames.map(p => [p.id, p.name]));
   const reflections = interactions.map(row => {
     const parsed = JSON.parse(decrypt(row.rawTextEnc, AAD)) as ReflectionPayload;
-    if (parsed.version !== 1 || !['PERSONAL_REFLECTION', 'CONVERSATION_EXCERPT'].includes(parsed.kind) || parsed.actor !== 'OPERATOR') {
+    if (![1, 2].includes(parsed.version) || !['PERSONAL_REFLECTION', 'CONVERSATION_EXCERPT'].includes(parsed.kind) || parsed.actor !== 'OPERATOR') {
       throw new Error('Invalid private reflection data.');
     }
-    return { id: row.id, text: parsed.text, touchpointId: parsed.touchpointId, at: row.occurredAt, actor: parsed.actor, sourceKind: parsed.kind, speaker: parsed.speaker ?? null };
+    return { id: row.id, text: parsed.text, touchpointId: parsed.touchpointId, at: row.occurredAt, actor: parsed.actor, sourceKind: parsed.kind, speaker: parsed.speaker ?? null, provider: parsed.provider ?? null, ingestMethod: parsed.ingestMethod ?? null };
   });
   return {
     person: { id: person.id, name: await contactDisplayName(person) },

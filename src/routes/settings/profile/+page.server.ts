@@ -97,7 +97,10 @@ export const actions: Actions = {
     const websiteUrl  = String(fd.get('websiteUrl') || '').trim();
     const emailPublic = String(fd.get('emailPublic') || '').trim();
     const phonePublic = String(fd.get('phonePublic') || '').trim();
-    const kind        = String(fd.get('kind') || 'business').trim();
+    const requestedKind = String(fd.get('kind') || 'business').trim();
+    const kind: 'business' | 'personal' | 'dating' | 'custom' = ['business', 'personal', 'dating', 'custom'].includes(requestedKind)
+      ? requestedKind as 'business' | 'personal' | 'dating' | 'custom'
+      : 'business';
 
     if (!displayName) return fail(400, { error: 'Display name is required' });
 

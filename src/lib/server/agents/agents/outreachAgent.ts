@@ -403,7 +403,7 @@ export async function runOutreachAgent(input: RunOutreachAgentInput) {
     const brief = modelOutput?.runBriefing || {};
     const briefingTitle = cleanText(brief.title, `Outreach research briefing: ${input.sector}`) || `Outreach research briefing: ${input.sector}`;
     const briefingSummary = cleanText(brief.summary, `${created.length} candidates staged for human review.`) || `${created.length} candidates staged for human review.`;
-    const nextActions = Array.isArray(brief.recommendedNextActions) ? brief.recommendedNextActions.map(cleanText).filter(Boolean) : [];
+    const nextActions = Array.isArray(brief.recommendedNextActions) ? brief.recommendedNextActions.map((value: unknown) => cleanText(value)).filter(Boolean) : [];
 
     const briefingContent = [
       `# ${briefingTitle}`,

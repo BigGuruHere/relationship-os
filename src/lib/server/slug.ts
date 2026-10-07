@@ -33,7 +33,8 @@ export async function ensureRandomPublicSlug(userId: string): Promise<string> {
         data: { publicSlug: slug },
         select: { publicSlug: true }
       });
-      return updated.publicSlug;
+      if (updated.publicSlug) return updated.publicSlug;
+      throw new Error('Public slug update did not persist a value.');
     } catch (err: any) {
       // P2002 means unique collision - try again
       if (err?.code === 'P2002') continue;

@@ -49,7 +49,7 @@ export const actions = {
       text: String(raw.text || '')
     });
     if (!parsed.success) {
-      return fail(400, { error: parsed.error.errors[0]?.message || 'Invalid input' });
+      return fail(400, { error: parsed.error.issues[0]?.message || 'Invalid input' });
     }
 
     const occurredAt = parsed.data.occurredAt ? new Date(parsed.data.occurredAt) : null;
@@ -61,7 +61,7 @@ export const actions = {
         where: { id: params.iid, contactId: params.id, userId: locals.user.id },
         data: {
           channel: parsed.data.channel,
-          ...(occurredAt ? { occurredAt } : { occurredAt: null }),
+          ...(occurredAt ? { occurredAt } : {}),
           rawTextEnc
         }
       });

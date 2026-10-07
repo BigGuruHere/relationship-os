@@ -124,7 +124,7 @@
     tabindex="0"
     style={`--diameter:${Math.max(80, Math.min(diameterPx, 260))}px; --ringp:${progress};`}
   >
-    <div class="rg-content" on:pointerdown|preventDefault|stopPropagation on:click|preventDefault>
+    <div class="rg-content">
       <!-- IT: always render a status line - swap text based on state -->
       <div class="rg-status" role="status" aria-live="polite" aria-atomic="true">
         {#if transcribing}

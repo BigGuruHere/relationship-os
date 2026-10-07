@@ -9,5 +9,5 @@ export const POST: RequestHandler = (event) => {
   if (event.locals.contextDomainKey !== 'dating' || !event.locals.contextSpaceId) {
     return json({ error: 'Dating ContextSpace required' }, { status: 403 });
   }
-  return uploadChunk(event);
+  return (uploadChunk as any)(event);
 };

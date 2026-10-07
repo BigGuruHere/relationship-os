@@ -3,7 +3,7 @@
     import { closeDatePickerOnChange } from '$lib/closeDatePicker';
 
     export let data;
-    export let form;
+    export let form: any;
   
     // Pre-fill form inputs from loaded data; keep values if a 400 fail occurs.
     let channel = form?.values?.channel ?? data?.interaction?.channel ?? 'note';

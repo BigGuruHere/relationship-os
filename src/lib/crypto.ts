@@ -24,8 +24,8 @@ const HKDF_SALT = Buffer.alloc(0); // acceptable if master is high-entropy
 const INFO_ENC  = Buffer.from('personal-crm:enc-key:v1');
 const INFO_MAC  = Buffer.from('personal-crm:mac-key:v1');
 
-const encKey = crypto.hkdfSync('sha256', masterKey, HKDF_SALT, INFO_ENC, 32); // 32B
-const macKey = crypto.hkdfSync('sha256', masterKey, HKDF_SALT, INFO_MAC, 32); // 32B
+const encKey = Buffer.from(crypto.hkdfSync('sha256', masterKey, HKDF_SALT, INFO_ENC, 32)); // 32B
+const macKey = Buffer.from(crypto.hkdfSync('sha256', masterKey, HKDF_SALT, INFO_MAC, 32)); // 32B
 
 const GCM_IV_LEN = 12; // 96-bit IV recommended for GCM
 

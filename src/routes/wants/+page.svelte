@@ -92,7 +92,7 @@
       <select name="status"><option value="">Open statuses</option>{#each data.wantStatuses as opt}<option value={opt.value} selected={data.selectedStatus === opt.value}>{opt.label}</option>{/each}</select>
       <select name="projectId"><option value="">All projects</option>{#each data.projects as p}<option value={p.id} selected={data.selectedProjectId === p.id}>{p.title}</option>{/each}</select>
       <select name="workstreamId"><option value="">All workstreams</option>{#each data.workstreams as ws}<option value={ws.id} selected={data.selectedWorkstreamId === ws.id}>{ws.projectTitle} - {ws.name}</option>{/each}</select>
-      <select name="sort" aria-label="Sort"><option value="attention" selected={data.selectedSort === 'attention'}>Attention</option>{#each data.sortOptions.filter((opt) => opt.value !== 'attention') as opt}<option value={opt.value} selected={data.selectedSort === opt.value}>{opt.label}</option>{/each}</select>
+      <select name="sort" aria-label="Sort"><option value="attention" selected={data.selectedSort === 'attention'}>Attention</option>{#each data.sortOptions.filter((opt: any) => opt.value !== 'attention') as opt}<option value={opt.value} selected={data.selectedSort === opt.value}>{opt.label}</option>{/each}</select>
       <button class="btn primary" type="submit">Filter</button>
     </form>
   </section>

@@ -1,13 +1,13 @@
 <script lang="ts">
   // PURPOSE: edit your shareable profile with flexible extras from EXTRA_KEYS
   // SECURITY: only handles plain user-entered strings - no decryption here
-  export let data;
-  export let form;
+  export let data: any;
+  export let form: any;
 
   import { EXTRA_KEYS } from '$lib/publicProfile'; // IT: [{ key, label }]
 
   // IT: working profile from loader or defaults
-  const p = data?.profile || {};
+  const p: any = data?.profile || {};
 
   // IT: core public fields
   let displayName = p.displayName || '';
@@ -129,7 +129,6 @@
   .field { display:flex; flex-direction:column; gap:6px; }
   .field input, .field textarea, .field select { padding:8px 10px; border:1px solid #ddd; border-radius:10px; font-family:inherit; }
   .span2 { grid-column: 1 / span 2; }
-  .note { color:#444; font-size:0.95rem; }
   .btn { padding:8px 12px; border:1px solid #ccc; border-radius:10px; text-decoration:none; }
   .btn.primary { background:#111; color:#fff; border-color:#111; }
 </style>

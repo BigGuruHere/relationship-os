@@ -596,11 +596,12 @@ export function validateTopicRestructureDraft(raw, priorSeeds) {
   const proposedTopics = [];
   const errors = [];
   const seenTargetKeys = new Set();
-  const ownershipContract = ['8.12.13.9.1', '8.12.13.9.2', '8.12.13.9.2.1', '8.12.13.9.2.2', '8.12.15'].includes(String(raw.validationContractVersion ?? ''));
-  const identityContract = ['8.12.13.9.2', '8.12.13.9.2.1', '8.12.13.9.2.2', '8.12.15'].includes(String(raw.validationContractVersion ?? ''));
-  const closureContract = ['8.12.13.9.2.1', '8.12.13.9.2.2', '8.12.15'].includes(String(raw.validationContractVersion ?? ''));
-  const primaryHomeCompletionContract = ['8.12.13.9.2.2', '8.12.15'].includes(String(raw.validationContractVersion ?? ''));
-  const incrementalRecoveryContract = String(raw.validationContractVersion ?? '') === '8.12.15';
+  const ownershipContract = ['8.12.13.9.1', '8.12.13.9.2', '8.12.13.9.2.1', '8.12.13.9.2.2', '8.12.15', '8.14.0'].includes(String(raw.validationContractVersion ?? ''));
+  const identityContract = ['8.12.13.9.2', '8.12.13.9.2.1', '8.12.13.9.2.2', '8.12.15', '8.14.0'].includes(String(raw.validationContractVersion ?? ''));
+  const closureContract = ['8.12.13.9.2.1', '8.12.13.9.2.2', '8.12.15', '8.14.0'].includes(String(raw.validationContractVersion ?? ''));
+  const primaryHomeCompletionContract = ['8.12.13.9.2.2', '8.12.15', '8.14.0'].includes(String(raw.validationContractVersion ?? ''));
+  const incrementalRecoveryContract = ['8.12.15', '8.14.0'].includes(String(raw.validationContractVersion ?? ''));
+  const flexibleOverlapContract = String(raw.validationContractVersion ?? '') === '8.14.0';
   const meaningUnitByRef = new Map();
   const meaningUnitRefsBySource = new Map();
 
@@ -633,7 +634,7 @@ export function validateTopicRestructureDraft(raw, priorSeeds) {
     // Stage 8.12.13.8.3.2: normalize KEEP coherence from the structural facts instead of
     // trusting a contradictory model boolean. A clean KEEP recommendation with no overlap
     // or contamination flags is coherent even if the model accidentally emitted false.
-    const keepCoherent = recommendedOperation === 'KEEP' && positiveFlags.length === 0 && overlappingTargetKeys.length === 0 && titleFitsCurrentState;
+    const keepCoherent = recommendedOperation === 'KEEP' && positiveFlags.length === 0 && titleFitsCurrentState && (flexibleOverlapContract || overlappingTargetKeys.length === 0);
     const meaningUnits = [];
     if (ownershipContract) {
       const sourceUnderstanding = normalizeMeaningExcerpt(byKey.get(targetKey)?.proposedUnderstanding ?? '');
@@ -711,7 +712,7 @@ export function validateTopicRestructureDraft(raw, priorSeeds) {
         errors.push(`KEEP for ${realm} / ${topicName} has no structural contamination audit.`);
       } else {
         const positiveFlags = audit.contaminationFlags.filter(flag => flag !== 'NONE');
-        if (!audit.keepCoherent || !audit.titleFitsCurrentState || positiveFlags.length || audit.overlappingTargetKeys.length || audit.recommendedOperation !== 'KEEP') {
+        if (!audit.keepCoherent || !audit.titleFitsCurrentState || positiveFlags.length || (!flexibleOverlapContract && audit.overlappingTargetKeys.length) || audit.recommendedOperation !== 'KEEP') {
           errors.push(`KEEP for ${realm} / ${topicName} conflicts with its structural contamination audit.`);
         }
       }
@@ -822,7 +823,10 @@ export function validateTopicRestructureDraft(raw, priorSeeds) {
         ? [...new Set(row.meaningUnitRefs.map(value => String(value ?? '').trim()).filter(value => meaningUnitByRef.has(value)))].slice(0, 12)
         : [];
       if (!groupId || refs.length < 2) continue;
-      const relationship = ['EQUIVALENT', 'SUBSTANTIALLY_OVERLAPPING'].includes(String(row.relationship)) ? String(row.relationship) : '';
+      const allowedRelationships = flexibleOverlapContract
+        ? ['EQUIVALENT', 'SUBSTANTIALLY_OVERLAPPING', 'REDUNDANT_DUPLICATION', 'LEGITIMATE_CROSS_TOPIC_RELEVANCE', 'SHARED_UNDERLYING_THEME', 'ACTUAL_TOPIC_CONTAMINATION']
+        : ['EQUIVALENT', 'SUBSTANTIALLY_OVERLAPPING'];
+      const relationship = allowedRelationships.includes(String(row.relationship)) ? String(row.relationship) : '';
       if (!relationship) continue;
       const group = { groupId, meaningUnitRefs: refs, relationship, canonicalMeaning: String(row.canonicalMeaning ?? '').trim().slice(0, 1200) };
       semanticOverlapGroups.push(group);
@@ -831,7 +835,12 @@ export function validateTopicRestructureDraft(raw, priorSeeds) {
         groupByRef.get(ref).push(groupId);
       }
       const homes = [...new Set(refs.flatMap(ref => primaryOwners.get(ref) ?? []).filter(Boolean))];
-      if (homes.length > 1) errors.push(`Semantic overlap group ${groupId} has multiple primary homes: ${homes.join(' | ')}.`);
+      const mayKeepDistinctHomes = flexibleOverlapContract && ['LEGITIMATE_CROSS_TOPIC_RELEVANCE', 'SHARED_UNDERLYING_THEME'].includes(relationship);
+      if (!mayKeepDistinctHomes && homes.length > 1) {
+        errors.push(flexibleOverlapContract
+          ? `Semantic overlap group ${groupId} has multiple canonical homes: ${homes.join(' | ')}.`
+          : `Semantic overlap group ${groupId} has multiple primary homes: ${homes.join(' | ')}.`);
+      }
     }
     // Stage 8.12.13.9.2.1: semantic-identity completion is server-derived. For the prior
     // 9.2 contract retain its original explicit completion requirement for regression safety;
@@ -845,6 +854,9 @@ export function validateTopicRestructureDraft(raw, priorSeeds) {
     // preserve meaning and be grounded in purpose/context.
     if (primaryHomeCompletionContract) {
       for (const group of semanticOverlapGroups) {
+        // IT: Under Stage 8.14 legitimate cross-topic relevance and shared themes may keep
+        // distinct canonical anchors. Never collapse them through overlap-group inheritance.
+        if (flexibleOverlapContract && ['LEGITIMATE_CROSS_TOPIC_RELEVANCE', 'SHARED_UNDERLYING_THEME'].includes(group.relationship)) continue;
         const declaredHomes = [...new Set(group.meaningUnitRefs.flatMap(ref => primaryOwners.get(ref) ?? []).filter(Boolean))];
         if (declaredHomes.length !== 1) continue;
         const inheritedHome = declaredHomes[0];
@@ -961,6 +973,7 @@ export function validateTopicRestructureDraft(raw, priorSeeds) {
     closureContract,
     primaryHomeCompletionContract,
     incrementalRecoveryContract,
+    flexibleOverlapContract,
     semanticIdentityComplete: identityContract && !errors.some(error => error.includes('Semantic overlap group') || error.includes('Likely duplicate meaning')),
     ownership,
     semanticOverlapGroups,

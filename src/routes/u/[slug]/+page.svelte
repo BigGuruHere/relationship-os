@@ -2,8 +2,8 @@
   // src/routes/u/[slug]/+page.svelte
   // PURPOSE: public profile page with owner-only edit, logged-in user instant connect, and lead capture.
   // SECURITY: only renders public strings provided by the server - no decryption here.
-  export let data;
-  export let form;
+  export let data: any;
+  export let form: any;
 
   // IT: helper utilities for rendering and vCard link building
   import { headerFrom, publicRows, buildVcardUrl, EXTRA_KEYS } from '$lib/publicProfile';
@@ -12,7 +12,7 @@
   let editing = Boolean(data?.editingRequested);
 
   // IT: seed fields from server profile or defaults
-  const prof = data?.profile || {};
+  const prof: any = data?.profile || {};
 
   // IT: derive a friendly owner name for the thanks banner
   const ownerName = (prof.displayName && prof.displayName.trim()) || 'the owner';
@@ -283,7 +283,6 @@
   .field input, .field textarea { padding:8px 10px; border:1px solid #ddd; border-radius:10px; }
   .span2 { grid-column: 1 / span 2; }
   .note { background:#f6f7f8; border:1px solid #e3e4e6; border-radius:10px; padding:8px 10px; color:#444; }
-  .topbar .note { background:#f9fafb; border-color:#eceef1; }
 
   /* IT: make the helper text look like plain text */
   .helper-text {

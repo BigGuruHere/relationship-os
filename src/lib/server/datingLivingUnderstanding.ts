@@ -6,6 +6,13 @@ import { prisma } from '$lib/db';
 import type { Prisma } from '@prisma/client';
 import { shouldAppendUnderstandingReview } from './understandingReviewPolicy';
 import { encrypt, decrypt, buildScopedIndexToken } from '$lib/crypto';
+import {
+  CONVERSATION_TRANSCRIPT_CHANNEL,
+  LEGACY_DATING_CONVERSATION_TRANSCRIPT_CHANNEL,
+  LEGACY_DATING_PERSON_REFLECTION_CHANNEL,
+  PERSON_CONVERSATION_SOURCE_CHANNEL,
+  type StoredConversationTurn
+} from './core/conversationIngestion';
 
 const CHANNEL = 'DATING_LIVING_UNDERSTANDING';
 const AAD = 'interaction.raw_text';
@@ -17,7 +24,9 @@ export function validateDatingKnowledgeKind(value: unknown): DatingKnowledgeKind
 }
 type Entry = { version: 1; event: 'PROPOSE' | 'REVIEW'; proposalId: string; statement: string; decision?: UnderstandingDecision; note?: string; actor?: 'OPERATOR' | 'DORIAN' | 'PARTICIPANT'; kind?: DatingKnowledgeKind; sourceInteractionId?: string | null };
 // Future Dorian and participant reviews must use authenticated actor provenance, not caller-supplied form fields.
-type Tx = Prisma.TransactionClient;
+// Prisma is extended with custody middleware, so the generated TransactionClient type is not
+// assignment-compatible with the runtime extended client even though the methods used here are identical.
+type Tx = any;
 type Scope = { userId: string; contextSpaceId: string; contactId: string };
 
 export function validateUnderstandingStatement(value: unknown) {
@@ -42,31 +51,48 @@ async function requireOwnedDatingContact(scope: Scope) {
 
 // The original reflection is checked at both proposal creation and review time.
 // This avoids attaching one person's knowledge to somebody else's private experience.
-export async function requireSourceReflection(scope: Scope, sourceId: string, tx: Pick<Prisma.TransactionClient, 'interaction'> = prisma) {
+export async function requireSourceReflection(scope: Scope, sourceId: string, tx: any = prisma) {
   const source = await tx.interaction.findFirst({ where: {
     id: sourceId, userId: scope.userId, contextSpaceId: scope.contextSpaceId,
-    contactId: scope.contactId, channel: 'DATING_PERSON_REFLECTION'
+    contactId: scope.contactId,
+    channel: { in: [LEGACY_DATING_PERSON_REFLECTION_CHANNEL, PERSON_CONVERSATION_SOURCE_CHANNEL] }
   }, select: { id: true, rawTextEnc: true, occurredAt: true } });
   if (!source) throw new Error('The source reflection is not accessible for this person.');
-  const payload = JSON.parse(decrypt(source.rawTextEnc, AAD)) as { version?: number; kind?: string; actor?: string; text?: string; transcriptId?: string; speaker?: string };
-  if (payload.version !== 1 || !['PERSONAL_REFLECTION', 'CONVERSATION_EXCERPT'].includes(payload.kind || '') || payload.actor !== 'OPERATOR' || !payload.text) {
+  const payload = JSON.parse(decrypt(source.rawTextEnc, AAD)) as {
+    version?: number; kind?: string; actor?: string; text?: string; transcriptId?: string;
+    speaker?: string; sourceTurnIds?: string[]; provider?: string; ingestMethod?: string;
+  };
+  if (![1, 2].includes(payload.version || 0) || !['PERSONAL_REFLECTION', 'CONVERSATION_EXCERPT'].includes(payload.kind || '') || payload.actor !== 'OPERATOR' || !payload.text) {
     throw new Error('The source is not a valid private reflection.');
   }
   let conversationContext: string | null = null;
+  let conversationTurns: StoredConversationTurn[] | null = null;
   if (payload.kind === 'CONVERSATION_EXCERPT' && payload.transcriptId) {
     // Validate parent custody and channel before decrypting conversation context.
     const parent = await tx.interaction.findFirst({ where: {
       id: payload.transcriptId, userId: scope.userId, contextSpaceId: scope.contextSpaceId,
-      channel: 'DATING_CONVERSATION_TRANSCRIPT'
+      channel: { in: [LEGACY_DATING_CONVERSATION_TRANSCRIPT_CHANNEL, CONVERSATION_TRANSCRIPT_CHANNEL] }
     }, select: { rawTextEnc: true } });
     if (!parent) throw new Error('The parent conversation is not accessible.');
-    const original = JSON.parse(decrypt(parent.rawTextEnc, AAD)) as { kind?: string; text?: string; speakers?: string[] };
+    const original = JSON.parse(decrypt(parent.rawTextEnc, AAD)) as {
+      version?: number; kind?: string; text?: string; speakers?: string[]; turns?: StoredConversationTurn[];
+    };
     if (original.kind !== 'CONVERSATION_TRANSCRIPT' || !original.text ||
       !original.speakers?.includes(payload.speaker || '')) throw new Error('Invalid parent conversation provenance.');
     conversationContext = original.text;
+    if (original.version === 2 && Array.isArray(original.turns)) {
+      const turns = original.turns.filter(turn => turn && /^T\d{3,4}$/.test(String(turn.id || '')) && typeof turn.speaker === 'string' && typeof turn.text === 'string');
+      const byId = new Map(turns.map(turn => [turn.id, turn]));
+      const sourceTurnIds = Array.isArray(payload.sourceTurnIds) ? payload.sourceTurnIds : [];
+      if (sourceTurnIds.length && sourceTurnIds.some(id => byId.get(id)?.speaker !== payload.speaker)) {
+        throw new Error('Invalid conversation turn provenance.');
+      }
+      conversationTurns = turns;
+    }
   }
   return { id: source.id, text: payload.text, at: source.occurredAt,
-    sourceKind: payload.kind, speaker: payload.speaker || null, conversationContext };
+    sourceKind: payload.kind, speaker: payload.speaker || null, conversationContext, conversationTurns,
+    sourceTurnIds: Array.isArray(payload.sourceTurnIds) ? payload.sourceTurnIds : [] };
 }
 
 // Current person-level view: reads active, context-scoped claims directly, not the historical transcript.
@@ -151,8 +177,9 @@ async function appendUnderstandingReview(tx: Tx, scope: Scope, input: { proposal
     channel: CHANNEL, externalRef: { startsWith: `understanding:review:${proposalId}:` }
   }, select: { id: true, rawTextEnc: true, occurredAt: true }, orderBy: [{ occurredAt: 'desc' }, { id: 'desc' }], take: 300 });
   if (earlierReviews.length >= 300) throw new Error('Review history limit reached; stop and request support.');
-  const previous = earlierReviews.map(row => ({ row, event: JSON.parse(decrypt(row.rawTextEnc, AAD)) as Entry }))
-    .filter(({ event }) => event.version === 1 && event.event === 'REVIEW' && event.proposalId === proposalId);
+  type ReviewRow = { id: string; rawTextEnc: string; occurredAt: Date };
+  const previous = earlierReviews.map((row: ReviewRow) => ({ row, event: JSON.parse(decrypt(row.rawTextEnc, AAD)) as Entry }))
+    .filter(({ event }: { row: ReviewRow; event: Entry }) => event.version === 1 && event.event === 'REVIEW' && event.proposalId === proposalId);
   const last = previous[0]?.event;
   // A meaningful note may be added, but an unchanged repeat without a new note is a no-op.
   if (!shouldAppendUnderstandingReview(last ? { statement: last.statement, decision: last.decision ?? '', note: last.note } : null, { statement, decision, note })) return false;
@@ -164,7 +191,7 @@ async function appendUnderstandingReview(tx: Tx, scope: Scope, input: { proposal
     rawTextEnc: encrypt(JSON.stringify(event), AAD)
   }, select: { id: true } });
 
-  const earlierIds = previous.map(({ row }) => row.id);
+  const earlierIds = previous.map(({ row }: { row: ReviewRow; event: Entry }) => row.id);
   const priorEvidence = await tx.knowledgeEvidence.findMany({ where: {
     userId: scope.userId, contextSpaceId: scope.contextSpaceId,
     sourceInteractionId: { in: earlierIds }, status: 'ACTIVE'
@@ -173,7 +200,7 @@ async function appendUnderstandingReview(tx: Tx, scope: Scope, input: { proposal
   // Restrict by claim ID so a shared source cannot invalidate unrelated knowledge proposals.
   const originEvidence = origin.sourceInteractionId && priorEvidence.length ? await tx.knowledgeEvidence.findMany({ where: {
     userId: scope.userId, contextSpaceId: scope.contextSpaceId, sourceInteractionId: origin.sourceInteractionId,
-    claimId: { in: [...new Set(priorEvidence.map(e => e.claimId))] }, status: 'ACTIVE'
+    claimId: { in: [...new Set(priorEvidence.map((e: { claimId: string }) => e.claimId))] }, status: 'ACTIVE'
   }, select: { id: true, claimId: true } }) : [];
   const retiredEvidence = [...priorEvidence, ...originEvidence];
   for (const old of retiredEvidence) {

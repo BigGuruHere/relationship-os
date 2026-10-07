@@ -85,6 +85,10 @@
     };
   }
 
+  function focusOnMount(node: HTMLInputElement) {
+    node.focus();
+  }
+
   function submitQuickControl(event: Event) {
     (event.currentTarget as HTMLInputElement | HTMLSelectElement).form?.requestSubmit();
   }
@@ -257,7 +261,7 @@
         <strong>Next action</strong><form method="post" action="?/quickField" class="quick-inline-form quick-action-form" use:enhance={enhanceQuickField('nextAction')}>
           <input type="hidden" name="field" value="nextAction" />
           {#if quickNextActionCreating}
-            <input name="value" class="quick-text" bind:value={quickNextActionDraft} on:keydown={submitQuickTextOnEnter} maxlength="120" placeholder="Type a new next action" aria-label="Create next action" autocomplete="off" autofocus />
+            <input name="value" class="quick-text" bind:value={quickNextActionDraft} on:keydown={submitQuickTextOnEnter} maxlength="120" placeholder="Type a new next action" aria-label="Create next action" autocomplete="off" use:focusOnMount />
             <button class="btn primary" type="submit" disabled={!quickNextActionDraft.trim()}>Save</button>
             <button class="btn quick-create-cancel" type="button" on:click={cancelQuickNextActionCreate}>Cancel</button>
           {:else}

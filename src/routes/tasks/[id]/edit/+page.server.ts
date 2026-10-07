@@ -124,6 +124,7 @@ export const load: PageServerLoad = async ({ params, locals, url }) => {
       taskType: true,
       dueAt: true,
       snoozedUntil: true,
+      recurrenceRule: true,
       contactId: true,
       dealId: true,
       dealContactId: true,

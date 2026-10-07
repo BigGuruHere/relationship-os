@@ -11,7 +11,7 @@
   // - Server endpoints require login and enforce tenant scoping by userId.
   // - Client only holds raw audio until upload. No PII is rendered.
 
-  export let form;
+  export let form: any;
   export let data;
 
   import { onMount, onDestroy } from 'svelte';
@@ -55,7 +55,7 @@
     isMobile = detectMobile();
 
     // Safety - stop recording if navigating away
-    const unreg = beforeNavigate(() => {
+    beforeNavigate(() => {
       hardStopRecording();
     });
 
@@ -71,7 +71,6 @@
     window.addEventListener('beforeunload', onUnload);
 
     return () => {
-      unreg?.();
       document.removeEventListener('visibilitychange', onVis);
       window.removeEventListener('pagehide', onUnload);
       window.removeEventListener('beforeunload', onUnload);
@@ -147,7 +146,8 @@
     const res = await fetch(`/api/upload-chunk?${qs.toString()}`, {
       method: 'POST',
       headers: { 'content-type': 'application/octet-stream' },
-      body: bytes
+      // IT: fetch accepts an ArrayBuffer BodyInit; the recorder always supplies browser ArrayBuffers.
+      body: bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer
     });
     let data: any = {};
     try {

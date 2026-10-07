@@ -15,7 +15,7 @@ import { createScopedRelationshipRepository } from '../../src/lib/server/core/sc
 const readTool = readFileSync('src/lib/server/agents/tools/readEntityContext.ts', 'utf8');
 const access = readFileSync('src/lib/server/core/agentDataAccess.ts', 'utf8');
 const projection = readFileSync('src/lib/server/core/agentEntityProjection.ts', 'utf8');
-const retirement = readFileSync('STAGE8_0_RETIREMENT_REGISTER.md', 'utf8');
+const retirement = readFileSync('docs/stage-history/STAGE8_0_RETIREMENT_REGISTER.md', 'utf8');
 
 const basePolicy = {
   allowContacts: true,

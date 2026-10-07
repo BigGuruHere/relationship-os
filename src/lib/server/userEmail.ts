@@ -35,24 +35,16 @@ const buildIndexToken: ((s: string) => string) | undefined =
   (cryptoLib as any).buildIndexToken;
 
 // IT - derive the correct index value for your schema
-function toEmailIdx(inputEmail: string) {
+function toEmailIdx(inputEmail: string): Buffer {
   const norm = normalizeEmail(inputEmail);
-
-  if (USE_BYTES_INDEX) {
-    // Bytes column path
-    if (buildEmailIndexBytes) return buildEmailIndexBytes(norm);
-    // Fallback - build hex and convert to bytes
-    const hex =
-      (buildEmailIndexHex && buildEmailIndexHex(norm)) ||
-      (buildIndexToken && buildIndexToken(norm));
-    if (!hex) throw new Error('No email index function available');
-    return Buffer.from(hex, 'hex');
-  }
-
-  // String hex column path
-  if (buildEmailIndexHex) return buildEmailIndexHex(norm);
-  if (buildIndexToken) return buildIndexToken(norm);
-  throw new Error('No email index function available');
+  // User.email_Idx is a Prisma Bytes column in the canonical schema. Keep this helper
+  // byte-only so callers never infer the legacy string union.
+  if (buildEmailIndexBytes) return buildEmailIndexBytes(norm);
+  const hex =
+    (buildEmailIndexHex && buildEmailIndexHex(norm)) ||
+    (buildIndexToken && buildIndexToken(norm));
+  if (!hex) throw new Error('No email index function available');
+  return Buffer.from(hex, 'hex');
 }
 
 // Prepare email fields for an atomic User create or update. Never store a plaintext email.

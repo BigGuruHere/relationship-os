@@ -9,7 +9,7 @@
 
 </script>
 
-<section class="card panel intelligence-panel">
+<section class="card panel intelligence-panel" data-contact-id={contactId || undefined}>
   <div class="section-head">
     <div>
       <h2>Relationship intelligence</h2>

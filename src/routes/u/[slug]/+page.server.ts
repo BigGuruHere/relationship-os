@@ -112,9 +112,8 @@ export const load: PageServerLoad = async ({ params, url, locals }) => {
   let isAlreadyConnected = false;
   let visitorProfile = null;
   
-  if (isVisitorLoggedIn && ownerId) {
-    // Don't connect to yourself
-    if (visitorUserId !== ownerId) {
+  if (visitorUserId && visitorUserId !== ownerId) {
+    // Do not connect to yourself.
       // SECURITY: Check the visitor's own Contact representation. Reading the profile owner's
       // private Contact table from the visitor's custody would cross the Stage 8.7 boundary.
       const existingContact = await prisma.contact.findFirst({
@@ -141,7 +140,6 @@ export const load: PageServerLoad = async ({ params, url, locals }) => {
           orderBy: [{ isDefault: 'desc' }, { updatedAt: 'desc' }]
         });
       }
-    }
   }
 
   return {

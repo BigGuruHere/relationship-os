@@ -21,7 +21,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
   if (!profileId) throw redirect(303, '/share');
 
   const profile = await prisma.profile.findFirst({
-    where: { id: profileId, ownerId: locals.user.id },
+    where: { id: profileId, userId: locals.user.id },
     select: { id: true, slug: true }
   });
   if (!profile) throw redirect(303, '/share');

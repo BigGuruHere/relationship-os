@@ -293,11 +293,11 @@ export const actions: Actions = {
           proposedUnderstanding: seed.proposedUnderstanding
         }))
       });
-      longitudinal.chainHistory = chainHistory.slice(-6);
+      (longitudinal as any).chainHistory = chainHistory.slice(-6);
       const draftCheckpoint = await saveLivingUnderstandingDraft(scope, 'LONGITUDINAL_READY', {
         longitudinalSeed: longitudinal.nextLongitudinalSeed,
         priorOperationalUnits: longitudinal.nextOperationalUnits ?? priorOperationalUnits,
-        chainHistory: longitudinal.chainHistory
+        chainHistory: (longitudinal as any).chainHistory
       }, String(form.get('draftCheckpointId') || ''));
       return { longitudinal, draftCheckpoint };
     } catch (err) {
@@ -341,8 +341,8 @@ export const actions: Actions = {
         priorOperationalUnits,
         chainHistory
       }, String(form.get('draftCheckpointId') || ''));
-      const restructuring = await restructureLivingUnderstandingReadOnly(scope, seedValidation.seeds, priorOperationalUnits);
-      restructuring.chainHistory = chainHistory;
+      const restructuring = await restructureLivingUnderstandingReadOnly(scope, seedValidation.seeds, priorOperationalUnits, initialCreationMode ? 'INITIAL' : 'EXPERIMENT');
+      (restructuring as any).chainHistory = chainHistory;
       (restructuring as any).draftCheckpointId = draftCheckpoint.id;
       if (restructuring.analysis.validForReview && !restructuring.analysis.errors.length) {
         (restructuring as any).adoptionToken = createLivingUnderstandingAdoptionToken(scope, restructuring);
@@ -364,8 +364,8 @@ export const actions: Actions = {
       const draft = await loadLivingUnderstandingDraft(scope, String(form.get('draftCheckpointId') || ''));
       const seedValidation = validateLongitudinalSeed(draft.longitudinalSeed);
       if (!seedValidation.validForReview) return fail(400, { revisionError: seedValidation.errors[0] || 'The saved working checkpoint is invalid.' });
-      const restructuring = await restructureLivingUnderstandingReadOnly(scope, seedValidation.seeds, draft.priorOperationalUnits as any[]);
-      restructuring.chainHistory = sanitiseChainHistory(draft.chainHistory);
+      const restructuring = await restructureLivingUnderstandingReadOnly(scope, seedValidation.seeds, draft.priorOperationalUnits as any[], initialCreationMode ? 'INITIAL' : 'EXPERIMENT');
+      (restructuring as any).chainHistory = sanitiseChainHistory(draft.chainHistory);
       (restructuring as any).draftCheckpointId = draft.id;
       if (restructuring.analysis.validForReview && !restructuring.analysis.errors.length) {
         (restructuring as any).adoptionToken = createLivingUnderstandingAdoptionToken(scope, restructuring);
@@ -373,7 +373,7 @@ export const actions: Actions = {
       await saveLivingUnderstandingDraft(scope, restructuring.analysis.validForReview ? 'STRUCTURE_VALID' : 'STRUCTURE_NEEDS_REPAIR', {
         longitudinalSeed: seedValidation.seeds,
         priorOperationalUnits: draft.priorOperationalUnits,
-        chainHistory: restructuring.chainHistory
+        chainHistory: (restructuring as any).chainHistory
       }, draft.id);
       return { restructuring, draftCheckpoint: { id: draft.id, stage: restructuring.analysis.validForReview ? 'STRUCTURE_VALID' : 'STRUCTURE_NEEDS_REPAIR' } };
     } catch (err) {

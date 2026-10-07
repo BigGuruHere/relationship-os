@@ -36,15 +36,17 @@ export async function transcribeAudio(input: File | Blob | Buffer | string, audi
   if (typeof input === "string") {
     // treat as file path
     const resolved = path.resolve(input);
-    // use createReadStream so Node FormData can send it as a file upload
-    const stream = fs.createReadStream(resolved);
-    // provide a filename so the server (OpenAI) can detect type if needed
-    fd.append("file", stream, path.basename(resolved));
+    // Node's built-in FormData accepts Blob/File, not fs.ReadStream. Read the file once
+    // and copy it into a plain Uint8Array so the BlobPart uses an ArrayBuffer-backed view.
+    const fileBuffer = await fs.promises.readFile(resolved);
+    const bytes = Uint8Array.from(fileBuffer);
+    const blob = new Blob([bytes], { type: audioMime });
+    fd.append("file", blob, path.basename(resolved));
   } else if (Buffer.isBuffer(input)) {
     // Node Buffer - wrap in a Blob (Node supports Blob) or pass Buffer directly
     // Using Blob gives a filename and type information to FormData.
     // Preserve the actual browser container type (Safari commonly records MP4).
-    const blob = new Blob([input], { type: audioMime });
+    const blob = new Blob([Uint8Array.from(input)], { type: audioMime });
     // In Node, FormData.append accepts Blob
     fd.append("file", blob, audioMime === 'audio/mp4' ? 'audio.mp4' : 'audio.webm');
   } else {

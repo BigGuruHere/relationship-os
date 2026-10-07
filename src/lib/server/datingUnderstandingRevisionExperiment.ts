@@ -21,9 +21,13 @@ function modelName() {
 
 function buildTurnPacket(source: Awaited<ReturnType<typeof requireSourceReflection>>) {
   if (source.conversationContext && source.speaker) {
-    const parsed = parseDatingTranscript(source.conversationContext);
-    const turns: EvidenceTurn[] = parsed.turns.map((turn, index) => ({
-      id: `T${String(index + 1).padStart(3, '0')}`,
+    // Stage 8.14.1 prefers persisted provider-independent turn IDs. Legacy Stage 8.12
+    // conversations are reparsed only when they predate the v2 conversation envelope.
+    const storedTurns = source.conversationTurns?.length
+      ? source.conversationTurns
+      : parseDatingTranscript(source.conversationContext).turns;
+    const turns: EvidenceTurn[] = storedTurns.map((turn, index) => ({
+      id: turn.id || `T${String(index + 1).padStart(3, '0')}`,
       speaker: turn.speaker,
       text: turn.text,
       target: turn.speaker === source.speaker
@@ -707,7 +711,8 @@ export async function restructureLivingUnderstandingReadOnly(
     statement: string;
     operationalReasons?: string[];
     status?: string;
-  }> = []
+  }> = [],
+  workflowMode: 'INITIAL' | 'EXPERIMENT' = 'EXPERIMENT'
 ) {
   if (!priorSeeds.length) throw new Error('No prior Living Understanding was supplied for restructuring.');
   if (priorSeeds.length > 24) throw new Error('The prior Living Understanding is too large for this restructuring experiment.');
@@ -733,8 +738,13 @@ export async function restructureLivingUnderstandingReadOnly(
     throw new Error('The prior experimental understanding is too large for this restructuring experiment.');
   }
 
+  // IT: Initial authoritative creation uses the Stage 8.14 overlap contract. The retained
+  // development experiment keeps the older contract so historical regression tests remain useful.
+  // Legacy schema marker for regression visibility: validationContractVersion: '8.12.15'
+  const validationContractVersion = workflowMode === 'INITIAL' ? '8.14.0' : '8.12.15';
+
   const restructureOutputSchema = {
-      validationContractVersion: '8.12.15',
+      validationContractVersion,
       topicAudits: [{
         targetKey: 'Exact prior targetKey being audited',
         semanticConcepts: ['Concise durable concept clusters found inside this prior topic'],
@@ -757,7 +767,7 @@ export async function restructureLivingUnderstandingReadOnly(
       semanticOverlapGroups: [{
         groupId: 'G1, G2, etc',
         meaningUnitRefs: ['Two or more exact priorTargetKey#M1 references that express equivalent or substantially overlapping meaning'],
-        relationship: 'EQUIVALENT | SUBSTANTIALLY_OVERLAPPING',
+        relationship: 'EQUIVALENT | SUBSTANTIALLY_OVERLAPPING | REDUNDANT_DUPLICATION | LEGITIMATE_CROSS_TOPIC_RELEVANCE | SHARED_UNDERLYING_THEME | ACTUAL_TOPIC_CONTAMINATION',
         canonicalMeaning: 'Neutral description of the shared meaning without adding information'
       }],
       proposedTopics: [{
@@ -768,18 +778,35 @@ export async function restructureLivingUnderstandingReadOnly(
         sourceTargetKeys: ['One or more exact prior targetKeys whose meaning contributes to this topic'],
         temporalScope: 'CURRENT | HISTORICAL | MIXED',
         meaningUnitRefs: ['Exact refs in the form priorTargetKey#M1 for every meaning unit represented in this topic'],
-        primaryMeaningUnitRefs: ['Subset of meaningUnitRefs for which this proposed topic is the one primary semantic home'],
+        primaryMeaningUnitRefs: ['Subset of meaningUnitRefs used as canonical provenance/retrieval anchors. A meaning may still legitimately inform other topics when it has a distinct explanatory role.'],
         meaningChecks: [{
           meaningUnitRef: 'One exact meaningUnitRef used by this topic',
           proposedMeaning: 'Concise statement of how that source meaning appears in this topic',
           fidelity: 'SAME_MEANING | STRENGTHENED | WEAKENED | INFERRED | TEMPORAL_SHIFT',
           primaryHomeFit: 'PURPOSE_CONTEXT_FIT | SURFACE_ONLY | AMBIGUOUS',
-          explanation: 'Why the mapping preserves meaning and time and, when primary, why this home follows the meaning unit purpose/context rather than a surface word match'
+          explanation: 'Why the mapping preserves meaning and time and, when used as the canonical anchor, why it follows the meaning unit purpose/context rather than a surface word match'
         }],
         proposedUnderstanding: 'Complete current understanding for this topic using only meaning already present in the source topic understandings',
         reason: 'Why this structure is cleaner or why this topic should remain as-is'
       }]
     };
+
+  const overlapContractPrompt = workflowMode === 'INITIAL'
+    ? [
+        'Stage 8.14 principle: Topics are coherent views of a person, not mutually exclusive containers.',
+        'A durable meaning may legitimately inform multiple topics when it has a different explanatory purpose in each. Preserve that legitimate overlap.',
+        'Distinguish REDUNDANT_DUPLICATION, LEGITIMATE_CROSS_TOPIC_RELEVANCE, SHARED_UNDERLYING_THEME and ACTUAL_TOPIC_CONTAMINATION in your reasoning.',
+        'Repair REDUNDANT_DUPLICATION and ACTUAL_TOPIC_CONTAMINATION. Preserve LEGITIMATE_CROSS_TOPIC_RELEVANCE and SHARED_UNDERLYING_THEME when each topic uses the shared meaning for a distinct explanatory purpose.',
+        'The primaryMeaningUnitRefs field is a canonical provenance/retrieval anchor only. It must not be used to erase legitimate contextual meaning from another topic.',
+        'For semanticOverlapGroups, use REDUNDANT_DUPLICATION when substantially the same proposition is unnecessarily repeated for the same purpose. Use LEGITIMATE_CROSS_TOPIC_RELEVANCE when shared meaning performs a different explanatory role in each topic. Use SHARED_UNDERLYING_THEME when a broader theme genuinely recurs across different areas.',
+        'Equivalent or redundant duplicate units should normally converge on one canonical anchor. Legitimate cross-topic relevance and shared underlying themes may retain different canonical anchors when each topic has a distinct purpose/context.',
+        'Do not narrow a topic merely because it shares a theme with another topic. Narrow, move or split only when wording is redundant, misleading, or genuinely belongs elsewhere.',
+        'For INITIAL validation, overlappingTargetKeys does not by itself make KEEP incoherent. If the overlap is LEGITIMATE_CROSS_TOPIC_RELEVANCE or SHARED_UNDERLYING_THEME and there is no contamination/title problem, KEEP should remain coherent.',
+        'Audit metadata must be internally consistent: when recommendedOperation is KEEP and the topic is structurally coherent, keepCoherent must be true. If keepCoherent is false, choose the appropriate restructuring operation instead of KEEP.'
+      ]
+    : [
+            'Primary-home completion rule: every meaning unit must have one primaryMeaningUnitRef assignment. When two units are declared equivalent or substantially overlapping, assign every member to the same primary semantic home. Do not leave a duplicate/cross-reference unit without a primary home merely because another group member already has one; the server may only inherit a missing home when the overlap group, represented topic and fidelity checks make that home deterministic.'
+      ];
 
   const answer = await generateStructured<{ topicAudits?: unknown; proposedTopics?: unknown }>({
     userId: scope.userId,
@@ -804,6 +831,7 @@ export async function restructureLivingUnderstandingReadOnly(
       'Topic boundaries should organize rich understanding. Atomic operational knowledge remains a separate layer and must not dictate topic granularity.',
       'Preserve uncertainty, historical wording, superseded-state wording, and unresolved conflict exactly in meaning.',
       'The proposed understanding for each topic may paraphrase for coherence but must contain only meaning already present in the supplied prior understandings.',
+      ...overlapContractPrompt,
       'Stage 8.12.13.9.2.2 trust invariant: give every durable meaning unit exactly one PRIMARY semantic home. A meaning may be referenced elsewhere only when that cross-reference is genuinely necessary; do not duplicate the full proposition across topics merely because it is related.',
       'Keep temporal ownership explicit. CURRENT meaning must not be moved into a HISTORICAL topic, and HISTORICAL meaning must not be rewritten as current. A MIXED topic is allowed only when the topic deliberately preserves a change over time, such as a neutral Having more children topic containing both the earlier desire and the current reversal.',
       'Do not strengthen, weaken, infer, or temporally shift meaning while restructuring. For example, partner could be a good mother or available for children does NOT mean partner wants a family. Current relationship heaviness does NOT become relationship history just because it was discussed alongside historical material.',
@@ -811,8 +839,7 @@ export async function restructureLivingUnderstandingReadOnly(
       'For every meaning unit, state its purposeContext: what role that statement plays in the understanding. Primary ownership must follow that purpose and context, not surface nouns. Example: considering a tennis club in order to build a social circle belongs primarily with the social goal, not Preferred activities merely because tennis is an activity.',
       'Compare meaning units across ALL prior topics for semantic identity. If two units are equivalent or substantially overlap, declare them in semanticOverlapGroups even when they use different wording. Equivalent/overlapping units must converge on the same primary semantic home rather than becoming duplicate knowledge under different topics. The server derives completion independently; do not assume the audit is complete merely because you set a boolean.',
       'Use MULTIPLE_INDEPENDENT_CONCEPTS only when the concepts have materially different semantic purposes or genuinely require different primary semantic homes. Use COHERENT_MULTI_DIMENSIONAL when a topic contains several distinguishable dimensions that share one durable semantic purpose and can remain together without hiding a different ownership boundary. If an audit identifies MULTIPLE_INDEPENDENT_CONCEPTS, the proposed structure must actually give those meanings at least two distinct primary semantic homes. COHERENT_MULTI_DIMENSIONAL does not by itself require a split.',
-      'Primary-home completion rule: every meaning unit must have one primaryMeaningUnitRef assignment. When two units are declared equivalent or substantially overlapping, assign every member to the same primary semantic home. Do not leave a duplicate/cross-reference unit without a primary home merely because another group member already has one; the server may only inherit a missing home when the overlap group, represented topic and fidelity checks make that home deterministic.',
-      'Primary-home assignment must follow purpose/context. The reason for each proposed topic must explicitly explain why the primary meaning units fit that topic by purpose, not merely by a shared noun or activity name.',
+      'Canonical-anchor assignment must follow purpose/context. The reason for each proposed topic must explicitly explain why its anchored meaning fits that topic by purpose, not merely by a shared noun or activity name.',
       'Self-audit every mapped meaning unit for fidelity and primary-home fit. Any STRENGTHENED, WEAKENED, INFERRED, TEMPORAL_SHIFT, SURFACE_ONLY or AMBIGUOUS primary mapping makes the proposal unsafe for adoption; revise the proposal instead of accepting it.',
       'Do not infer consent, sharing permission, confirmation, or relationship status.',
       'Return the complete proposed topic structure, not only topics you want to change.'
@@ -822,7 +849,7 @@ export async function restructureLivingUnderstandingReadOnly(
       `CURRENT OPERATIONAL KNOWLEDGE (context only, not a requirement to create topics):\n${JSON.stringify(operationalPacket)}`
     ].join('\n\n'),
     outputSchema: {
-      validationContractVersion: '8.12.15',
+      validationContractVersion,
       topicAudits: [{
         targetKey: 'Exact prior targetKey being audited',
         semanticConcepts: ['Concise durable concept clusters found inside this prior topic'],
@@ -845,7 +872,7 @@ export async function restructureLivingUnderstandingReadOnly(
       semanticOverlapGroups: [{
         groupId: 'G1, G2, etc',
         meaningUnitRefs: ['Two or more exact priorTargetKey#M1 references that express equivalent or substantially overlapping meaning'],
-        relationship: 'EQUIVALENT | SUBSTANTIALLY_OVERLAPPING',
+        relationship: 'EQUIVALENT | SUBSTANTIALLY_OVERLAPPING | REDUNDANT_DUPLICATION | LEGITIMATE_CROSS_TOPIC_RELEVANCE | SHARED_UNDERLYING_THEME | ACTUAL_TOPIC_CONTAMINATION',
         canonicalMeaning: 'Neutral description of the shared meaning without adding information'
       }],
       proposedTopics: [{
@@ -856,13 +883,13 @@ export async function restructureLivingUnderstandingReadOnly(
         sourceTargetKeys: ['One or more exact prior targetKeys whose meaning contributes to this topic'],
         temporalScope: 'CURRENT | HISTORICAL | MIXED',
         meaningUnitRefs: ['Exact refs in the form priorTargetKey#M1 for every meaning unit represented in this topic'],
-        primaryMeaningUnitRefs: ['Subset of meaningUnitRefs for which this proposed topic is the one primary semantic home'],
+        primaryMeaningUnitRefs: ['Subset of meaningUnitRefs used as canonical provenance/retrieval anchors. A meaning may still legitimately inform other topics when it has a distinct explanatory role.'],
         meaningChecks: [{
           meaningUnitRef: 'One exact meaningUnitRef used by this topic',
           proposedMeaning: 'Concise statement of how that source meaning appears in this topic',
           fidelity: 'SAME_MEANING | STRENGTHENED | WEAKENED | INFERRED | TEMPORAL_SHIFT',
           primaryHomeFit: 'PURPOSE_CONTEXT_FIT | SURFACE_ONLY | AMBIGUOUS',
-          explanation: 'Why the mapping preserves meaning and time and, when primary, why this home follows the meaning unit purpose/context rather than a surface word match'
+          explanation: 'Why the mapping preserves meaning and time and, when used as the canonical anchor, why it follows the meaning unit purpose/context rather than a surface word match'
         }],
         proposedUnderstanding: 'Complete current understanding for this topic using only meaning already present in the source topic understandings',
         reason: 'Why this structure is cleaner or why this topic should remain as-is'
@@ -896,10 +923,21 @@ export async function restructureLivingUnderstandingReadOnly(
         'Preserve the original semantic conclusions wherever they are not implicated by a validator failure.',
         'Complete missing meaning-unit inventories with exact contiguous excerpts from CURRENT TOPIC UNDERSTANDINGS.',
         'When COHERENT_MULTI_DIMENSIONAL is appropriate, keepCoherent must be true only when KEEP is actually coherent; otherwise choose the structurally appropriate operation.',
-        'When the audit says meaning is duplicated across topics, declare the required semantic overlap groups and converge overlapping units on one primary semantic home.',
-        'Every durable meaning unit must have exactly one primary semantic home and every proposed topic must reference validated meaning units.',
-        'Do not invent semantic overlap merely to silence the validator. Preserve purpose/context and temporal role.',
-        'MULTIPLE_INDEPENDENT_CONCEPTS requires distinct primary semantic homes. COHERENT_MULTI_DIMENSIONAL may remain one topic when the dimensions share one durable purpose.',
+        ...(workflowMode === 'INITIAL'
+          ? [
+              'When the audit finds overlap, distinguish legitimate cross-topic relevance/shared themes from redundant duplication or true contamination.',
+              'Repair redundant duplication and contamination only. Preserve shared meaning when it serves a distinct explanatory purpose in more than one topic.',
+              'Every durable meaning unit must remain represented and have one canonical provenance/retrieval anchor, but that anchor must not erase legitimate contextual representation elsewhere.',
+              'Do not invent semantic overlap merely to silence the validator. Preserve purpose/context and temporal role.',
+              'A KEEP audit may name overlappingTargetKeys when that overlap is legitimate cross-topic relevance or a shared underlying theme. Such legitimate overlap does not by itself make KEEP incoherent.',
+              'Repair internal metadata contradictions directly: KEEP requires keepCoherent=true when there is no genuine contamination or title problem. If KEEP is not coherent, change recommendedOperation to the structurally appropriate alternative.'
+            ]
+          : [
+              'When the audit says meaning is duplicated across topics, declare the required semantic overlap groups and converge overlapping units on one primary semantic home.',
+              'Every durable meaning unit must have exactly one primary semantic home and every proposed topic must reference validated meaning units.',
+              'Do not invent semantic overlap merely to silence the validator. Preserve purpose/context and temporal role.'
+            ]),
+        'MULTIPLE_INDEPENDENT_CONCEPTS requires distinct canonical homes. COHERENT_MULTI_DIMENSIONAL may remain one topic when the dimensions share one durable purpose.',
         'Return the COMPLETE repaired review, not a patch or explanation.'
       ].join('\n'),
       userPrompt: [

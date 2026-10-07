@@ -530,14 +530,4 @@
 		border: 1px solid #bae6fd;
 	}
 
-	/* Small neutral icon button */
-	.icon-btn {
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		padding: 4px;
-		border-radius: 10px;
-		border: 1px solid #ddd;
-		text-decoration: none;
-	}
 </style>

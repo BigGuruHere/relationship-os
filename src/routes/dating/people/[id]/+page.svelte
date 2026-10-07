@@ -12,7 +12,7 @@
   <header>
     <h1>{data.person.name}</h1>
     <p class="muted">Their private, evolving history. An Introduction is optional, not the starting point.</p>
-    <a class="btn" href={`/dating/people/${data.person.id}/understanding`}>Living Understanding</a> <a class="btn" href="/dating/conversations/import">Import conversation</a>
+    <a class="btn" href={`/dating/people/${data.person.id}/understanding`}>Living Understanding</a> <a class="btn" href={`/dating/conversations/import?personId=${encodeURIComponent(data.person.id)}`}>Import conversation</a>
   </header>
   {#if form?.error}<p class="error" role="alert">{form.error}</p>{/if}
   <section class="card panel">

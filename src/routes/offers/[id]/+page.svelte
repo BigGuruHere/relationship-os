@@ -163,8 +163,8 @@
 
 <style>
   .container { padding:12px; }
-  .page-head, .section-head, .item-row, .note-head, .actions { display:flex; justify-content:space-between; gap:12px; align-items:flex-start; }
-  .head-actions, .actions { display:flex; gap:8px; flex-wrap:wrap; }
+  .page-head, .section-head, .item-row { display:flex; justify-content:space-between; gap:12px; align-items:flex-start; }
+  .head-actions { display:flex; gap:8px; flex-wrap:wrap; }
   h1, h2, h3 { margin:0; } h2 { font-size:1.1rem; } h3 { font-size:1rem; margin-top:12px; }
   .eyebrow { color:var(--accent); font-weight:700; font-size:0.85rem; text-transform:uppercase; letter-spacing:0.04em; }
   .muted { color:var(--muted); } .small { font-size:0.9rem; }
@@ -177,10 +177,10 @@
   .field { display:flex; flex-direction:column; gap:6px; margin-bottom:12px; }
   .field input, .field select, .field textarea { padding:10px 12px; border:1px solid var(--border); border-radius:12px; background:var(--surface); color:var(--text); }
   .text-block { border-top:1px solid var(--border); margin-top:12px; padding-top:12px; }
-  .text-block p, .preline { white-space:pre-wrap; }
+  .text-block p { white-space:pre-wrap; }
   .item-list { display:grid; gap:10px; }
-  .item-row, .note-card { border:1px solid var(--border); border-radius:14px; padding:12px; background:var(--surface); }
+  .item-row { border:1px solid var(--border); border-radius:14px; padding:12px; background:var(--surface); }
   .btn { border:1px solid var(--border); border-radius:12px; padding:8px 12px; background:var(--surface); color:var(--text); text-decoration:none; cursor:pointer; }
   .btn.primary { background:linear-gradient(180deg, #21c7b6, #0fa7a0); border-color:#0f9b92; color:#fff; font-weight:700; }
-  @media (max-width:860px) { .page-head, .section-head, .item-row, .note-head { flex-direction:column; } .grid.details, .grid.two, .grid.three, .grid.four { grid-template-columns:1fr; } }
+  @media (max-width:860px) { .page-head, .section-head, .item-row { flex-direction:column; } .grid.details, .grid.two, .grid.three, .grid.four { grid-template-columns:1fr; } }
 </style>

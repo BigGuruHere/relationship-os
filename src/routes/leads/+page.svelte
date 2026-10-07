@@ -302,12 +302,11 @@
   .stat { padding: 12px; display: grid; gap: 4px; } .stat span { color: var(--muted); font-size: 0.9rem; } .stat strong { font-size: 1.5rem; }
   .grid.two { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
   .grid.three { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
-  .grid.four { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
   .field { display:flex; flex-direction:column; gap:6px; margin-bottom:12px; }
   .lead-list { display: grid; gap: 10px; }
   .lead-card { display: block; padding: 14px; color: var(--text); text-decoration: none; }
   .lead-card:hover { border-color: var(--accent); text-decoration: none; }
   .chip-row { display:flex; gap:6px; flex-wrap:wrap; }
   .status-chip { border: 1px solid var(--border); background: var(--panel); border-radius: 999px; padding: 3px 8px; font-size: 0.82rem; color: var(--muted); }
-  @media (max-width: 860px) { .page-head, .topline, .filter-row, .pinned-filter, .filter-head { flex-direction: column; align-items: stretch; } .grid.two, .grid.three, .grid.four, .summary-grid { grid-template-columns: 1fr; } }
+  @media (max-width: 860px) { .page-head, .topline, .filter-row, .pinned-filter, .filter-head { flex-direction: column; align-items: stretch; } .grid.two, .grid.three, .summary-grid { grid-template-columns: 1fr; } }
 </style>

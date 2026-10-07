@@ -267,7 +267,7 @@
 					{#if review.elementReviews}
 						<p class="muted small">Each decision applies only to your account. Deferred and rejected elements are not confirmed knowledge.</p>
 						{#each review.elementReviews as element}
-							<p><strong>{element.element === 'personalExperience' ? 'Your experience' : element.element === 'selfLearning' ? 'What you learned' : element.element === 'otherPersonExperience' ? 'Your impression of the other person' : element.element === 'relationshipDynamic' ? 'Relationship dynamic' : element.element === 'desireToContinue' ? 'Desire to continue' : 'Whole-Introduction Outcome'}:</strong> {data.elementDecisions.find(item => item.value === element.decision)?.label || element.decision}</p>
+							<p><strong>{element.element === 'personalExperience' ? 'Your experience' : element.element === 'selfLearning' ? 'What you learned' : element.element === 'otherPersonExperience' ? 'Your impression of the other person' : element.element === 'relationshipDynamic' ? 'Relationship dynamic' : element.element === 'desireToContinue' ? 'Desire to continue' : 'Whole-Introduction Outcome'}:</strong> {data.elementDecisions.find((item: any) => item.value === element.decision)?.label || element.decision}</p>
 						{/each}
 					{:else}
 						<p class="muted small">Legacy whole-review approval: individual elements were not separately confirmed.</p>

@@ -308,7 +308,7 @@
   .field { display: grid; gap: 6px; margin-bottom: 12px; }
   .field label { font-size: 0.85rem; color: var(--muted); }
   .hint { color: var(--muted); font-size: 0.82rem; margin: 4px 0 0; }
-  .field input, .field select, .field textarea { width: 100%; padding: 10px 12px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface, var(--panel)); color: var(--text); }
+  .field input, .field select { width: 100%; padding: 10px 12px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface, var(--panel)); color: var(--text); }
   .grid { display: grid; gap: 12px; }
   .grid.two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .grid.four { grid-template-columns: repeat(4, minmax(0, 1fr)); }

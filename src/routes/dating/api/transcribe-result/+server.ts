@@ -9,5 +9,5 @@ export const GET: RequestHandler = (event) => {
   if (event.locals.contextDomainKey !== 'dating' || !event.locals.contextSpaceId) {
     return json({ error: 'Dating ContextSpace required' }, { status: 403 });
   }
-  return transcribeResult(event);
+  return (transcribeResult as any)(event);
 };

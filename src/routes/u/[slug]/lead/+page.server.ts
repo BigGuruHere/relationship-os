@@ -142,10 +142,10 @@ export const actions: Actions = {
       
           // Optional - create a short lived invite token for follow ups
           try {
+            // IT: createInviteToken currently accepts owner and TTL only. Lead identity remains in the DB.
             await createInviteToken({
               ownerId: owner.id,
-              ttlMinutes: 60,
-              meta: { leadId: lead.id, emailIdx }
+              ttlMinutes: 60
             });
           } catch (e) {
             console.warn('lead invite token creation failed:', e);

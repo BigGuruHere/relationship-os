@@ -2,6 +2,7 @@
 // SECURITY: Require the request's Dating ContextSpace and scope every operation by owner + context + contact.
 import { fail, redirect } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
+import { isRelationshipApplicationDomain, relationshipApplicationBase } from '$lib/server/core/contextDomain';
 import { prisma } from '$lib/db';
 import { suggestDatingKnowledge } from '$lib/server/datingKnowledgeExtraction';
 import { revisionExperimentEnabled } from '$lib/server/datingUnderstandingRevisionExperiment';
@@ -15,13 +16,13 @@ import { getCurrentLivingUnderstanding, getLivingUnderstandingRevision, listLivi
 
 function requireDating(locals: App.Locals, contactId: string) {
   if (!locals.user) throw redirect(303, '/auth/login');
-  if (locals.contextDomainKey !== 'dating' || !locals.contextSpaceId) throw redirect(303, '/settings/context-spaces');
+  if (!isRelationshipApplicationDomain(locals.contextDomainKey) || !locals.contextSpaceId) throw redirect(303, '/settings/context-spaces');
   return { userId: locals.user.id, contextSpaceId: locals.contextSpaceId, contactId };
 }
 export const load: PageServerLoad = async ({ locals, params, url }) => {
   const scope = requireDating(locals, params.id);
   const contact = await prisma.contact.findFirst({ where: { id: scope.contactId, userId: scope.userId, contextSpaceId: scope.contextSpaceId }, select: { id: true, fullNameEnc: true } });
-  if (!contact) throw redirect(303, '/dating/people');
+  if (!contact) throw redirect(303, `${relationshipApplicationBase(locals.contextDomainKey)}/people`);
   const sourceId = url.searchParams.get('sourceInteractionId');
   // Validate the optional preselected source rather than trusting query parameters.
   const selectedSource = sourceId ? await requireSourceReflection(scope, sourceId) : null;
@@ -68,14 +69,14 @@ export const actions: Actions = {
         note: String(form.get('note') || ''),
         acknowledgeSupersession: form.get('acknowledgeSupersession') === 'YES' });
     } catch (error: any) { return fail(400, { comparisonError: error?.message || 'Unable to compare statements.' }); }
-    throw redirect(303, `/dating/people/${params.id}/understanding?claimId=${encodeURIComponent(newerClaimId)}&comparisonSaved=1#compare-knowledge`);
+    throw redirect(303, `${relationshipApplicationBase(locals.contextDomainKey)}/people/${params.id}/understanding?claimId=${encodeURIComponent(newerClaimId)}&comparisonSaved=1#compare-knowledge`);
   },
   createTopic: async ({ locals, params, request }) => {
     const scope = requireDating(locals, params.id);
     const form = await request.formData();
     try { await createUnderstandingTopic(scope, String(form.get('realmKey') || ''), form.get('topicName')); }
     catch (error: any) { return fail(400, { topicError: error?.message || 'Unable to create topic.' }); }
-    throw redirect(303, `/dating/people/${params.id}/understanding#realms`);
+    throw redirect(303, `${relationshipApplicationBase(locals.contextDomainKey)}/people/${params.id}/understanding#realms`);
   },
   assignTopic: async ({ locals, params, request }) => {
     const scope = requireDating(locals, params.id);
@@ -83,7 +84,7 @@ export const actions: Actions = {
     try { await assignKnowledgeTopic(scope, String(form.get('claimId') || ''), String(form.get('topicId') || '')); }
     catch (error: any) { return fail(400, { topicError: error?.message || 'Unable to assign knowledge.' }); }
     const focusClaimId = String(form.get('focusClaimId') || '');
-    throw redirect(303, `/dating/people/${params.id}/understanding?claimId=${encodeURIComponent(focusClaimId)}#assign-knowledge`);
+    throw redirect(303, `${relationshipApplicationBase(locals.contextDomainKey)}/people/${params.id}/understanding?claimId=${encodeURIComponent(focusClaimId)}#assign-knowledge`);
   },
   // This is an explicit operator action, never implicit AI assignment.
   createAndAssignTopic: async ({ locals, params, request }) => {
@@ -98,14 +99,14 @@ export const actions: Actions = {
       const topic = await createUnderstandingTopic(scope, String(form.get('realmKey') || ''), form.get('topicName'));
       await assignKnowledgeTopic(scope, claimId, topic.id);
     } catch (error: any) { return fail(400, { topicError: error?.message || 'Unable to create and assign topic.' }); }
-    throw redirect(303, `/dating/people/${params.id}/understanding?claimId=${encodeURIComponent(claimId)}#assign-knowledge`);
+    throw redirect(303, `${relationshipApplicationBase(locals.contextDomainKey)}/people/${params.id}/understanding?claimId=${encodeURIComponent(claimId)}#assign-knowledge`);
   },
   removeTopic: async ({ locals, params, request }) => {
     const scope = requireDating(locals, params.id);
     const form = await request.formData();
     try { await unassignKnowledgeTopic(scope, String(form.get('claimId') || ''), String(form.get('topicId') || '')); }
     catch (error: any) { return fail(400, { topicError: error?.message || 'Unable to remove assignment.' }); }
-    throw redirect(303, `/dating/people/${params.id}/understanding#realms`);
+    throw redirect(303, `${relationshipApplicationBase(locals.contextDomainKey)}/people/${params.id}/understanding#realms`);
   },
   saveSuggestions: async ({ locals, params, request }) => {
     const scope = requireDating(locals, params.id);
@@ -146,7 +147,7 @@ export const actions: Actions = {
     } catch (error: any) {
       return fail(400, { error: error?.message || 'Could not save reviewed suggestions.' });
     }
-    throw redirect(303, `/dating/people/${params.id}/understanding?reviewSaved=1#current-knowledge`);
+    throw redirect(303, `${relationshipApplicationBase(locals.contextDomainKey)}/people/${params.id}/understanding?reviewSaved=1#current-knowledge`);
   },
   suggest: async ({ locals, params, request }) => {
     const scope = requireDating(locals, params.id);
@@ -169,7 +170,7 @@ export const actions: Actions = {
     try { await createDatingUnderstanding(scope, { statement: String(form.get('statement') || ''), note: String(form.get('note') || ''), decision: String(form.get('decision') || 'PENDING'),
       kind: String(form.get('kind') || 'PREFERENCE'), sourceInteractionId: String(form.get('sourceInteractionId') || '') || null }); }
     catch (e: any) { return fail(400, { error: e?.message || 'Could not save proposed understanding.' }); }
-    throw redirect(303, `/dating/people/${params.id}/understanding?reviewSaved=1#current-knowledge`);
+    throw redirect(303, `${relationshipApplicationBase(locals.contextDomainKey)}/people/${params.id}/understanding?reviewSaved=1#current-knowledge`);
   },
   review: async ({ locals, params, request }) => {
     const scope = requireDating(locals, params.id);
@@ -179,6 +180,6 @@ export const actions: Actions = {
       decision: String(form.get('decision') || ''), note: String(form.get('note') || '')
     }); }
     catch (e: any) { return fail(400, { error: e?.message || 'Could not review this understanding.' }); }
-    throw redirect(303, `/dating/people/${params.id}/understanding`);
+    throw redirect(303, `${relationshipApplicationBase(locals.contextDomainKey)}/people/${params.id}/understanding`);
   }
 };

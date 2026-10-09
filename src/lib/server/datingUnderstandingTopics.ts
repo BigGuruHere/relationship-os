@@ -38,10 +38,10 @@ export function possibleRealmHint(kind: string, statement: string): RealmKey | n
 
 export async function requireDatingPerson(scope: Scope) {
   const [space, person] = await Promise.all([
-    prisma.contextSpace.findFirst({ where: { id: scope.contextSpaceId, ownerUserId: scope.userId, domainKey: 'dating' }, select: { id: true } }),
+    prisma.contextSpace.findFirst({ where: { id: scope.contextSpaceId, ownerUserId: scope.userId }, select: { id: true, domainKey: true } }),
     prisma.contact.findFirst({ where: { id: scope.contactId, userId: scope.userId, contextSpaceId: scope.contextSpaceId }, select: { id: true } })
   ]);
-  if (!space || !person) throw new Error('Person is not in the active Dating space.');
+  if (!space || !person) throw new Error('Person is not in the active ContextSpace.');
 }
 
 export async function listUnderstandingTopics(scope: Scope) {

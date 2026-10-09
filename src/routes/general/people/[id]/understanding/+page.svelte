@@ -1,0 +1,478 @@
+<script lang="ts">
+  // Stage 8.12.0.1: one initial decision, then explicit Edit and History per statement.
+  // All actions are operator actions, never participant confirmation or disclosure permission.
+  export let data: any;
+  export let form: any;
+  let editingId: string | null = null;
+  let suggestionPage = 0;
+  let selectedClaimId: string = data.focusClaimId ?? data.suggestedFocusClaimId ?? "";
+  let topicPanelOpen = false;
+  let showAllTopics = false;
+  let comparisonOlderId = "";
+  let comparisonRelationship = "";
+  // Show chronological eligibility before submission. The server retains the authoritative check.
+  $: selectedComparisonCandidate = data.comparisonCandidates[selectedClaimId]?.find((candidate: any) => candidate.id === comparisonOlderId) ?? null;
+  $: comparisonChronologyInvalid = Boolean(selectedClaim && selectedComparisonCandidate &&
+    new Date(selectedClaim.createdAt).getTime() < new Date(selectedComparisonCandidate.createdAt).getTime());
+  // Reversing the selection is useful when the operator started with the earlier claim.
+  function reverseComparison() {
+    if (!selectedComparisonCandidate) return;
+    const previousSelected = selectedClaimId;
+    selectedClaimId = comparisonOlderId;
+    comparisonOlderId = previousSelected;
+    comparisonRelationship = "";
+  }
+  $: selectedClaim = data.currentKnowledge.find((claim: any) => claim.id === selectedClaimId) ?? null;
+  $: selectedClaimAssignments = data.topicTree.flatMap((realm: any) => realm.topics.flatMap((topic: any) => topic.claims.some((claim: any) => claim.id === selectedClaimId) ? [{ realm: realm.name, topic: topic.name, topicId: topic.id }] : []));
+  const SUGGESTIONS_PER_PAGE = 12;
+</script>
+<svelte:head><title>Living Understanding - Relish</title></svelte:head>
+<div class="container understanding-page">
+  <nav class="workflow-nav"><a href={`/general/people/${data.personId}`}>← Person</a>{#if data.selectedSource}<a href={`/general/people/${data.personId}/understanding`}>View full Living Understanding →</a>{/if}</nav>
+  {#if data.selectedSource}
+    <header class="focus-heading"><p class="eyebrow">Reflection → Knowledge</p><h1>{data.selectedSource?.sourceKind === 'CONVERSATION_EXCERPT' ? 'Review this conversation excerpt' : 'Review this reflection'}</h1><p class="muted">Choose which individual pieces of this reflection should become proposed or operator-reviewed knowledge. Organise confirmed statements into topics afterwards.</p></header>
+    {#if data.persistedLivingUnderstanding}
+      <p><a class="btn primary" href={`/general/people/${data.personId}/understanding/impact-review?sourceInteractionId=${encodeURIComponent(data.selectedSource.id)}`}>Review impact on Living Understanding →</a></p>
+      <p class="muted small">This compares the new source with authoritative v{data.persistedLivingUnderstanding.revisionNumber} and proposes revisions only for affected persisted topics.</p>
+    {:else}
+      <section class="card initial-living-cta">
+        <h2>No Living Understanding exists yet</h2>
+        <p class="muted">Use this reflection to begin the person's first authoritative Living Understanding. You will review the proposed topics and structure before anything is saved.</p>
+        <p><a class="btn primary" href={`/general/people/${data.personId}/understanding/initial?initial=1&sourceInteractionId=${encodeURIComponent(data.selectedSource.id)}`}>Create initial Living Understanding →</a></p>
+      </section>
+    {/if}
+    <section class="card source-preview" aria-label="Original reflection"><h2>Original reflection</h2><p class="muted small">Recorded {new Date(data.selectedSource.at).toLocaleString()} · Private to this General space</p><blockquote>{data.selectedSource.text}</blockquote></section>
+  {:else}
+    <header class="focus-heading"><p class="eyebrow">Living Understanding</p><h1>{data.name}</h1><p class="muted">Review the person's current authoritative Living Understanding and inspect its immutable revision history.</p></header>
+    {#if data.reviewSaved}<p class="saved-message" role="status">Knowledge review saved. Select a statement below to review suggested topic placements before assigning anything.</p>{/if}
+    {#if data.livingSaved}<p class="saved-message" role="status">Living Understanding saved as a new authorised revision.</p>{/if}
+    {#if data.persistedLivingUnderstanding}
+      <section class="card panel current-living-understanding" id="current-living-understanding">
+        <div class="section-heading"><div><h2>Current Living Understanding</h2><p class="muted">Authorised revision v{data.persistedLivingUnderstanding.revisionNumber} · saved {new Date(data.persistedLivingUnderstanding.authorisedAt).toLocaleString()}. This text is authoritative. Matching and embeddings remain derived layers.</p></div></div>
+        {#each data.persistedLivingUnderstanding.topics as topic (topic.id)}
+          <article class="persisted-topic">
+            <p class="eyebrow">{topic.realm}</p>
+            <h3>{topic.topicName}</h3>
+            <p class="current-statement">{topic.understanding}</p>
+            <p class="muted small">{topic.temporalScope.toLowerCase()}</p>
+          </article>
+        {/each}
+        <details class="revision-history" id="revision-history" open={Boolean(data.inspectedLivingRevision)}><summary>Revision history ({data.livingRevisionHistory.length})</summary>
+          {#each data.livingRevisionHistory as revision}
+            <p class="muted small"><a href={`/general/people/${data.personId}/understanding?revision=${revision.revisionNumber}#revision-history`}>v{revision.revisionNumber}</a> · {new Date(revision.authorisedAt).toLocaleString()} · {revision._count.topics} topics · {revision._count.sources} source{revision._count.sources === 1 ? '' : 's'} · {revision._count.createdTopicVersions} changed/new topic version{revision._count.createdTopicVersions === 1 ? '' : 's'}</p>
+          {/each}
+          {#if data.inspectedLivingRevision}
+            <section class="revision-inspector">
+              <h3>Authoritative snapshot v{data.inspectedLivingRevision.revisionNumber}</h3>
+              <p class="muted small">Saved {new Date(data.inspectedLivingRevision.authorisedAt).toLocaleString()} · immutable historical snapshot</p>
+              {#each data.inspectedLivingRevision.topics as topic (topic.topicVersionId)}
+                <article class="persisted-topic historical-topic">
+                  <p class="eyebrow">{topic.realm}</p>
+                  <h4>{topic.topicName} · t{topic.topicVersionNumber}</h4>
+                  <p>{topic.understanding}</p>
+                  <p class="muted small">{topic.temporalScope.toLowerCase()} · {topic.sources.length} source link{topic.sources.length === 1 ? '' : 's'}</p>
+                </article>
+              {/each}
+              <p><a href={`/general/people/${data.personId}/understanding#revision-history`}>Close historical snapshot</a></p>
+            </section>
+          {/if}
+        </details>
+      </section>
+    {:else}
+      <section class="card panel"><h2>Current Living Understanding</h2><p class="muted">No authoritative Living Understanding has been created yet. Open a reflection or conversation excerpt and choose <strong>Create initial Living Understanding</strong> to build and approve v1.</p></section>
+    {/if}
+    {#if data.legacyKnowledgeToolsEnabled && data.currentKnowledge.length}<p><a class="btn" href="#assign-knowledge">Open legacy statement organisation tools ↓</a></p>{/if}
+  {/if}
+  {#if data.legacyKnowledgeToolsEnabled}
+  <details class="legacy-knowledge-tools">
+    <summary>Development tools: legacy individual knowledge workflow</summary>
+    <p class="muted small">These tools belong to the earlier atomic-knowledge workflow and are hidden from the normal Living Understanding experience.</p>
+  {#if !data.selectedSource}
+    <section class="card panel" id="realms">
+      <div class="section-heading"><div><h2>Realms and topics</h2><p class="muted">Each topic groups related, individually recorded knowledge. Assigning a statement does not change its evidence or disclose it.</p></div><button type="button" class="btn" on:click={() => topicPanelOpen = !topicPanelOpen} aria-expanded={topicPanelOpen}>{topicPanelOpen ? 'Close topic form' : '+ Create topic'}</button></div>
+      {#if form?.topicError}<p class="error" role="alert">{form.topicError}</p>{/if}
+      {#if topicPanelOpen}
+        <form method="POST" action="?/createTopic#realms" class="topic-create-form">
+          <label for="realm-select">Area of life</label><select id="realm-select" name="realmKey" required>{#each data.realms as realm}<option value={realm.key}>{realm.name}</option>{/each}</select>
+          <label for="topic-name">New topic name</label><input id="topic-name" name="topicName" minlength="2" maxlength="100" required placeholder="e.g. Relationship readiness" />
+          <button class="btn primary" type="submit">Create topic</button>
+        </form>
+      {/if}
+      {#if !data.topicTree.length}<p class="muted">No topics yet. Create one above; your existing knowledge will not change.</p>{/if}
+      {#each data.topicTree as realm (realm.id)}
+        <div class="realm-entry"><h3>{realm.name}</h3>
+          {#each realm.topics as topic (topic.id)}
+            <div class="topic-entry"><h4>{topic.name} <span class="muted small">({topic.claims.length})</span></h4>
+              {#if !topic.claims.length}<p class="muted small">No current knowledge assigned.</p>{/if}
+              {#each topic.claims as claim (claim.id)}
+                <div class="topic-claim"><p class="current-statement">{claim.statement}</p><p class="muted small">{claim.kind.replaceAll('_', ' ')} · {claim.authority === 'THIRD_PARTY_REPORTED' ? 'Operator reviewed (not participant confirmed)' : claim.authority.replaceAll('_', ' ')}</p>
+                  <form method="POST" action="?/removeTopic#realms"><input type="hidden" name="topicId" value={topic.id} /><input type="hidden" name="claimId" value={claim.id} /><button type="submit" class="btn">Remove assignment</button></form>
+                </div>
+              {/each}
+            </div>
+          {/each}
+        </div>
+      {/each}
+    </section>
+    <section class="card panel" id="assign-knowledge">
+      <h2>Assign a statement to a topic</h2>
+      <p class="muted">Select a statement. The suggested placements below are local, explainable hints, not automatic AI decisions. Review the full statement and source before making any assignment. You can assign one statement to multiple topics.</p>
+      {#if !data.currentKnowledge.length}<p>No active knowledge to organise yet. Add knowledge from a reflection first.</p>{:else}
+        <label for="claim-to-organise">1. Statement to organise</label>
+        <select id="claim-to-organise" bind:value={selectedClaimId}>
+          <option value="">Select a current statement…</option>
+          {#each data.currentKnowledge as claim (claim.id)}<option value={claim.id}>{claim.statement}</option>{/each}
+        </select>
+        {#if selectedClaim}
+          <div class="selected-statement" aria-live="polite">
+            <p class="eyebrow">You are assigning this statement</p>
+            <p class="selected-text">{selectedClaim.statement}</p>
+            <p class="muted small">{selectedClaim.kind.replaceAll('_', ' ')} · {selectedClaim.authority === 'THIRD_PARTY_REPORTED' ? 'Operator reviewed, not participant confirmed' : selectedClaim.authority.replaceAll('_', ' ')}</p>
+            {#if selectedClaimAssignments.length}<p class="small"><strong>Already assigned to:</strong> {selectedClaimAssignments.map((assignment: any) => `${assignment.realm} → ${assignment.topic}`).join('; ')}</p>{:else}<p class="muted small">This statement has no topic assignments yet.</p>{/if}
+            {#if selectedClaim.sourceReflectionId}<p class="small"><a href={`/general/people/${data.personId}/understanding?sourceInteractionId=${encodeURIComponent(selectedClaim.sourceReflectionId)}`}>Read the original private reflection →</a></p>{:else}<p class="muted small">No source reflection is linked to this active statement.</p>{/if}
+          </div>
+          <div class="placement-panel" aria-label="Suggested topic placements">
+            <h3>Suggested topic placements</h3>
+            <p class="muted small">Suggestions use wording and life-area clues within Relish, without another external AI call. They may miss context. Nothing is assigned or created until you choose an action below.</p>
+            {#if !selectedClaim.suggestedTopics.length}<p class="muted small">No confident placement clue. Choose an existing topic manually, or create a topic above.</p>{/if}
+            {#each selectedClaim.suggestedTopics as suggestion, idx (`${suggestion.topicId ?? suggestion.topicName}-${idx}`)}
+              <div class="placement-option">
+                <p><strong>{suggestion.realmName} → {suggestion.topicName}</strong> {#if suggestion.isNew}<span class="muted small">(new topic)</span>{:else}<span class="muted small">(existing topic)</span>{/if}</p>
+                <p class="muted small">Why suggested: {suggestion.reason}</p>
+                {#if selectedClaimAssignments.some((assignment: any) => assignment.topicId === suggestion.topicId) && !suggestion.isNew}
+                  <p class="muted small">Already assigned.</p>
+                {:else if suggestion.isNew}
+                  <form method="POST" action="?/createAndAssignTopic#assign-knowledge" class="suggestion-form">
+                    <input type="hidden" name="claimId" value={selectedClaimId} />
+                    <input type="hidden" name="realmKey" value={suggestion.realmKey} />
+                    <label for={`suggested-name-${idx}`}>Edit new topic name</label>
+                    <input id={`suggested-name-${idx}`} name="topicName" value={suggestion.topicName} minlength="2" maxlength="100" required />
+                    <button class="btn" type="submit">Create topic and assign</button>
+                  </form>
+                {:else}
+                  <form method="POST" action="?/assignTopic#assign-knowledge" class="suggestion-form">
+                    <input type="hidden" name="claimId" value={selectedClaimId} />
+                    <input type="hidden" name="focusClaimId" value={selectedClaimId} />
+                    <input type="hidden" name="topicId" value={suggestion.topicId} />
+                    <button class="btn" type="submit">Assign to this topic</button>
+                  </form>
+                {/if}
+              </div>
+            {/each}
+          </div>
+          <button type="button" class="btn" on:click={() => showAllTopics = !showAllTopics} aria-expanded={showAllTopics}>{showAllTopics ? 'Hide all topics' : 'Choose another existing topic'}</button>
+          {#if showAllTopics}
+          {#if data.topicTree.some((realm: any) => realm.topics.length)}
+            <form method="POST" action="?/assignTopic#assign-knowledge" class="assignment-form">
+              <input type="hidden" name="claimId" value={selectedClaimId} />
+              <input type="hidden" name="focusClaimId" value={selectedClaimId} />
+              <label for="target-topic">2. Topic to add it to</label>
+              <select id="target-topic" name="topicId" required><option value="" disabled selected>Choose a topic…</option>
+                {#each data.topicTree as realm}<optgroup label={realm.name}>{#each realm.topics as topic}<option value={topic.id} disabled={selectedClaimAssignments.some((assignment: any) => assignment.topicId === topic.id)}>{topic.name}{selectedClaimAssignments.some((assignment: any) => assignment.topicId === topic.id) ? ' (already assigned)' : ''}</option>{/each}</optgroup>{/each}
+              </select>
+              <button type="submit" class="btn primary">Assign this statement</button>
+            </form>
+          {:else}<p class="muted">Create a topic in Realms and topics above before assigning this statement.</p>{/if}
+          {/if}
+        {/if}
+      {/if}
+    </section>
+    <section class="card panel" id="compare-knowledge">
+      <h2>Compare new knowledge with earlier understanding</h2>
+      <p class="muted">Choose two active statements sharing a topic. Relish displays their entry dates so you can choose the later statement as the replacement when retiring earlier knowledge. Entry dates may differ from when a real-world change occurred. No automated decision is made.</p>
+      {#if form?.comparisonError}<p role="alert" class="error">{form.comparisonError}</p>{/if}
+      {#if data.comparisonSaved}<p role="status" class="saved-message">Comparison recorded. Historical source and evidence have been retained.</p>{/if}
+      <label for="comparison-newer">Newer statement to consider</label>
+      <select id="comparison-newer" bind:value={selectedClaimId} on:change={() => { comparisonOlderId = ""; comparisonRelationship = ""; }}>
+        <option value="">Select a current statement…</option>
+        {#each data.currentKnowledge as claim (claim.id)}<option value={claim.id}>{claim.statement}</option>{/each}
+      </select>
+      {#if selectedClaim}
+        <div class="selected-statement"><p class="eyebrow">Selected statement</p><p class="selected-text">{selectedClaim.statement}</p>
+          <p class="muted small">Entered in Relish: {new Date(selectedClaim.createdAt).toLocaleString()}</p>
+          {#if selectedClaim.sourceReflectionId}<a href={`/general/people/${data.personId}/understanding?sourceInteractionId=${encodeURIComponent(selectedClaim.sourceReflectionId)}`}>Read its original private reflection</a>{/if}
+        </div>
+        {#if !(data.comparisonCandidates[selectedClaimId]?.length)}
+          <p class="muted">No other active statement shares an assigned topic. Assign both statements to a suitable common topic first, or leave this statement independent.</p>
+        {:else}
+          <label for="comparison-older">Earlier statement</label>
+          <select id="comparison-older" bind:value={comparisonOlderId} on:change={() => comparisonRelationship = ""}>
+            <option value="">Choose a related statement…</option>
+            {#each data.comparisonCandidates[selectedClaimId] as candidate (candidate.id)}<option value={candidate.id}>{candidate.statement} (entered {new Date(candidate.createdAt).toLocaleDateString()})</option>{/each}
+          </select>
+          {#each data.comparisonCandidates[selectedClaimId] as candidate (candidate.id)}
+            {#if comparisonOlderId === candidate.id}
+              <div class="selected-statement"><p class="eyebrow">Existing statement</p><p class="selected-text">{candidate.statement}</p>
+                <p class="muted small">Entered in Relish: {new Date(candidate.createdAt).toLocaleString()} · Shared topics: {candidate.topics.join(', ')}</p>
+                {#if data.currentKnowledge.find((claim: any) => claim.id === candidate.id)?.sourceReflectionId}<a href={`/general/people/${data.personId}/understanding?sourceInteractionId=${encodeURIComponent(data.currentKnowledge.find((claim: any) => claim.id === candidate.id).sourceReflectionId)}`}>Read its original private reflection</a>{/if}
+              </div>
+            {/if}
+          {/each}
+          {#if comparisonOlderId}
+            {#if comparisonChronologyInvalid}
+              <div class="supersession-warning" role="status">
+                <p>This selected replacement was entered before the other statement. You can still record a supporting, refining or conflicting relationship, but you cannot retire the later-entered statement with it.</p>
+                <button type="button" class="btn" on:click={reverseComparison}>Swap statements to retire the earlier-entered one</button>
+              </div>
+            {/if}
+            <form method="POST" action="?/compareKnowledge#compare-knowledge" class="review-form">
+              <input type="hidden" name="newerClaimId" value={selectedClaimId} />
+              <input type="hidden" name="olderClaimId" value={comparisonOlderId} />
+              <label for="comparison-relationship">How do these statements relate?</label>
+              <select id="comparison-relationship" name="relationship" bind:value={comparisonRelationship} required>
+                <option value="" disabled>Choose after reviewing both statements…</option>
+                <option value="INDEPENDENT">Independent new knowledge</option>
+                <option value="SUPPORTS">Supports the earlier statement</option>
+                <option value="REFINES">Refines or qualifies the earlier statement</option>
+                <option value="POTENTIAL_CONFLICT">Potential conflict, keep both active</option>
+                <option value="SUPERSEDES" disabled={comparisonChronologyInvalid}>New statement supersedes the earlier one{comparisonChronologyInvalid ? " (swap statements first)" : ""}</option>
+              </select>
+              <label for="comparison-note">Reason for this interpretation (optional)</label>
+              <textarea id="comparison-note" name="note" rows="2" maxlength="1000" placeholder="What changed or how does this new evidence qualify the old statement?"></textarea>
+              {#if comparisonRelationship === 'SUPERSEDES'}
+                <div class="supersession-warning"><p><strong>Retire earlier statement?</strong> This removes it from the current view, but retains the encrypted claim, evidence, topics and comparison history.</p>
+                <label><input type="checkbox" name="acknowledgeSupersession" value="YES" required /> Yes, I explicitly confirm this earlier statement should be superseded.</label></div>
+              {/if}
+              <button type="submit" class="btn primary">Record this comparison</button>
+              <p class="muted small">This is your operator review, not participant confirmation or permission to disclose anything.</p>
+            </form>
+          {/if}
+        {/if}
+      {/if}
+      <details class="history-panel"><summary>Recorded comparisons ({data.comparisonHistory.length})</summary>
+        {#each data.comparisonHistory as comparison (comparison.id)}
+          <article class="history"><p><strong>{comparison.relationship.replaceAll('_', ' ')}</strong> · {new Date(comparison.at).toLocaleString()} · Operator review</p>
+            <p><strong>Newer:</strong> {comparison.newerStatement}</p><p><strong>Earlier:</strong> {comparison.olderStatement}</p>
+            {#if comparison.note}<p>Reason: {comparison.note}</p>{/if}
+            {#if comparison.olderWasSuperseded}<p class="muted small">Earlier statement retired from the current view; original evidence retained.</p>{/if}
+          </article>
+        {/each}
+      </details>
+    </section>
+    <details class="card panel" id="current-knowledge"><summary><strong>All current knowledge ({data.currentKnowledge.length})</strong></summary>
+      <p class="muted small">Each item is individually recorded. Assignment to a topic does not confirm or share it.</p>
+      {#each data.currentKnowledge as claim (claim.id)}
+        <article class="entry"><p class="current-statement">{claim.statement}</p><p class="muted small">{claim.kind.replaceAll('_', ' ')} · {claim.authority === 'THIRD_PARTY_REPORTED' ? 'Operator reviewed' : claim.authority.replaceAll('_', ' ')} · {claim.evidenceCount} linked source(s)</p><a href="#assign-knowledge" on:click={() => selectedClaimId = claim.id}>Organise this statement →</a></article>
+      {/each}
+    </details>
+  {/if}
+  {#if data.selectedSource}
+    <section class="card panel" id="knowledge-suggestions">
+      <h2>1. Extract individual knowledge</h2>
+      {#if data.selectedSource.conversationContext}
+        <p class="muted small">This review includes the complete conversation as context. Only statements by {data.selectedSource.speaker || 'the selected person'} can support their knowledge. Other speakers are not imported as people.</p>
+        <details><summary>Read original conversation with all speakers</summary>
+          <pre class="conversation-source">{data.selectedSource.conversationContext}</pre>
+        </details>
+      {/if}
+      <p class="muted small">With your permission, Dorian checks the full reflection for distinct, evidence-backed knowledge and, for longer reflections, makes a second pass for missed topics. The first page prioritises distinct, current understanding. Additional supported suggestions remain available on subsequent review pages. Review each independently; no suggestion is confirmed or shared automatically.</p>
+      <form method="POST" action={`?/suggest&sourceInteractionId=${encodeURIComponent(data.selectedSource.id)}#knowledge-suggestions`}>
+        <input type="hidden" name="sourceInteractionId" value={data.selectedSource.id} />
+        <label><input type="checkbox" name="allowModelProcessing" value="YES" required /> Allow AI processing of this {data.selectedSource.conversationContext ? 'entire conversation, including excluded speakers as context' : 'private reflection'} for knowledge suggestions.</label>
+        <button type="submit" class="btn">Suggest knowledge from reflection</button>
+      </form>
+      {#if form?.suggestionError}<p class="error" role="alert">{form.suggestionError}</p>{/if}
+      {#if form?.diagnostics && form?.suggestionSourceId === data.selectedSource.id}
+        <details class="card diagnostic-panel">
+          <summary>Development diagnostics - rejected proposal inspection</summary>
+          <p class="muted small">Available only when DATING_KNOWLEDGE_DIAGNOSTICS=YES outside production. Counts are followed by private rejected candidate details on this page only; do not screenshot, export or share these details without consent. These checks cannot determine whether Dorian missed information it never proposed, or whether a proposed statement is actually entailed by its quoted passage.</p>
+          <table>
+            <thead><tr><th>Measure</th><th>First pass</th><th>Coverage pass</th><th>Combined</th></tr></thead>
+            <tbody>
+              <tr><th>Received</th><td>{form.diagnostics.firstPass.inputCount}</td><td>{form.diagnostics.secondPass?.inputCount ?? 'Not run'}</td><td>{form.diagnostics.combined.inputCount}</td></tr>
+              <tr><th>Invalid format or source passage</th><td>{form.diagnostics.firstPass.invalidOrUnsupportedCount}</td><td>{form.diagnostics.secondPass?.invalidOrUnsupportedCount ?? '-'}</td><td>{form.diagnostics.combined.invalidOrUnsupportedCount}</td></tr>
+              <tr><th>Malformed proposals</th><td>{form.diagnostics.firstPass.rejectionReasons.malformedItem}</td><td>{form.diagnostics.secondPass?.rejectionReasons.malformedItem ?? '-'}</td><td>{form.diagnostics.combined.rejectionReasons.malformedItem}</td></tr>
+              <tr><th>Invalid category</th><td>{form.diagnostics.firstPass.rejectionReasons.invalidKind}</td><td>{form.diagnostics.secondPass?.rejectionReasons.invalidKind ?? '-'}</td><td>{form.diagnostics.combined.rejectionReasons.invalidKind}</td></tr>
+              <tr><th>Empty or oversize statement</th><td>{form.diagnostics.firstPass.rejectionReasons.invalidStatement}</td><td>{form.diagnostics.secondPass?.rejectionReasons.invalidStatement ?? '-'}</td><td>{form.diagnostics.combined.rejectionReasons.invalidStatement}</td></tr>
+              <tr><th>Missing or invalid source passage</th><td>{form.diagnostics.firstPass.rejectionReasons.invalidSourcePassage}</td><td>{form.diagnostics.secondPass?.rejectionReasons.invalidSourcePassage ?? '-'}</td><td>{form.diagnostics.combined.rejectionReasons.invalidSourcePassage}</td></tr>
+              <tr><th>Exact duplicates</th><td>{form.diagnostics.firstPass.exactDuplicateCount}</td><td>{form.diagnostics.secondPass?.exactDuplicateCount ?? '-'}</td><td>{form.diagnostics.combined.exactDuplicateCount}</td></tr>
+              <tr><th>Near duplicates</th><td>{form.diagnostics.firstPass.nearDuplicateCount}</td><td>{form.diagnostics.secondPass?.nearDuplicateCount ?? '-'}</td><td>{form.diagnostics.combined.nearDuplicateCount}</td></tr>
+              <tr><th>Distinct eligible</th><td>{form.diagnostics.firstPass.eligibleCount}</td><td>{form.diagnostics.secondPass?.eligibleCount ?? '-'}</td><td>{form.diagnostics.combined.eligibleCount}</td></tr>
+              <tr><th>Selected</th><td>{form.diagnostics.firstPass.displayedCount}</td><td>{form.diagnostics.secondPass?.displayedCount ?? '-'}</td><td>{form.diagnostics.combined.displayedCount}</td></tr>
+              <tr><th>Past review limit</th><td>{form.diagnostics.firstPass.beyondLimitCount}</td><td>{form.diagnostics.secondPass?.beyondLimitCount ?? '-'}</td><td>{form.diagnostics.combined.beyondLimitCount}</td></tr>
+            </tbody>
+          </table>
+          <p class="muted small">Second pass: {form.diagnostics.secondPassAttempted ? (form.diagnostics.secondPassSucceeded ? 'completed' : 'unavailable') : 'not needed'}. Review pages: {form.diagnostics.reviewPageCount}. Repeated evidence passage among selected proposals: {form.diagnostics.combined.quoteReusedAcrossSelected}.</p>
+          <p class="muted small">Heuristic uncertainty check: mentioned in source - {form.diagnostics.combined.sourceMentionsUncertainty ? 'yes' : 'no'}; present in selected supporting material - {form.diagnostics.combined.selectedMentionsUncertainty ? 'yes' : 'no'}. This only detects wording, not preservation of meaning.</p>
+          <h3>Rejected and deferred proposals ({form.diagnostics.rejectedCandidates?.length ?? 0})</h3>
+          <p class="muted small">Development-only private view. Shows the AI's original proposed statement and supplied quote. An invalid quote does not prove the statement is false; compare it with the original source above. These details are not stored in normal logs or the database. Refreshing this page clears the inspection response.</p>
+          {#each form.diagnostics.rejectedCandidates ?? [] as rejected, index}
+            <article class="card diagnostic-rejection">
+              <h4>Candidate {index + 1}: {rejected.reason} ({rejected.pass ?? 'Review'})</h4>
+              <p><strong>Knowledge type:</strong> {rejected.kind || 'Not supplied'}</p>
+              <p><strong>Original proposed statement:</strong> {rejected.statement || 'Not supplied'}</p>
+              <p><strong>AI-supplied evidence:</strong></p>
+              <blockquote>{rejected.evidenceQuote || 'Not supplied'}</blockquote>
+              {#if rejected.overlapsWith}<p><strong>Overlaps with:</strong> {rejected.overlapsWith}</p>{/if}
+              {#if rejected.reason === 'invalidSourcePassage'}<p class="muted small">This supplied quote did not pass literal source validation. Consult the original reflection above; it may be a punctuation mismatch, transcription variation or unsupported wording. Do not confirm without valid evidence.</p>{/if}
+            </article>
+          {/each}
+        </details>
+      {/if}
+      {#if form?.suggestions && form?.suggestionSourceId === data.selectedSource.id}
+        {#if form.suggestions.length === 0}<p>No supported suggestions found. You can add knowledge manually below.</p>{:else}<p class="muted small">{form.suggestions.length} suggestions available across {Math.ceil(form.suggestions.length / SUGGESTIONS_PER_PAGE)} review page(s). The source may contain further details; add those manually below.</p>{/if}
+        <form method="POST" action="?/saveSuggestions">
+          <input type="hidden" name="sourceInteractionId" value={data.selectedSource.id} />
+          <input type="hidden" name="count" value={form.suggestions.length} />
+          {#if form.suggestions.length > SUGGESTIONS_PER_PAGE}
+            <div class="actions">
+              <button type="button" class="btn" disabled={suggestionPage === 0} on:click={() => suggestionPage -= 1}>Previous suggestions</button>
+              <span>Page {suggestionPage + 1} of {Math.ceil(form.suggestions.length / SUGGESTIONS_PER_PAGE)}</span>
+              <button type="button" class="btn" disabled={(suggestionPage + 1) * SUGGESTIONS_PER_PAGE >= form.suggestions.length} on:click={() => suggestionPage += 1}>Next suggestions</button>
+            </div>
+          {/if}
+          {#each form.suggestions as suggestion, i}
+            <article class="card entry" style:display={Math.floor(i / SUGGESTIONS_PER_PAGE) === suggestionPage ? 'block' : 'none'}>
+              <p class="eyebrow">Suggestion {i + 1}: proposed knowledge</p>
+              <label for={`suggestion-statement-${i}`}>What Dorian thinks this says about the person</label>
+              <textarea id={`suggestion-statement-${i}`} name={`statement_${i}`} rows="3" maxlength="600" required>{suggestion.statement}</textarea>
+              <p class="muted small"><strong>Evidence in the original reflection:</strong></p>
+              <blockquote>{suggestion.evidenceQuote}</blockquote>
+              <input type="hidden" name={`evidence_${i}`} value={suggestion.evidenceQuote} />
+              <label for={`suggestion-kind-${i}`}>Knowledge type</label>
+              <select id={`suggestion-kind-${i}`} name={`kind_${i}`} value={suggestion.kind}>
+                <option value="FACT">Fact or background</option><option value="WANT">Want or need</option>
+                <option value="OFFER">What they offer</option><option value="PREFERENCE">Preference or interest</option>
+                <option value="CONSTRAINT">Constraint or boundary</option><option value="OBJECTIVE">Objective</option>
+                <option value="OTHER">Other</option>
+              </select>
+              <label for={`suggestion-decision-${i}`}>Review decision</label>
+              <select id={`suggestion-decision-${i}`} name={`decision_${i}`}>
+                <option value="PENDING">Save as proposal</option>
+                <option value="CONFIRMED">Confirm as operator</option>
+                <option value="DEFERRED">Not sure yet</option>
+                <option value="REJECTED">Reject</option>
+                <option value="SKIP">Do not save this suggestion</option>
+              </select>
+            </article>
+          {/each}
+          {#if form.suggestions.length > SUGGESTIONS_PER_PAGE}
+            <div class="actions">
+              <button type="button" class="btn" disabled={suggestionPage === 0} on:click={() => suggestionPage -= 1}>Previous suggestions</button>
+              <button type="button" class="btn" disabled={(suggestionPage + 1) * SUGGESTIONS_PER_PAGE >= form.suggestions.length} on:click={() => suggestionPage += 1}>Next suggestions</button>
+            </div>
+          {/if}
+          <button type="submit" class="btn primary">Save reviewed knowledge (all pages)</button>
+          <p class="muted small">You can edit and decide on every element before saving them together. Your decisions do not authorise disclosure.</p>
+        </form>
+      {/if}
+    </section>
+  {/if}
+  <section class="card panel">
+    <h2>{data.selectedSource ? "2. Add something Dorian missed" : "Add knowledge manually"}</h2>
+    <p>Begin with one line about their life, interests or what might make a difference for them.</p>
+    <form method="POST" action={`?/propose${data.selectedSource ? `&sourceInteractionId=${encodeURIComponent(data.selectedSource.id)}` : ""}`}>
+      {#if data.selectedSource}<input type="hidden" name="sourceInteractionId" value={data.selectedSource.id} />{/if}
+            <label for="kind">Knowledge type</label>
+      <select id="kind" name="kind">
+        <option value="PREFERENCE">Preference or interest</option><option value="WANT">Want or need</option>
+        <option value="FACT">Fact or background</option><option value="OBJECTIVE">Objective</option>
+        <option value="OFFER">What they offer</option><option value="CONSTRAINT">Constraint or boundary</option>
+        <option value="OTHER">Other or emerging understanding</option>
+      </select>
+      <label for="statement">Exact statement to record</label>
+      <textarea id="statement" name="statement" rows="3" maxlength="600" required placeholder="They enjoy walking and would welcome someone to share that with."></textarea>
+      <label for="note">Source or context (optional)</label>
+      <textarea id="note" name="note" rows="2" maxlength="1000" placeholder="Their introductory conversation with Dorian"></textarea>
+      <div class="actions">
+        <button type="submit" name="decision" value="CONFIRMED" class="btn primary">Confirm</button>
+        <button type="submit" name="decision" value="DEFERRED" class="btn">Not sure yet</button>
+        <button type="submit" name="decision" value="REJECTED" class="btn">Reject</button>
+        <button type="submit" name="decision" value="PENDING" class="btn">Save proposal</button>
+      </div>
+      <p class="muted small">One save creates one statement and its initial decision. Confirm means operator-reviewed, not confirmed by the person.</p>
+    </form>
+  </section>
+  {#if form?.error}<p class="error" role="alert">{form.error}</p>{/if}
+  {#if !data.selectedSource}
+  <details class="panel card existing-panel" id="existing-statements"><summary><strong>Existing proposals and review history ({data.entries.length})</strong></summary>
+    {#if data.entries.length === 0}<p class="muted">No understanding recorded yet.</p>{/if}
+    {#each data.entries as item (item.id)}
+      <article class="card entry">
+        <p class="muted small">{item.kind.replaceAll('_',' ')} · {item.proposedBy === 'DORIAN' ? 'Suggested by Dorian' : 'Operator proposal'} · Added {new Date(item.proposedAt).toLocaleString()}</p>
+        {#if item.sourceInteractionId}<p class="muted small">Linked to an original private reflection</p>{/if}
+        <p class="current-statement">{item.reviewedStatement ?? item.statement}</p>
+        <p><strong>Status:</strong> {item.decision === 'CONFIRMED' ? 'Operator reviewed' : item.decision === 'REJECTED' ? 'Rejected' : item.decision === 'DEFERRED' ? 'Not sure yet' : 'Pending review'}</p>
+        <div class="actions">
+          <button type="button" class="btn" aria-expanded={editingId === item.id} on:click={() => editingId = editingId === item.id ? null : item.id}>{editingId === item.id ? 'Close edit' : 'Edit'}</button>
+        </div>
+        {#if editingId === item.id}
+          <form method="POST" action="?/review" class="review-form">
+            <input type="hidden" name="proposalId" value={item.id} />
+            <label for={`review-${item.id}`}>Revise this understanding</label>
+            <textarea id={`review-${item.id}`} name="statement" rows="3" maxlength="600" required>{item.reviewedStatement ?? item.statement}</textarea>
+            <label for={`note-${item.id}`}>Why has this changed? (optional)</label>
+            <input id={`note-${item.id}`} name="note" maxlength="1000" placeholder="A correction or new interpretation of the original experience" />
+            <div class="actions">
+              <button type="submit" name="decision" value="CONFIRMED" class="btn primary">Confirm</button>
+              <button type="submit" name="decision" value="DEFERRED" class="btn">Not sure yet</button>
+              <button type="submit" name="decision" value="REJECTED" class="btn">Reject</button>
+              <button type="button" class="btn" on:click={() => editingId = null}>Cancel</button>
+            </div>
+            <p class="muted small">An unchanged decision and statement will not create duplicate history. Genuine revisions are retained.</p>
+          </form>
+        {/if}
+        <details class="history-panel"><summary>History ({item.history.length} review{item.history.length === 1 ? '' : 's'})</summary>
+          <div class="history"><strong>Original proposal</strong> · {new Date(item.proposedAt).toLocaleString()}<p>{item.statement}</p>{#if item.proposalNote}<p class="muted">Source: {item.proposalNote}</p>{/if}</div>
+          {#each item.history as change}
+            <div class="history"><strong>{change.decision}</strong> · {new Date(change.at).toLocaleString()} · {change.actor === 'OPERATOR' ? 'Operator' : change.actor}
+              <p>{change.statement}</p>{#if change.note}<p class="muted">{change.note}</p>{/if}
+            </div>
+          {/each}
+        </details>
+      </article>
+    {/each}
+  </details>
+  {/if}
+  </details>
+  {/if}
+    <p class="muted"><strong>Privacy:</strong> Operator confirmation is not independently verified by the participant and does not grant permission to use this information in other spaces or disclose it to anyone.</p>
+</div>
+<style>
+  /* IT: Keep full conversational turns readable without overflowing the review page. */
+  .conversation-source { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 520px; overflow-y: auto; }
+  .understanding-page { max-width: 920px; padding: 14px; }
+  .workflow-nav { display:flex; flex-wrap:wrap; justify-content:space-between; gap:12px; margin: 8px 0 22px; }
+  .focus-heading { margin: 18px 0 24px; } .eyebrow { text-transform: uppercase; letter-spacing: .07em; font-size: .78rem; font-weight: 700; color: var(--muted); }
+  .saved-message { padding: 14px; border: 1px solid #518c75; border-radius: 10px; }
+  .source-preview { padding: 18px; border-left: 4px solid var(--primary, #518c75); }
+  .source-preview blockquote { white-space: pre-wrap; max-height: 260px; overflow-y: auto; }
+  .section-heading { display: flex; justify-content: space-between; align-items: start; flex-wrap: wrap; gap: 16px; }
+  .topic-create-form { padding:16px; margin:16px 0; border:1px solid var(--border); border-radius:10px; }
+  .selected-statement { border-left: 4px solid var(--primary, #518c75); background: var(--surface); padding: 16px; margin: 14px 0; border-radius: 6px; }
+  .selected-text { font-size: 1.16rem; font-weight: 600; white-space: pre-wrap; }
+  details.panel > summary { cursor: pointer; padding: 7px 0; }
+  .panel { padding: 18px; margin: 15px 0; }
+  .entry { padding: 18px; margin: 14px 0; }
+  .panel form, .review-form { display: grid; gap: 10px; }
+  .review-form { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border); }
+  .current-statement { font-size: 1.05rem; white-space: pre-wrap; }
+  textarea, input { width: 100%; box-sizing: border-box; padding: 10px; border: 1px solid var(--border); border-radius: 9px; background: var(--surface); color: var(--text); }
+  .actions { display: flex; gap: 10px; flex-wrap: wrap; }
+  .muted { color: var(--muted); }
+  .small { font-size: .9rem; }
+  .error { color: var(--danger); }
+  input[type="checkbox"] { width: auto; margin-right: 8px; }
+  select { padding: 10px; border: 1px solid var(--border); border-radius: 9px; background: var(--surface); color: var(--text); }
+  .realm-entry { border-top: 1px solid var(--border); padding: 12px 0; }
+  .topic-entry { margin: 12px 0; padding: 12px; border: 1px solid var(--border); border-radius: 10px; }
+  .topic-claim { border-top: 1px solid var(--border); padding: 10px 0; }
+  .placement-panel { margin: 14px 0; padding: 14px; border: 1px solid var(--border); border-radius: 10px; }
+  .placement-option { padding: 12px 0; border-top: 1px solid var(--border); }
+  .placement-option p { margin: 4px 0 8px; }
+  .suggestion-form { display: grid; gap: 8px; max-width: 450px; }
+  .assignment-form { border-top: 1px solid var(--border); padding: 12px 0; }
+  .history { margin-top: 10px; padding: 12px; border-top: 1px solid var(--border); }
+  .history-panel { margin-top: 12px; }
+  .supersession-warning { border: 1px solid var(--border); padding: 14px; border-radius: 10px; }
+  .diagnostic-panel { margin-top: 12px; padding: 12px; overflow-x: auto; }
+  .diagnostic-panel table { border-collapse: collapse; width: 100%; font-size: .88rem; }
+  .diagnostic-panel th, .diagnostic-panel td { padding: 7px; border-bottom: 1px solid var(--border); text-align: left; }
+  .persisted-topic { border-top: 1px solid var(--border-color, #aaa); padding: 1rem 0; }
+  .persisted-topic h3 { margin: .15rem 0 .5rem; }
+  .revision-history { margin-top: 1rem; }
+  .revision-inspector { margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--border-color, #aaa); }
+  .historical-topic { opacity: .94; }
+  .legacy-knowledge-tools { margin: 1.25rem 0; padding: .9rem; border: 1px dashed var(--border-color, #aaa); border-radius: 10px; }
+</style>
+

@@ -24,6 +24,7 @@ export const load: LayoutServerLoad = async ({ locals, url }) => {
 	let user: { id: string; emailRedacted: string | null } | null = null;
 	let activeContext: { id: string; domainKey: string; displayName: string } | null = null;
 	let hasDatingContext = false;
+	let hasGeneralContext = false;
 
 	if (locals.user?.id) {
 		// IT - read encrypted email for this user and produce a redacted string
@@ -40,6 +41,7 @@ export const load: LayoutServerLoad = async ({ locals, url }) => {
 			select: { id: true, domainKey: true, displayNameEnc: true }
 		});
 		hasDatingContext = spaces.some((space) => space.domainKey === 'dating');
+		hasGeneralContext = spaces.some((space) => space.domainKey === 'general');
 		const selected = spaces.find((space) => space.id === locals.contextSpaceId) ?? null;
 		if (selected) {
 			activeContext = {
@@ -47,7 +49,7 @@ export const load: LayoutServerLoad = async ({ locals, url }) => {
 				domainKey: selected.domainKey,
 				displayName: decryptContextSpaceDisplayName(
 					selected.displayNameEnc,
-					selected.domainKey === 'dating' ? 'Dating' : 'Business'
+					selected.domainKey === 'dating' ? 'Dating' : selected.domainKey === 'general' ? 'General' : 'Business'
 				)
 			};
 		}
@@ -97,6 +99,7 @@ export const load: LayoutServerLoad = async ({ locals, url }) => {
 		activeDomainKey: locals.contextDomainKey,
 		routePathname,
 		hasDatingContext,
+		hasGeneralContext,
 		reconnectDue,
 		remindersOpenCount,
 		tasksOpenCount,

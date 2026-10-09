@@ -7,6 +7,7 @@ import { prisma } from '$lib/db';
 import {
 	BUSINESS_DOMAIN_KEY,
 	DATING_DOMAIN_KEY,
+	GENERAL_DOMAIN_KEY,
 	contextSelectionCookieName
 } from '$lib/server/core/contextDomain';
 import {
@@ -15,7 +16,9 @@ import {
 } from '$lib/server/core/contextSpaceDirectory';
 
 function destinationForDomain(domainKey: string) {
-	return domainKey === DATING_DOMAIN_KEY ? '/dating' : '/';
+	if (domainKey === DATING_DOMAIN_KEY) return '/dating';
+	if (domainKey === GENERAL_DOMAIN_KEY) return '/general';
+	return '/';
 }
 
 function contextCookieOptions(locals: App.Locals) {
@@ -45,7 +48,7 @@ export const load: PageServerLoad = async ({ locals }) => {
 			domainKey: row.domainKey,
 			displayName: decryptContextSpaceDisplayName(
 				row.displayNameEnc,
-				row.domainKey === DATING_DOMAIN_KEY ? 'Dating' : 'Business'
+				row.domainKey === DATING_DOMAIN_KEY ? 'Dating' : row.domainKey === GENERAL_DOMAIN_KEY ? 'General' : 'Business'
 			),
 			isDefault: row.isDefault
 		}))
@@ -53,6 +56,23 @@ export const load: PageServerLoad = async ({ locals }) => {
 };
 
 export const actions: Actions = {
+
+	createGeneral: async ({ locals, cookies }) => {
+		if (!locals.user) throw redirect(303, '/auth/login');
+
+		const space = await ensureOwnedDomainContextSpace(prisma, {
+			ownerUserId: locals.user.id,
+			domainKey: GENERAL_DOMAIN_KEY,
+			displayName: 'General'
+		});
+		cookies.set(
+			contextSelectionCookieName(GENERAL_DOMAIN_KEY),
+			space.id,
+			contextCookieOptions(locals)
+		);
+		throw redirect(303, '/general');
+	},
+
 	createDating: async ({ locals, cookies }) => {
 		if (!locals.user) throw redirect(303, '/auth/login');
 
@@ -81,7 +101,7 @@ export const actions: Actions = {
 			select: { id: true, domainKey: true }
 		});
 		if (!space) return fail(404, { error: 'ContextSpace not found.' });
-		if (![BUSINESS_DOMAIN_KEY, DATING_DOMAIN_KEY].includes(space.domainKey)) {
+		if (![BUSINESS_DOMAIN_KEY, DATING_DOMAIN_KEY, GENERAL_DOMAIN_KEY].includes(space.domainKey)) {
 			return fail(400, { error: 'This application domain is not available yet.' });
 		}
 

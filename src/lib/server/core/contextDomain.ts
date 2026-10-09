@@ -4,6 +4,7 @@
 
 export const BUSINESS_DOMAIN_KEY = 'business';
 export const DATING_DOMAIN_KEY = 'dating';
+export const GENERAL_DOMAIN_KEY = 'general';
 
 export type ContextDomainKey = string;
 
@@ -33,7 +34,19 @@ export function contextDomainForPathname(pathname: string): ContextDomainKey {
 	const path = String(pathname || '/');
 	// IT: Domain selection comes from a server-owned route boundary, not from an arbitrary query parameter.
 	if (path === '/dating' || path.startsWith('/dating/')) return DATING_DOMAIN_KEY;
+	if (path === '/general' || path.startsWith('/general/')) return GENERAL_DOMAIN_KEY;
 	return BUSINESS_DOMAIN_KEY;
+}
+
+
+export function isRelationshipApplicationDomain(domainKey: string) {
+	return domainKey === DATING_DOMAIN_KEY || domainKey === GENERAL_DOMAIN_KEY;
+}
+
+export function relationshipApplicationBase(domainKey: string) {
+	if (domainKey === DATING_DOMAIN_KEY) return '/dating';
+	if (domainKey === GENERAL_DOMAIN_KEY) return '/general';
+	throw new Error('This route is not inside a relationship application ContextSpace.');
 }
 
 export function contextSelectionCookieName(domainKey: string) {

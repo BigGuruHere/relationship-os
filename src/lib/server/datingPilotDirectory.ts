@@ -1,54 +1,16 @@
-// PURPOSE: Minimal Dating pilot people and Introduction directory.
-// SECURITY: Callers must already be inside an authenticated Dating ContextSpace request.
+// PURPOSE: Compatibility wrappers for the Dating pilot participant directory.
+// SECURITY: Core participant helpers recheck owner + ContextSpace + expected application domain.
 
-import { prisma } from '$lib/db';
-import { buildIndexToken, encrypt } from '$lib/crypto';
-import { contactDisplayName } from '$lib/server/contactDisplay';
+import { createContextPerson, listContextPeople } from '$lib/server/core/participantDirectory';
 
 export async function listDatingPeople(userId: string, contextSpaceId: string) {
-	const rows = await prisma.contact.findMany({
-		where: { userId, contextSpaceId },
-		select: { id: true, fullNameEnc: true, linkedUserId: true, createdAt: true },
-		orderBy: { updatedAt: 'desc' },
-		take: 500
-	});
-	return Promise.all(
-		rows.map(async (row) => ({
-			id: row.id,
-			name: await contactDisplayName(row),
-			createdAt: row.createdAt
-		}))
-	);
+  return listContextPeople({ userId, contextSpaceId }, 'dating');
 }
 
-export async function createDatingPerson(params: {
-	userId: string;
-	contextSpaceId: string;
-	name: string;
-}) {
-	const name = String(params.name || '').trim();
-	if (!name) throw new Error('Name is required.');
-	if (name.length > 200) throw new Error('Name is too long.');
-
-	// IT: Equality checks remain local to the active Dating ContextSpace through the Prisma custody extension.
-	const existing = await prisma.contact.findFirst({
-		where: { userId: params.userId, contextSpaceId: params.contextSpaceId, fullNameIdx: buildIndexToken(name) },
-		select: { id: true }
-	});
-	if (existing) throw new Error('A Dating person with this name already exists.');
-
-	return prisma.contact.create({
-		data: {
-			userId: params.userId,
-			contextSpaceId: params.contextSpaceId,
-			fullNameEnc: encrypt(name, 'contact.full_name'),
-			fullNameIdx: buildIndexToken(name),
-			source: 'MANUAL'
-		},
-		select: { id: true }
-	});
+export async function createDatingPerson(params: { userId: string; contextSpaceId: string; name: string }) {
+  return createContextPerson({ userId: params.userId, contextSpaceId: params.contextSpaceId }, 'dating', params.name);
 }
 
 export function datingPartyLabel(party: any) {
-	return party?.contact?.name || party?.company?.name || `Participant ${party?.side || ''}`.trim();
+  return party?.contact?.name || party?.company?.name || `Participant ${party?.side || ''}`.trim();
 }

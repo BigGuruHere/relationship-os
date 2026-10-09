@@ -2,6 +2,7 @@
 // SECURITY: AI proposals remain non-authoritative until explicit signed adoption; custody is revalidated server-side.
 import { error, fail, redirect } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
+import { isRelationshipApplicationDomain, relationshipApplicationBase } from '$lib/server/core/contextDomain';
 import { requireSourceReflection } from '$lib/server/datingLivingUnderstanding';
 import { listUnderstandingTopics } from '$lib/server/datingUnderstandingTopics';
 import { loadPersonHistory } from '$lib/server/datingPersonHistory';
@@ -18,7 +19,7 @@ import { saveLivingUnderstandingDraft, loadLivingUnderstandingDraft, completeLiv
 
 function authorisedScope(locals: App.Locals, id: string, allowInitialCreation = false) {
   if (!locals.user) throw redirect(303, '/auth/login');
-  if (locals.contextDomainKey !== 'dating' || !locals.contextSpaceId) throw error(403, 'Select a Dating ContextSpace.');
+  if (!isRelationshipApplicationDomain(locals.contextDomainKey) || !locals.contextSpaceId) throw error(403, 'Select a supported relationship ContextSpace.');
   if (!allowInitialCreation && !revisionExperimentEnabled()) throw error(404, 'Experiment is not enabled.');
   return { userId: locals.user.id, contextSpaceId: locals.contextSpaceId, contactId: id };
 }
@@ -37,7 +38,7 @@ export const load: PageServerLoad = async ({ locals, params, url }) => {
   // IT: The production first-time entry point is only valid before an authoritative baseline exists.
   // Once v1 exists, later sources must use the Stage 8.13 longitudinal impact-review path.
   if (initialCreationMode && currentLivingUnderstanding && sourceId) {
-    throw redirect(303, `/dating/people/${params.id}/understanding/impact-review?sourceInteractionId=${encodeURIComponent(sourceId)}`);
+    throw redirect(303, `${relationshipApplicationBase(locals.contextDomainKey)}/people/${params.id}/understanding/impact-review?sourceInteractionId=${encodeURIComponent(sourceId)}`);
   }
   // IT: Longitudinal follow-up remains source-custody local. Only later private reflections or
   // conversation excerpts for this same person are offered as the second source. Text is not
@@ -397,6 +398,6 @@ export const actions: Actions = {
       }
       return fail(400, { revisionError: 'Living Understanding could not be saved. No stored knowledge was changed.' });
     }
-    throw redirect(303, `/dating/people/${params.id}/understanding?livingSaved=1`);
+    throw redirect(303, `${relationshipApplicationBase(locals.contextDomainKey)}/people/${params.id}/understanding?livingSaved=1`);
   }
 };

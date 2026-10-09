@@ -15,22 +15,23 @@ import {
   validateConversationMetadata
 } from './core/conversationIngestion';
 
-export type DatingConversationImportMetadata = Parameters<typeof validateConversationMetadata>[0];
+export type ConversationImportMetadata = Parameters<typeof validateConversationMetadata>[0];
 type Scope = { userId: string; contextSpaceId: string };
 
-export async function importDatingTranscript(
+export async function importConversationTranscript(
   scope: Scope,
+  expectedDomainKey: string,
   raw: unknown,
   mapping: Record<string, string>,
-  metadataInput: DatingConversationImportMetadata = {}
+  metadataInput: ConversationImportMetadata = {}
 ) {
   const parsed = parseDatingTranscript(raw);
   const metadata = validateConversationMetadata(metadataInput);
   const space = await prisma.contextSpace.findFirst({
-    where: { id: scope.contextSpaceId, ownerUserId: scope.userId, domainKey: 'dating' },
+    where: { id: scope.contextSpaceId, ownerUserId: scope.userId, domainKey: expectedDomainKey },
     select: { id: true }
   });
-  if (!space) throw new Error('An owned Dating space is required.');
+  if (!space) throw new Error(`An owned ${expectedDomainKey} ContextSpace is required.`);
 
   const mappedContactIds = Object.values(mapping).filter(id => id !== 'SKIP');
   const people = await prisma.contact.findMany({
@@ -175,4 +176,15 @@ export async function importDatingTranscript(
       turnCount: parsed.turns.length
     };
   }, { timeout: 20000 });
+}
+
+
+// Compatibility wrapper for existing Dating routes.
+export async function importDatingTranscript(
+  scope: Scope,
+  raw: unknown,
+  mapping: Record<string, string>,
+  metadataInput: ConversationImportMetadata = {}
+) {
+  return importConversationTranscript(scope, 'dating', raw, mapping, metadataInput);
 }

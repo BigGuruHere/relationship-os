@@ -1,6 +1,7 @@
 // Stage 8.13.1 - production review of one new source against the authoritative Living Understanding.
 import { error, fail, redirect } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
+import { isRelationshipApplicationDomain, relationshipApplicationBase } from '$lib/server/core/contextDomain';
 import { requireSourceReflection } from '$lib/server/datingLivingUnderstanding';
 import { getAuthoritativeLivingUnderstandingBaseline, describeLivingUnderstandingPersistenceError } from '$lib/server/datingPersistedLivingUnderstanding';
 import { reviewLivingUnderstandingImpact, approveLivingUnderstandingImpact, sourceAlreadyInAuthoritativeLivingUnderstanding } from '$lib/server/datingLongitudinalLivingUnderstanding';
@@ -8,7 +9,7 @@ import { saveLivingUnderstandingDraft, completeLivingUnderstandingDraft } from '
 
 function scopeFor(locals: App.Locals, contactId: string) {
   if (!locals.user) throw redirect(303, '/auth/login');
-  if (locals.contextDomainKey !== 'dating' || !locals.contextSpaceId) throw error(403, 'Select a Dating ContextSpace.');
+  if (!isRelationshipApplicationDomain(locals.contextDomainKey) || !locals.contextSpaceId) throw error(403, 'Select a supported relationship ContextSpace.');
   return { userId: locals.user.id, contextSpaceId: locals.contextSpaceId, contactId };
 }
 
@@ -21,7 +22,7 @@ export const load: PageServerLoad = async ({ locals, params, url }) => {
     getAuthoritativeLivingUnderstandingBaseline(scope),
     sourceAlreadyInAuthoritativeLivingUnderstanding(scope, sourceInteractionId)
   ]);
-  if (!baseline) throw redirect(303, `/dating/people/${params.id}/understanding?sourceInteractionId=${encodeURIComponent(sourceInteractionId)}`);
+  if (!baseline) throw redirect(303, `${relationshipApplicationBase(locals.contextDomainKey)}/people/${params.id}/understanding?sourceInteractionId=${encodeURIComponent(sourceInteractionId)}`);
   return {
     personId: params.id,
     source: { id: source.id, at: source.at.toISOString(), sourceKind: source.sourceKind, text: source.text, speaker: source.speaker },
@@ -89,6 +90,6 @@ export const actions: Actions = {
       const diagnostic = process.env.NODE_ENV !== 'production' ? describeLivingUnderstandingPersistenceError(err) : '';
       return fail(400, { impactError: diagnostic ? `${safeError(err)} (${diagnostic})` : safeError(err) });
     }
-    throw redirect(303, `/dating/people/${params.id}/understanding?livingSaved=1`);
+    throw redirect(303, `${relationshipApplicationBase(locals.contextDomainKey)}/people/${params.id}/understanding?livingSaved=1`);
   }
 };

@@ -17,6 +17,7 @@
 		activeDomainKey?: string;
 		routePathname?: string;
 		hasDatingContext?: boolean;
+		hasGeneralContext?: boolean;
 		reconnectDue: number;
 		remindersOpenCount: number;
 		tasksOpenCount?: number;
@@ -25,6 +26,9 @@
 
 	// IT: Navigation is selected from the server-resolved route domain, never from a client-controlled context id.
 	$: isDatingApplication = data.activeDomainKey === 'dating';
+	$: isGeneralApplication = data.activeDomainKey === 'general';
+	$: isRelationshipApplication = isDatingApplication || isGeneralApplication;
+	$: applicationHome = isDatingApplication ? '/dating' : isGeneralApplication ? '/general' : '/';
 
 	import { onMount } from 'svelte';
 
@@ -122,7 +126,7 @@
 <div class="layout">
 	<!-- Mobile topbar -->
 	<header class="topbar mobile-only">
-		<a class="brand" href={isDatingApplication ? '/dating' : '/'} aria-label="Relish home">
+		<a class="brand" href={applicationHome} aria-label="Relish home">
 			<div class="logo">
 				<img src="/relish-logo.png" alt="Relish logo" />
 			</div>
@@ -130,7 +134,7 @@
 
 		<!-- Compact mobile actions - icon only for a tidy topbar -->
 		<nav class="topbar-actions" aria-label="Primary">
-			{#if !isDatingApplication}
+			{#if !isRelationshipApplication}
 				<!-- Add Contact -->
 				<a class="btn icon" href="/contacts/new" aria-label="Add Contact" title="Add Contact">
 					<!-- user plus icon -->
@@ -195,7 +199,7 @@
 			{/if}
 
 			{#if data.user}
-				{#if isDatingApplication}
+				{#if isRelationshipApplication}
 					<!-- IT: This link deliberately crosses back to the server-owned Business route boundary. -->
 					<a class="btn" href="/">Business</a>
 				{:else}
@@ -262,7 +266,7 @@
 
 	<!-- Desktop sidebar -->
 	<aside class="sidebar desktop-only">
-		<a class="brand" href={isDatingApplication ? '/dating' : '/'} aria-label="Relish home">
+		<a class="brand" href={applicationHome} aria-label="Relish home">
 			<div class="logo">
 				<img src="/relish-logo.png" alt="Relish logo" width="28" height="28" />
 			</div>
@@ -274,10 +278,13 @@
 					<div class="app-space-label">Application</div>
 					<strong>{data.activeContext?.displayName || 'Setup required'}</strong>
 					<div class="app-space-links">
-						{#if isDatingApplication}
-							<!-- IT: Business records remain available only after an explicit application switch. -->
+						{#if isRelationshipApplication}
+							<!-- IT: Context changes happen only by crossing a server-owned route boundary. -->
 							<a href="/">Switch to Business</a>
+							{#if !isGeneralApplication}<a href="/general">Switch to General</a>{/if}
+							{#if !isDatingApplication}<a href="/dating">Switch to Dating</a>{/if}
 						{:else}
+							<a href="/general">Switch to General</a>
 							<a href="/dating">Switch to Dating</a>
 						{/if}
 						<a href="/settings/context-spaces">Manage</a>
@@ -290,6 +297,13 @@
 				<a class="nav-link" href="/dating/introductions/new">New Introduction</a>
 				<div class="card" style="padding:10px; color:var(--muted); font-size:0.9rem;">
 					Voice reflections require review before an Outcome is created.
+				</div>
+			{:else if isGeneralApplication}
+				<a class="nav-link" href="/general">General home</a>
+				<a class="nav-link" href="/general/people">People</a>
+				<a class="nav-link" href="/general/conversations/import">Import conversation</a>
+				<div class="card" style="padding:10px; color:var(--muted); font-size:0.9rem;">
+					General conversations and Living Understanding remain isolated from Dating and Business.
 				</div>
 			{:else}
 				<a class="nav-link" href="/">Contacts</a>
@@ -352,7 +366,9 @@
 			<div style="color:var(--muted); font-size:0.95rem;">
 				{isDatingApplication
 					? 'Dating information remains separate from your Business workspace.'
-					: 'Add a contact, then attach a note or link them to a deal.'}
+					: isGeneralApplication
+						? 'General conversations remain separate from Dating and Business.'
+						: 'Add a contact, then attach a note or link them to a deal.'}
 			</div>
 		</div>
 	</aside>
@@ -372,6 +388,14 @@
 			<div class="mobile-only footer-links">
 				{#if isDatingApplication}
 					<a href="/dating" aria-label="Dating home">Dating</a>
+					<span aria-hidden="true">·</span>
+					<a href="/general" aria-label="Switch to General">General</a>
+					<span aria-hidden="true">·</span>
+					<a href="/" aria-label="Switch to Business">Business</a>
+				{:else if isGeneralApplication}
+					<a href="/general" aria-label="General home">General</a>
+					<span aria-hidden="true">·</span>
+					<a href="/dating" aria-label="Switch to Dating">Dating</a>
 					<span aria-hidden="true">·</span>
 					<a href="/" aria-label="Switch to Business">Business</a>
 				{:else}

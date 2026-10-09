@@ -11,7 +11,7 @@
 		<div>
 			<h1>Application spaces</h1>
 			<p class="muted">
-				Business and Dating use the same Relish Core but keep their contextual records isolated.
+				Business, General and Dating use the same Relish Core but keep their contextual records isolated.
 			</p>
 		</div>
 	</div>
@@ -33,6 +33,19 @@
 			</section>
 		{/each}
 	</div>
+
+
+	{#if !data.spaces.some((space: any) => space.domainKey === 'general')}
+		<section class="card setup-card">
+			<h2>Create General space</h2>
+			<p>
+				This creates an empty General ContextSpace for broad Dorian conversations, participant research and Living Understanding that should not be held inside Dating or Business.
+			</p>
+			<form method="POST" action="?/createGeneral">
+				<button class="btn primary" type="submit">Create isolated General space</button>
+			</form>
+		</section>
+	{/if}
 
 	{#if !data.spaces.some((space: any) => space.domainKey === 'dating')}
 		<section class="card setup-card">

@@ -8,6 +8,7 @@ import { inspectElevenLabsSignature, normalizeElevenLabsConversation } from '$li
 import { resolveElevenLabsIdentity } from '$lib/server/integrations/elevenlabs/identity';
 import { resolveElevenLabsAgentDeployment } from '$lib/server/integrations/elevenlabs/deployment';
 import { elevenLabsErrorLog, elevenLabsLog, elevenLabsPayloadLog, elevenLabsTraceId } from '$lib/server/integrations/elevenlabs/debug';
+import { describeLivingUnderstandingReviewHandoff } from '$lib/server/core/livingUnderstandingReviewHandoff';
 
 export const POST: RequestHandler = async ({ request }) => {
   const traceId = elevenLabsTraceId('el-post');
@@ -144,6 +145,7 @@ export const POST: RequestHandler = async ({ request }) => {
       elevenLabsLog(traceId, 'IDENTITY', 'Participant identity resolution completed.', identity);
 
       let participantSourceId: string | null = null;
+      let livingUnderstandingReview: Awaited<ReturnType<typeof describeLivingUnderstandingReviewHandoff>> | null = null;
       if (identity.status === 'RESOLVED' && identity.contactId) {
         const attached = await attachConversationParticipant({ userId: deployment.userId!, contextSpaceId: deployment.contextSpaceId! }, deployment.domainKey!, stored.transcriptId, identity.contactId);
         participantSourceId = attached.id;
@@ -151,6 +153,16 @@ export const POST: RequestHandler = async ({ request }) => {
           contactId: identity.contactId,
           personId: identity.personId,
           participantSourceId
+        });
+        livingUnderstandingReview = await describeLivingUnderstandingReviewHandoff(
+          { userId: deployment.userId!, contextSpaceId: deployment.contextSpaceId!, contactId: identity.contactId },
+          deployment.domainKey!,
+          participantSourceId
+        );
+        elevenLabsLog(traceId, 'LU_HANDOFF', 'Conversation is ready for the existing human-approved Living Understanding workflow.', {
+          state: livingUnderstandingReview.state,
+          baselineRevisionNumber: livingUnderstandingReview.baselineRevisionNumber,
+          reviewUrl: livingUnderstandingReview.reviewUrl
         });
       } else {
         elevenLabsLog(traceId, 'ATTACH', 'Conversation retained without participant attachment.', {
@@ -168,7 +180,8 @@ export const POST: RequestHandler = async ({ request }) => {
         agentResolutionWarning: deployment.warning,
         participantAttached: Boolean(participantSourceId),
         identityStatus: identity.status,
-        identityMethod: identity.method
+        identityMethod: identity.method,
+        livingUnderstandingReview
       };
       elevenLabsLog(traceId, 'RESPONSE', 'Post-call processing complete. Sending acknowledgement to ElevenLabs.', response);
       elevenLabsPayloadLog(traceId, 'SENT', 'Full post-call response sent to ElevenLabs.', response);

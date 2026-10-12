@@ -242,7 +242,12 @@ const CROSS_CUSTODY_POLICIES: Record<CrossCustodyReason, { models: Record<string
   ELEVENLABS_CONVERSATION_INGEST: {
     models: {
       Interaction: new Set(['findFirst', 'create']),
-      Contact: new Set(['findFirst', 'findMany'])
+      Contact: new Set(['findFirst', 'findMany']),
+      // SECURITY: After the immutable conversation has been stored and attached, the webhook
+      // may only read the minimum authoritative LU state required to describe the next
+      // human-review action. It may not create/update/delete Living Understanding here.
+      LivingUnderstandingRevision: new Set(['findFirst']),
+      LivingUnderstandingRevisionSource: new Set(['findFirst'])
     }
   },
   ELEVENLABS_CONVERSATION_INITIATION: {

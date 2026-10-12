@@ -37,10 +37,7 @@ export function elevenLabsLog(traceId: string, phase: string, message: string, d
 
 export function elevenLabsPayloadLog(traceId: string, phase: string, message: string, payload: unknown) {
   if (!enabled()) return;
-  if (!payloadsEnabled()) {
-    console.log(`[ElevenLabs][${traceId}][${phase}] ${message} (payload hidden; set ELEVENLABS_DEBUG_LOG_PAYLOADS=YES to display it)`);
-    return;
-  }
+  if (!payloadsEnabled()) return;
   console.log(`[ElevenLabs][${traceId}][${phase}] ${message}\n${printable(payload)}`);
 }
 

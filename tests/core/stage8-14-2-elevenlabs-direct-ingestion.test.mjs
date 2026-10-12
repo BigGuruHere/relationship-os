@@ -46,7 +46,8 @@ test('public webhook is HMAC protected, deployment-routed, idempotent and does n
   assert.match(webhook, /ELEVENLABS_CONVERSATION_INGEST/);
   assert.match(inbox, /conversationExternalRef/);
   assert.match(inbox, /alreadyImported/);
-  assert.doesNotMatch(webhook, /OPENAI|generateStructured|LivingUnderstanding/);
+  assert.doesNotMatch(webhook, /OPENAI|generateStructured|reviewLivingUnderstandingImpact|approveLivingUnderstandingImpact/);
+  assert.match(webhook, /describeLivingUnderstandingReviewHandoff/);
 });
 
 test('unresolved webhook conversations can be attached explicitly or recovered through ElevenLabs API', () => {

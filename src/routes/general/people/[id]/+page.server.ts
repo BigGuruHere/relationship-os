@@ -2,6 +2,7 @@
 import { fail, redirect } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import { loadConversationParticipant, updateContextPersonPhone } from '$lib/server/core/participantDirectory';
+import { describeLivingUnderstandingReviewHandoff } from '$lib/server/core/livingUnderstandingReviewHandoff';
 
 function requireGeneral(locals: App.Locals) {
   if (!locals.user) throw redirect(303, '/auth/login');
@@ -12,7 +13,13 @@ function requireGeneral(locals: App.Locals) {
 export const load: PageServerLoad = async ({ locals, params }) => {
   const scope = requireGeneral(locals);
   try {
-    return await loadConversationParticipant({ ...scope, contactId: params.id }, 'general');
+    const participant = await loadConversationParticipant({ ...scope, contactId: params.id }, 'general');
+    const sourceReviewStates = await Promise.all(participant.sources.map(async source => ({
+      sourceId: source.id,
+      ...(await describeLivingUnderstandingReviewHandoff({ ...scope, contactId: params.id }, 'general', source.id))
+    })));
+    const reviewBySourceId = Object.fromEntries(sourceReviewStates.map(item => [item.sourceId, item]));
+    return { ...participant, reviewBySourceId };
   } catch (error: any) {
     if (error?.message === 'Person is not accessible in this ContextSpace.') throw redirect(303, '/general/people');
     throw error;

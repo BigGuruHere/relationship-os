@@ -14,6 +14,10 @@ type DraftState = {
   longitudinalSeed: unknown[];
   priorOperationalUnits: unknown[];
   chainHistory: unknown[];
+  pipelineStages?: unknown[];
+  impactProposal?: Record<string, unknown> | null;
+  preparedAt?: string | null;
+  preparationMode?: string | null;
 };
 
 export type LivingUnderstandingDraftBinding = {
@@ -23,10 +27,17 @@ export type LivingUnderstandingDraftBinding = {
 };
 
 function normaliseState(raw: DraftState): DraftState {
+  const impactProposal = raw?.impactProposal && typeof raw.impactProposal === 'object' && !Array.isArray(raw.impactProposal)
+    ? raw.impactProposal
+    : null;
   return {
     longitudinalSeed: Array.isArray(raw?.longitudinalSeed) ? raw.longitudinalSeed.slice(0, 32) : [],
     priorOperationalUnits: Array.isArray(raw?.priorOperationalUnits) ? raw.priorOperationalUnits.slice(0, 50) : [],
-    chainHistory: Array.isArray(raw?.chainHistory) ? raw.chainHistory.slice(-8) : []
+    chainHistory: Array.isArray(raw?.chainHistory) ? raw.chainHistory.slice(-8) : [],
+    pipelineStages: Array.isArray(raw?.pipelineStages) ? raw.pipelineStages.slice(0, 8) : [],
+    impactProposal,
+    preparedAt: raw?.preparedAt ? String(raw.preparedAt) : null,
+    preparationMode: raw?.preparationMode ? String(raw.preparationMode).slice(0, 80) : null
   };
 }
 
@@ -173,6 +184,25 @@ export async function loadLivingUnderstandingDraft(scope: Scope, draftId: string
     baselineRevisionNumber: row.baselineRevisionNumber,
     ...state
   };
+}
+
+export async function loadLatestLivingUnderstandingDraftForSource(scope: Scope, sourceInteractionId: string) {
+  await requireDatingPerson(scope);
+  const latest = await latestAuthoritativeRevision(scope);
+  const row = await prisma.livingUnderstandingDraft.findFirst({
+    where: {
+      ...scope,
+      sourceInteractionId: String(sourceInteractionId || ''),
+      status: 'WORKING',
+      expiresAt: { gt: new Date() },
+      ...(latest
+        ? { baselineRevisionId: latest.id, baselineRevisionNumber: latest.revisionNumber }
+        : { baselineRevisionId: null })
+    },
+    orderBy: { updatedAt: 'desc' },
+    select: { id: true }
+  });
+  return row ? loadLivingUnderstandingDraft(scope, row.id) : null;
 }
 
 export async function completeLivingUnderstandingDraft(scope: Scope, draftId: string) {

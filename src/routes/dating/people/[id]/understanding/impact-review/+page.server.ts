@@ -5,7 +5,8 @@ import { isRelationshipApplicationDomain, relationshipApplicationBase } from '$l
 import { requireSourceReflection } from '$lib/server/datingLivingUnderstanding';
 import { getAuthoritativeLivingUnderstandingBaseline, describeLivingUnderstandingPersistenceError } from '$lib/server/datingPersistedLivingUnderstanding';
 import { reviewLivingUnderstandingImpact, approveLivingUnderstandingImpact, sourceAlreadyInAuthoritativeLivingUnderstanding } from '$lib/server/datingLongitudinalLivingUnderstanding';
-import { saveLivingUnderstandingDraft, completeLivingUnderstandingDraft } from '$lib/server/datingLivingUnderstandingDraft';
+import { saveLivingUnderstandingDraft, completeLivingUnderstandingDraft, loadLatestLivingUnderstandingDraftForSource } from '$lib/server/datingLivingUnderstandingDraft';
+import { approvePreparedLivingUnderstandingImpact } from '$lib/server/core/automaticLivingUnderstanding';
 
 function scopeFor(locals: App.Locals, contactId: string) {
   if (!locals.user) throw redirect(303, '/auth/login');
@@ -17,10 +18,11 @@ export const load: PageServerLoad = async ({ locals, params, url }) => {
   const scope = scopeFor(locals, params.id);
   const sourceInteractionId = String(url.searchParams.get('sourceInteractionId') || '');
   if (!sourceInteractionId) throw error(400, 'Choose a reflection or conversation excerpt to review.');
-  const [source, baseline, alreadyApplied] = await Promise.all([
+  const [source, baseline, alreadyApplied, preparedDraft] = await Promise.all([
     requireSourceReflection(scope, sourceInteractionId),
     getAuthoritativeLivingUnderstandingBaseline(scope),
-    sourceAlreadyInAuthoritativeLivingUnderstanding(scope, sourceInteractionId)
+    sourceAlreadyInAuthoritativeLivingUnderstanding(scope, sourceInteractionId),
+    loadLatestLivingUnderstandingDraftForSource(scope, sourceInteractionId)
   ]);
   if (!baseline) throw redirect(303, `${relationshipApplicationBase(locals.contextDomainKey)}/people/${params.id}/understanding?sourceInteractionId=${encodeURIComponent(sourceInteractionId)}`);
   return {
@@ -32,7 +34,17 @@ export const load: PageServerLoad = async ({ locals, params, url }) => {
       authorisedAt: baseline.authorisedAt.toISOString(),
       topics: baseline.topics.map(topic => ({ topicIdentityId: topic.topicIdentityId, topicVersionId: topic.topicVersionId, topicVersionNumber: topic.topicVersionNumber, realm: topic.realm, topicName: topic.topicName, understanding: topic.understanding }))
     },
-    alreadyApplied
+    alreadyApplied,
+    preparedDraft: preparedDraft?.stage === 'AUTO_PROPOSAL_READY' && preparedDraft.impactProposal
+      ? {
+          id: preparedDraft.id,
+          stage: preparedDraft.stage,
+          preparedAt: preparedDraft.preparedAt,
+          preparationMode: preparedDraft.preparationMode,
+          pipelineStages: preparedDraft.pipelineStages ?? [],
+          impactProposal: preparedDraft.impactProposal
+        }
+      : null
   };
 };
 
@@ -43,6 +55,19 @@ function safeError(err: unknown) {
 }
 
 export const actions: Actions = {
+
+  approvePreparedImpact: async ({ locals, params, request }) => {
+    const scope = scopeFor(locals, params.id);
+    const form = await request.formData();
+    if (form.get('approve') !== 'YES') return fail(400, { impactError: 'Explicitly approve the prepared topic changes before saving them.' });
+    try {
+      await approvePreparedLivingUnderstandingImpact(scope, String(form.get('draftCheckpointId') || ''));
+    } catch (err) {
+      const diagnostic = process.env.NODE_ENV !== 'production' ? describeLivingUnderstandingPersistenceError(err) : '';
+      return fail(400, { impactError: diagnostic ? `${safeError(err)} (${diagnostic})` : safeError(err) });
+    }
+    throw redirect(303, `${relationshipApplicationBase(locals.contextDomainKey)}/people/${params.id}/understanding?livingSaved=1`);
+  },
   analyseImpact: async ({ locals, params, request }) => {
     const scope = scopeFor(locals, params.id);
     const form = await request.formData();

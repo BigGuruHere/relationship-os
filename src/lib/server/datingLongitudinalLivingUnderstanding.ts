@@ -60,6 +60,13 @@ export type LongitudinalImpactProposal = {
   newTopics: LongitudinalImpactNewTopic[];
   boundaryReview: LongitudinalBoundaryReview;
   resultingTopicCount: number;
+  pipelineTrace: {
+    impactAnalysis: unknown;
+    topicProposal: unknown;
+    semanticValidation: unknown;
+    boundedRepair: unknown;
+    finalCandidate: unknown;
+  };
   approvalToken: string;
 };
 
@@ -571,10 +578,59 @@ export async function reviewLivingUnderstandingImpact(scope: Scope, sourceIntera
 
   if (!affectedTopics.length && !newTopics.length) throw new Error('This source does not materially change or reinforce the current Living Understanding. No new revision is required.');
 
+  const topicProposalBeforeValidation = {
+    affectedTopics: affectedTopics.map(topic => ({ ...topic })),
+    newTopics: newTopics.map(topic => ({ ...topic }))
+  };
+
   // IT: A longitudinal update can be locally sensible yet still contaminate neighbouring topic
   // boundaries when several meanings share one source turn. Audit the complete proposed snapshot,
   // while permitting edits only to topics changed by this source.
   const boundaryReview = await auditLongitudinalTopicBoundaries(scope, baseline, affectedTopics, newTopics, source.text);
+
+  const beforeByRef = new Map<string, string>([
+    ...topicProposalBeforeValidation.affectedTopics.map(topic => [topic.topicIdentityId, topic.proposedUnderstanding] as const),
+    ...topicProposalBeforeValidation.newTopics.map((topic, index) => [`NEW:${index}`, topic.proposedUnderstanding] as const)
+  ]);
+  const afterRows = [
+    ...affectedTopics.map(topic => ({ ref: topic.topicIdentityId, realm: topic.realm, topicName: topic.topicName, understanding: topic.proposedUnderstanding })),
+    ...newTopics.map((topic, index) => ({ ref: `NEW:${index}`, realm: topic.realm, topicName: topic.topicName, understanding: topic.proposedUnderstanding }))
+  ];
+  const repairs = afterRows
+    .filter(row => beforeByRef.get(row.ref) !== row.understanding)
+    .map(row => ({ ...row, before: beforeByRef.get(row.ref) ?? '', after: row.understanding }));
+
+  const pipelineTrace = {
+    impactAnalysis: {
+      baselineRevisionNumber: baseline.revisionNumber,
+      targetSpeaker: packet.targetSpeaker,
+      topicEffects: effects.map(item => ({
+        topicIdentityId: item.topic.topicIdentityId,
+        realm: item.topic.realm,
+        topicName: item.topic.topicName,
+        effect: item.effect,
+        reason: item.reason,
+        temporalScope: item.temporalScope,
+        relevantTurnIds: item.relevantTurnIds
+      })),
+      newTopicSuggestions: rawNewTopics.slice(0, 12)
+    },
+    topicProposal: topicProposalBeforeValidation,
+    semanticValidation: {
+      repairedTopicCount: boundaryReview.repairedTopicCount,
+      notes: boundaryReview.notes
+    },
+    boundedRepair: {
+      repairCount: repairs.length,
+      repairs
+    },
+    finalCandidate: {
+      affectedTopics: affectedTopics.map(topic => ({ ...topic })),
+      newTopics: newTopics.map(topic => ({ ...topic })),
+      unchangedTopics: unchangedTopics.map(topic => ({ ...topic })),
+      resultingTopicCount: baseline.topics.length + newTopics.length
+    }
+  };
 
   const approvalToken = createApprovalToken(scope, {
     baselineRevisionId: baseline.id,
@@ -607,6 +663,7 @@ export async function reviewLivingUnderstandingImpact(scope: Scope, sourceIntera
     newTopics,
     boundaryReview,
     resultingTopicCount: baseline.topics.length + newTopics.length,
+    pipelineTrace,
     approvalToken
   };
 }

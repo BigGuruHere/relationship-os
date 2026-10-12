@@ -2,13 +2,14 @@
 // SECURITY: HMAC verification occurs before parsing. Agent binding resolution occurs before workspace custody is entered. The endpoint never runs AI.
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { runWithExternalWorkspaceCustody } from '$lib/server/core/contextSpace';
+import { runWithExternalWorkspaceCustody, runWithWorkspaceCustody } from '$lib/server/core/contextSpace';
 import { storeConversationOriginal, attachConversationParticipant } from '$lib/server/core/conversationInbox';
 import { inspectElevenLabsSignature, normalizeElevenLabsConversation } from '$lib/server/integrations/elevenlabs/conversation';
 import { resolveElevenLabsIdentity } from '$lib/server/integrations/elevenlabs/identity';
 import { resolveElevenLabsAgentDeployment } from '$lib/server/integrations/elevenlabs/deployment';
 import { elevenLabsErrorLog, elevenLabsLog, elevenLabsPayloadLog, elevenLabsTraceId } from '$lib/server/integrations/elevenlabs/debug';
 import { describeLivingUnderstandingReviewHandoff } from '$lib/server/core/livingUnderstandingReviewHandoff';
+import { automaticLivingUnderstandingPreparationEnabled, prepareAutomaticLivingUnderstandingImpact } from '$lib/server/core/automaticLivingUnderstanding';
 
 export const POST: RequestHandler = async ({ request }) => {
   const traceId = elevenLabsTraceId('el-post');
@@ -117,7 +118,7 @@ export const POST: RequestHandler = async ({ request }) => {
       return json({ status: 'unresolved_agent_deployment', agentId: normalized.agentId || null, calledNumber: normalized.calledNumber || null }, { status: 202 });
     }
 
-    return runWithExternalWorkspaceCustody({ targetUserId: deployment.userId, targetContextSpaceId: deployment.contextSpaceId, reason: 'ELEVENLABS_CONVERSATION_INGEST' }, async () => {
+    const ingested = await runWithExternalWorkspaceCustody({ targetUserId: deployment.userId, targetContextSpaceId: deployment.contextSpaceId, reason: 'ELEVENLABS_CONVERSATION_INGEST' }, async () => {
       elevenLabsLog(traceId, 'CUSTODY', 'Entered external workspace custody for conversation ingestion.', {
         userId: deployment.userId,
         contextSpaceId: deployment.contextSpaceId,
@@ -171,22 +172,60 @@ export const POST: RequestHandler = async ({ request }) => {
         });
       }
 
-      const response = {
-        status: stored.alreadyImported ? 'already_imported' : 'imported',
-        conversationId: normalized.metadata.externalConversationId,
-        agentKey: deployment.agentKey,
-        agentBindingId: deployment.bindingId,
-        agentResolutionMethod: deployment.method,
-        agentResolutionWarning: deployment.warning,
-        participantAttached: Boolean(participantSourceId),
-        identityStatus: identity.status,
-        identityMethod: identity.method,
-        livingUnderstandingReview
+      return {
+        response: {
+          status: stored.alreadyImported ? 'already_imported' : 'imported',
+          conversationId: normalized.metadata.externalConversationId,
+          agentKey: deployment.agentKey,
+          agentBindingId: deployment.bindingId,
+          agentResolutionMethod: deployment.method,
+          agentResolutionWarning: deployment.warning,
+          participantAttached: Boolean(participantSourceId),
+          identityStatus: identity.status,
+          identityMethod: identity.method,
+          livingUnderstandingReview
+        },
+        participantSourceId,
+        contactId: identity.status === 'RESOLVED' ? identity.contactId : null
       };
-      elevenLabsLog(traceId, 'RESPONSE', 'Post-call processing complete. Sending acknowledgement to ElevenLabs.', response);
-      elevenLabsPayloadLog(traceId, 'SENT', 'Full post-call response sent to ElevenLabs.', response);
-      return json(response);
     });
+
+    let automaticLivingUnderstanding: any = null;
+    if (
+      automaticLivingUnderstandingPreparationEnabled() &&
+      ingested.contactId &&
+      ingested.participantSourceId &&
+      ingested.response.livingUnderstandingReview?.state === 'IMPACT_REVIEW_READY'
+    ) {
+      const startedAt = Date.now();
+      try {
+        const prepared = await runWithWorkspaceCustody(
+          { userId: deployment.userId!, contextSpaceId: deployment.contextSpaceId! },
+          () => prepareAutomaticLivingUnderstandingImpact(
+            { userId: deployment.userId!, contextSpaceId: deployment.contextSpaceId!, contactId: ingested.contactId! },
+            ingested.participantSourceId!
+          )
+        );
+        automaticLivingUnderstanding = {
+          status: prepared.status,
+          draftId: prepared.draft.id,
+          reused: prepared.reused,
+          durationMs: Date.now() - startedAt,
+          reviewUrl: ingested.response.livingUnderstandingReview.reviewUrl
+        };
+        elevenLabsLog(traceId, 'LU_AUTOMATION', 'Living Understanding proposal prepared automatically and is awaiting human approval.', automaticLivingUnderstanding);
+      } catch (error) {
+        automaticLivingUnderstanding = { status: 'FAILED', durationMs: Date.now() - startedAt };
+        // SECURITY/RELIABILITY: transcript ingestion is already complete. AI proposal failure must
+        // not cause ElevenLabs to retry a successfully stored conversation. Manual review remains available.
+        elevenLabsErrorLog(traceId, 'LU_AUTOMATION', 'Automatic Living Understanding preparation failed. Conversation remains safely imported and can be reviewed manually.', error);
+      }
+    }
+
+    const response = { ...ingested.response, automaticLivingUnderstanding };
+    elevenLabsLog(traceId, 'RESPONSE', 'Post-call processing complete. Sending acknowledgement to ElevenLabs.', response);
+    elevenLabsPayloadLog(traceId, 'SENT', 'Full post-call response sent to ElevenLabs.', response);
+    return json(response);
   } catch (error) {
     elevenLabsErrorLog(traceId, 'ERROR', 'Unhandled post-call bridge error.', error);
     throw error;

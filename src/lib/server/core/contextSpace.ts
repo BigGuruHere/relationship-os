@@ -12,7 +12,9 @@ export type WorkspaceCustodyContext = {
 export type CrossCustodyReason =
   | 'PUBLIC_PROFILE_CONNECTION'
   | 'LEAD_CLAIM'
-  | 'PUBLIC_LEAD_CAPTURE';
+  | 'PUBLIC_LEAD_CAPTURE'
+  | 'ELEVENLABS_CONVERSATION_INGEST'
+  | 'ELEVENLABS_CONVERSATION_INITIATION';
 
 type CrossCustodyTransition = {
   sourceUserId: string | null;
@@ -146,7 +148,7 @@ export async function runWithExternalWorkspaceCustody<T>(
   params: {
     targetUserId: string;
     targetContextSpaceId: string;
-    reason: Extract<CrossCustodyReason, 'PUBLIC_LEAD_CAPTURE'>;
+    reason: Extract<CrossCustodyReason, 'PUBLIC_LEAD_CAPTURE' | 'ELEVENLABS_CONVERSATION_INGEST' | 'ELEVENLABS_CONVERSATION_INITIATION'>;
   },
   fn: () => T | PromiseLike<T>
 ): Promise<Awaited<T>> {
@@ -236,6 +238,18 @@ const CROSS_CUSTODY_POLICIES: Record<CrossCustodyReason, { models: Record<string
   },
   PUBLIC_LEAD_CAPTURE: {
     models: { Contact: new Set(['findFirst', 'create']) }
+  },
+  ELEVENLABS_CONVERSATION_INGEST: {
+    models: {
+      Interaction: new Set(['findFirst', 'create']),
+      Contact: new Set(['findFirst', 'findMany'])
+    }
+  },
+  ELEVENLABS_CONVERSATION_INITIATION: {
+    models: {
+      Contact: new Set(['findFirst', 'findMany']),
+      LivingUnderstandingRevision: new Set(['findFirst'])
+    }
   }
 };
 

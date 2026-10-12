@@ -7,6 +7,8 @@ import { parseDatingTranscript } from '$lib/server/datingTranscriptImportPolicy'
 import { importConversationTranscript } from '$lib/server/datingTranscriptImport';
 import { validateConversationMetadata } from '$lib/server/core/conversationIngestion';
 import { getCurrentLivingUnderstanding } from '$lib/server/datingPersistedLivingUnderstanding';
+import { listPendingConversations, storeConversationOriginal, attachConversationParticipant } from '$lib/server/core/conversationInbox';
+import { fetchElevenLabsConversation, normalizeElevenLabsConversation } from '$lib/server/integrations/elevenlabs/conversation';
 
 function requireGeneral(locals: App.Locals) {
   if (!locals.user) throw redirect(303, '/auth/login');
@@ -18,7 +20,8 @@ export const load: PageServerLoad = async ({ locals, url }) => {
   const scope = requireGeneral(locals);
   const people = await listContextPeople(scope, 'general');
   const requestedPersonId = String(url.searchParams.get('personId') || '');
-  return { people, selectedPersonId: people.some(person => person.id === requestedPersonId) ? requestedPersonId : '' };
+  const pendingConversations = await listPendingConversations(scope, 'general');
+  return { people, pendingConversations, contextSpaceId: scope.contextSpaceId, selectedPersonId: people.some(person => person.id === requestedPersonId) ? requestedPersonId : '', elevenLabsApiConfigured: Boolean(process.env.ELEVENLABS_API_KEY) };
 };
 
 function metadataFromForm(form: FormData) {
@@ -29,6 +32,50 @@ function metadataFromForm(form: FormData) {
 }
 
 export const actions: Actions = {
+
+
+  fetchElevenLabs: async ({ locals, request }) => {
+    const scope = requireGeneral(locals);
+    const form = await request.formData();
+    const conversationId = String(form.get('conversationId') || '').trim();
+    const contactId = String(form.get('contactId') || '').trim();
+    try {
+      const providerData = await fetchElevenLabsConversation(conversationId);
+      const normalized = normalizeElevenLabsConversation(providerData, 'ELEVENLABS_API');
+      const stored = await storeConversationOriginal(scope, 'general', normalized.parsed, normalized.metadata);
+      let attached: any = null;
+      if (contactId) attached = await attachConversationParticipant(scope, 'general', stored.transcriptId, contactId);
+      let nextHref = '';
+      let hasLivingUnderstanding = false;
+      if (attached?.contactId) {
+        const living = await getCurrentLivingUnderstanding({ userId: scope.userId, contextSpaceId: scope.contextSpaceId, contactId: attached.contactId });
+        hasLivingUnderstanding = Boolean(living);
+        nextHref = living
+          ? `/general/people/${attached.contactId}/understanding/impact-review?sourceInteractionId=${encodeURIComponent(attached.id)}`
+          : `/general/people/${attached.contactId}/understanding/initial?initial=1&sourceInteractionId=${encodeURIComponent(attached.id)}`;
+      }
+      return { directImported: { transcriptId: stored.transcriptId, alreadyImported: stored.alreadyImported, attached, nextHref, hasLivingUnderstanding, conversationId: normalized.metadata.externalConversationId } };
+    } catch (error: any) {
+      return fail(400, { error: error?.message || 'The ElevenLabs conversation could not be fetched.' });
+    }
+  },
+
+  attachPending: async ({ locals, request }) => {
+    const scope = requireGeneral(locals);
+    const form = await request.formData();
+    const transcriptId = String(form.get('transcriptId') || '').trim();
+    const contactId = String(form.get('contactId') || '').trim();
+    try {
+      const attached = await attachConversationParticipant(scope, 'general', transcriptId, contactId);
+      const living = await getCurrentLivingUnderstanding({ userId: scope.userId, contextSpaceId: scope.contextSpaceId, contactId });
+      const nextHref = living
+        ? `/general/people/${contactId}/understanding/impact-review?sourceInteractionId=${encodeURIComponent(attached.id)}`
+        : `/general/people/${contactId}/understanding/initial?initial=1&sourceInteractionId=${encodeURIComponent(attached.id)}`;
+      return { pendingAttached: { ...attached, nextHref, hasLivingUnderstanding: Boolean(living) } };
+    } catch (error: any) {
+      return fail(400, { error: error?.message || 'The conversation could not be attached to that participant.' });
+    }
+  },
   preview: async ({ locals, request }) => {
     requireGeneral(locals);
     const form = await request.formData();

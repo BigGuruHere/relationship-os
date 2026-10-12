@@ -25,6 +25,7 @@
       <a class="btn" href="/agents/scoring/new">Score opportunity</a>
       <a class="btn" href="/agents/enrichment/new">Enrich contacts</a>
       <a class="btn" href="/agents/memory">Preview memory</a>
+      <a class="btn" href="/settings/agents">Agent deployments</a>
       <a class="btn" href="/agents/runs">All runs</a>
     </div>
   </div>

@@ -287,7 +287,8 @@
 							<a href="/general">Switch to General</a>
 							<a href="/dating">Switch to Dating</a>
 						{/if}
-						<a href="/settings/context-spaces">Manage</a>
+						<a href="/settings/context-spaces">Manage spaces</a>
+						<a href="/settings/agents">Agent deployments</a>
 					</div>
 				</div>
 			{/if}

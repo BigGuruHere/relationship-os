@@ -112,6 +112,7 @@ model User {
 
   // IT: agent framework records. Agents read/write through Relish services and every run is logged.
   agentDefinitions     AgentDefinition[]
+  agentProviderBindings AgentProviderBinding[]
   agentDataAccessPolicies AgentDataAccessPolicy[]
   agentPromptVersions  AgentPromptVersion[]
   agentToolDefinitions AgentToolDefinition[]
@@ -245,6 +246,7 @@ model ContextSpace {
   modelInvocations ModelInvocation[]
   agentArtifacts AgentArtifact[]
   approvalRequests ApprovalRequest[]
+  agentProviderBindings AgentProviderBinding[]
 
   @@index([ownerUserId])
   @@index([ownerUserId, kind])
@@ -3257,6 +3259,7 @@ model AgentDefinition {
   runs                    AgentRun[]
   toolPermissions         AgentToolPermission[]
   dataAccessPolicy        AgentDataAccessPolicy?
+  providerBindings        AgentProviderBinding[]
 
   @@unique([userId, key])
   @@index([userId, status])
@@ -3266,6 +3269,38 @@ model AgentDefinition {
 // IT: Stage 8.5 data permission is separate from tool/action permission.
 // A tool may be executable while the agent is still denied specific relationship data.
 // Defaults fail closed; ensureCoreAgentSetup installs explicit policies for built-in agents.
+// IT: Stage 8.14.2 provider bindings keep Relish agent identity stable while external agent ids and phone assignments change.
+// SECURITY: Provider identifiers and inbound numbers are encrypted at rest and deterministically indexed only for exact resolution.
+model AgentProviderBinding {
+  id                String   @id @default(uuid())
+  userId            String
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  agentDefinitionId String
+  agentDefinition   AgentDefinition @relation(fields: [agentDefinitionId], references: [id], onDelete: Cascade)
+
+  contextSpaceId    String
+  contextSpace      ContextSpace @relation(fields: [contextSpaceId], references: [id], onDelete: Cascade)
+
+  provider          String   @default("ELEVENLABS")
+  environment       String   @default("PRODUCTION")
+  providerAgentIdEnc String?
+  providerAgentIdIdx String? @db.VarChar(128)
+  inboundPhoneEnc    String?
+  inboundPhoneIdx    String? @db.VarChar(128)
+  isActive           Boolean  @default(true)
+  validFrom          DateTime @default(now())
+  validTo            DateTime?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@index([userId, provider, environment, isActive])
+  @@index([provider, providerAgentIdIdx, isActive])
+  @@index([provider, inboundPhoneIdx, isActive])
+  @@index([userId, contextSpaceId])
+  @@index([agentDefinitionId, isActive])
+}
+
 model AgentDataAccessPolicy {
   id                String   @id @default(uuid())
   userId            String

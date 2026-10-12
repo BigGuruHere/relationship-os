@@ -34,9 +34,10 @@ export const prisma = globalForPrisma.prisma ?? createPrismaClient();
 if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = prisma;
 
 const KEEPALIVE_MINUTES = Number(process.env.DB_KEEPALIVE_MINUTES ?? '4');
+const KEEPALIVE_ENABLED = process.env.DB_KEEPALIVE_ENABLED === 'YES' && process.env.DB_KEEPALIVE_DISABLED !== 'YES';
 
-// CLI/database tests can disable keepalive before dynamically importing this module.
-if (process.env.DB_KEEPALIVE_DISABLED !== 'YES' && !globalForPrisma.__keepaliveIntervalId__) {
+// Stage 8.14.2: keepalive is opt-in. An unset environment must allow serverless Neon compute to suspend.
+if (KEEPALIVE_ENABLED && !globalForPrisma.__keepaliveIntervalId__) {
   globalForPrisma.__keepaliveIntervalId__ = setInterval(async () => {
     try {
       await prisma.$executeRaw`SELECT 1;`;

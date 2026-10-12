@@ -36,6 +36,76 @@
 
   {#if form?.error}<p class="error" role="alert">{form.error}</p>{/if}
 
+  {#if form?.directImported}
+    <section class="card">
+      <h2>{form.directImported.alreadyImported ? 'ElevenLabs conversation already imported' : 'ElevenLabs conversation imported'}</h2>
+      <p>Conversation {form.directImported.conversationId} is stored in the General ContextSpace.</p>
+      {#if form.directImported.nextHref}
+        <a class="btn primary" href={form.directImported.nextHref}>{form.directImported.hasLivingUnderstanding ? 'Review impact on Living Understanding' : 'Create initial Living Understanding'} →</a>
+      {:else}
+        <p class="muted">No participant was attached. Assign it from the pending conversations section below.</p>
+      {/if}
+    </section>
+  {/if}
+
+  {#if form?.pendingAttached}
+    <section class="card">
+      <h2>Participant attached</h2>
+      <a class="btn primary" href={form.pendingAttached.nextHref}>{form.pendingAttached.hasLivingUnderstanding ? 'Review impact on Living Understanding' : 'Create initial Living Understanding'} →</a>
+    </section>
+  {/if}
+
+  <section class="card">
+    <h2>ElevenLabs connection</h2>
+    <p class="muted">Post-call webhook path: <code>/api/webhooks/elevenlabs</code></p>
+    <p class="muted">Automatic calls are routed through <a href="/settings/agents">Agent deployments</a>. Relish resolves the ElevenLabs agent ID and/or called number to a stable Relish agent and ContextSpace.</p>
+    <p class="muted">The webhook validates <code>ElevenLabs-Signature</code> with <code>ELEVENLABS_WEBHOOK_SECRET</code>. No fixed <code>ELEVENLABS_AGENT_ID</code> is required.</p>
+  </section>
+
+  <section class="card">
+    <h2>ElevenLabs direct import</h2>
+    <p>For local testing or webhook recovery, fetch a completed ElevenLabs conversation by conversation ID. The same provider-independent conversation source is used by the automatic post-call webhook.</p>
+    {#if data.elevenLabsApiConfigured}
+      <form method="POST" action="?/fetchElevenLabs" class="grid">
+        <label>ElevenLabs conversation ID
+          <input name="conversationId" maxlength="240" required autocomplete="off" placeholder="conv_..." />
+        </label>
+        <label>Participant <span class="muted">(optional - can be assigned later)</span>
+          <select name="contactId">
+            <option value="">Leave in pending inbox</option>
+            {#each data.people as person}<option value={person.id} selected={data.selectedPersonId === person.id}>{person.name}</option>{/each}
+          </select>
+        </label>
+        <button type="submit" class="btn primary">Fetch from ElevenLabs</button>
+      </form>
+    {:else}
+      <p class="muted">Set <code>ELEVENLABS_API_KEY</code> to enable API recovery/import.</p>
+    {/if}
+  </section>
+
+  <section class="card">
+    <h2>Pending ElevenLabs conversations</h2>
+    <p class="muted">Automatic post-call webhooks land here when Relish cannot safely identify a participant. Assigning a participant creates the private person source. It does not run AI or grant sharing permission.</p>
+    {#if !data.pendingConversations.length}
+      <p class="muted">No unassigned ElevenLabs conversations.</p>
+    {/if}
+    {#each data.pendingConversations as conversation}
+      <article class="pending-item">
+        <p><strong>{conversation.agentName || 'ElevenLabs conversation'}</strong> · {new Date(conversation.occurredAt).toLocaleString()} · {conversation.turnCount} turns</p>
+        {#if conversation.callerPhone}<p class="muted small"><strong>Caller:</strong> {conversation.callerPhone}</p>{/if}
+        {#if conversation.preview}<p class="muted">{conversation.preview}</p>{/if}
+        <form method="POST" action="?/attachPending" class="pending-form">
+          <input type="hidden" name="transcriptId" value={conversation.id} />
+          <select name="contactId" required>
+            <option value="" disabled selected>Choose participant</option>
+            {#each data.people as person}<option value={person.id}>{person.name}</option>{/each}
+          </select>
+          <button type="submit" class="btn">Attach participant</button>
+        </form>
+      </article>
+    {/each}
+  </section>
+
   {#if form?.imported}
     <section class="card">
       <h2>{form.imported.alreadyImported ? 'Previously imported' : 'Conversation saved'}</h2>
@@ -129,7 +199,9 @@
   .consent { display: flex; gap: 8px; align-items: start; }
   .consent input { flex: none; }
   .next-step { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; padding-top: 10px; border-top: 1px solid var(--border); }
+  .pending-item { padding: 12px 0; border-top: 1px solid var(--border); }
+  .pending-form { display: grid; grid-template-columns: minmax(220px, 1fr) auto; gap: 10px; align-items: end; }
   .muted { color: var(--muted); }
   .error { color: var(--danger); }
-  @media (max-width: 720px) { .grid.two { grid-template-columns: 1fr; } }
+  @media (max-width: 720px) { .grid.two, .pending-form { grid-template-columns: 1fr; } }
 </style>

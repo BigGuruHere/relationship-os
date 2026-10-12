@@ -32,6 +32,8 @@ export type ConversationMetadata = {
   externalConversationId: string | null;
   agentName: string | null;
   occurredAt: Date | null;
+  providerUserId?: string | null;
+  callerPhone?: string | null;
 };
 
 function cleanOptional(value: unknown, max: number) {
@@ -45,6 +47,8 @@ export function validateConversationMetadata(input: {
   externalConversationId?: unknown;
   agentName?: unknown;
   occurredAt?: unknown;
+  providerUserId?: unknown;
+  callerPhone?: unknown;
 } = {}): ConversationMetadata {
   const providerValue = String(input.provider ?? 'ELEVENLABS').trim().toUpperCase();
   const provider = CONVERSATION_PROVIDERS.includes(providerValue as ConversationProvider)
@@ -64,7 +68,9 @@ export function validateConversationMetadata(input: {
     occurredAt = new Date(occurredAtText);
     if (Number.isNaN(occurredAt.getTime())) throw new Error('Enter a valid conversation date and time.');
   }
-  return { provider, ingestMethod, externalConversationId, agentName, occurredAt };
+  const providerUserId = cleanOptional(input.providerUserId, 240);
+  const callerPhone = cleanOptional(input.callerPhone, 80);
+  return { provider, ingestMethod, externalConversationId, agentName, occurredAt, providerUserId, callerPhone };
 }
 
 function digest(value: string) {
@@ -100,6 +106,8 @@ export function buildConversationPayload(input: {
     ingestMethod: input.metadata.ingestMethod,
     externalConversationId: input.metadata.externalConversationId,
     agentName: input.metadata.agentName,
-    importedBy: 'OPERATOR' as const
+    providerUserId: input.metadata.providerUserId ?? null,
+    callerPhone: input.metadata.callerPhone ?? null,
+    importedBy: (input.metadata.ingestMethod === 'ELEVENLABS_WEBHOOK' || input.metadata.ingestMethod === 'ELEVENLABS_API') ? 'PROVIDER' as const : 'OPERATOR' as const
   };
 }

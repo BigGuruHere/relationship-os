@@ -17,8 +17,9 @@ export const actions: Actions = {
     const scope = requireGeneral(locals);
     const form = await request.formData();
     const name = String(form.get('name') || '');
-    try { await createContextPerson(scope, 'general', name); }
-    catch (error: any) { return fail(400, { error: error?.message || 'Could not create person.', values: { name } }); }
+    const phone = String(form.get('phone') || '');
+    try { await createContextPerson(scope, 'general', name, phone); }
+    catch (error: any) { return fail(400, { error: error?.message || 'Could not create person.', values: { name, phone } }); }
     throw redirect(303, '/general/people');
   }
 };

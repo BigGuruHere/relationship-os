@@ -5,6 +5,8 @@ import { prisma } from '$lib/db';
 import { contactDisplayName } from '$lib/server/contactDisplay';
 import { getCurrentLivingUnderstanding } from '$lib/server/datingPersistedLivingUnderstanding';
 import { resolveElevenLabsIdentity, type ConversationIdentityScope, type ElevenLabsIdentityHints } from './identity';
+import { PERSON_CONVERSATION_SOURCE_CHANNEL } from '$lib/server/core/conversationIngestion';
+import { decryptInteractionSummary } from '$lib/server/core/interactionEncryption';
 
 export function verifyInitiationAuthorization(header: string | null, secret = process.env.ELEVENLABS_INITIATION_SECRET || '') {
   if (!secret) return false;
@@ -40,6 +42,8 @@ function legacyDorianVariables(input: {
   participantName?: string;
   stablePersonId?: string;
   livingUnderstanding?: string;
+  previousCalls?: number;
+  lastCallSummary?: string;
   deployment?: DeploymentContext;
   compatibility?: DorianCompatibilityContext;
 }) {
@@ -55,10 +59,10 @@ function legacyDorianVariables(input: {
     call_instruction: input.compatibility?.callInstruction || defaultInstruction,
     call_type: input.compatibility?.callType || 'INBOUND_CALL',
     user_name: input.participantName || '',
-    previous_calls: '',
+    previous_calls: String(input.previousCalls ?? 0),
     user_id: input.stablePersonId || '',
     agent_id: input.compatibility?.providerAgentId || '',
-    last_call_summary: '',
+    last_call_summary: input.lastCallSummary || '',
     emotion_label: '',
     agent_website: input.compatibility?.agentWebsite || '',
     agent_type: agentKey || input.deployment?.agentName || ''
@@ -99,9 +103,17 @@ export async function buildElevenLabsInitiationData(
   });
   if (!contact) return { response: blank, identity: { ...identity, status: 'UNRESOLVED' as const, contactId: null, personId: null } };
 
-  const [name, living] = await Promise.all([
+  const [name, living, previousCalls, latestCall] = await Promise.all([
     contactDisplayName(contact),
-    getCurrentLivingUnderstanding({ ...scope, contactId: contact.id })
+    getCurrentLivingUnderstanding({ ...scope, contactId: contact.id }),
+    prisma.interaction.count({
+      where: { userId: scope.userId, contextSpaceId: scope.contextSpaceId, contactId: contact.id, channel: PERSON_CONVERSATION_SOURCE_CHANNEL }
+    }),
+    prisma.interaction.findFirst({
+      where: { userId: scope.userId, contextSpaceId: scope.contextSpaceId, contactId: contact.id, channel: PERSON_CONVERSATION_SOURCE_CHANNEL },
+      select: { summaryEnc: true },
+      orderBy: { occurredAt: 'desc' }
+    })
   ]);
   const topics = (living?.topics ?? []).slice(0, 16);
   const context = boundedText(topics.map(topic => `${topic.realm} / ${topic.topicName}: ${topic.understanding}`).join('\n'));
@@ -111,6 +123,8 @@ export async function buildElevenLabsInitiationData(
     participantName: name,
     stablePersonId,
     livingUnderstanding: context,
+    previousCalls,
+    lastCallSummary: boundedText(decryptInteractionSummary(latestCall?.summaryEnc), 1600),
     deployment,
     compatibility
   });

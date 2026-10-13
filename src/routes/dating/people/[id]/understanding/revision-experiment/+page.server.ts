@@ -16,6 +16,7 @@ import {
 } from '$lib/server/datingUnderstandingRevisionExperiment';
 import { createLivingUnderstandingAdoptionToken, adoptLivingUnderstanding, describeLivingUnderstandingPersistenceError, getCurrentLivingUnderstanding } from '$lib/server/datingPersistedLivingUnderstanding';
 import { saveLivingUnderstandingDraft, loadLivingUnderstandingDraft, completeLivingUnderstandingDraft, getLatestLivingUnderstandingDraftSummary } from '$lib/server/datingLivingUnderstandingDraft';
+import { getLivingUnderstandingReviewDisposition } from '$lib/server/core/livingUnderstandingReviewDisposition';
 
 function authorisedScope(locals: App.Locals, id: string, allowInitialCreation = false) {
   if (!locals.user) throw redirect(303, '/auth/login');
@@ -28,6 +29,10 @@ export const load: PageServerLoad = async ({ locals, params, url }) => {
   const initialCreationMode = url.searchParams.get('initial') === '1';
   const scope = authorisedScope(locals, params.id, initialCreationMode);
   const sourceId = String(url.searchParams.get('sourceInteractionId') || '');
+  if (sourceId) {
+    const disposition = await getLivingUnderstandingReviewDisposition(scope, sourceId);
+    if (disposition?.status === 'DISMISSED') throw error(409, 'This conversation was dismissed from Living Understanding review. Restore it before reviewing or approving it.');
+  }
   const [tree, source, history, latestDraft, currentLivingUnderstanding] = await Promise.all([
     listUnderstandingTopics(scope),
     sourceId ? requireSourceReflection(scope, sourceId) : Promise.resolve(null),
@@ -388,8 +393,16 @@ export const actions: Actions = {
     const scope = authorisedScope(locals, params.id, initialCreationMode);
     if (form.get('approve') !== 'YES') return fail(400, { revisionError: 'Explicitly approve this validated Living Understanding before saving it.' });
     try {
+      const draftId = String(form.get('draftCheckpointId') || '');
+      if (draftId) {
+        const draft = await loadLivingUnderstandingDraft(scope, draftId);
+        if (draft.sourceInteractionId) {
+          const disposition = await getLivingUnderstandingReviewDisposition(scope, draft.sourceInteractionId);
+          if (disposition?.status === 'DISMISSED') return fail(409, { revisionError: 'This conversation was dismissed. Restore it before approval.' });
+        }
+      }
       await adoptLivingUnderstanding(scope, String(form.get('adoptionToken') || ''));
-      await completeLivingUnderstandingDraft(scope, String(form.get('draftCheckpointId') || ''));
+      await completeLivingUnderstandingDraft(scope, draftId);
     } catch (err) {
       if (process.env.NODE_ENV !== 'production') {
         const diagnostic = describeLivingUnderstandingPersistenceError(err);

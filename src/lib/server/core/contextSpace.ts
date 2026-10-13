@@ -212,7 +212,7 @@ export const CONTEXT_SCOPED_MODELS = new Set([
   // receive the same request scoping/fail-closed treatment as the older knowledge tables.
   'LivingUnderstandingRevision', 'LivingUnderstandingTopicIdentity',
   'LivingUnderstandingTopicVersion', 'LivingUnderstandingRevisionTopic',
-  'LivingUnderstandingRevisionSource', 'LivingUnderstandingTopicVersionSource', 'LivingUnderstandingDraft',
+  'LivingUnderstandingRevisionSource', 'LivingUnderstandingTopicVersionSource', 'LivingUnderstandingDraft', 'LivingUnderstandingSourceReviewDisposition',
   'Want', 'WantNote', 'Offer', 'OfferNote',
   'Relating', 'RelatingParticipant', 'Touchpoint', 'TouchpointParticipant',
   'Introduction', 'IntroductionParticipant', 'Outcome',
@@ -247,13 +247,15 @@ const CROSS_CUSTODY_POLICIES: Record<CrossCustodyReason, { models: Record<string
       // may only read the minimum authoritative LU state required to describe the next
       // human-review action. It may not create/update/delete Living Understanding here.
       LivingUnderstandingRevision: new Set(['findFirst']),
-      LivingUnderstandingRevisionSource: new Set(['findFirst'])
+      LivingUnderstandingRevisionSource: new Set(['findFirst']),
+      LivingUnderstandingSourceReviewDisposition: new Set(['findFirst'])
     }
   },
   ELEVENLABS_CONVERSATION_INITIATION: {
     models: {
       Contact: new Set(['findFirst', 'findMany']),
-      LivingUnderstandingRevision: new Set(['findFirst'])
+      LivingUnderstandingRevision: new Set(['findFirst']),
+      Interaction: new Set(['findFirst', 'count'])
     }
   }
 };

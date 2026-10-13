@@ -5,7 +5,8 @@ import { isRelationshipApplicationDomain, relationshipApplicationBase } from '$l
 import { requireSourceReflection } from '$lib/server/datingLivingUnderstanding';
 import { getAuthoritativeLivingUnderstandingBaseline, describeLivingUnderstandingPersistenceError } from '$lib/server/datingPersistedLivingUnderstanding';
 import { reviewLivingUnderstandingImpact, approveLivingUnderstandingImpact, sourceAlreadyInAuthoritativeLivingUnderstanding } from '$lib/server/datingLongitudinalLivingUnderstanding';
-import { saveLivingUnderstandingDraft, completeLivingUnderstandingDraft, loadLatestLivingUnderstandingDraftForSource } from '$lib/server/datingLivingUnderstandingDraft';
+import { saveLivingUnderstandingDraft, completeLivingUnderstandingDraft, loadLatestLivingUnderstandingDraftForSource, loadLivingUnderstandingDraft } from '$lib/server/datingLivingUnderstandingDraft';
+import { getLivingUnderstandingReviewDisposition } from '$lib/server/core/livingUnderstandingReviewDisposition';
 import { approvePreparedLivingUnderstandingImpact } from '$lib/server/core/automaticLivingUnderstanding';
 
 function scopeFor(locals: App.Locals, contactId: string) {
@@ -18,6 +19,8 @@ export const load: PageServerLoad = async ({ locals, params, url }) => {
   const scope = scopeFor(locals, params.id);
   const sourceInteractionId = String(url.searchParams.get('sourceInteractionId') || '');
   if (!sourceInteractionId) throw error(400, 'Choose a reflection or conversation excerpt to review.');
+  const disposition = await getLivingUnderstandingReviewDisposition(scope, sourceInteractionId);
+  if (disposition?.status === 'DISMISSED') throw error(409, 'This conversation was dismissed from Living Understanding review. Restore it before reviewing or approving it.');
   const [source, baseline, alreadyApplied, preparedDraft] = await Promise.all([
     requireSourceReflection(scope, sourceInteractionId),
     getAuthoritativeLivingUnderstandingBaseline(scope),
@@ -61,7 +64,13 @@ export const actions: Actions = {
     const form = await request.formData();
     if (form.get('approve') !== 'YES') return fail(400, { impactError: 'Explicitly approve the prepared topic changes before saving them.' });
     try {
-      await approvePreparedLivingUnderstandingImpact(scope, String(form.get('draftCheckpointId') || ''));
+      const draftId = String(form.get('draftCheckpointId') || '');
+      const draft = await loadLivingUnderstandingDraft(scope, draftId);
+      if (draft.sourceInteractionId) {
+        const disposition = await getLivingUnderstandingReviewDisposition(scope, draft.sourceInteractionId);
+        if (disposition?.status === 'DISMISSED') return fail(409, { impactError: 'This conversation was dismissed. Restore it before approval.' });
+      }
+      await approvePreparedLivingUnderstandingImpact(scope, draftId);
     } catch (err) {
       const diagnostic = process.env.NODE_ENV !== 'production' ? describeLivingUnderstandingPersistenceError(err) : '';
       return fail(400, { impactError: diagnostic ? `${safeError(err)} (${diagnostic})` : safeError(err) });
@@ -109,8 +118,14 @@ export const actions: Actions = {
     const form = await request.formData();
     if (form.get('approve') !== 'YES') return fail(400, { impactError: 'Explicitly approve the reviewed topic changes before saving them.' });
     try {
+      const draftId = String(form.get('draftCheckpointId') || '');
+      const draft = await loadLivingUnderstandingDraft(scope, draftId);
+      if (draft.sourceInteractionId) {
+        const disposition = await getLivingUnderstandingReviewDisposition(scope, draft.sourceInteractionId);
+        if (disposition?.status === 'DISMISSED') return fail(409, { impactError: 'This conversation was dismissed. Restore it before approval.' });
+      }
       await approveLivingUnderstandingImpact(scope, String(form.get('approvalToken') || ''));
-      await completeLivingUnderstandingDraft(scope, String(form.get('draftCheckpointId') || ''));
+      await completeLivingUnderstandingDraft(scope, draftId);
     } catch (err) {
       const diagnostic = process.env.NODE_ENV !== 'production' ? describeLivingUnderstandingPersistenceError(err) : '';
       return fail(400, { impactError: diagnostic ? `${safeError(err)} (${diagnostic})` : safeError(err) });

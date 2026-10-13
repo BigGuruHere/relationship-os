@@ -1,12 +1,58 @@
 <script lang="ts">
   let { data, form } = $props();
 
+  type TopicView = {
+    realm: string;
+    topicName: string;
+    effect?: string;
+    reason?: string;
+    relevantTurnIds?: string[];
+    previousUnderstanding?: string;
+    proposedUnderstanding?: string;
+  };
+
+  type ValidationNote = { status: string; reason: string };
+  type RepairView = { realm: string; topicName: string; before: string; after: string };
+  type PipelineStage = {
+    key: 'IMPACT_ANALYSIS' | 'TOPIC_PROPOSAL' | 'SEMANTIC_VALIDATION' | 'BOUNDED_REPAIR' | 'FINAL_CANDIDATE';
+    title: string;
+    status: string;
+    data: {
+      topicEffects?: TopicView[];
+      newTopicSuggestions?: TopicView[];
+      affectedTopics?: TopicView[];
+      newTopics?: TopicView[];
+      unchangedTopics?: TopicView[];
+      notes?: ValidationNote[];
+      repairCount?: number;
+      repairs?: RepairView[];
+    };
+  };
+
+  type ProposalView = {
+    baselineRevisionNumber: number;
+    affectedTopics: TopicView[];
+    newTopics: TopicView[];
+    unchangedTopics: TopicView[];
+    approvalToken?: string;
+  };
+
   function actionUrl(actionName: 'analyseImpact' | 'approveImpact' | 'approvePreparedImpact') {
     return `?/${actionName}&sourceInteractionId=${encodeURIComponent(data.source.id)}`;
   }
 
-  function proposalForReview() {
-    return form?.impactProposal ?? data.preparedDraft?.impactProposal ?? null;
+  function preparedStages(): PipelineStage[] {
+    return (data.preparedDraft?.pipelineStages ?? []) as PipelineStage[];
+  }
+
+  function proposalForReview(): ProposalView | null {
+    return (form?.impactProposal ?? data.preparedDraft?.impactProposal ?? null) as ProposalView | null;
+  }
+
+  function requiredProposalForReview(): ProposalView {
+    const proposal = proposalForReview();
+    if (!proposal) throw new Error('A Living Understanding proposal is required for approval.');
+    return proposal;
   }
 </script>
 
@@ -40,7 +86,7 @@
       </section>
 
       <section class="pipeline" aria-label="Living Understanding preparation stages">
-        {#each data.preparedDraft.pipelineStages as stage}
+        {#each preparedStages() as stage}
           <details class="card stage-panel" open={stage.key === 'FINAL_CANDIDATE'}>
             <summary><strong>{stage.title}</strong><span class="stage-status">{stage.status}</span></summary>
             {#if stage.key === 'IMPACT_ANALYSIS'}
@@ -80,7 +126,7 @@
         <p class="muted small">This fallback is shown when no automatic draft is available. Nothing becomes authoritative until approval.</p>
       </form>
     {:else}
-      {@const proposal = proposalForReview()}
+      {@const proposal = requiredProposalForReview()}
       {#if !data.preparedDraft?.impactProposal}
         <section class="card result-summary"><h2>Proposed authoritative v{proposal.baselineRevisionNumber + 1}</h2><p><strong>{proposal.affectedTopics.length}</strong> affected, <strong>{proposal.newTopics.length}</strong> new, <strong>{proposal.unchangedTopics.length}</strong> unchanged.</p></section>
       {/if}
@@ -89,8 +135,8 @@
         {#if data.preparedDraft?.impactProposal}
           <input type="hidden" name="draftCheckpointId" value={data.preparedDraft.id} />
         {:else}
-          <input type="hidden" name="approvalToken" value={proposal.approvalToken} />
-          <input type="hidden" name="draftCheckpointId" value={form.draftCheckpoint?.id ?? ''} />
+          <input type="hidden" name="approvalToken" value={proposal.approvalToken ?? ''} />
+          <input type="hidden" name="draftCheckpointId" value={form?.draftCheckpoint?.id ?? ''} />
         {/if}
         <label><input type="checkbox" name="approve" value="YES" required /> I have reviewed the final candidate and approve it as the next authoritative Living Understanding revision.</label>
         <button class="btn primary" type="submit">Approve and create v{proposal.baselineRevisionNumber + 1}</button>

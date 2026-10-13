@@ -1,0 +1,7 @@
+// PURPOSE: Compatibility redirect to the context-level operator review inbox.
+import { redirect } from '@sveltejs/kit';
+import type { PageServerLoad } from './$types';
+
+export const load: PageServerLoad = async () => {
+  throw redirect(308, '/general/admin/reviews');
+};

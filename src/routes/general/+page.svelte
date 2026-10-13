@@ -20,6 +20,7 @@
     <section class="stat-grid">
       <a class="card stat" href="/general/people"><span>People</span><strong>{data.people.length}</strong></a>
       <a class="card stat" href="/general/conversations/import"><span>Conversation</span><strong>Import</strong></a>
+      <a class="card stat" href="/general/admin/reviews"><span>Operator</span><strong>Review inbox</strong></a>
     </section>
     <section class="card panel safety-note">
       <strong>Custody boundary</strong>
@@ -31,7 +32,7 @@
   .general-page { max-width: 1000px; padding: 12px; }
   .page-head { display:flex; justify-content:space-between; align-items:flex-start; gap:12px; }
   .panel { padding:16px; margin-bottom:12px; }
-  .stat-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; margin-bottom:12px; }
+  .stat-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; margin-bottom:12px; }
   .stat { padding:14px; text-decoration:none; color:inherit; display:flex; justify-content:space-between; }
   .stat strong { font-size:1.25rem; }
   .eyebrow { color:var(--accent); font-weight:700; text-transform:uppercase; font-size:.8rem; }

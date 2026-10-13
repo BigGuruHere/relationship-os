@@ -30,11 +30,12 @@ test('post-call bridge surfaces the LU handoff after participant evidence is att
   assert.ok(handoffPos > attachPos);
 });
 
-test('General participant page marks each conversation source as ready, initial, or already applied', () => {
+test('General participant page exposes LU handoff state without duplicating the review workflow', () => {
   assert.match(personServer, /reviewBySourceId/);
-  assert.match(personPage, /Review impact on Living Understanding/);
-  assert.match(personPage, /Create initial Living Understanding/);
-  assert.match(personPage, /Included in authoritative Living Understanding history/);
+  assert.match(personPage, /Pending Living Understanding review/);
+  assert.match(personPage, /Pending initial Living Understanding review/);
+  assert.match(personPage, /Included in authoritative Living Understanding/);
+  assert.match(personPage, /Dismissed from Living Understanding review/);
 });
 
 test('normal debug mode stays concise unless full payload logging is explicitly enabled', () => {

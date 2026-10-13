@@ -195,7 +195,7 @@
   .grid { display: grid; gap: 12px; }
   .grid.two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   label { display: grid; gap: 6px; }
-  textarea, select, input[type="file"], input[type="text"], input[type="datetime-local"], input:not([type]) { width: 100%; box-sizing: border-box; padding: 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--text); }
+  textarea, select, input[type="file"], input[type="datetime-local"], input:not([type]) { width: 100%; box-sizing: border-box; padding: 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--text); }
   .consent { display: flex; gap: 8px; align-items: start; }
   .consent input { flex: none; }
   .next-step { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; padding-top: 10px; border-top: 1px solid var(--border); }

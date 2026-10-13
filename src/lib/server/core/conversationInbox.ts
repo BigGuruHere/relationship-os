@@ -4,6 +4,7 @@ import { createHash } from 'node:crypto';
 import { prisma } from '$lib/db';
 import { decrypt, encrypt } from '$lib/crypto';
 import { speakerSource, type ParsedTranscript } from '$lib/server/datingTranscriptImportPolicy';
+import { encryptInteractionSummary } from '$lib/server/core/interactionEncryption';
 import {
   buildConversationPayload, conversationExternalRef, CONVERSATION_TRANSCRIPT_CHANNEL,
   PERSON_CONVERSATION_SOURCE_CHANNEL, sourceTypeForConversationIngest,
@@ -31,7 +32,8 @@ export async function storeConversationOriginal(scope: Scope, domainKey: string,
     const row = await tx.interaction.create({ data: {
       userId: scope.userId, contextSpaceId: scope.contextSpaceId, occurredAt,
       channel: CONVERSATION_TRANSCRIPT_CHANNEL, sourceType, externalRef,
-      rawTextEnc: encrypt(JSON.stringify(buildConversationPayload({ text: parsed.text, speakers: parsed.speakers, turns: parsed.turns, metadata })), AAD)
+      rawTextEnc: encrypt(JSON.stringify(buildConversationPayload({ text: parsed.text, speakers: parsed.speakers, turns: parsed.turns, metadata })), AAD),
+      summaryEnc: metadata.summary ? encryptInteractionSummary(metadata.summary) : null
     }, select: { id: true, occurredAt: true } });
     return { transcriptId: row.id, occurredAt: row.occurredAt, alreadyImported: false };
   }, { timeout: 20000 });
@@ -42,7 +44,7 @@ export async function attachConversationParticipant(scope: Scope, domainKey: str
   const contact = await prisma.contact.findFirst({ where: { id: contactId, userId: scope.userId, contextSpaceId: scope.contextSpaceId }, select: { id: true } });
   if (!contact) throw new Error('Choose a participant from this ContextSpace.');
   return prisma.$transaction(async tx => {
-    const original = await tx.interaction.findFirst({ where: { id: transcriptId, userId: scope.userId, contextSpaceId: scope.contextSpaceId, channel: CONVERSATION_TRANSCRIPT_CHANNEL }, select: { id: true, occurredAt: true, rawTextEnc: true, sourceType: true } });
+    const original = await tx.interaction.findFirst({ where: { id: transcriptId, userId: scope.userId, contextSpaceId: scope.contextSpaceId, channel: CONVERSATION_TRANSCRIPT_CHANNEL }, select: { id: true, occurredAt: true, rawTextEnc: true, sourceType: true, summaryEnc: true } });
     if (!original) throw new Error('Conversation is not accessible in this ContextSpace.');
     const payload = JSON.parse(decrypt(original.rawTextEnc, AAD)) as any;
     if (payload?.kind !== 'CONVERSATION_TRANSCRIPT' || !Array.isArray(payload.turns)) throw new Error('Invalid conversation source data.');
@@ -63,7 +65,8 @@ export async function attachConversationParticipant(scope: Scope, domainKey: str
         provider: String(payload.provider || ''), ingestMethod: String(payload.ingestMethod || ''),
         externalConversationId: payload.externalConversationId ?? null, providerUserId: payload.providerUserId ?? null,
         callerPhone: payload.callerPhone ?? null, conversationVersion: 3
-      }), AAD)
+      }), AAD),
+      summaryEnc: original.summaryEnc
     }, select: { id: true, contactId: true } });
     return { ...created, alreadyAttached: false };
   }, { timeout: 20000 });

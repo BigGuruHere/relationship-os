@@ -34,6 +34,7 @@ export type ConversationMetadata = {
   occurredAt: Date | null;
   providerUserId?: string | null;
   callerPhone?: string | null;
+  summary?: string | null;
 };
 
 function cleanOptional(value: unknown, max: number) {
@@ -49,6 +50,7 @@ export function validateConversationMetadata(input: {
   occurredAt?: unknown;
   providerUserId?: unknown;
   callerPhone?: unknown;
+  summary?: unknown;
 } = {}): ConversationMetadata {
   const providerValue = String(input.provider ?? 'ELEVENLABS').trim().toUpperCase();
   const provider = CONVERSATION_PROVIDERS.includes(providerValue as ConversationProvider)
@@ -70,7 +72,8 @@ export function validateConversationMetadata(input: {
   }
   const providerUserId = cleanOptional(input.providerUserId, 240);
   const callerPhone = cleanOptional(input.callerPhone, 80);
-  return { provider, ingestMethod, externalConversationId, agentName, occurredAt, providerUserId, callerPhone };
+  const summary = cleanOptional(input.summary, 4000);
+  return { provider, ingestMethod, externalConversationId, agentName, occurredAt, providerUserId, callerPhone, summary };
 }
 
 function digest(value: string) {
@@ -108,6 +111,7 @@ export function buildConversationPayload(input: {
     agentName: input.metadata.agentName,
     providerUserId: input.metadata.providerUserId ?? null,
     callerPhone: input.metadata.callerPhone ?? null,
+    summary: input.metadata.summary ?? null,
     importedBy: (input.metadata.ingestMethod === 'ELEVENLABS_WEBHOOK' || input.metadata.ingestMethod === 'ELEVENLABS_API') ? 'PROVIDER' as const : 'OPERATOR' as const
   };
 }

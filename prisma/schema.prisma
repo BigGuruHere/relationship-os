@@ -1763,6 +1763,25 @@ model LivingUnderstandingDraft {
   @@index([expiresAt])
 }
 
+// Stage 8.14.5 - operator disposition for conversation sources waiting on Living Understanding review.
+// SECURITY: Dismissal changes review workflow state only. It never deletes the immutable source or mutates authoritative LU.
+model LivingUnderstandingSourceReviewDisposition {
+  id String @id @default(uuid())
+  userId String
+  contextSpaceId String
+  contactId String
+  sourceInteractionId String
+  status String @default("ACTIVE")
+  dismissedAt DateTime?
+  restoredAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, contextSpaceId, contactId, sourceInteractionId], map: "LivingUnderstandingSourceReviewDisposition_scope_source")
+  @@index([userId, contextSpaceId, status, updatedAt], map: "LivingUnderstandingSourceReviewDisposition_queue_idx")
+  @@index([userId, contextSpaceId, contactId, updatedAt], map: "LivingUnderstandingSourceReviewDisposition_contact_idx")
+}
+
 // IT: Source evidence for a KnowledgeClaim. Multiple interactions can support the same claim.
 model KnowledgeEvidence {
   id     String @id @default(uuid())

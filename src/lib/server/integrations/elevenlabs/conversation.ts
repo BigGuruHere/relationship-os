@@ -13,6 +13,7 @@ export type ElevenLabsConversationData = {
   transcript?: unknown;
   metadata?: unknown;
   conversation_initiation_client_data?: unknown;
+  analysis?: unknown;
 };
 
 function asObject(value: unknown): Record<string, any> {
@@ -124,6 +125,8 @@ export function normalizeElevenLabsConversation(input: ElevenLabsConversationDat
   const dynamicVariables = asObject(clientData.dynamic_variables);
   const callerPhone = extractCallerPhone(input, metadata, dynamicVariables);
   const calledNumber = extractCalledNumber(metadata, dynamicVariables);
+  const analysis = asObject(input?.analysis);
+  const transcriptSummary = firstNonEmpty(analysis.transcript_summary).slice(0, 4000) || null;
   return {
     parsed,
     metadata: {
@@ -133,7 +136,8 @@ export function normalizeElevenLabsConversation(input: ElevenLabsConversationDat
       agentName: String(input?.agent_name || '').trim() || null,
       occurredAt,
       providerUserId: String(input?.user_id || '').trim() || null,
-      callerPhone
+      callerPhone,
+      summary: transcriptSummary
     },
     agentId: String(input?.agent_id || '').trim(),
     userId: String(input?.user_id || '').trim(),

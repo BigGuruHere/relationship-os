@@ -2,10 +2,11 @@
 // SECURITY: Purely reads authoritative Living Understanding state inside an already established custody scope. It never runs AI or authorises knowledge.
 import { prisma } from '$lib/db';
 import { relationshipApplicationBase } from '$lib/server/core/contextDomain';
+import { getLivingUnderstandingReviewDisposition } from '$lib/server/core/livingUnderstandingReviewDisposition';
 
 type Scope = { userId: string; contextSpaceId: string; contactId: string };
 
-export type LivingUnderstandingReviewState = 'INITIAL_REVIEW_READY' | 'IMPACT_REVIEW_READY' | 'ALREADY_APPLIED';
+export type LivingUnderstandingReviewState = 'INITIAL_REVIEW_READY' | 'IMPACT_REVIEW_READY' | 'ALREADY_APPLIED' | 'DISMISSED';
 
 export async function describeLivingUnderstandingReviewHandoff(
   scope: Scope,
@@ -13,7 +14,7 @@ export async function describeLivingUnderstandingReviewHandoff(
   sourceInteractionId: string
 ) {
   const base = relationshipApplicationBase(domainKey);
-  const [baseline, applied] = await Promise.all([
+  const [baseline, applied, disposition] = await Promise.all([
     prisma.livingUnderstandingRevision.findFirst({
       where: scope,
       select: { id: true, revisionNumber: true, authorisedAt: true },
@@ -22,8 +23,18 @@ export async function describeLivingUnderstandingReviewHandoff(
     prisma.livingUnderstandingRevisionSource.findFirst({
       where: { ...scope, sourceInteractionId },
       select: { revisionId: true }
-    })
+    }),
+    getLivingUnderstandingReviewDisposition(scope, sourceInteractionId)
   ]);
+
+  if (!applied && disposition?.status === 'DISMISSED') {
+    return {
+      state: 'DISMISSED' as const,
+      sourceInteractionId,
+      baselineRevisionNumber: baseline?.revisionNumber ?? null,
+      reviewUrl: `${base}/people/${scope.contactId}/understanding?sourceInteractionId=${encodeURIComponent(sourceInteractionId)}`
+    };
+  }
 
   if (applied) {
     return {

@@ -100,6 +100,7 @@ export const load: LayoutServerLoad = async ({ locals, url }) => {
 		routePathname,
 		hasDatingContext,
 		hasGeneralContext,
+		capabilities: locals.capabilities ?? [],
 		reconnectDue,
 		remindersOpenCount,
 		tasksOpenCount,

@@ -18,6 +18,7 @@
 		routePathname?: string;
 		hasDatingContext?: boolean;
 		hasGeneralContext?: boolean;
+		capabilities?: string[];
 		reconnectDue: number;
 		remindersOpenCount: number;
 		tasksOpenCount?: number;
@@ -28,6 +29,9 @@
 	$: isDatingApplication = data.activeDomainKey === 'dating';
 	$: isGeneralApplication = data.activeDomainKey === 'general';
 	$: isRelationshipApplication = isDatingApplication || isGeneralApplication;
+	$: canBroker = data.capabilities?.includes('BROKER') ?? false;
+	$: canOperator = data.capabilities?.includes('OPERATOR') ?? false;
+	$: canAdmin = data.capabilities?.includes('ADMIN') ?? false;
 	$: applicationHome = isDatingApplication ? '/dating' : isGeneralApplication ? '/general' : '/';
 
 	import { onMount } from 'svelte';
@@ -159,31 +163,31 @@
 
 				<!-- Business-only shortcuts -->
 				{#if data.user}
-					<a class="btn icon" href="/deals" aria-label="Deals" title="Deals">
+					{#if canBroker}<a class="btn icon" href="/deals" aria-label="Deals" title="Deals">
 						<!-- diamond deal icon -->
 						<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
 							<path d="M12 2 22 9l-10 13L2 9l10-7zm0 3.1L6.2 9 12 16.6 17.8 9 12 5.1z" />
 						</svg>
-					</a>
+					</a>{/if}
 
 					<!-- Companies -->
-					<a class="btn icon" href="/companies" aria-label="Companies" title="Companies">
+					{#if canBroker}<a class="btn icon" href="/companies" aria-label="Companies" title="Companies">
 						<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
 							<path
 								d="M4 21V5a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v16h-2v-4h-3v4h-2v-4H7v4H4zm3-6h3v-3H7v3zm5 0h3v-3h-3v3zM7 10h3V7H7v3zm5 0h3V7h-3v3z"
 							/>
 							<path d="M18 21v-9h2a2 2 0 0 1 2 2v7h-4z" />
 						</svg>
-					</a>
+					</a>{/if}
 
 					<!-- Leads -->
-					<a class="btn icon" href="/leads" aria-label="Leads" title="Leads">
+					{#if canBroker}<a class="btn icon" href="/leads" aria-label="Leads" title="Leads">
 						<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"
 							><path
 								d="M12 2 21 7v10l-9 5-9-5V7l9-5zm0 2.3L5 8.1v7.8l7 3.9 7-3.9V8.1l-7-3.8z"
 							/></svg
 						>
-					</a>
+					</a>{/if}
 
 					<!-- Tasks -->
 					<a class="btn icon" href="/tasks" aria-label="Tasks" title="Tasks">
@@ -288,7 +292,7 @@
 							<a href="/dating">Switch to Dating</a>
 						{/if}
 						<a href="/settings/context-spaces">Manage spaces</a>
-						<a href="/settings/agents">Agent deployments</a>
+						{#if canAdmin}<a href="/settings/agents">Agent deployments</a>{/if}
 					</div>
 				</div>
 			{/if}
@@ -301,27 +305,30 @@
 				</div>
 			{:else if isGeneralApplication}
 				<a class="nav-link" href="/general">General home</a>
+				{#if canOperator}
 				<a class="nav-link" href="/general/people">People</a>
 				<a class="nav-link" href="/general/conversations/import">Import conversation</a>
+				<a class="nav-link" href="/general/admin/reviews">Review inbox</a>
+				{/if}
 				<div class="card" style="padding:10px; color:var(--muted); font-size:0.9rem;">
 					General conversations and Living Understanding remain isolated from Dating and Business.
 				</div>
 			{:else}
 				<a class="nav-link" href="/">Contacts</a>
 				{#if data.user}
-					<a class="nav-link" href="/leads">◇ Leads</a>
+					{#if canBroker}<a class="nav-link" href="/leads">◇ Leads</a>{/if}
 					<a class="nav-link" href="/wants">◎ Wants</a>
 					<a class="nav-link" href="/offers">◌ Offers</a>
 					<a class="nav-link" href="/introductions">↔ Introductions</a>
-					<a class="nav-link" href="/deals">◆ Deals</a>
-					<a class="nav-link" href="/companies">▥ Companies</a>
+					{#if canBroker}<a class="nav-link" href="/deals">◆ Deals</a>{/if}
+					{#if canBroker}<a class="nav-link" href="/companies">▥ Companies</a>{/if}
 					<a class="nav-link" href="/tasks"
 						>☑ Tasks{#if (data.tasksOpenCount || 0) > 0}
 							<span class="pill">{data.tasksOpenCount}</span>{/if}</a
 					>
 					<a class="nav-link" href="/projects">▣ Projects</a>
-					<a class="nav-link" href="/workstreams">▤ Workstreams</a>
-					<a class="nav-link" href="/agents">⚙ Agents</a>
+					{#if canBroker}<a class="nav-link" href="/workstreams">▤ Workstreams</a>{/if}
+					{#if canBroker}<a class="nav-link" href="/agents">⚙ Agents</a>{/if}
 				{/if}
 				<a class="nav-link" href="/search">Search</a>
 
@@ -403,13 +410,13 @@
 					<a href="/" aria-label="Home">Contacts</a>
 					{#if data.user}
 						<span aria-hidden="true">·</span>
-						<a href="/deals" aria-label="Deals">Deals</a>
+						{#if canBroker}<a href="/deals" aria-label="Deals">Deals</a>{/if}
 						<span aria-hidden="true">·</span>
-						<a href="/companies" aria-label="Companies">Companies</a>
+						{#if canBroker}<a href="/companies" aria-label="Companies">Companies</a>{/if}
 						<span aria-hidden="true">·</span>
 						<a href="/introductions" aria-label="Introductions">Introductions</a>
 						<span aria-hidden="true">·</span>
-						<a href="/agents" aria-label="Agents">Agents</a>
+						{#if canBroker}<a href="/agents" aria-label="Agents">Agents</a>{/if}
 					{/if}
 				{/if}
 				<span aria-hidden="true">·</span>

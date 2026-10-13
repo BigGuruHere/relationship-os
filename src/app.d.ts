@@ -5,7 +5,8 @@ declare global {
 		env: import('$lib/env').RuntimeEnv;
 		appOrigin: string;
 		sessionCookie: import('$lib/cookies').CookieConfig;
-		user?: { id: string; email?: string; role?: 'owner' | 'guest' };
+		user?: { id: string; email?: string; role?: 'owner' | 'member' | 'guest' };
+		capabilities?: import('$lib/server/core/capabilities').Capability[];
 		contextSpaceId?: string; // Stage 8.6 active custody context
 		contextDomainKey: string; // Stage 8.9 route-owned application domain
 		sessionId?: string; // used by logout

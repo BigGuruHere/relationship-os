@@ -17,11 +17,11 @@
       <a class="btn primary" href="/settings/context-spaces">Set up General space</a>
     </section>
   {:else}
-    <section class="stat-grid">
+    {#if data.canOperator}<section class="stat-grid">
       <a class="card stat" href="/general/people"><span>People</span><strong>{data.people.length}</strong></a>
       <a class="card stat" href="/general/conversations/import"><span>Conversation</span><strong>Import</strong></a>
       <a class="card stat" href="/general/admin/reviews"><span>Operator</span><strong>Review inbox</strong></a>
-    </section>
+    </section>{:else}<section class="card panel"><p>Your General space is ready. Operator tools are available only to authorised accounts.</p></section>{/if}
     <section class="card panel safety-note">
       <strong>Custody boundary</strong>
       <p>General information is isolated from Dating and Business. Importing or approving a Living Understanding does not grant matching, sharing or disclosure permission.</p>

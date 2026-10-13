@@ -109,6 +109,8 @@ model User {
   livingUnderstandingRevisionSources LivingUnderstandingRevisionSource[]
   livingUnderstandingTopicVersionSources LivingUnderstandingTopicVersionSource[]
   livingUnderstandingDrafts LivingUnderstandingDraft[]
+  // IT: Stage 8.15.2.1 - preserve review disposition foreign-key ownership.
+  livingUnderstandingReviewDispositions LivingUnderstandingSourceReviewDisposition[]
 
   // IT: agent framework records. Agents read/write through Relish services and every run is logged.
   agentDefinitions     AgentDefinition[]
@@ -130,6 +132,8 @@ model User {
   leadSources          LeadSource[]
   projectWorkstreams   ProjectWorkstream[]
   opportunityScoreFactors OpportunityScoreFactor[]
+
+  capabilityGrants UserCapabilityGrant[]
 
   role       UserRole @default(member)
   publicSlug String?  @unique
@@ -218,6 +222,8 @@ model ContextSpace {
   livingUnderstandingRevisionSources LivingUnderstandingRevisionSource[]
   livingUnderstandingTopicVersionSources LivingUnderstandingTopicVersionSource[]
   livingUnderstandingDrafts LivingUnderstandingDraft[]
+  // IT: Stage 8.15.2.1 - preserve review disposition foreign-key ownership.
+  livingUnderstandingReviewDispositions LivingUnderstandingSourceReviewDisposition[]
   wants Want[]
   wantNotes WantNote[]
   offers Offer[]
@@ -528,6 +534,8 @@ model Contact {
   livingUnderstandingRevisionSources LivingUnderstandingRevisionSource[]
   livingUnderstandingTopicVersionSources LivingUnderstandingTopicVersionSource[]
   livingUnderstandingDrafts LivingUnderstandingDraft[]
+  // IT: Stage 8.15.2.1 - preserve review disposition foreign-key ownership.
+  livingUnderstandingReviewDispositions LivingUnderstandingSourceReviewDisposition[]
   tags         ContactTag[]
   linkedUserId String?
 
@@ -647,6 +655,8 @@ model Interaction {
   livingUnderstandingRevisionSources LivingUnderstandingRevisionSource[] @relation("LivingUnderstandingRevisionSourceInteraction")
   livingUnderstandingTopicVersionSources LivingUnderstandingTopicVersionSource[] @relation("LivingUnderstandingTopicVersionSourceInteraction")
   livingUnderstandingDraftSources LivingUnderstandingDraft[] @relation("LivingUnderstandingDraftSourceInteraction")
+  // IT: Stage 8.15.2.1 - preserve review disposition foreign-key ownership.
+  livingUnderstandingReviewDispositions LivingUnderstandingSourceReviewDisposition[]
 
   @@index([userId])
   @@index([userId, contactId])
@@ -1628,8 +1638,8 @@ model LivingUnderstandingRevision {
   sources LivingUnderstandingRevisionSource[]
   draftsBasedOnThis LivingUnderstandingDraft[] @relation("LivingUnderstandingDraftBaseline")
   @@unique([userId, contextSpaceId, contactId, revisionNumber], map: "LivingUnderstandingRevision_scope_number")
-  @@unique([id, userId, contextSpaceId, contactId])
-  @@index([userId, contextSpaceId, contactId, authorisedAt])
+  @@unique([id, userId, contextSpaceId, contactId], map: "LivingUnderstandingRevision_id_userId_contextSpaceId_contactId_")
+  @@index([userId, contextSpaceId, contactId, authorisedAt], map: "LivingUnderstandingRevision_userId_contextSpaceId_contactId_aut")
 }
 
 model LivingUnderstandingTopicIdentity {
@@ -1647,8 +1657,8 @@ model LivingUnderstandingTopicIdentity {
   versions LivingUnderstandingTopicVersion[]
   memberships LivingUnderstandingRevisionTopic[]
   @@unique([userId, contextSpaceId, contactId, nameIdx], map: "LivingUnderstandingTopicIdentity_scope_name")
-  @@unique([id, userId, contextSpaceId, contactId])
-  @@index([userId, contextSpaceId, contactId])
+  @@unique([id, userId, contextSpaceId, contactId], map: "LivingUnderstandingTopicIdentity_id_userId_contextSpaceId_conta")
+  @@index([userId, contextSpaceId, contactId], map: "LivingUnderstandingTopicIdentity_userId_contextSpaceId_contactI")
 }
 
 model LivingUnderstandingTopicVersion {
@@ -1671,9 +1681,9 @@ model LivingUnderstandingTopicVersion {
   memberships LivingUnderstandingRevisionTopic[]
   sources LivingUnderstandingTopicVersionSource[]
   @@unique([topicIdentityId, versionNumber], map: "LivingUnderstandingTopicVersion_identity_number")
-  @@unique([id, userId, contextSpaceId, contactId])
+  @@unique([id, userId, contextSpaceId, contactId], map: "LivingUnderstandingTopicVersion_id_userId_contextSpaceId_contac")
   @@unique([id, topicIdentityId, userId, contextSpaceId, contactId], map: "LivingUnderstandingTopicVersion_identity_scope_key")
-  @@index([userId, contextSpaceId, contactId, topicIdentityId])
+  @@index([userId, contextSpaceId, contactId, topicIdentityId], map: "LivingUnderstandingTopicVersion_userId_contextSpaceId_contactId")
   @@index([createdInRevisionId])
 }
 
@@ -1695,8 +1705,8 @@ model LivingUnderstandingRevisionTopic {
   createdAt DateTime @default(now())
   @@unique([revisionId, topicIdentityId], map: "LivingUnderstandingRevisionTopic_revision_identity")
   @@unique([revisionId, topicVersionId], map: "LivingUnderstandingRevisionTopic_revision_version")
-  @@unique([id, userId, contextSpaceId, contactId])
-  @@index([userId, contextSpaceId, contactId, revisionId, position])
+  @@unique([id, userId, contextSpaceId, contactId], map: "LivingUnderstandingRevisionTopic_id_userId_contextSpaceId_conta")
+  @@index([userId, contextSpaceId, contactId, revisionId, position], map: "LivingUnderstandingRevisionTopic_scope_revision_position_idx")
 }
 
 model LivingUnderstandingRevisionSource {
@@ -1714,7 +1724,7 @@ model LivingUnderstandingRevisionSource {
   sourceObservedAt DateTime
   createdAt DateTime @default(now())
   @@unique([revisionId, sourceInteractionId], map: "LivingUnderstandingRevisionSource_unique")
-  @@index([userId, contextSpaceId, contactId, sourceObservedAt])
+  @@index([userId, contextSpaceId, contactId, sourceObservedAt], map: "LivingUnderstandingRevisionSource_userId_contextSpaceId_contact")
 }
 
 model LivingUnderstandingTopicVersionSource {
@@ -1733,7 +1743,7 @@ model LivingUnderstandingTopicVersionSource {
   sourceObservedAt DateTime
   createdAt DateTime @default(now())
   @@unique([topicVersionId, sourceInteractionId], map: "LivingUnderstandingTopicVersionSource_unique")
-  @@index([userId, contextSpaceId, contactId, sourceObservedAt])
+  @@index([userId, contextSpaceId, contactId, sourceObservedAt], map: "LivingUnderstandingTopicVersionSource_userId_contextSpaceId_con")
 }
 
 model LivingUnderstandingDraft {
@@ -1768,14 +1778,19 @@ model LivingUnderstandingDraft {
 model LivingUnderstandingSourceReviewDisposition {
   id String @id @default(uuid())
   userId String
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade, map: "LivingUnderstandingSourceReviewDisposition_user_fk")
   contextSpaceId String
+  contextSpace ContextSpace @relation(fields: [contextSpaceId], references: [id], onDelete: Cascade, map: "LivingUnderstandingSourceReviewDisposition_context_fk")
   contactId String
+  contact Contact @relation(fields: [contactId], references: [id], onDelete: Cascade, map: "LivingUnderstandingSourceReviewDisposition_contact_fk")
   sourceInteractionId String
+  sourceInteraction Interaction @relation(fields: [sourceInteractionId], references: [id], onDelete: Cascade, map: "LivingUnderstandingSourceReviewDisposition_source_fk")
   status String @default("ACTIVE")
   dismissedAt DateTime?
   restoredAt DateTime?
   createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  // IT: Match the database CURRENT_TIMESTAMP default while retaining Prisma update timestamps.
+  updatedAt DateTime @default(now()) @updatedAt
 
   @@unique([userId, contextSpaceId, contactId, sourceInteractionId], map: "LivingUnderstandingSourceReviewDisposition_scope_source")
   @@index([userId, contextSpaceId, status, updatedAt], map: "LivingUnderstandingSourceReviewDisposition_queue_idx")
@@ -3655,4 +3670,17 @@ model AgentRunEntity {
 
   @@index([agentRunId])
   @@index([entityType, entityId])
+}
+
+// IT: Explicit account capabilities; independent of information custody ContextSpaces.
+// IT: Grants are inserted/revoked only by trusted administrative operations.
+model UserCapabilityGrant {
+  id             String   @id @default(uuid())
+  userId         String
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  capability     String
+  grantedAt      DateTime @default(now())
+  grantedByUserId String?
+  @@unique([userId, capability])
+  @@index([capability])
 }

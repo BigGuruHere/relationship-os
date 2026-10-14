@@ -44,6 +44,10 @@
 
     <!-- IT: main editor form - named action `save` -->
     <form method="post" action="?/save" style="display:grid; grid-template-columns: 1fr 1fr; gap:12px;">
+      {#if data?.networkEntry}
+        <!-- IT: explicit Network workflow flag, checked by the server. -->
+        <input type="hidden" name="entry" value="network" />
+      {/if}
       {#if p?.id}
         <!-- IT: include for update path -->
         <input type="hidden" name="profileId" value={p.id} />
@@ -96,13 +100,15 @@
 
       <div class="field">
         <label for="kind">Profile type</label>
-        <select id="kind" name="kind" bind:value={kind}>
+        <select id="kind" name="kind" bind:value={kind} disabled={data?.networkEntry}>
           <option value="business">Business</option>
           <option value="personal">Personal</option>
           <option value="dating">Dating</option>
           <option value="custom">Custom</option>
         </select>
       </div>
+
+      {#if data?.networkEntry}<input type="hidden" name="kind" value="personal" />{/if}
 
       <!-- IT: flexible extras - one input per known key -->
       {#each EXTRA_KEYS as spec (spec.key)}

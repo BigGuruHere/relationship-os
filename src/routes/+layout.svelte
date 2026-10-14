@@ -16,9 +16,11 @@
 		activeContext?: { id: string; domainKey: string; displayName: string } | null;
 		activeDomainKey?: string;
 		routePathname?: string;
+		networkEntry?: boolean;
 		hasDatingContext?: boolean;
 		hasGeneralContext?: boolean;
 		capabilities?: string[];
+		accountRole?: string;
 		reconnectDue: number;
 		remindersOpenCount: number;
 		tasksOpenCount?: number;
@@ -26,13 +28,18 @@
 	};
 
 	// IT: Navigation is selected from the server-resolved route domain, never from a client-controlled context id.
+	// IT: Network is a member-facing experience even while using shared profile/share routes.
+	$: networkEntryRoute = data.routePathname === '/network' || data.routePathname?.startsWith('/network/');
+	$: networkProfileRoute = ['/settings/profile', '/share'].includes(data.routePathname || '') && data.networkEntry === true;
+	$: isNetworkSurface = networkEntryRoute || networkProfileRoute;
 	$: isDatingApplication = data.activeDomainKey === 'dating';
 	$: isGeneralApplication = data.activeDomainKey === 'general';
 	$: isRelationshipApplication = isDatingApplication || isGeneralApplication;
 	$: canBroker = data.capabilities?.includes('BROKER') ?? false;
 	$: canOperator = data.capabilities?.includes('OPERATOR') ?? false;
 	$: canAdmin = data.capabilities?.includes('ADMIN') ?? false;
-	$: applicationHome = isDatingApplication ? '/dating' : isGeneralApplication ? '/general' : '/';
+	$: isOwner = data.accountRole === 'owner';
+	$: applicationHome = isNetworkSurface ? '/network' : isDatingApplication ? '/dating' : isGeneralApplication ? '/general' : '/';
 
 	import { onMount } from 'svelte';
 
@@ -138,7 +145,7 @@
 
 		<!-- Compact mobile actions - icon only for a tidy topbar -->
 		<nav class="topbar-actions" aria-label="Primary">
-			{#if !isRelationshipApplication}
+			{#if !isNetworkSurface && !isRelationshipApplication}
 				<!-- Add Contact -->
 				<a class="btn icon" href="/contacts/new" aria-label="Add Contact" title="Add Contact">
 					<!-- user plus icon -->
@@ -203,7 +210,9 @@
 			{/if}
 
 			{#if data.user}
-				{#if isRelationshipApplication}
+				{#if isNetworkSurface}
+					<a class="btn icon" href="/network/share" aria-label="Share Network profile">Share</a>
+				{:else if isRelationshipApplication}
 					<!-- IT: This link deliberately crosses back to the server-owned Business route boundary. -->
 					<a class="btn" href="/">Business</a>
 				{:else}
@@ -277,6 +286,18 @@
 		</a>
 
 		<nav class="nav-group">
+			{#if isNetworkSurface || (data.user && !canAdmin && !canOperator && !canBroker)}
+				<!-- IT: Ordinary members see only the pilot surface, not ContextSpace administration. -->
+				<a class="nav-link" href="/network">Network home</a>
+				<a class="nav-link" href="/network/share">Share my QR</a>
+				<a class="nav-link" href="/settings/profile?kind=personal&entry=network">My profile</a>
+				{#if isOwner}<a class="nav-link" href="/settings/users">Manage users</a>{/if}
+				{#if data.user}
+					<form method="POST" action="/auth/logout"><button class="btn" type="submit">Logout</button></form>
+				{:else}
+					<a class="nav-link" href="/auth/login">Login</a>
+				{/if}
+			{:else}
 			{#if data.user}
 				<div class="card app-space-card">
 					<div class="app-space-label">Application</div>
@@ -293,6 +314,7 @@
 						{/if}
 						<a href="/settings/context-spaces">Manage spaces</a>
 						{#if canAdmin}<a href="/settings/agents">Agent deployments</a>{/if}
+						{#if isOwner}<a href="/settings/users">Manage users</a>{/if}
 					</div>
 				</div>
 			{/if}
@@ -368,8 +390,10 @@
 				<a class="nav-link" href="/auth/login">Login</a>
 				<a class="nav-link" href="/auth/register">Register</a>
 			{/if}
+			{/if}
 		</nav>
 
+		{#if !isNetworkSurface && (canAdmin || canOperator || canBroker)}
 		<div class="card" style="padding:12px; margin-top:auto;">
 			<div style="font-weight:600; margin-bottom:6px;">Quick tip</div>
 			<div style="color:var(--muted); font-size:0.95rem;">
@@ -380,6 +404,7 @@
 						: 'Add a contact, then attach a note or link them to a deal.'}
 			</div>
 		</div>
+		{/if}
 	</aside>
 
 	<!-- Main content -->
@@ -395,7 +420,11 @@
 		>
 			<div>© {new Date().getFullYear()} Relationship OS</div>
 			<div class="mobile-only footer-links">
-				{#if isDatingApplication}
+				{#if isNetworkSurface}
+					<a href="/network">Network</a>
+					<span aria-hidden="true">·</span>
+					<a href="/network/share">Share</a>
+				{:else if isDatingApplication}
 					<a href="/dating" aria-label="Dating home">Dating</a>
 					<span aria-hidden="true">·</span>
 					<a href="/general" aria-label="Switch to General">General</a>

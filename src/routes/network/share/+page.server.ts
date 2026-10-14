@@ -11,6 +11,6 @@ export const load: PageServerLoad = async ({ locals }) => {
     select: { slug: true },
     orderBy: [{ isDefault: 'desc' }, { updatedAt: 'desc' }]
   });
-  if (!profile) throw redirect(303, '/settings/profile?kind=personal');
-  throw redirect(303, `/share?profile=${encodeURIComponent(profile.slug)}`);
+  if (!profile) throw redirect(303, '/settings/profile?kind=personal&entry=network');
+  throw redirect(303, `/share?profile=${encodeURIComponent(profile.slug)}&entry=network`);
 };

@@ -47,10 +47,11 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 
   // IT: pick most relevant profile - default first, then most recently updated
   const requestedProfileSlug = url.searchParams.get('profile');
-  const requestedProfileKind = url.searchParams.get('kind');
+  const networkEntry = url.searchParams.get('entry') === 'network';
+  const requestedProfileKind = networkEntry ? 'personal' : url.searchParams.get('kind');
   // IT: Do not load an unrelated default Business profile when creating a Network profile.
   const profile = await prisma.profile.findFirst({
-    where: { userId: locals.user.id, ...(requestedProfileSlug ? { slug: requestedProfileSlug } : requestedProfileKind === 'personal' ? { kind: 'personal' } : {}) },
+    where: { userId: locals.user.id, ...(requestedProfileSlug ? { slug: requestedProfileSlug, ...(networkEntry ? { kind: 'personal' } : {}) } : requestedProfileKind === 'personal' ? { kind: 'personal' } : {}) },
     select: {
       id: true,
       userId: true,
@@ -77,7 +78,7 @@ export const load: PageServerLoad = async ({ locals, url }) => {
   const first = url.searchParams.get('first') === '1';
   const next = url.searchParams.get('next') || null;
 
-  return { profile: profile || null, requestedProfileKind, mode, first, next };
+  return { profile: profile || null, requestedProfileKind, networkEntry, mode, first, next };
 };
 
 export const actions: Actions = {
@@ -100,7 +101,9 @@ export const actions: Actions = {
     const websiteUrl  = String(fd.get('websiteUrl') || '').trim();
     const emailPublic = String(fd.get('emailPublic') || '').trim();
     const phonePublic = String(fd.get('phonePublic') || '').trim();
-    const requestedKind = String(fd.get('kind') || 'business').trim();
+    // IT: Network entry never permits changing another profile kind through form tampering.
+    const networkEntry = String(fd.get('entry') || '') === 'network';
+    const requestedKind = networkEntry ? 'personal' : String(fd.get('kind') || 'business').trim();
     const kind: 'business' | 'personal' | 'dating' | 'custom' = ['business', 'personal', 'dating', 'custom'].includes(requestedKind)
       ? requestedKind as 'business' | 'personal' | 'dating' | 'custom'
       : 'business';
@@ -123,13 +126,16 @@ export const actions: Actions = {
     const existing = profileId
       ? await prisma.profile.findFirst({
           where: { id: profileId, userId: locals.user.id },
-          select: { id: true, slug: true, isDefault: true, publicMeta: true }
+          select: { id: true, slug: true, isDefault: true, publicMeta: true, kind: true }
         })
       : await prisma.profile.findFirst({
           where: { userId: locals.user.id, ...(createPersonal ? { kind: 'personal' as const } : {}) },
-          select: { id: true, slug: true, isDefault: true, publicMeta: true },
+          select: { id: true, slug: true, isDefault: true, publicMeta: true, kind: true },
           orderBy: [{ isDefault: 'desc' }, { updatedAt: 'desc' }]
         });
+
+    // SECURITY: A Network request cannot overwrite a Business or Dating profile by supplying its id.
+    if (networkEntry && existing && existing.kind !== 'personal') return fail(403, { error: 'Not a Network profile' });
 
     // IT: do DB work inside try - compute targetSlug, but DO NOT redirect here
     let targetSlug: string | null = null;
@@ -159,7 +165,8 @@ export const actions: Actions = {
 
         targetSlug = nextSlug;
       } else {
-        const wanted = slugify(displayName);
+        // IT: new Network profile URLs have random stable identifiers, not names.
+        const wanted = networkEntry ? `p-${crypto.randomUUID()}` : slugify(displayName);
         const uniqueSlug = await ensureUniqueSlugGlobal(wanted);
 
         const hasDefault = await prisma.profile.findFirst({
@@ -205,6 +212,9 @@ export const actions: Actions = {
     }
 
     // IT: after DB work - perform redirects OUTSIDE the try/catch
+
+    // IT: stay in the Network experience after create and edit.
+    if (networkEntry) throw redirect(303, '/network');
 
     // First-time flow - preview public page
     const nextParam = url.searchParams.get('next');

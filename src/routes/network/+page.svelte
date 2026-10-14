@@ -16,11 +16,11 @@
       {#if data.profile.headline}<p>{data.profile.headline}</p>{/if}
       <div style="display:flex;gap:10px;flex-wrap:wrap">
         <a class="btn primary" href="/network/share">Share my QR</a>
-        <a class="btn" href={'/settings/profile?profile=' + encodeURIComponent(data.profile.slug) + '&kind=personal'}>Edit profile</a>
+        <a class="btn" href={'/settings/profile?profile=' + encodeURIComponent(data.profile.slug) + '&kind=personal&entry=network'}>Edit profile</a>
       </div>
     {:else}
       <p>Make a personal profile to share with someone you meet. Your Business profile stays separate.</p>
-      <a class="btn primary" href="/settings/profile?kind=personal">Create my profile</a>
+      <a class="btn primary" href="/settings/profile?kind=personal&entry=network">Create my profile</a>
     {/if}
   </section>
   <section class="card" style="padding:20px">

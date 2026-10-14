@@ -7,7 +7,7 @@ import { buildScopedIndexToken, decrypt, encrypt } from '$lib/crypto';
 import type { CoreAccessContext } from '$lib/server/core/accessPolicy';
 import { findCoreInteraction } from '$lib/server/core/relationshipRepository';
 import { normaliseKnowledgeAuthority, knowledgeAuthorityLabel, knowledgeSourceTypeLabel } from '$lib/provenance';
-import { knowledgeClaimKindLabel, knowledgeClaimStatusLabel, knowledgeConfidenceLabel, normaliseKnowledgeClaimKind, normaliseKnowledgeConfidence } from '$lib/knowledge';
+import { knowledgeClaimKindLabel, knowledgeClaimStatusLabel, knowledgeConfidenceLabel, normaliseKnowledgeClaimKind, normaliseKnowledgeConfidence, normaliseKnowledgePerspective, knowledgePerspectiveLabel } from '$lib/knowledge';
 import { createWantFromForm } from '$lib/server/wants';
 import { createOfferFromForm } from '$lib/server/offers';
 import { objectiveStatusLabel, objectiveConfidenceLabel } from '$lib/objectives';
@@ -36,6 +36,7 @@ export async function captureKnowledgeFromInteraction(params: {
   interactionId: string;
   kind: FormDataEntryValue | string | null | undefined;
   statement: string;
+  perspective?: FormDataEntryValue | string | null;
   authority: FormDataEntryValue | string | null | undefined;
   confidence: FormDataEntryValue | string | null | undefined;
   evidenceNote?: string | null;
@@ -53,6 +54,7 @@ export async function captureKnowledgeFromInteraction(params: {
   const statement = String(params.statement || '').trim();
   if (!statement) throw new Error('Knowledge statement is required.');
   const kind = normaliseKnowledgeClaimKind(params.kind);
+  const perspective = normaliseKnowledgePerspective(params.perspective);
   const authority = normaliseKnowledgeAuthority(params.authority, 'WORKSPACE_RECORDED');
   const confidence = normaliseKnowledgeConfidence(params.confidence);
   const statementIdx = buildScopedIndexToken(statement, 'knowledge:claim:statement');
@@ -63,6 +65,7 @@ export async function captureKnowledgeFromInteraction(params: {
     where: {
       userId: context.workspaceUserId, contextSpaceId: context.contextSpaceId,
       kind: kind as any,
+      perspective: perspective as any,
       status: 'ACTIVE' as any,
       statementIdx,
       ...subjectWhere(subject)
@@ -107,6 +110,7 @@ export async function captureKnowledgeFromInteraction(params: {
     data: {
       userId: context.workspaceUserId, contextSpaceId: context.contextSpaceId,
       kind: kind as any,
+      perspective: perspective as any,
       status: 'ACTIVE' as any,
       statementEnc: encrypt(statement, 'knowledge.claim_statement'),
       statementIdx,
@@ -138,6 +142,7 @@ export async function captureAndPromoteKnowledgeFromInteraction(params: {
   interactionId: string;
   kind: FormDataEntryValue | string | null | undefined;
   statement: string;
+  perspective?: FormDataEntryValue | string | null;
   authority: FormDataEntryValue | string | null | undefined;
   confidence: FormDataEntryValue | string | null | undefined;
   evidenceNote?: string | null;
@@ -283,6 +288,8 @@ async function mapClaim(row: any) {
   return {
     id: row.id,
     kind: row.kind,
+    perspective: row.perspective,
+    perspectiveLabel: knowledgePerspectiveLabel(row.perspective),
     kindLabel: knowledgeClaimKindLabel(row.kind),
     status: row.status,
     statusLabel: knowledgeClaimStatusLabel(row.status),
@@ -303,6 +310,7 @@ async function mapClaim(row: any) {
 const claimSelect = {
   id: true,
   kind: true,
+  perspective: true,
   status: true,
   statementEnc: true,
   authority: true,

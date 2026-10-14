@@ -481,6 +481,7 @@
             <li class="note">
               <div class="note-meta">
                 <span class="pill">{n.channel}</span>
+                {#if n.isEdited}<span class="muted">Edited</span>{/if}
                 <span class="muted">{fmt(n.occurredAt)}</span>
               </div>
               <a class="note-link" href={`/contacts/${contact.id}/interactions/${n.id}`}>{n.preview || '(empty)'}</a>

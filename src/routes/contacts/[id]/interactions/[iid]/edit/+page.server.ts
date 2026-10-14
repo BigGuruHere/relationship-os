@@ -1,77 +1,49 @@
-// src/routes/contacts/[id]/interactions/[iid]/edit/+page.server.ts
-// PURPOSE: Edit an interaction note. Loads current values then updates after re-encrypting.
-// MULTI TENANT: Requires login and scopes all queries by userId.
-
+// Stage 8.15.3: corrections are new evidence rather than overwrites of historical source text.
 import { fail, redirect } from '@sveltejs/kit';
-import { prisma } from '$lib/db';
-import { encrypt, decrypt } from '$lib/crypto';
 import { z } from 'zod';
+import { saveCurrentNoteCorrection } from '$lib/server/core/noteRevisions';
+import { createWorkspaceCoreAccess } from '$lib/server/core/accessPolicy';
+import { loadCoreInteraction } from '$lib/server/core/interactions';
 
 const EditSchema = z.object({
   channel: z.string().min(1),
-  occurredAt: z.string().optional(), // datetime-local string
-  text: z.string().min(1, 'Note cannot be empty')
+  occurredAt: z.string().optional(),
+  text: z.string().trim().min(1, 'Correction cannot be empty')
 });
 
 export const load = async ({ params, locals }) => {
   if (!locals.user) throw redirect(303, '/auth/login');
-
-  const row = await prisma.interaction.findFirst({
-    where: { id: params.iid, contactId: params.id, userId: locals.user.id },
-    select: { id: true, contactId: true, channel: true, occurredAt: true, rawTextEnc: true }
-  });
-  if (!row) return { notFound: true };
-
-  let text = '';
-  try {
-    text = row.rawTextEnc ? decrypt(row.rawTextEnc, 'interaction.raw_text') : '';
-  } catch {}
-
-  return {
-    interaction: {
-      id: row.id,
-      contactId: row.contactId,
-      channel: row.channel,
-      occurredAt: row.occurredAt,
-      text
-    }
-  };
+  const context = createWorkspaceCoreAccess(locals.user.id, 'workspace:correction-load');
+  const row = await loadCoreInteraction(context, params.iid);
+  if (!row || row.contactId !== params.id) return { notFound: true };
+  return { interaction: { id: row.id, contactId: row.contactId, channel: row.channel, occurredAt: row.occurredAt, text: row.text } };
 };
 
 export const actions = {
-  save: async ({ request, params, locals }) => {
+  default: async ({ request, params, locals }) => {
     if (!locals.user) throw redirect(303, '/auth/login');
-
-    const raw = Object.fromEntries(await request.formData());
+    const context = createWorkspaceCoreAccess(locals.user.id, 'workspace:correction-save');
+    const original = await loadCoreInteraction(context, params.iid);
+    if (!original || original.contactId !== params.id) return fail(404, { error: 'Note not found.' });
+    const form = await request.formData();
     const parsed = EditSchema.safeParse({
-      channel: String(raw.channel || ''),
-      occurredAt: String(raw.occurredAt || ''),
-      text: String(raw.text || '')
+      channel: String(form.get('channel') || ''),
+      occurredAt: String(form.get('occurredAt') || ''),
+      text: String(form.get('text') || '')
     });
-    if (!parsed.success) {
-      return fail(400, { error: parsed.error.issues[0]?.message || 'Invalid input' });
-    }
-
-    const occurredAt = parsed.data.occurredAt ? new Date(parsed.data.occurredAt) : null;
-    const rawTextEnc = encrypt(parsed.data.text, 'interaction.raw_text');
-
+    if (!parsed.success) return fail(400, { error: parsed.error.issues[0]?.message || 'Invalid correction.' });
+    const date = parsed.data.occurredAt ? new Date(parsed.data.occurredAt) : null;
+    if (date && Number.isNaN(date.getTime())) return fail(400, { error: 'Invalid interaction date.' });
     try {
-      // Only update rows in this tenant and for this contact
-      const res = await prisma.interaction.updateMany({
-        where: { id: params.iid, contactId: params.id, userId: locals.user.id },
-        data: {
-          channel: parsed.data.channel,
-          ...(occurredAt ? { occurredAt } : {}),
-          rawTextEnc
-        }
+      // A correction is new, independently encrypted evidence linked to the original interaction.
+      // The original remains available for existing KnowledgeEvidence and LU provenance links.
+      const corrected = await saveCurrentNoteCorrection(context, params.id, params.iid, {
+        channel: parsed.data.channel, occurredAt: date, rawText: parsed.data.text
       });
-      if (res.count === 0) return fail(404, { error: 'Interaction not found.' });
-    } catch (err) {
-      console.error('Failed to update interaction:', err);
-      return fail(500, { error: 'Failed to update note. Please try again.' });
+      throw redirect(303, `/contacts/${params.id}/interactions/${corrected.id}`);
+    } catch (err: any) {
+      if (err?.status === 303) throw err;
+      return fail(409, { error: err?.message || 'Unable to save correction.' });
     }
-
-    // Redirect outside the try/catch
-    throw redirect(303, `/contacts/${params.id}/interactions/${params.iid}`);
   }
 };

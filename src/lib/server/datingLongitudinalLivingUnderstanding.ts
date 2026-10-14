@@ -401,8 +401,20 @@ export async function sourceAlreadyInAuthoritativeLivingUnderstanding(scope: Sco
   return Boolean(row);
 }
 
+// IT: An interaction's admission controls use for LU, independently of CRM storage.
+async function requireLivingUnderstandingAdmission(scope: Scope, sourceInteractionId: string) {
+  const source = await prisma.interaction.findFirst({
+    where: { id: sourceInteractionId, userId: scope.userId, contextSpaceId: scope.contextSpaceId, contactId: scope.contactId },
+    select: { luAdmission: true }
+  });
+  if (!source || source.luAdmission !== 'ELIGIBLE') {
+    throw new Error('This source is not eligible for Living Understanding.');
+  }
+}
+
 export async function reviewLivingUnderstandingImpact(scope: Scope, sourceInteractionId: string): Promise<LongitudinalImpactProposal> {
   await requireDatingPerson(scope);
+  await requireLivingUnderstandingAdmission(scope, sourceInteractionId);
   if (!process.env.OPENAI_API_KEY) throw new Error('OPENAI_API_KEY is required to review Living Understanding impact.');
   const [baseline, source] = await Promise.all([
     getAuthoritativeLivingUnderstandingBaseline(scope),
@@ -682,6 +694,7 @@ export async function approveLivingUnderstandingImpact(scope: Scope, token: stri
   // concurrency authority and deliberately checks idempotency before stale-baseline detection, so an
   // exact repeat of a successful approval returns the existing revision rather than failing as stale.
   await requireSourceReflection(scope, payload.sourceInteractionId);
+  await requireLivingUnderstandingAdmission(scope, payload.sourceInteractionId);
   const baseline = await prisma.livingUnderstandingRevision.findFirst({
     where: { id: payload.baselineRevisionId, ...scope, revisionNumber: payload.baselineRevisionNumber },
     select: { id: true }

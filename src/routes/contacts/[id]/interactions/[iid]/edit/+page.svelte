@@ -20,7 +20,8 @@
   {:else}
     <div class="container">
       <div class="card" style="padding:20px; max-width:800px; margin:0 auto;">
-        <h1 style="margin-top:0;">Edit interaction</h1>
+        <h1 style="margin-top:0;">Correct interaction</h1>
+        <p>The original note remains unchanged as historical evidence. Saving updates the visible note while retaining earlier versions in its history.</p>
   
         <form method="post">
           <div class="field">
@@ -44,7 +45,7 @@
           </div>
   
           <div style="display:flex; gap:10px;">
-            <button class="btn primary" type="submit">Save changes</button>
+            <button class="btn primary" type="submit">Save correction</button>
             <a class="btn" href={"../" }>Cancel</a>
           </div>
         </form>

@@ -4,7 +4,7 @@
   // UX: The human reviews meaning once. Core still persists Interaction -> Claim/Evidence -> structured record separately.
   import { page } from '$app/stores';
   import { KNOWLEDGE_AUTHORITIES } from '$lib/provenance';
-  import { KNOWLEDGE_CLAIM_KINDS, KNOWLEDGE_CONFIDENCES } from '$lib/knowledge';
+  import { KNOWLEDGE_CLAIM_KINDS, KNOWLEDGE_CONFIDENCES, KNOWLEDGE_PERSPECTIVES } from '$lib/knowledge';
 
   export let data: any;
   export let form: any;
@@ -12,11 +12,12 @@
   const claims = data.claims ?? [];
 
   let editingSummary = false;
-  let editingText = false;
+  let editingText = false; // IT: Edits preserve internal revisions but show only the current note.
   let showCapture = false;
   let summaryDraft: string = interaction.summary ?? '';
   let textDraft: string = interaction.text ?? '';
   let captureKind = 'FACT';
+  let capturePerspective = 'OWNER_OBSERVATION'; // IT: Never infer a contact's speech from a private note.
   // IT: Prefill from the evidence so the user edits meaning rather than retyping the note.
   let statementDraft = String(interaction.summary || interaction.text || '').trim();
 
@@ -53,7 +54,41 @@
       <div class="pill">{interaction.channel}</div>
     </div>
 
+    {#if data.revisionHistory?.length > 1}
+      <p class="muted">Edited note · Current version {data.revisionHistory.length}</p>
+      <details>
+        <summary>View edit history ({data.revisionHistory.length} versions)</summary>
+        <ul>
+          {#each data.revisionHistory as revision}
+            <li>
+              <details>
+                <summary>Version {revision.number} · {fmt(revision.createdAt)} {#if revision.id === interaction.id}(current){:else}(previous){/if}</summary>
+                <pre>{revision.text}</pre>
+              </details>
+            </li>
+          {/each}
+        </ul>
+        <p class="muted">Historical versions are retained for provenance and are not shown as separate recent notes. Previously approved Living Understanding may still require manual reassessment.</p>
+      </details>
+    {/if}
     {#if form?.error}<div class="error-box">{form.error}</div>{/if}
+    <section class="card inner-card">
+      <h3>Living Understanding admission</h3>
+      <p class="muted small">{data.luAdmission === 'ELIGIBLE' ? 'Eligible for LU review. This does not automatically create or approve an understanding.' : data.luAdmission === 'WITHDRAWN' ? 'Withdrawn from future LU review.' : 'Stored in CRM only.'}</p>
+      {#if data.includedInLu}
+        <p class="muted small">This note has contributed to approved Living Understanding. Excluding it requires a reviewed reassessment, not a switch.</p>
+      {/if}
+      <form method="post" action="?/changeLuAdmission" class="actions">
+        <label for="note-lu-admission">Use for Living Understanding</label>
+        <select id="note-lu-admission" name="luAdmission" disabled={data.includedInLu}>
+          <option value="STORED_ONLY" selected={data.luAdmission !== 'ELIGIBLE'}>No - CRM only</option>
+          <option value="ELIGIBLE" selected={data.luAdmission === 'ELIGIBLE'}>Yes - eligible for review</option>
+        </select>
+        <button type="submit" class="btn" disabled={data.includedInLu}>Update preference</button>
+      </form>
+      <p class="muted tiny">This controls LU admission only, not knowledge capture, semantic search, matching or public sharing.</p>
+    </section>
+
 
     <div class="card inner-card">
       <div class="block-head">
@@ -89,6 +124,23 @@
       {/if}
     </div>
 
+{#if data.versionEvidence?.some((version: { claims: unknown[] }) => version.claims.length > 0)}      <section class="card inner-card">
+        <h3>Knowledge evidence across note versions</h3>
+        <p class="muted small">Historical claims remain attached to their original versions. A corrected note does not transfer their evidence.</p>
+        {#each data.versionEvidence as version}
+          {#if version.claims.length > 0}
+            <h4>Version {version.number} {version.id === interaction.id ? '(current)' : '(previous)'}</h4>
+            {#each version.claims as claim}
+              <div class="claim-row">
+                <a href={`/knowledge/${claim.id}`}>{claim.statement}</a>
+                <span class="pill">{claim.statusLabel}</span>
+                <span class="muted small">{claim.activeEvidenceCount}/{claim.evidenceCount} active evidence</span>
+              </div>
+            {/each}
+          {/if}
+        {/each}
+      </section>
+    {/if}
     <section class="card inner-card intelligence">
       <div class="block-head">
         <div>
@@ -100,6 +152,13 @@
 
       {#if showCapture}
         <form method="post" action="?/captureKnowledge" class="capture-form">
+          <div class="field">
+            <label for="perspective">Whose perspective is this?</label>
+            <select id="perspective" name="perspective" bind:value={capturePerspective}>
+              {#each KNOWLEDGE_PERSPECTIVES as opt}<option value={opt.value}>{opt.label}</option>{/each}
+            </select>
+            <p class="muted tiny">Select contact-reported only when the source actually records what the contact said. Your interpretation is not a confirmed fact about them.</p>
+          </div>
           <div class="field">
             <label for="kind">What is this?</label>
             <select id="kind" name="kind" bind:value={captureKind}>
@@ -134,6 +193,7 @@
               <div class="claim-main">
                 <div class="title-line">
                   <span class="pill">{claim.kindLabel}</span>
+                  <span class="pill">{claim.perspectiveLabel}</span>
                   <a class="claim-link" href={`/knowledge/${claim.id}`}><strong>{claim.statement}</strong></a>
                   <span class="pill">{claim.statusLabel}</span>
                   {#if claim.status === 'ACTIVE' && !claim.hasActiveEvidence}<span class="warning-pill">No active evidence</span>{/if}
@@ -160,7 +220,9 @@
 
     <div class="actions footer-actions">
       <a class="btn" href={`/contacts/${interaction.contactId}`}>Back to contact</a>
-      <a data-sveltekit-reload href={`/contacts/${$page.params.id}/interactions/${$page.params.iid}/delete`} class="btn danger-hover" aria-label="Delete this note">Delete note</a>
+      <form method="POST" action={`/contacts/${$page.params.id}/interactions/${$page.params.iid}/delete`} on:submit={(event) => { if (!confirm("Delete this unreferenced note?")) event.preventDefault(); }}>
+        <button type="submit" class="btn danger-hover" aria-label="Delete this note">Delete note</button>
+      </form>
     </div>
   </div>
 </div>

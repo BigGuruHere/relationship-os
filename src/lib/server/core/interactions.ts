@@ -36,6 +36,7 @@ export type CreateCoreInteractionInput = {
 		| 'OTHER';
 	externalRef?: string | null;
 	createEmbedding?: boolean;
+	luAdmission?: 'STORED_ONLY' | 'ELIGIBLE';
 };
 
 function clean(value: string | null | undefined) {
@@ -80,6 +81,8 @@ export async function createCoreInteraction(
 	if (!channel) throw new Error('Interaction channel is required.');
 	const summary = String(input.summary || '').trim();
 
+	// IT: The channel adapter may opt out of LU; omitted value preserves legacy source handling.
+	const luAdmission = input.luAdmission === 'STORED_ONLY' ? 'STORED_ONLY' : 'ELIGIBLE';
 	const created = await prisma.interaction.create({
 		data: {
 			userId: context.workspaceUserId,
@@ -89,6 +92,7 @@ export async function createCoreInteraction(
 			companyId,
 			channel,
 			sourceType: (input.sourceType || 'WORKSPACE') as any,
+			luAdmission,
 			externalRef: clean(input.externalRef),
 			occurredAt: input.occurredAt || undefined,
 			rawTextEnc: encrypt(rawText, 'interaction.raw_text'),

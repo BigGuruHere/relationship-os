@@ -12,6 +12,19 @@ export const KNOWLEDGE_CLAIM_KINDS = [
   { value: 'OTHER', label: 'Other' }
 ] as const;
 
+// IT: Preserve attribution separately from claim kind and sharing permissions.
+export const KNOWLEDGE_PERSPECTIVES = [
+  { value: 'UNSPECIFIED_LEGACY', label: 'Perspective not recorded (legacy)' },
+  { value: 'CONTACT_REPORTED', label: 'Something the contact said or reported' },
+  { value: 'OWNER_OBSERVATION', label: 'My observation or interpretation' },
+  { value: 'RELATIONSHIP_PERSPECTIVE', label: 'My perspective on our relationship' }
+] as const;
+
+export const normaliseKnowledgePerspective = (value: FormDataEntryValue | string | null | undefined) =>
+  normaliseFrom(KNOWLEDGE_PERSPECTIVES, value, 'OWNER_OBSERVATION');
+export const knowledgePerspectiveLabel = (value: string | null | undefined) =>
+  labelFrom(KNOWLEDGE_PERSPECTIVES, value, 'Contact-reported (legacy)');
+
 export const KNOWLEDGE_CLAIM_STATUSES = [
   { value: 'ACTIVE', label: 'Active' },
   { value: 'SUPERSEDED', label: 'Superseded' },

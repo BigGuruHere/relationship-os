@@ -13,6 +13,7 @@ import { decrypt } from '$lib/crypto';
 import { resolveOrCreateTagForTenant } from '$lib/tags';
 import { createWorkspaceCoreAccess } from '$lib/server/core/accessPolicy';
 import { createCoreInteraction } from '$lib/server/core/interactions';
+import { findCoreContact } from '$lib/server/core/relationshipRepository';
 import { z } from 'zod';
 
 // Validate inputs coming from the form.
@@ -22,7 +23,8 @@ const NewInteraction = z.object({
   text: z.string().min(1, 'Note cannot be empty'),
   summary: z.string().optional(),          // optional AI or user summary
   tags: z.string().optional(),             // comma separated names the user typed
-  tagsSource: z.enum(['user', 'ai']).optional().default('user')
+  tagsSource: z.enum(['user', 'ai']).optional().default('user'),
+  luAdmission: z.enum(['STORED_ONLY', 'ELIGIBLE']).default('STORED_ONLY')
 });
 
 
@@ -32,10 +34,8 @@ export const load: PageServerLoad = async ({ params, locals }) => {
   if (!locals.user) throw redirect(303, '/auth/login');
 
   // Read the contact for this tenant - only the fields we need
-  const row = await prisma.contact.findFirst({
-    where: { id: params.id, userId: locals.user.id },
-    select: { id: true, fullNameEnc: true }
-  });
+  const context = createWorkspaceCoreAccess(locals.user.id, 'workspace:contact-note-load');
+  const row = await findCoreContact(context, params.id, { id: true, fullNameEnc: true });
   if (!row) throw redirect(303, '/contacts');
 
   // Decrypt on server only
@@ -65,7 +65,8 @@ async function saveImpl({ request, locals, params }: SaveArgs) {
     text: String(raw.text || ''),
     summary: String(raw.summary || ''),
     tags: String(raw.tags || ''),
-    tagsSource: String(raw.tagsSource || 'user')
+    tagsSource: String(raw.tagsSource || 'user'),
+    luAdmission: String(raw.luAdmission || 'STORED_ONLY')
   });
   if (!parsed.success) {
     // IT: Zod uses error.issues, not error.errors
@@ -74,10 +75,8 @@ async function saveImpl({ request, locals, params }: SaveArgs) {
   }
 
   // Confirm the contact is in this tenant.
-  const contact = await prisma.contact.findFirst({
-    where: { id: params.id, userId: locals.user!.id },
-    select: { id: true }
-  });
+  const context = createWorkspaceCoreAccess(locals.user!.id, 'workspace:contact-note-save');
+  const contact = await findCoreContact(context, params.id, { id: true });
   if (!contact) return fail(404, { error: 'Contact not found.' });
 
   // Prepare fields.
@@ -86,21 +85,21 @@ async function saveImpl({ request, locals, params }: SaveArgs) {
   const summaryPlain = parsed.data.summary?.trim() || '';
   try {
     // IT: Stage 8.4 routes all new relationship interactions through the channel-neutral Core ingestion seam.
-    const context = createWorkspaceCoreAccess(locals.user!.id, 'workspace:contact-interaction');
     await createCoreInteraction(context, {
       contactId: contact.id,
       channel: parsed.data.channel,
       rawText: plaintext,
       summary: summaryPlain,
       occurredAt,
-      sourceType: 'WORKSPACE'
+      sourceType: 'WORKSPACE',
+      luAdmission: parsed.data.luAdmission
     });
 
     // IT: bump the contact's lastContactedAt when a new interaction is created
     try {
       await prisma.contact.updateMany({
         // Tenant guard - only update this user's contact
-        where: { id: contact.id, userId: locals.user!.id },
+        where: { id: contact.id, userId: locals.user!.id, contextSpaceId: context.contextSpaceId },
         // Use the interaction occurredAt if provided, else now
         data: { lastContactedAt: occurredAt ?? new Date() }
       });

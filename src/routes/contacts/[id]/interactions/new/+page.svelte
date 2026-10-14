@@ -368,6 +368,14 @@
         </div>
       {/if}
 
+      <!-- IT: CRM storage and Living Understanding eligibility are independent. -->
+      <div class="field" style="margin-top:12px;">
+        <label style="display:flex; align-items:center; gap:8px;">
+          <input type="checkbox" name="luAdmission" value="ELIGIBLE" />
+          Use this note for Living Understanding review
+        </label>
+        <p class="muted">Off by default. The note is kept in your CRM either way. Enabling this permits a future understanding proposal; it does not approve or share anything.</p>
+      </div>
       <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:12px;">
         <button type="button" class="btn" on:click={summarize} disabled={summarizing || recording || saving}>
           {#if summarizing}

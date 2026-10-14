@@ -635,6 +635,8 @@ model Interaction {
   occurredAt DateTime @default(now())
   channel    String
   sourceType InteractionSourceType @default(WORKSPACE)
+  // IT: Core admission is distinct from source storage and from matching/disclosure permissions.
+  luAdmission String @default("ELIGIBLE")
   externalRef String?
   rawTextEnc String
   summaryEnc String?
@@ -1510,6 +1512,14 @@ model Objective {
 
 // IT: One canonical statement about a relationship subject. Evidence is append-only and
 // can confirm the same claim from multiple interactions without duplicating the statement.
+// IT: An explicit perspective is not a permission to share or match information.
+enum KnowledgePerspective {
+  UNSPECIFIED_LEGACY
+  CONTACT_REPORTED
+  OWNER_OBSERVATION
+  RELATIONSHIP_PERSPECTIVE
+}
+
 model KnowledgeClaim {
   id     String @id @default(uuid())
   userId String
@@ -1520,6 +1530,7 @@ model KnowledgeClaim {
   contextSpace   ContextSpace @relation(fields: [contextSpaceId], references: [id], onDelete: Cascade)
 
   kind       KnowledgeClaimKind
+  perspective KnowledgePerspective @default(UNSPECIFIED_LEGACY)
   status     KnowledgeClaimStatus @default(ACTIVE)
   statementEnc String
   statementIdx String

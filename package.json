@@ -145,7 +145,12 @@
     "check:stage8.14.5.3": "node --test tests/core/stage8-14-5-3-history-disposition-sync.test.mjs",
     "check:stage8.14.6": "node --test tests/core/stage8-14-6-context-level-review-inbox.test.mjs",
     "check:stage8.15.2.1": "node --test tests/core/stage8-15-2-1-prisma-schema-alignment.test.mjs",
-    "check:stage8.15.2": "node --experimental-strip-types --test tests/core/stage8-15-2-capability-authorisation.test.mjs"
+    "check:stage8.15.2": "node --experimental-strip-types --test tests/core/stage8-15-2-capability-authorisation.test.mjs",
+    "check:stage8.15.3": "node --test tests/core/stage8-15-3-contact-evidence.test.mjs",
+    "check:stage8.15.3.2": "node --test tests/core/stage8-15-3-2-note-current-view.test.mjs",
+    "check:stage8.15.3.1": "node --test tests/core/stage8-15-3-1-knowledge-perspectives.test.mjs",
+    "check:stage8.15.3.3": "node --test tests/core/stage8-15-3-3-source-admission.test.mjs",
+    "check:stage8.15.3.4": "node --test tests/core/stage8-15-3-4-admission-and-evidence.test.mjs"
   },
   "engines": {
     "node": ">=22.13.1 <23"

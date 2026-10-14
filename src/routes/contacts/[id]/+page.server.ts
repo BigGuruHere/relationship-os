@@ -3,6 +3,7 @@
 // SECURITY: All reads and writes are tenant scoped by userId.
 
 import { prisma } from '$lib/db';
+import { groupCurrentNotes } from '$lib/server/core/noteRevisions';
 import { decrypt, encrypt } from '$lib/crypto';
 import { fail, redirect } from '@sveltejs/kit';
 import { attachContactTags, detachContactTag } from '$lib/tags';
@@ -270,19 +271,25 @@ export const load: PageServerLoad = async ({ params, locals }) => {
     updatedAt: link.deal.updatedAt
   }));
 
+  // IT: Fetch all revisions within the contact's custody boundary before choosing current notes.
+  // Do not apply a take limit before grouping, or older originals can appear as duplicates.
   const interactionsRaw = await prisma.interaction.findMany({
-    where: { userId: locals.user.id, contactId: id },
-    select: { id: true, channel: true, occurredAt: true, rawTextEnc: true },
-    orderBy: [{ occurredAt: 'desc' }, { id: 'desc' }],
-    take: 50
+    where: { userId: locals.user.id, contextSpaceId: createWorkspaceCoreAccess(locals.user.id, 'workspace:contact-notes').contextSpaceId, contactId: id },
+    select: { id: true, channel: true, occurredAt: true, createdAt: true, externalRef: true, rawTextEnc: true },
+    orderBy: [{ createdAt: 'desc' }, { id: 'desc' }]
   });
-
-  const interactions = interactionsRaw.map((it: any) => {
-    let text = '';
-    try { text = it.rawTextEnc ? decrypt(it.rawTextEnc, 'interaction.raw_text') : ''; } catch {}
-    const preview = text.length > 280 ? text.slice(0, 277) + '...' : text;
-    return { id: it.id, channel: it.channel, occurredAt: it.occurredAt, preview, tags: [] };
-  });
+  const interactions = groupCurrentNotes(interactionsRaw)
+    .map(({ current, versions }) => {
+      let text = '';
+      try { text = current.rawTextEnc ? decrypt(current.rawTextEnc, 'interaction.raw_text') : ''; } catch {}
+      return {
+        id: current.id, channel: current.channel, occurredAt: current.occurredAt,
+        preview: text.length > 280 ? text.slice(0, 277) + '...' : text,
+        isEdited: versions.length > 1, tags: []
+      };
+    })
+    .sort((a, b) => b.occurredAt.getTime() - a.occurredAt.getTime())
+    .slice(0, 50);
 
   const dealNotesRaw = await prisma.dealNote.findMany({
     where: { userId: locals.user.id, contactId: id },

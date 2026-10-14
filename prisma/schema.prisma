@@ -34,6 +34,7 @@ enum UserRole {
 // - Primary account for a single tenant
 // - Email is stored encrypted at rest with a deterministic HMAC index for equality
 model User {
+  governedUnderstandingScopes GovernedUnderstandingScope[]
   id           String   @id @default(uuid()) // pk stored as text uuid
   passwordHash String?
 
@@ -175,6 +176,7 @@ enum ContextSpaceKind {
 }
 
 model ContextSpace {
+  governedUnderstandingScopes GovernedUnderstandingScope[]
   // IT: Default Workspace ids are supplied explicitly as User.id; future non-default spaces get independent UUIDs.
   id          String @id @default(uuid())
   ownerUserId String
@@ -467,6 +469,7 @@ model TagAlias {
 // Encrypted PII plus deterministic HMAC index columns - tenant scoped
 // ---------------------------------------------------------------------------
 model Contact {
+  governedUnderstandingScopes GovernedUnderstandingScope[]
   id String @id @default(uuid()) // pk
 
   // Tenant ownership
@@ -595,6 +598,7 @@ model Contact {
   @@index([userId, contextSpaceId])
   @@unique([userId, contextSpaceId, linkedUserId])
 
+  @@unique([id, userId, contextSpaceId], map: "Contact_id_userId_contextSpaceId_gus_unique")
 }
 
 // ---------------------------------------------------------------------------
@@ -614,6 +618,7 @@ enum InteractionSourceType {
 }
 
 model Interaction {
+  governedUnderstandingScopeSources GovernedUnderstandingScopeSource[]
   id     String @id @default(uuid())
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -2158,6 +2163,7 @@ model OfferNote {
 // that the participants know one another or agree that a relationship exists.
 // Membership and attendance have no fixed maximum; the pilot UI remains dyadic.
 model Relating {
+  governedUnderstandingScopes GovernedUnderstandingScope[]
   id             String       @id @default(uuid())
   userId         String
   user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -3694,4 +3700,54 @@ model UserCapabilityGrant {
   grantedByUserId String?
   @@unique([userId, capability])
   @@index([capability])
+}
+
+
+// IT: Stage 8.15.3.5 - prospective understanding destination, not an authorised LU revision.
+// Identity is never an access grant. Owner and ContextSpace govern every perspective.
+enum GovernedUnderstandingSubjectKind {
+  SELF
+  PERSON_VIEW
+  RELATIONSHIP_VIEW
+}
+
+model GovernedUnderstandingScope {
+  id String @id @default(uuid())
+  userId String
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  contextSpaceId String
+  contextSpace ContextSpace @relation(fields: [contextSpaceId], references: [id], onDelete: Cascade)
+  kind GovernedUnderstandingSubjectKind
+  // IT: PERSON_VIEW refers to a private Contact; RELATIONSHIP_VIEW to a private Relating.
+  // These are NOT globally shared Person knowledge or mutual relationship claims.
+  contactId String?
+  contact Contact? @relation(fields: [contactId, userId, contextSpaceId], references: [id, userId, contextSpaceId], onDelete: Restrict, onUpdate: Restrict, map: "GovernedUnderstandingScope_contact_scope_fk")
+  relatingId String?
+  relating Relating? @relation(fields: [relatingId, userId, contextSpaceId], references: [id, userId, contextSpaceId], onDelete: Restrict, onUpdate: Restrict, map: "GovernedUnderstandingScope_relating_scope_fk")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  sources GovernedUnderstandingScopeSource[]
+
+  @@unique([id, userId, contextSpaceId])
+  @@index([userId, contextSpaceId, kind])
+  @@index([userId, contextSpaceId, contactId])
+  @@index([userId, contextSpaceId, relatingId])
+}
+
+// IT: One immutable source can be associated with several independently owned scopes
+// ONLY when the source and scope share the exact same custody tuple.
+// Admission here does not grant LU incorporation, matching or disclosure permissions.
+model GovernedUnderstandingScopeSource {
+  id String @id @default(uuid())
+  userId String
+  contextSpaceId String
+  scopeId String
+  scope GovernedUnderstandingScope @relation(fields: [scopeId, userId, contextSpaceId], references: [id, userId, contextSpaceId], onDelete: Cascade, onUpdate: Restrict, map: "GovernedUnderstandingScopeSource_scope_custody_fk")
+  interactionId String
+  interaction Interaction @relation(fields: [interactionId], references: [id], onDelete: Restrict)
+  createdAt DateTime @default(now())
+
+  @@unique([scopeId, interactionId])
+// Preserve the existing PostgreSQL index name from Stage 8.15.3.5.
+@@index([userId, contextSpaceId, interactionId], map: "GovernedUnderstandingScopeSource_userId_contextSpaceId_interact")
 }

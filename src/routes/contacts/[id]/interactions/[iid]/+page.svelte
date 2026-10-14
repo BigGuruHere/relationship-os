@@ -124,7 +124,8 @@
       {/if}
     </div>
 
-{#if data.versionEvidence?.some((version: { claims: unknown[] }) => version.claims.length > 0)}      <section class="card inner-card">
+    {#if data.versionEvidence?.some((version: { claims: unknown[] }) => version.claims.length > 0)}
+      <section class="card inner-card">
         <h3>Knowledge evidence across note versions</h3>
         <p class="muted small">Historical claims remain attached to their original versions. A corrected note does not transfer their evidence.</p>
         {#each data.versionEvidence as version}

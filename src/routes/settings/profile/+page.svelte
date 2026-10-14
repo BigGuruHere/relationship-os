@@ -19,7 +19,7 @@
   let websiteUrl  = p.websiteUrl || '';
   let emailPublic = p.emailPublic || '';
   let phonePublic = p.phonePublic || '';
-  let kind        = p.kind || 'business';
+  let kind        = p.kind || (data?.requestedProfileKind === 'personal' ? 'personal' : 'business');
 
   // IT: extra inputs - one per EXTRA_KEYS entry
   const publicMeta = p.publicMeta || {};

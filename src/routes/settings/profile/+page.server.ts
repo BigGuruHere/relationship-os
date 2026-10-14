@@ -46,8 +46,11 @@ export const load: PageServerLoad = async ({ locals, url }) => {
   }
 
   // IT: pick most relevant profile - default first, then most recently updated
+  const requestedProfileSlug = url.searchParams.get('profile');
+  const requestedProfileKind = url.searchParams.get('kind');
+  // IT: Do not load an unrelated default Business profile when creating a Network profile.
   const profile = await prisma.profile.findFirst({
-    where: { userId: locals.user.id },
+    where: { userId: locals.user.id, ...(requestedProfileSlug ? { slug: requestedProfileSlug } : requestedProfileKind === 'personal' ? { kind: 'personal' } : {}) },
     select: {
       id: true,
       userId: true,
@@ -74,7 +77,7 @@ export const load: PageServerLoad = async ({ locals, url }) => {
   const first = url.searchParams.get('first') === '1';
   const next = url.searchParams.get('next') || null;
 
-  return { profile: profile || null, mode, first, next };
+  return { profile: profile || null, requestedProfileKind, mode, first, next };
 };
 
 export const actions: Actions = {
@@ -114,6 +117,8 @@ export const actions: Actions = {
       }
     }
 
+    // IT: A profile-specific create must not overwrite a default profile of another kind.
+    const createPersonal = kind === 'personal';
     // IT: read existing profile if any
     const existing = profileId
       ? await prisma.profile.findFirst({
@@ -121,7 +126,7 @@ export const actions: Actions = {
           select: { id: true, slug: true, isDefault: true, publicMeta: true }
         })
       : await prisma.profile.findFirst({
-          where: { userId: locals.user.id },
+          where: { userId: locals.user.id, ...(createPersonal ? { kind: 'personal' as const } : {}) },
           select: { id: true, slug: true, isDefault: true, publicMeta: true },
           orderBy: [{ isDefault: 'desc' }, { updatedAt: 'desc' }]
         });

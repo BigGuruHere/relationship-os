@@ -151,7 +151,8 @@
     "check:stage8.15.3.1": "node --test tests/core/stage8-15-3-1-knowledge-perspectives.test.mjs",
     "check:stage8.15.3.3": "node --test tests/core/stage8-15-3-3-source-admission.test.mjs",
     "check:stage8.15.3.4": "node --test tests/core/stage8-15-3-4-admission-and-evidence.test.mjs",
-    "check:stage8.15.3.5": "node --test tests/core/stage8-15-3-5-governed-understanding-foundation.test.mjs"
+    "check:stage8.15.3.5": "node --test tests/core/stage8-15-3-5-governed-understanding-foundation.test.mjs",
+    "check:stage8.15.4.2": "node --test tests/core/stage8-15-4-2-network-entry.test.mjs"
   },
   "engines": {
     "node": ">=22.13.1 <23"

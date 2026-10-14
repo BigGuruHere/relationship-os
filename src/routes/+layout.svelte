@@ -304,7 +304,8 @@
 					Voice reflections require review before an Outcome is created.
 				</div>
 			{:else if isGeneralApplication}
-				<a class="nav-link" href="/general">General home</a>
+				<a class="nav-link" href="/network">Network</a>
+				{#if canOperator}<a class="nav-link" href="/general">General operator home</a>{/if}
 				{#if canOperator}
 				<a class="nav-link" href="/general/people">People</a>
 				<a class="nav-link" href="/general/conversations/import">Import conversation</a>

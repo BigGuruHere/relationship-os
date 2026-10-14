@@ -34,7 +34,7 @@ export function contextDomainForPathname(pathname: string): ContextDomainKey {
 	const path = String(pathname || '/');
 	// IT: Domain selection comes from a server-owned route boundary, not from an arbitrary query parameter.
 	if (path === '/dating' || path.startsWith('/dating/')) return DATING_DOMAIN_KEY;
-	if (path === '/general' || path.startsWith('/general/')) return GENERAL_DOMAIN_KEY;
+	if (path === '/general' || path.startsWith('/general/') || path === '/network' || path.startsWith('/network/')) return GENERAL_DOMAIN_KEY;
 	return BUSINESS_DOMAIN_KEY;
 }
 

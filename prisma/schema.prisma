@@ -3748,6 +3748,5 @@ model GovernedUnderstandingScopeSource {
   createdAt DateTime @default(now())
 
   @@unique([scopeId, interactionId])
-// Preserve the existing PostgreSQL index name from Stage 8.15.3.5.
-@@index([userId, contextSpaceId, interactionId], map: "GovernedUnderstandingScopeSource_userId_contextSpaceId_interact")
+  @@index([userId, contextSpaceId, interactionId], map: "GovernedUnderstandingScopeSource_userId_contextSpaceId_interact")
 }

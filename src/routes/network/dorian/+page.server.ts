@@ -6,12 +6,15 @@ import { redirect } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
 import { prisma } from '$lib/db';
 import { decrypt } from '$lib/crypto';
+import { startSharedNetworkSession, configuredSharedBindingId } from '$lib/server/integrations/elevenlabs/networkSession';
+import type { Actions } from './$types';
 
 export const load: PageServerLoad = async ({ locals }) => {
   if (!locals.user) throw redirect(303, '/auth/login');
   const userId = locals.user.id;
   const contextSpaceId = locals.contextDomainKey === 'general' ? locals.contextSpaceId : null;
-  if (!contextSpaceId) return { status: 'NO_GENERAL_CONTEXT' as const, launch: null };
+  if (!contextSpaceId) return { status: 'NO_GENERAL_CONTEXT' as const, launch: null, sharedEnabled: false };
+  if (configuredSharedBindingId()) return { status: 'SHARED_AVAILABLE' as const, launch: null, sharedEnabled: true };
 
   // Only the current member's General deployment may be used: the signed post-call
   // webhook resolves the destination from this deployment, not from browser variables.
@@ -50,4 +53,16 @@ export const load: PageServerLoad = async ({ locals }) => {
       })
     }
   };
+};
+
+// A POST from the signed-in member is required to issue a short-lived voice session.
+export const actions: Actions = {
+  start: async ({ locals }) => {
+    if (!locals.user) throw redirect(303, '/auth/login');
+    const contextSpaceId = locals.contextDomainKey === 'general' ? locals.contextSpaceId : null;
+    if (!contextSpaceId) return { sharedError: 'General ContextSpace is unavailable.' };
+    const result = await startSharedNetworkSession(locals.user.id, contextSpaceId);
+    if (!result || result.status !== 'READY') return { sharedError: 'Shared Dorian is not configured or your self-contact is missing.' };
+    return { sharedLaunch: { agentId: result.agentId, dynamicVariables: result.dynamicVariables } };
+  }
 };

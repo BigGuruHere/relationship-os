@@ -1,3 +1,4 @@
+import { configuredSharedBindingId } from '$lib/server/integrations/elevenlabs/networkSession';
 // PURPOSE: ElevenLabs conversation-initiation bridge for inbound phone/SIP/widget calls.
 // SECURITY: Header-authenticated. Agent deployment resolves the destination ContextSpace before any participant data is read.
 import { json } from '@sveltejs/kit';
@@ -39,7 +40,7 @@ export const POST: RequestHandler = async ({ request }) => {
     relishPersonId: body?.relish_person_id || null,
     conversationId: body?.conversation_id || null
   });
-  elevenLabsPayloadLog(traceId, 'RECEIVED', 'Full initiation payload received from ElevenLabs.', body);
+  // Never log initiation payloads that can contain session credentials.
 
   try {
     const deployment = await resolveElevenLabsAgentDeployment({
@@ -55,6 +56,15 @@ export const POST: RequestHandler = async ({ request }) => {
     if (deployment.status !== 'RESOLVED' || !deployment.userId || !deployment.contextSpaceId) {
       elevenLabsLog(traceId, 'RESPONSE', 'No Relish agent deployment matched this initiation.', { status: 404, warning: deployment.warning });
       return json({ error: 'No Relish agent deployment matches this call.' }, { status: 404 });
+    }
+
+    // SECURITY: Do not expose the deployment owner's identity/LU to shared agent calls.
+    // This endpoint has no authenticated participant session binding yet; do not consult owner records.
+    if (configuredSharedBindingId() && deployment.bindingId === configuredSharedBindingId()) {
+      return json({ dynamic_variables: {
+        relish_identity_status: 'UNRESOLVED',
+        call_instruction: 'Speak with the participant without using owner-specific private context.'
+      } });
     }
 
     return runWithExternalWorkspaceCustody({

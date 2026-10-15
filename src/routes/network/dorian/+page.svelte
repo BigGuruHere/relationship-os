@@ -1,12 +1,14 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  export let form: { sharedLaunch?: { agentId: string; dynamicVariables: string }; sharedError?: string } | null;
   export let data: {
-    status: 'READY' | 'NO_GENERAL_CONTEXT' | 'NO_PRIVATE_DEPLOYMENT' | 'NO_SELF_IDENTITY';
+    status: 'READY' | 'NO_GENERAL_CONTEXT' | 'NO_PRIVATE_DEPLOYMENT' | 'NO_SELF_IDENTITY' | 'SHARED_AVAILABLE';
     launch: { agentId: string; dynamicVariables: string } | null;
+    sharedEnabled?: boolean;
   };
   // Load the vendor widget only for a verified, participant-owned deployment.
   onMount(() => {
-    if (!data.launch) return;
+    if (!data.launch && !form?.sharedLaunch) return;
     const id = 'elevenlabs-convai-widget-script';
     if (document.getElementById(id)) return;
     const script = document.createElement('script');
@@ -22,7 +24,18 @@
   <a href="/network">← Back to Network</a>
   <h1>Talk with Dorian</h1>
   <p>Dorian helps you explore what matters to you. Your conversation is private to your own Relish account and General ContextSpace.</p>
-  {#if data.status === 'READY' && data.launch}
+  {#if data.status === 'SHARED_AVAILABLE'}
+    <section class="card" style="padding:20px;margin:18px 0">
+      <h2>Shared Dorian</h2>
+      <p>Starting a conversation creates a temporary session tied to your own account. The transcript remains in your General ContextSpace and is not automatically shared or match-eligible.</p>
+      {#if form?.sharedError}<p role="alert">{form.sharedError}</p>{/if}
+      {#if form?.sharedLaunch}
+        <elevenlabs-convai agent-id={form.sharedLaunch.agentId} dynamic-variables={form.sharedLaunch.dynamicVariables}></elevenlabs-convai>
+      {:else}
+        <form method="POST" action="?/start"><button type="submit">Start Dorian session</button></form>
+      {/if}
+    </section>
+  {:else if data.status === 'READY' && data.launch}
     <section class="card" style="padding:20px;margin:18px 0">
       <h2>Start a voice conversation</h2>
       <p>Choose to start the voice widget when you're comfortable. A conversation may be transcribed for your private records. Nothing is made shareable or match-eligible just by speaking.</p>

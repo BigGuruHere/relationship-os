@@ -9,6 +9,7 @@ import { resolveElevenLabsIdentity } from '$lib/server/integrations/elevenlabs/i
 import { resolveElevenLabsAgentDeployment } from '$lib/server/integrations/elevenlabs/deployment';
 import { elevenLabsErrorLog, elevenLabsLog, elevenLabsPayloadLog, elevenLabsTraceId } from '$lib/server/integrations/elevenlabs/debug';
 import { describeLivingUnderstandingReviewHandoff } from '$lib/server/core/livingUnderstandingReviewHandoff';
+import { configuredSharedBindingId, resolveSharedNetworkSession } from '$lib/server/integrations/elevenlabs/networkSession';
 import { automaticLivingUnderstandingPreparationEnabled, prepareAutomaticLivingUnderstandingImpact } from '$lib/server/core/automaticLivingUnderstanding';
 
 export const POST: RequestHandler = async ({ request }) => {
@@ -66,7 +67,7 @@ export const POST: RequestHandler = async ({ request }) => {
     providerUserId: event?.data?.user_id || null,
     transcriptRows: Array.isArray(event?.data?.transcript) ? event.data.transcript.length : 0
   });
-  elevenLabsPayloadLog(traceId, 'RECEIVED', 'Full signed post-call payload received from ElevenLabs.', event);
+  // SECURITY: Do not log raw webhook payloads: they may include participant session tokens and transcripts.
 
   if (event?.type !== 'post_call_transcription') {
     elevenLabsLog(traceId, 'RESPONSE', 'Webhook event ignored because it is not post_call_transcription.', { type: event?.type || null });
@@ -88,14 +89,7 @@ export const POST: RequestHandler = async ({ request }) => {
       agentTurns: normalized.parsed.turns.filter(turn => turn.speaker === 'Agent').length,
       dynamicVariableKeys: Object.keys(normalized.dynamicVariables || {})
     });
-    elevenLabsPayloadLog(traceId, 'NORMALIZE', 'Normalized transcript and metadata.', {
-      metadata: normalized.metadata,
-      agentId: normalized.agentId,
-      callerPhone: normalized.callerPhone,
-      calledNumber: normalized.calledNumber,
-      dynamicVariables: normalized.dynamicVariables,
-      parsed: normalized.parsed
-    });
+    // SECURITY: Do not emit transcript contents or token-bearing dynamic variables to logs.
 
     const deployment = await resolveElevenLabsAgentDeployment({
       agentId: normalized.agentId,
@@ -118,16 +112,30 @@ export const POST: RequestHandler = async ({ request }) => {
       return json({ status: 'unresolved_agent_deployment', agentId: normalized.agentId || null, calledNumber: normalized.calledNumber || null }, { status: 202 });
     }
 
-    const ingested = await runWithExternalWorkspaceCustody({ targetUserId: deployment.userId, targetContextSpaceId: deployment.contextSpaceId, reason: 'ELEVENLABS_CONVERSATION_INGEST' }, async () => {
+    // For the configured shared agent, the deployment owner is NEVER the transcript owner.
+    // The session token is an unguessable server-issued credential and must match this binding.
+    const shared = deployment.bindingId === configuredSharedBindingId()
+      ? await resolveSharedNetworkSession({
+          bindingId: deployment.bindingId!, conversationId: normalized.metadata.externalConversationId,
+          agentId: normalized.agentId, sessionToken: normalized.dynamicVariables.relish_network_session
+        })
+      : null;
+    if (deployment.bindingId === configuredSharedBindingId() && !shared) {
+      return json({ error: 'Missing or invalid Network participant session.' }, { status: 403 });
+    }
+    const targetUserId = shared?.userId ?? deployment.userId!;
+    const targetContextSpaceId = shared?.contextSpaceId ?? deployment.contextSpaceId!;
+    const targetDomainKey = shared ? 'general' : deployment.domainKey!;
+    const ingested = await runWithExternalWorkspaceCustody({ targetUserId, targetContextSpaceId, reason: 'ELEVENLABS_CONVERSATION_INGEST' }, async () => {
       elevenLabsLog(traceId, 'CUSTODY', 'Entered external workspace custody for conversation ingestion.', {
-        userId: deployment.userId,
-        contextSpaceId: deployment.contextSpaceId,
-        domainKey: deployment.domainKey,
+        userId: targetUserId,
+        contextSpaceId: targetContextSpaceId,
+        domainKey: targetDomainKey,
         agentKey: deployment.agentKey,
         bindingId: deployment.bindingId
       });
 
-      const stored = await storeConversationOriginal({ userId: deployment.userId!, contextSpaceId: deployment.contextSpaceId! }, deployment.domainKey!, normalized.parsed, {
+      const stored = await storeConversationOriginal({ userId: targetUserId, contextSpaceId: targetContextSpaceId }, targetDomainKey, normalized.parsed, {
         ...normalized.metadata,
         agentName: deployment.agentName || normalized.metadata.agentName
       });
@@ -137,18 +145,20 @@ export const POST: RequestHandler = async ({ request }) => {
         conversationId: normalized.metadata.externalConversationId
       });
 
-      const identity = await resolveElevenLabsIdentity({ userId: deployment.userId!, contextSpaceId: deployment.contextSpaceId! }, {
+      const identity = await resolveElevenLabsIdentity({ userId: targetUserId, contextSpaceId: targetContextSpaceId }, {
+        // Ignore untrusted third-party identity hints for shared sessions.
+        ...(shared ? { relishContactId: shared.contactId } : {
         relishContactId: normalized.dynamicVariables.relish_contact_id,
         relishPersonId: normalized.dynamicVariables.relish_person_id,
         callerPhone: normalized.callerPhone,
-        providerUserId: normalized.userId
+        providerUserId: normalized.userId }),
       });
       elevenLabsLog(traceId, 'IDENTITY', 'Participant identity resolution completed.', identity);
 
       let participantSourceId: string | null = null;
       let livingUnderstandingReview: Awaited<ReturnType<typeof describeLivingUnderstandingReviewHandoff>> | null = null;
       if (identity.status === 'RESOLVED' && identity.contactId) {
-        const attached = await attachConversationParticipant({ userId: deployment.userId!, contextSpaceId: deployment.contextSpaceId! }, deployment.domainKey!, stored.transcriptId, identity.contactId);
+        const attached = await attachConversationParticipant({ userId: targetUserId, contextSpaceId: targetContextSpaceId }, targetDomainKey, stored.transcriptId, identity.contactId);
         participantSourceId = attached.id;
         elevenLabsLog(traceId, 'ATTACH', 'Participant-specific conversation evidence attached.', {
           contactId: identity.contactId,
@@ -156,8 +166,8 @@ export const POST: RequestHandler = async ({ request }) => {
           participantSourceId
         });
         livingUnderstandingReview = await describeLivingUnderstandingReviewHandoff(
-          { userId: deployment.userId!, contextSpaceId: deployment.contextSpaceId!, contactId: identity.contactId },
-          deployment.domainKey!,
+          { userId: targetUserId, contextSpaceId: targetContextSpaceId, contactId: identity.contactId },
+          targetDomainKey,
           participantSourceId
         );
         elevenLabsLog(traceId, 'LU_HANDOFF', 'Conversation is ready for the existing human-approved Living Understanding workflow.', {
@@ -200,9 +210,9 @@ export const POST: RequestHandler = async ({ request }) => {
       const startedAt = Date.now();
       try {
         const prepared = await runWithWorkspaceCustody(
-          { userId: deployment.userId!, contextSpaceId: deployment.contextSpaceId! },
+          { userId: targetUserId, contextSpaceId: targetContextSpaceId },
           () => prepareAutomaticLivingUnderstandingImpact(
-            { userId: deployment.userId!, contextSpaceId: deployment.contextSpaceId!, contactId: ingested.contactId! },
+            { userId: targetUserId, contextSpaceId: targetContextSpaceId, contactId: ingested.contactId! },
             ingested.participantSourceId!
           )
         );

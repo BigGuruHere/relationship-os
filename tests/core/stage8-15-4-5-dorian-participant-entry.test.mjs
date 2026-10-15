@@ -18,7 +18,7 @@ test('Self-contact must be unambiguous and custody local', () => {
  assert.match(load, /contacts\.length !== 1/);
 });
 test('Widget remains unavailable without eligibility; no invitation-derived identity', () => {
- assert.match(ui, /if \(!data\.launch\) return/);
+ assert.match(ui, /if \(!data\.launch && !form\?\.sharedLaunch\) return/);
  assert.match(ui, /status === 'READY' && data\.launch/);
  assert.match(network, /href="\/network\/dorian"/);
  assert.doesNotMatch(load, /inviterUserId|NetworkConnectionOrigin/);

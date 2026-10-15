@@ -3767,3 +3767,15 @@ model NetworkConnectionOrigin {
   @@index([visitorUserId])
   @@index([profileId])
 }
+
+
+// Stage 8.15.4.4b: One-sided Network removal, without deleting either user's Contact history.
+model NetworkConnectionVisibility {
+  id String @id @default(uuid())
+  userId String
+  otherUserId String
+  removedAt DateTime @default(now())
+
+  @@unique([userId, otherUserId])
+  @@index([userId])
+}

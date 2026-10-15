@@ -126,7 +126,10 @@ export const load: PageServerLoad = async ({ params, url, locals }) => {
         },
         select: { id: true }
       });
-      isAlreadyConnected = Boolean(networkOrigin);
+      const removed = networkOrigin ? await prisma.networkConnectionVisibility.findUnique({
+        where: { userId_otherUserId: { userId: visitorUserId, otherUserId: ownerId } }, select: { id: true }
+      }) : null;
+      isAlreadyConnected = Boolean(networkOrigin && !removed);
     } else {
       // Older non-Network public profiles continue to use linked contacts.
       // Read only the visitor's Contact, never the other owner's private rows.

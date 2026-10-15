@@ -3,7 +3,7 @@
   export let data: {
     profile: { slug: string; displayName: string | null; headline: string | null } | null;
     hasNetworkContext: boolean;
-    people: Array<{ name: string; slug: string | null; connectedAt: string }>;
+    people: Array<{ userId: string; name: string; slug: string | null; connectedAt: string }>;
   };
 </script>
 <svelte:head><title>Network - Relish</title></svelte:head>
@@ -27,9 +27,16 @@
   {#if data.people.length}
     <section class="card" style="padding:20px;margin-bottom:18px">
       <h2>Your connections</h2>
+      <p>Removing a connection only changes your Network view. It does not delete either person's private contact records.</p>
       <ul>
         {#each data.people as person}
-          <li>{#if person.slug}<a href={'/u/' + encodeURIComponent(person.slug)}>{person.name}</a>{:else}{person.name}{/if}</li>
+          <li style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 0">
+            <span>{#if person.slug}<a href={'/u/' + encodeURIComponent(person.slug)}>{person.name}</a>{:else}{person.name}{/if}</span>
+            <form method="POST" action="?/remove" on:submit={(event) => { if (!confirm('Remove this person from your Network? Their contact information and relationship history will remain in both ContextSpaces.')) event.preventDefault(); }}>
+              <input type="hidden" name="otherUserId" value={person.userId} />
+              <button class="btn" type="submit">Remove from my Network</button>
+            </form>
+          </li>
         {/each}
       </ul>
     </section>

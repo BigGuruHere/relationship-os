@@ -16,12 +16,16 @@ export const load: PageServerLoad = async ({ params, locals }) => {
   const next = `/network/join/${encodeURIComponent(profile.slug)}`;
   if (!locals.user) return { profile: { name: profile.displayName || 'Network member' }, signedIn: false, isSelf: false, connected: false, next };
   const isSelf = locals.user.id === profile.userId;
-  const connected = isSelf ? false : Boolean(await prisma.networkConnectionOrigin.findFirst({
+  const existingOrigin = isSelf ? null : await prisma.networkConnectionOrigin.findFirst({
     where: { OR: [
       { inviterUserId: profile.userId, visitorUserId: locals.user.id },
       { inviterUserId: locals.user.id, visitorUserId: profile.userId }
     ] }, select: { id: true }
-  }));
+  });
+  const removed = existingOrigin && !isSelf ? await prisma.networkConnectionVisibility.findUnique({
+    where: { userId_otherUserId: { userId: locals.user.id, otherUserId: profile.userId } }, select: { id: true }
+  }) : null;
+  const connected = Boolean(existingOrigin && !removed);
   return { profile: { name: profile.displayName || 'Network member' }, signedIn: true, isSelf, connected, next };
 };
 
@@ -48,6 +52,10 @@ export const actions: Actions = {
       console.error('Network invitation connection failed', cause);
       return fail(409, { error: 'Unable to connect at present. Please try again.' });
     }
+    // Rejoining restores only this participant's Network visibility, leaving the other side unchanged.
+    await prisma.networkConnectionVisibility.deleteMany({
+      where: { userId: locals.user.id, otherUserId: personal.userId }
+    });
     throw redirect(303, '/network?connected=1');
   }
 };

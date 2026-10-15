@@ -26,7 +26,7 @@
   </section>
   {#if data.people.length}
     <section class="card" style="padding:20px;margin-bottom:18px">
-      <h2>People who connected with you</h2>
+      <h2>Your connections</h2>
       <ul>
         {#each data.people as person}
           <li>{#if person.slug}<a href={'/u/' + encodeURIComponent(person.slug)}>{person.name}</a>{:else}{person.name}{/if}</li>

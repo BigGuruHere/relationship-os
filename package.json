@@ -157,6 +157,7 @@
     "check:stage8.15.4.2b": "node --test tests/core/stage8-15-4-2b-user-admin.test.mjs",
     "check:stage8.15.4.2c": "node --test tests/core/stage8-15-4-2c-member-access.test.mjs",
     "check:stage8.15.4.2d": "node --test tests/core/stage8-15-4-2d-permission-correction.test.mjs",
+    "check:stage8.15.4.3a": "node --test tests/core/stage8-15-4-3a-network-visibility.test.mjs",
     "check:stage8.15.4.3": "node --test tests/core/stage8-15-4-3-network-connections.test.mjs"
   },
   "engines": {

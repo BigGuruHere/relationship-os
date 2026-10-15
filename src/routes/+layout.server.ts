@@ -64,7 +64,7 @@ export const load: LayoutServerLoad = async ({ locals, url }) => {
 	if (locals.user?.id && locals.contextSpaceId) {
 		// IT - compute reconnects due from cadence fields
 		const rows = await prisma.contact.findMany({
-			where: { userId: locals.user.id, reconnectEveryDays: { not: null } },
+			where: { userId: locals.user.id, contextSpaceId: locals.contextSpaceId, reconnectEveryDays: { not: null } },
 			select: { createdAt: true, lastContactedAt: true, reconnectEveryDays: true }
 		});
 
@@ -79,13 +79,14 @@ export const load: LayoutServerLoad = async ({ locals, url }) => {
 
 		// IT - open reminders count
 		remindersOpenCount = await prisma.reminder.count({
-			where: { userId: locals.user.id, completedAt: null }
+			where: { userId: locals.user.id, contextSpaceId: locals.contextSpaceId, completedAt: null }
 		});
 
 		// IT - open task count for the new unified task layer.
 		tasksOpenCount = await prisma.task.count({
 			where: {
 				userId: locals.user.id,
+				contextSpaceId: locals.contextSpaceId,
 				status: { in: ['OPEN', 'IN_PROGRESS', 'WAITING', 'SNOOZED'] as any }
 			}
 		});

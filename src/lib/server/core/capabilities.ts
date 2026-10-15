@@ -21,9 +21,9 @@ export function requiredCapabilityForPath(pathname: string): Capability | null {
   const path = pathname.replace(/\/+$/, '') || '/';
   const within = (prefix: string) => path === prefix || path.startsWith(prefix + '/');
   // SECURITY: Account management is owner-only in addition to the route capability gate.
-  if (within('/settings/users')) return 'ADMIN';
+  if (within('/settings/users') || within('/settings/context-spaces')) return 'ADMIN';
   if (within('/settings/agents')) return 'ADMIN';
-  if (within('/general/admin') || within('/general/reviews') || within('/general/conversations/import') || within('/general/people')) return 'OPERATOR';
-  if (['/leads', '/companies', '/deals', '/agents', '/workstreams', '/api/leads'].some(within)) return 'BROKER';
+  if (within('/general') && !within('/general/public')) return 'OPERATOR';
+  if (['/leads', '/companies', '/deals', '/agents', '/workstreams', '/api/leads', '/api/task-commercial-links'].some(within)) return 'BROKER';
   return null;
 }

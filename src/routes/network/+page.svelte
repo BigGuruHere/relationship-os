@@ -42,8 +42,9 @@
     </section>
   {/if}
   <section class="card" style="padding:20px">
-    <h2>What's next?</h2>
-    <p>People can scan your Personal profile QR and create an account to connect. Dorian conversations follow in a later stage.</p>
+    <h2>Talk with Dorian</h2>
+    <p>Explore what matters to you through a private conversation. Voice opens only when your own identity and conversation deployment are safely configured.</p>
+    <p><a class="btn primary" href="/network/dorian">Talk with Dorian</a></p>
     {#if !data.hasNetworkContext}<p>Your General relationship ContextSpace is not configured yet. Network conversation and understanding features will require it.</p>{/if}
   </section>
 </div>

@@ -32,7 +32,7 @@
         <div style="height:1px; background:var(--border); flex:1;"></div>
       </div>
   
-      <a class="btn" href="/auth/google" style="width:100%; justify-content:center;">
+      <a class="btn" href={data.next ? '/auth/google?next=' + encodeURIComponent(data.next) : '/auth/google'} style="width:100%; justify-content:center;">
         Continue with Google
       </a>
   

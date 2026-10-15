@@ -17,6 +17,7 @@
     {:else}
       <p>Create a free account or sign in to connect. You'll return to this invitation afterwards.</p>
       <a class="btn primary" href={'/auth/register?next=' + encodeURIComponent(data.next)}>Create account</a>
+      <a class="btn" href={'/auth/google?next=' + encodeURIComponent(data.next)}>Continue with Google</a>
       <a class="btn" href={'/auth/login?next=' + encodeURIComponent(data.next)}>I already have an account</a>
     {/if}
   </section>

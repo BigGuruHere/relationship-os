@@ -11,7 +11,7 @@ export function elevenLabsTraceId(prefix = 'el') {
 
 function replacer(key: string, value: unknown) {
   const lower = key.toLowerCase();
-  if (lower.includes('authorization') || lower.includes('signature') || lower.includes('secret') || lower.includes('api_key') || lower.includes('apikey')) {
+  if (lower.includes('session') || lower.includes('token') || lower.includes('dynamic_variables') || lower.includes('authorization') || lower.includes('signature') || lower.includes('secret') || lower.includes('api_key') || lower.includes('apikey')) {
     return '[REDACTED]';
   }
   return value;

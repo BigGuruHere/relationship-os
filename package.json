@@ -151,7 +151,20 @@
     "check:stage8.15.3.1": "node --test tests/core/stage8-15-3-1-knowledge-perspectives.test.mjs",
     "check:stage8.15.3.3": "node --test tests/core/stage8-15-3-3-source-admission.test.mjs",
     "check:stage8.15.3.4": "node --test tests/core/stage8-15-3-4-admission-and-evidence.test.mjs",
-    "check:stage8.15.3.5": "node --test tests/core/stage8-15-3-5-governed-understanding-foundation.test.mjs"
+    "check:stage8.15.3.5": "node --test tests/core/stage8-15-3-5-governed-understanding-foundation.test.mjs",
+    "check:stage8.15.4.2": "node --test tests/core/stage8-15-4-2-network-entry.test.mjs",
+    "check:stage8.15.4.2a": "node --test tests/core/stage8-15-4-2a-network-flow.test.mjs",
+    "check:stage8.15.4.2b": "node --test tests/core/stage8-15-4-2b-user-admin.test.mjs",
+    "check:stage8.15.4.2c": "node --test tests/core/stage8-15-4-2c-member-access.test.mjs",
+    "check:stage8.15.4.2d": "node --test tests/core/stage8-15-4-2d-permission-correction.test.mjs",
+    "check:stage8.15.4.3a": "node --test tests/core/stage8-15-4-3a-network-visibility.test.mjs",
+    "check:stage8.15.4.3": "node --test tests/core/stage8-15-4-3-network-connections.test.mjs",
+    "check:stage8.15.4.4": "node --test tests/core/stage8-15-4-4-onboarding.test.mjs",
+    "check:stage8.15.4.4b": "node --test tests/core/stage8-15-4-4b-network-removal.test.mjs",
+    "check:stage8.15.4.4a": "node --test tests/core/stage8-15-4-4a-google-onboarding.test.mjs",
+    "check:stage8.15.4.5": "node --test tests/core/stage8-15-4-5-dorian-participant-entry.test.mjs",
+    "check:stage8.15.4.6": "node --test tests/core/stage8-15-4-6-shared-dorian.test.mjs",
+    "check:stage8.15.4.6a": "node --test tests/core/stage8-15-4-6a-self-contact.test.mjs"
   },
   "engines": {
     "node": ">=22.13.1 <23"

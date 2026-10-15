@@ -1,0 +1,50 @@
+<script lang="ts">
+  // PURPOSE: Minimal Network pilot entry, without exposing operator or ContextSpace tooling.
+  export let data: {
+    profile: { slug: string; displayName: string | null; headline: string | null } | null;
+    hasNetworkContext: boolean;
+    people: Array<{ userId: string; name: string; slug: string | null; connectedAt: string }>;
+  };
+</script>
+<svelte:head><title>Network - Relish</title></svelte:head>
+<div class="container" style="max-width:760px;padding:20px 12px">
+  <h1>Your Network</h1>
+  <p>Meet people. Stay connected. Discover what becomes possible.</p>
+  <section class="card" style="padding:20px;margin:18px 0">
+    <h2>My profile</h2>
+    {#if data.profile}
+      <p><strong>{data.profile.displayName || 'Personal profile'}</strong></p>
+      {#if data.profile.headline}<p>{data.profile.headline}</p>{/if}
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
+        <a class="btn primary" href="/network/share">Share my QR</a>
+        <a class="btn" href={'/settings/profile?profile=' + encodeURIComponent(data.profile.slug) + '&kind=personal&entry=network'}>Edit profile</a>
+      </div>
+    {:else}
+      <p>Make a personal profile to share with someone you meet. Your Business profile stays separate.</p>
+      <a class="btn primary" href="/settings/profile?kind=personal&entry=network">Create my profile</a>
+    {/if}
+  </section>
+  {#if data.people.length}
+    <section class="card" style="padding:20px;margin-bottom:18px">
+      <h2>Your connections</h2>
+      <p>Removing a connection only changes your Network view. It does not delete either person's private contact records.</p>
+      <ul>
+        {#each data.people as person}
+          <li style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 0">
+            <span>{#if person.slug}<a href={'/u/' + encodeURIComponent(person.slug)}>{person.name}</a>{:else}{person.name}{/if}</span>
+            <form method="POST" action="?/remove" on:submit={(event) => { if (!confirm('Remove this person from your Network? Their contact information and relationship history will remain in both ContextSpaces.')) event.preventDefault(); }}>
+              <input type="hidden" name="otherUserId" value={person.userId} />
+              <button class="btn" type="submit">Remove from my Network</button>
+            </form>
+          </li>
+        {/each}
+      </ul>
+    </section>
+  {/if}
+  <section class="card" style="padding:20px">
+    <h2>Talk with Dorian</h2>
+    <p>Explore what matters to you through a private conversation. Voice opens only when your own identity and conversation deployment are safely configured.</p>
+    <p><a class="btn primary" href="/network/dorian">Talk with Dorian</a></p>
+    {#if !data.hasNetworkContext}<p>Your General relationship ContextSpace is not configured yet. Network conversation and understanding features will require it.</p>{/if}
+  </section>
+</div>

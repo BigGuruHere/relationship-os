@@ -113,19 +113,33 @@ export const load: PageServerLoad = async ({ params, url, locals }) => {
   let visitorProfile = null;
   
   if (visitorUserId && visitorUserId !== ownerId) {
-    // Do not connect to yourself.
-      // SECURITY: Check the visitor's own Contact representation. Reading the profile owner's
-      // private Contact table from the visitor's custody would cross the Stage 8.7 boundary.
-      const existingContact = await prisma.contact.findFirst({
+    // SECURITY: NetworkConnectionOrigin is the durable authoritative link for
+    // personal-profile Network connections. Check both directions, because the
+    // visitor may have originally been the inviter in a previous scan.
+    if (profile?.kind === 'personal') {
+      const networkOrigin = await prisma.networkConnectionOrigin.findFirst({
         where: {
-          userId: visitorUserId,
-          linkedUserId: ownerId
+          OR: [
+            { inviterUserId: ownerId, visitorUserId },
+            { inviterUserId: visitorUserId, visitorUserId: ownerId }
+          ]
         },
         select: { id: true }
       });
-      
+      const removed = networkOrigin ? await prisma.networkConnectionVisibility.findUnique({
+        where: { userId_otherUserId: { userId: visitorUserId, otherUserId: ownerId } }, select: { id: true }
+      }) : null;
+      isAlreadyConnected = Boolean(networkOrigin && !removed);
+    } else {
+      // Older non-Network public profiles continue to use linked contacts.
+      // Read only the visitor's Contact, never the other owner's private rows.
+      const existingContact = await prisma.contact.findFirst({
+        where: { userId: visitorUserId, linkedUserId: ownerId },
+        select: { id: true }
+      });
       isAlreadyConnected = Boolean(existingContact);
-      
+    }
+
       // Get visitor's profile for the connect button
       if (!isAlreadyConnected) {
         visitorProfile = await prisma.profile.findFirst({

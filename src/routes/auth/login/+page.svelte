@@ -1,5 +1,6 @@
 <!-- PURPOSE: simple login form with Google option -->
 <script lang="ts">
+    export let data: { next: string | null };
     export let form; // SvelteKit action form data
   </script>
   
@@ -13,7 +14,7 @@
         </div>
       {/if}
   
-      <form method="POST">
+      <form method="POST" action={data.next ? `?next=${encodeURIComponent(data.next)}` : undefined}>
         <div class="field">
           <label for="email">Email</label>
           <input id="email" name="email" type="email" autocomplete="email" required />
@@ -31,12 +32,12 @@
         <div style="height:1px; background:var(--border); flex:1;"></div>
       </div>
   
-      <a class="btn" href="/auth/google" style="width:100%; justify-content:center;">
+      <a class="btn" href={data.next ? '/auth/google?next=' + encodeURIComponent(data.next) : '/auth/google'} style="width:100%; justify-content:center;">
         Continue with Google
       </a>
   
       <p style="color:var(--muted); margin-top:14px; font-size:0.95rem;">
-        No account? <a href="/auth/register">Create one</a>
+        No account? <a href={data.next ? '/auth/register?next=' + encodeURIComponent(data.next) : '/auth/register'}>Create one</a>
       </p>
     </div>
   </div>

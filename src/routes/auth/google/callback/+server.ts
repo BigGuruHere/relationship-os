@@ -12,6 +12,7 @@
 
 import type { RequestHandler } from './$types';
 import { redirect, error } from '@sveltejs/kit';
+import { safeNetworkJoinReturn } from '$lib/server/networkJoinReturn';
 import { prisma } from '$lib/db';
 import { createSession, setSessionCookie } from '$lib/auth';
 import * as jose from 'jose';
@@ -50,6 +51,7 @@ function clearTempCookies(
   cookies.set('oauth_state', '', base);
   cookies.set('oauth_nonce', '', base);
   cookies.set('oauth_pkce', '', base);
+  cookies.set('oauth_network_next', '', base);
 }
 
 export const GET: RequestHandler = async ({ url, cookies, locals, getClientAddress, fetch }) => {
@@ -58,6 +60,8 @@ export const GET: RequestHandler = async ({ url, cookies, locals, getClientAddre
   checkRateLimit(`oauth:${ip}`);
 
   // 2 - required query params
+  // IT: Read before clearing temporary OAuth cookies; never trust an arbitrary redirect.
+  const next = safeNetworkJoinReturn(cookies.get('oauth_network_next'));
   const code = url.searchParams.get('code') || '';
   const state = url.searchParams.get('state') || '';
 
@@ -265,5 +269,5 @@ export const GET: RequestHandler = async ({ url, cookies, locals, getClientAddre
   }
 
   // 16 - home sweet home
-  throw redirect(303, '/');
+  throw redirect(303, next || '/');
 };

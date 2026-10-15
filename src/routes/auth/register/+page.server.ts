@@ -14,16 +14,19 @@ import { linkLeadsForUser } from '$lib/leads/link';
 // IT: encrypted email helpers - equality lookup and write
 import { findUserByEmail, encryptedUserEmailFields } from '$lib/server/userEmail';
 import { randomUUID } from 'node:crypto';
+import { safeNetworkJoinReturn } from '$lib/server/networkJoinReturn';
 
 
-export const load: PageServerLoad = async ({ locals }) => {
+export const load: PageServerLoad = async ({ locals, url }) => {
+  const next = safeNetworkJoinReturn(url.searchParams.get('next'));
   // If already signed in, redirect home
-  if (locals.user) throw redirect(303, '/');
-  return {};
+  if (locals.user) throw redirect(303, next || '/');
+  return { next };
 };
 
 export const actions: Actions = {
-  default: async ({ request, cookies, locals }) => {
+  default: async ({ request, cookies, locals, url }) => {
+    const next = safeNetworkJoinReturn(url.searchParams.get('next'));
     // Parse form
     const form = await request.formData();
     const emailInput = String(form.get('email') || '');
@@ -83,6 +86,6 @@ export const actions: Actions = {
     }
 
     // Go home
-    throw redirect(303, '/');
+    throw redirect(303, next || '/');
   }
 };

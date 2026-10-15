@@ -152,11 +152,13 @@
             👋 You're both on Relish! Connect instantly.
           </p>
           
-          <form method="post" action="?/connectUsers">
-            <button class="btn primary" type="submit" style="width:100%;">
-              Connect with {ownerName}
-            </button>
-          </form>
+          {#if data?.profile?.kind === 'personal'}
+            <a class="btn primary" href={'/network/join/' + encodeURIComponent(data.slugParam)} style="width:100%;justify-content:center;">Connect with {ownerName}</a>
+          {:else}
+            <form method="post" action="?/connectUsers">
+              <button class="btn primary" type="submit" style="width:100%;">Connect with {ownerName}</button>
+            </form>
+          {/if}
           
           <p class="muted" style="margin:10px 0 0 0; font-size:0.9rem;">
             This will create contacts for both of you using your profile information.
@@ -202,6 +204,13 @@
         </div>
       {/if}
 
+      <!-- User deliberately chooses Connect here; authentication then completes it automatically. -->
+      {#if !data?.isOwner && !data?.isVisitorLoggedIn && data?.profile?.kind === 'personal'}
+        <div class="card" style="padding:14px; margin:12px 0;">
+          <p>Want to stay connected on Relish?</p>
+          <a class="btn primary" href={'/network/join/' + encodeURIComponent(data.slugParam)}>Connect on Relish</a>
+        </div>
+      {/if}
       <!-- IT: public actions - only show for non-logged-in visitors or after they connect -->
       {#if !data?.isOwner && !data?.isVisitorLoggedIn}
         <div class="btnrow" style="margin-top:12px;">

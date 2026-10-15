@@ -3748,6 +3748,50 @@ model GovernedUnderstandingScopeSource {
   createdAt DateTime @default(now())
 
   @@unique([scopeId, interactionId])
-// Preserve the existing PostgreSQL index name from Stage 8.15.3.5.
-@@index([userId, contextSpaceId, interactionId], map: "GovernedUnderstandingScopeSource_userId_contextSpaceId_interact")
+  @@index([userId, contextSpaceId, interactionId], map: "GovernedUnderstandingScopeSource_userId_contextSpaceId_interact")
+}
+
+
+// IT: Stage 8.15.4.3. The invitation origin is attribution, not a friendship assertion
+// and not a permission to read either participant's private Contact or LU records.
+model NetworkConnectionOrigin {
+  id String @id @default(uuid())
+  inviterUserId String
+  visitorUserId String
+  profileId String
+  inviterContextSpaceId String
+  visitorContextSpaceId String
+  createdAt DateTime @default(now())
+
+  @@unique([inviterUserId, visitorUserId])
+  @@index([visitorUserId])
+  @@index([profileId])
+}
+
+
+// Stage 8.15.4.4b: One-sided Network removal, without deleting either user's Contact history.
+model NetworkConnectionVisibility {
+  id String @id @default(uuid())
+  userId String
+  otherUserId String
+  removedAt DateTime @default(now())
+
+  @@unique([userId, otherUserId])
+  @@index([userId])
+}
+
+// Stage 8.15.4.6: Server-issued authorization for sharing a voice agent.
+// Only token hashes are persisted. A participant's conversation always has their own custody.
+model NetworkDorianSession {
+  id String @id @default(uuid())
+  tokenHash String @unique @db.VarChar(64)
+  userId String
+  contextSpaceId String
+  contactId String
+  agentBindingId String
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+  conversationId String? @unique
+  @@index([userId, contextSpaceId, createdAt])
+  @@index([agentBindingId, expiresAt])
 }

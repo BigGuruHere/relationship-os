@@ -36,7 +36,7 @@
   {/if}
   <section class="card" style="padding:20px">
     <h2>What's next?</h2>
-    <p>Signed-in visitors can connect using your Personal profile. Guest onboarding and Dorian conversations follow in later stages.</p>
+    <p>People can scan your Personal profile QR and create an account to connect. Dorian conversations follow in a later stage.</p>
     {#if !data.hasNetworkContext}<p>Your General relationship ContextSpace is not configured yet. Network conversation and understanding features will require it.</p>{/if}
   </section>
 </div>

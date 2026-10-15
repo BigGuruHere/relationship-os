@@ -202,6 +202,13 @@
         </div>
       {/if}
 
+      <!-- Network onboarding is an explicit choice. Legacy Business guest lead capture stays separate. -->
+      {#if !data?.isOwner && !data?.isVisitorLoggedIn && data?.profile?.kind === 'personal'}
+        <div class="card" style="padding:14px; margin:12px 0;">
+          <p>Want to stay connected on Relish?</p>
+          <a class="btn primary" href={'/network/join/' + encodeURIComponent(data.slugParam)}>Connect on Relish</a>
+        </div>
+      {/if}
       <!-- IT: public actions - only show for non-logged-in visitors or after they connect -->
       {#if !data?.isOwner && !data?.isVisitorLoggedIn}
         <div class="btnrow" style="margin-top:12px;">

@@ -50,7 +50,7 @@
       {:else if data.status === 'NO_PRIVATE_DEPLOYMENT'}
         <p>There isn't exactly one active Dorian ElevenLabs deployment assigned to your own General ContextSpace. A deployment belonging to another user cannot safely be reused for your private conversation.</p>
       {:else}
-        <p>Your account doesn't yet have a uniquely linked self-contact in your General ContextSpace. Relish cannot safely attach a conversation to your personal understanding without one.</p>
+        <p>Relish could not safely resolve your account identity for this conversation. An administrator can check your linked Person and General ContextSpace.</p>
       {/if}
       <p>No voice session has been started and no private conversation has been assigned to another account.</p>
     </section>

@@ -8,6 +8,7 @@ import { prisma } from '$lib/db';
 import { decrypt } from '$lib/crypto';
 import { startSharedNetworkSession, configuredSharedBindingId } from '$lib/server/integrations/elevenlabs/networkSession';
 import type { Actions } from './$types';
+import { ensureNetworkSelfContact } from '$lib/server/core/networkSelfContact';
 
 export const load: PageServerLoad = async ({ locals }) => {
   if (!locals.user) throw redirect(303, '/auth/login');
@@ -32,13 +33,14 @@ export const load: PageServerLoad = async ({ locals }) => {
   if (bindings.length !== 1 || !bindings[0].providerAgentIdEnc) {
     return { status: 'NO_PRIVATE_DEPLOYMENT' as const, launch: null };
   }
-  // A participant's self-contact is distinct from the inviter's contact about them.
-  // Refuse to create a pseudo-identity or attach the conversation to the inviter.
-  const contacts = await prisma.contact.findMany({
-    where: { userId, contextSpaceId, linkedUserId: userId },
-    select: { id: true }, take: 2
-  });
-  if (contacts.length !== 1) return { status: 'NO_SELF_IDENTITY' as const, launch: null };
+  // Provision only against this authenticated user's canonical Person identity.
+  // This is a compatibility record for legacy transcript/LU ingestion, not a new identity.
+  let selfContactId: string;
+  try {
+    selfContactId = await ensureNetworkSelfContact({ userId, contextSpaceId });
+  } catch {
+    return { status: 'NO_SELF_IDENTITY' as const, launch: null };
+  }
   const agentId = decrypt(bindings[0].providerAgentIdEnc, 'agentProviderBinding.providerAgentId');
   return {
     status: 'READY' as const,
@@ -47,7 +49,7 @@ export const load: PageServerLoad = async ({ locals }) => {
       // These are identification hints, NOT authorization or custody routing.
       // Webhook signatures and the deployment resolver remain authoritative.
       dynamicVariables: JSON.stringify({
-        relish_contact_id: contacts[0].id,
+        relish_contact_id: selfContactId,
         call_type: 'NETWORK_PARTICIPANT_BROWSER',
         call_instruction: 'Have a respectful, exploratory conversation with this participant. Do not presume consent to share, match, or publish personal information.'
       })
@@ -62,7 +64,7 @@ export const actions: Actions = {
     const contextSpaceId = locals.contextDomainKey === 'general' ? locals.contextSpaceId : null;
     if (!contextSpaceId) return { sharedError: 'General ContextSpace is unavailable.' };
     const result = await startSharedNetworkSession(locals.user.id, contextSpaceId);
-    if (!result || result.status !== 'READY') return { sharedError: 'Shared Dorian is not configured or your self-contact is missing.' };
+    if (!result || result.status !== 'READY') return { sharedError: 'Shared Dorian cannot start. Check the agent configuration and your account identity.' };
     return { sharedLaunch: { agentId: result.agentId, dynamicVariables: result.dynamicVariables } };
   }
 };

@@ -163,7 +163,8 @@
     "check:stage8.15.4.4b": "node --test tests/core/stage8-15-4-4b-network-removal.test.mjs",
     "check:stage8.15.4.4a": "node --test tests/core/stage8-15-4-4a-google-onboarding.test.mjs",
     "check:stage8.15.4.5": "node --test tests/core/stage8-15-4-5-dorian-participant-entry.test.mjs",
-    "check:stage8.15.4.6": "node --test tests/core/stage8-15-4-6-shared-dorian.test.mjs"
+    "check:stage8.15.4.6": "node --test tests/core/stage8-15-4-6-shared-dorian.test.mjs",
+    "check:stage8.15.4.6a": "node --test tests/core/stage8-15-4-6a-self-contact.test.mjs"
   },
   "engines": {
     "node": ">=22.13.1 <23"

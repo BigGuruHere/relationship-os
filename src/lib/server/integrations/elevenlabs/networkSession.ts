@@ -3,6 +3,7 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { prisma } from '$lib/db';
 import { decrypt } from '$lib/crypto';
+import { ensureNetworkSelfContact } from '$lib/server/core/networkSelfContact';
 
 export const networkSessionHash = (token: string) => createHash('sha256').update(token).digest('hex');
 export function configuredSharedBindingId() {
@@ -18,13 +19,17 @@ export async function startSharedNetworkSession(userId: string, contextSpaceId: 
     select: { id: true, providerAgentIdEnc: true }
   });
   if (!binding?.providerAgentIdEnc) return null;
-  const contacts = await prisma.contact.findMany({
-    where: { userId, contextSpaceId, linkedUserId: userId }, select: { id: true }, take: 2
-  });
-  if (contacts.length !== 1) return { status: 'NO_SELF_IDENTITY' as const };
+  // Resolve/create a workspace-local compatibility contact for the authenticated identity.
+  // Failure remains closed: never issue a session against an unverified identity.
+  let selfContactId: string;
+  try {
+    selfContactId = await ensureNetworkSelfContact({ userId, contextSpaceId });
+  } catch {
+    return { status: 'NO_SELF_IDENTITY' as const };
+  }
   const token = randomBytes(32).toString('base64url');
   await prisma.networkDorianSession.create({ data: {
-    tokenHash: networkSessionHash(token), userId, contextSpaceId, contactId: contacts[0].id,
+    tokenHash: networkSessionHash(token), userId, contextSpaceId, contactId: selfContactId,
     agentBindingId: binding.id, expiresAt: new Date(Date.now() + 2 * 60 * 60 * 1000)
   }});
   return {

@@ -152,7 +152,7 @@
             👋 You're both on Relish! Connect instantly.
           </p>
           
-          <form method="post" action="?/connectUsers">
+          <form method="post" action={data?.profile?.kind === 'personal' ? '/network/connect/' + encodeURIComponent(data.slugParam) : '?/connectUsers'}>
             <button class="btn primary" type="submit" style="width:100%;">
               Connect with {ownerName}
             </button>

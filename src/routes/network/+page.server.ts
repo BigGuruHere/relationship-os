@@ -11,5 +11,20 @@ export const load: PageServerLoad = async ({ locals }) => {
     select: { slug: true, displayName: true, headline: true },
     orderBy: [{ isDefault: 'desc' }, { updatedAt: 'desc' }]
   });
-  return { profile, hasNetworkContext: locals.contextDomainKey === 'general' && Boolean(locals.contextSpaceId) };
+  // IT: Show only Network invitations attributable to this user, never another user's notes.
+  const inbound = await prisma.networkConnectionOrigin.findMany({
+    where: { inviterUserId: locals.user.id },
+    select: { visitorUserId: true, createdAt: true },
+    orderBy: { createdAt: 'desc' },
+    take: 50
+  });
+  const people = await Promise.all(inbound.map(async (item) => {
+    const publicProfile = await prisma.profile.findFirst({
+      where: { userId: item.visitorUserId, kind: 'personal' },
+      select: { slug: true, displayName: true },
+      orderBy: [{ isDefault: 'desc' }, { updatedAt: 'desc' }]
+    });
+    return { name: publicProfile?.displayName || 'Network member', slug: publicProfile?.slug || null, connectedAt: item.createdAt.toISOString() };
+  }));
+  return { people, profile, hasNetworkContext: locals.contextDomainKey === 'general' && Boolean(locals.contextSpaceId) };
 };

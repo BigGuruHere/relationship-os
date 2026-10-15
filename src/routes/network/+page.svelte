@@ -3,6 +3,7 @@
   export let data: {
     profile: { slug: string; displayName: string | null; headline: string | null } | null;
     hasNetworkContext: boolean;
+    people: Array<{ name: string; slug: string | null; connectedAt: string }>;
   };
 </script>
 <svelte:head><title>Network - Relish</title></svelte:head>
@@ -23,9 +24,19 @@
       <a class="btn primary" href="/settings/profile?kind=personal&entry=network">Create my profile</a>
     {/if}
   </section>
+  {#if data.people.length}
+    <section class="card" style="padding:20px;margin-bottom:18px">
+      <h2>People who connected with you</h2>
+      <ul>
+        {#each data.people as person}
+          <li>{#if person.slug}<a href={'/u/' + encodeURIComponent(person.slug)}>{person.name}</a>{:else}{person.name}{/if}</li>
+        {/each}
+      </ul>
+    </section>
+  {/if}
   <section class="card" style="padding:20px">
     <h2>What's next?</h2>
-    <p>People who open your profile can use the existing Relish connection flow. A simpler invitation and Dorian onboarding journey will follow in the next stages.</p>
+    <p>Signed-in visitors can connect using your Personal profile. Guest onboarding and Dorian conversations follow in later stages.</p>
     {#if !data.hasNetworkContext}<p>Your General relationship ContextSpace is not configured yet. Network conversation and understanding features will require it.</p>{/if}
   </section>
 </div>

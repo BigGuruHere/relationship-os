@@ -312,12 +312,13 @@
 							<a href="/general">Switch to General</a>
 							<a href="/dating">Switch to Dating</a>
 						{/if}
-						<a href="/settings/context-spaces">Manage spaces</a>
+						{#if canAdmin}<a href="/settings/context-spaces">Manage spaces</a>{/if}
 						{#if canAdmin}<a href="/settings/agents">Agent deployments</a>{/if}
 						{#if isOwner}<a href="/settings/users">Manage users</a>{/if}
 					</div>
 				</div>
 			{/if}
+			{#if data.user}<a class="nav-link" href="/network">Network</a>{/if}
 			{#if isDatingApplication}
 				<a class="nav-link" href="/dating">Dating home</a>
 				<a class="nav-link" href="/dating/people">People</a>
@@ -326,7 +327,6 @@
 					Voice reflections require review before an Outcome is created.
 				</div>
 			{:else if isGeneralApplication}
-				<a class="nav-link" href="/network">Network</a>
 				{#if canOperator}<a class="nav-link" href="/general">General operator home</a>{/if}
 				{#if canOperator}
 				<a class="nav-link" href="/general/people">People</a>

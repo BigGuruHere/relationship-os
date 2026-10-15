@@ -3750,3 +3750,20 @@ model GovernedUnderstandingScopeSource {
   @@unique([scopeId, interactionId])
   @@index([userId, contextSpaceId, interactionId], map: "GovernedUnderstandingScopeSource_userId_contextSpaceId_interact")
 }
+
+
+// IT: Stage 8.15.4.3. The invitation origin is attribution, not a friendship assertion
+// and not a permission to read either participant's private Contact or LU records.
+model NetworkConnectionOrigin {
+  id String @id @default(uuid())
+  inviterUserId String
+  visitorUserId String
+  profileId String
+  inviterContextSpaceId String
+  visitorContextSpaceId String
+  createdAt DateTime @default(now())
+
+  @@unique([inviterUserId, visitorUserId])
+  @@index([visitorUserId])
+  @@index([profileId])
+}

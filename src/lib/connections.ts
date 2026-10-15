@@ -183,3 +183,61 @@ export async function createMutualConnection(profileOwnerUserId: string, initiat
     };
   });
 }
+
+
+/**
+ * IT: Network connection path. Both contact copies are explicitly in their owners' General
+ * ContextSpaces, never in the caller's default Business workspace. The original public-profile
+ * compatibility connection remains unchanged for non-Network profiles.
+ */
+export async function createNetworkConnection(profileId: string, profileOwnerUserId: string, initiatingUserId: string) {
+  if (!profileId || !profileOwnerUserId || !initiatingUserId || profileOwnerUserId === initiatingUserId) {
+    throw new Error('Invalid Network connection participants.');
+  }
+  const source = currentWorkspaceCustody();
+  if (!source || source.userId !== initiatingUserId) {
+    throw new Error('Network connection requires the initiating user workspace.');
+  }
+  const profile = await prisma.profile.findFirst({
+    where: { id: profileId, userId: profileOwnerUserId, kind: 'personal' },
+    select: { id: true }
+  });
+  if (!profile) throw new Error('Personal invitation profile does not exist.');
+
+  const [ownerGeneral, visitorGeneral, ownerProfile, visitorProfile, ownerPersonId, visitorPersonId] = await Promise.all([
+    prisma.contextSpace.findFirst({ where: { ownerUserId: profileOwnerUserId, domainKey: 'general' }, orderBy: [{ isDefault: 'desc' }, { createdAt: 'asc' }], select: { id: true } }),
+    prisma.contextSpace.findFirst({ where: { id: source.contextSpaceId, ownerUserId: initiatingUserId, domainKey: 'general' }, select: { id: true } }),
+    prisma.profile.findFirst({ where: { id: profileId }, select: { displayName: true, emailPublic: true, phonePublic: true, company: true, title: true } }),
+    prisma.profile.findFirst({ where: { userId: initiatingUserId, kind: 'personal' }, orderBy: [{ isDefault: 'desc' }, { updatedAt: 'desc' }], select: { displayName: true, emailPublic: true, phonePublic: true, company: true, title: true } }),
+    requireUserPersonId(profileOwnerUserId),
+    requireUserPersonId(initiatingUserId)
+  ]);
+  if (!ownerGeneral || !visitorGeneral || source.contextSpaceId !== visitorGeneral.id) {
+    throw new Error('Both participants must have a General ContextSpace; the visitor must connect within Network.');
+  }
+
+  return prisma.$transaction(async (tx) => {
+    const createdForOwner = await runWithCrossOwnerWorkspaceCustody({
+      sourceUserId: initiatingUserId,
+      targetUserId: profileOwnerUserId,
+      targetContextSpaceId: ownerGeneral.id,
+      reason: 'PUBLIC_PROFILE_CONNECTION'
+    }, () => ensureLinkedContact(tx, profileOwnerUserId, ownerGeneral.id, initiatingUserId, visitorPersonId, visitorProfile));
+    const createdForVisitor = await ensureLinkedContact(tx, initiatingUserId, visitorGeneral.id, profileOwnerUserId, ownerPersonId, ownerProfile);
+    // IT: The unique pair is an idempotency key. Retain original profile attribution
+    // when the same visitor reconnects, including a second scan of the QR code.
+    const origin = await tx.networkConnectionOrigin.upsert({
+      where: { inviterUserId_visitorUserId: { inviterUserId: profileOwnerUserId, visitorUserId: initiatingUserId } },
+      create: {
+        inviterUserId: profileOwnerUserId,
+        visitorUserId: initiatingUserId,
+        profileId,
+        inviterContextSpaceId: ownerGeneral.id,
+        visitorContextSpaceId: visitorGeneral.id
+      },
+      update: {},
+      select: { id: true }
+    });
+    return { createdAny: createdForOwner || createdForVisitor, originId: origin.id };
+  });
+}

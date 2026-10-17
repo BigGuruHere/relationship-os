@@ -4,6 +4,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import { prisma } from '$lib/db';
 import { decrypt } from '$lib/crypto';
 import { ensureNetworkSelfContact } from '$lib/server/core/networkSelfContact';
+import { prepareNetworkDorianContext } from './networkPreparation';
 
 export const networkSessionHash = (token: string) => createHash('sha256').update(token).digest('hex');
 export function configuredSharedBindingId() {
@@ -27,6 +28,9 @@ export async function startSharedNetworkSession(userId: string, contextSpaceId: 
   } catch {
     return { status: 'NO_SELF_IDENTITY' as const };
   }
+  // Prepare the legacy-compatible voice context within the participant's verified custody.
+  // An unavailable context is an explicit failure, never a fallback to the binding owner.
+  const participantContext = await prepareNetworkDorianContext({ userId, contextSpaceId, contactId: selfContactId });
   const token = randomBytes(32).toString('base64url');
   await prisma.networkDorianSession.create({ data: {
     tokenHash: networkSessionHash(token), userId, contextSpaceId, contactId: selfContactId,
@@ -35,9 +39,15 @@ export async function startSharedNetworkSession(userId: string, contextSpaceId: 
   return {
     status: 'READY' as const,
     agentId: decrypt(binding.providerAgentIdEnc, 'agentProviderBinding.providerAgentId'),
-    dynamicVariables: JSON.stringify({ relish_network_session: token,
+    dynamicVariables: JSON.stringify({
+      ...participantContext,
+      relish_network_session: token,
       call_type: 'NETWORK_PARTICIPANT_BROWSER',
-      call_instruction: 'Explore what matters to this participant. Do not presume permission to share personal information.' })
+      agent_id: decrypt(binding.providerAgentIdEnc, 'agentProviderBinding.providerAgentId'),
+      // Legacy user_id is a compatibility hint only. Webhook custody exclusively uses the session token.
+      // Legacy tools that accept user_id must stay disabled until session-authorised tool endpoints exist.
+      user_id: userId
+    })
   };
 }
 

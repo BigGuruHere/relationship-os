@@ -6,6 +6,7 @@ import { prisma } from '$lib/db';
 import { encrypt, buildScopedIndexToken, buildIndexToken } from '$lib/crypto';
 import { networkSessionHash } from './networkSession';
 import { normalizePhoneForIdentity } from './phone';
+import { ensureOwnedDomainContextSpace } from '$lib/server/core/contextSpaceDirectory';
 
 const SESSION_TTL_MS = 2 * 60 * 60 * 1000;
 const phoneIndex = (phone: string) => buildScopedIndexToken(phone, 'network:provisional-phone:v1');
@@ -24,9 +25,11 @@ export async function startProvisionalPhoneCall(input: {
       // Everything is created in one transaction. Concurrent first calls are recovered via unique phoneIndex.
       caller = await prisma.$transaction(async tx => {
         const user = await tx.user.create({ data: { person: { create: {} } }, select: { id: true, personId: true } });
-        const space = await tx.contextSpace.create({ data: {
-          ownerUserId: user.id, kind: 'WORKSPACE', domainKey: 'general', isDefault: true
-        }, select: { id: true } });
+        const space = await ensureOwnedDomainContextSpace(tx, {
+          ownerUserId: user.id,
+          domainKey: 'general',
+          displayName: 'General'
+        });
         const contact = await tx.contact.create({ data: {
           userId: user.id, contextSpaceId: space.id, linkedUserId: user.id, personId: user.personId,
           fullNameEnc: encrypt('Telephone caller', 'contact.full_name'),

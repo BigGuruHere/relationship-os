@@ -1,4 +1,5 @@
 import { configuredSharedBindingId } from '$lib/server/integrations/elevenlabs/networkSession';
+import { startProvisionalPhoneCall, provisionalPhoneInitiationResponse } from '$lib/server/integrations/elevenlabs/phoneOnboarding';
 // PURPOSE: ElevenLabs conversation-initiation bridge for inbound phone/SIP/widget calls.
 // SECURITY: Header-authenticated. Agent deployment resolves the destination ContextSpace before any participant data is read.
 import { json } from '@sveltejs/kit';
@@ -58,21 +59,24 @@ export const POST: RequestHandler = async ({ request }) => {
       return json({ error: 'No Relish agent deployment matches this call.' }, { status: 404 });
     }
 
-    // SECURITY: Do not expose the deployment owner's identity/LU to shared agent calls.
-    // This endpoint has no authenticated participant session binding yet; do not consult owner records.
+    // Shared Dorian inbound calls: provision separate non-login caller custody.
+    // Never fall back to the deployment owner's private workspace.
     if (configuredSharedBindingId() && deployment.bindingId === configuredSharedBindingId()) {
-      // Inbound SIP calls have no authenticated Relish browser session. Provide only
-      // generic context. The post-call bridge must not attribute them to the owner.
-      elevenLabsLog(traceId, 'RESPONSE', 'Shared Dorian initiation: anonymous phone-safe context returned.', {
-        status: 200,
-        identityStatus: 'UNRESOLVED',
-        agentBindingId: deployment.bindingId,
-        calledNumberBound: deployment.warning !== 'CALLED_NUMBER_NOT_BOUND'
+      const prepared = await startProvisionalPhoneCall({
+        callerId: body?.caller_id, conversationId: body?.conversation_id, bindingId: deployment.bindingId
       });
-      return json({ dynamic_variables: {
-        relish_identity_status: 'UNRESOLVED',
-        call_instruction: 'Speak with the participant without using owner-specific private context. Do not claim to remember or identify the caller.'
-      } });
+      if (!prepared) {
+        elevenLabsLog(traceId, 'RESPONSE', 'Caller missing, duplicate or unsafe: generic response only.', { status: 200 });
+        return json({ type: 'conversation_initiation_client_data', dynamic_variables: {
+          relish_identity_status: 'UNRESOLVED',
+          call_instruction: 'Do not use or disclose prior participant information.'
+        } });
+      }
+      const response = provisionalPhoneInitiationResponse(prepared);
+      elevenLabsLog(traceId, 'RESPONSE', 'Provisional caller session issued.', {
+        status: 200, identityStatus: 'PROVISIONAL_PHONE', previousCalls: prepared.previousCalls
+      });
+      return json(response);
     }
 
     return runWithExternalWorkspaceCustody({

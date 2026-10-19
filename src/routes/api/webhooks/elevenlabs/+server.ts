@@ -74,6 +74,19 @@ export const POST: RequestHandler = async ({ request }) => {
     return json({ status: 'ignored' });
   }
 
+  // Authenticated empty/abandoned calls are ordinary telephony outcomes, not ingestion failures.
+  // Do not create an Interaction or schedule retries for them.
+  const spokenRows = Array.isArray(event?.data?.transcript)
+    ? event.data.transcript.some((row: any) => row?.role === 'user' && String(row?.message ?? '').trim())
+    : false;
+  if (!spokenRows) {
+    elevenLabsLog(traceId, 'RESPONSE', 'Signed post-call event has no participant speech; no transcript stored.', {
+      status: 'ignored_no_participant_speech',
+      conversationId: event?.data?.conversation_id || null
+    });
+    return json({ status: 'ignored_no_participant_speech' });
+  }
+
   try {
     const normalized = normalizeElevenLabsConversation(event.data || {}, 'ELEVENLABS_WEBHOOK');
     elevenLabsLog(traceId, 'NORMALIZE', 'Conversation normalized into Relish provider-independent transcript.', {
@@ -121,7 +134,21 @@ export const POST: RequestHandler = async ({ request }) => {
         })
       : null;
     if (deployment.bindingId === configuredSharedBindingId() && !shared) {
-      return json({ error: 'Missing or invalid Network participant session.' }, { status: 403 });
+      // A real inbound SIP call does not have a browser-issued Network session.
+      // Treat it as unlinked, not as an authentication failure that could cause
+      // webhook retries. Never fall back to the shared deployment owner's workspace.
+      // Caller ID alone is not a secure identity proof.
+      const isPhoneCall = Boolean(normalized.callerPhone || normalized.calledNumber);
+      elevenLabsLog(traceId, 'RESPONSE', isPhoneCall
+        ? 'Signed telephone call has no verified Relish participant session; transcript not imported.'
+        : 'Shared browser call has no valid Network participant session; transcript not imported.', {
+          status: isPhoneCall ? 'unlinked_phone_call' : 'missing_network_session',
+          conversationId: normalized.metadata.externalConversationId,
+          bindingId: deployment.bindingId
+        });
+      return isPhoneCall
+        ? json({ status: 'unlinked_phone_call', conversationId: normalized.metadata.externalConversationId }, { status: 202 })
+        : json({ error: 'Missing or invalid Network participant session.' }, { status: 403 });
     }
     const targetUserId = shared?.userId ?? deployment.userId!;
     const targetContextSpaceId = shared?.contextSpaceId ?? deployment.contextSpaceId!;

@@ -3795,3 +3795,16 @@ model NetworkDorianSession {
   @@index([userId, contextSpaceId, createdAt])
   @@index([agentBindingId, expiresAt])
 }
+
+// Stage 8.15.4.7b: a phone number is a provisional lookup hint, never login authentication.
+model NetworkPhoneCaller {
+  id String @id @default(uuid())
+  phoneIndex String @unique @db.VarChar(64)
+  phoneEnc String
+  userId String @unique
+  contextSpaceId String @unique
+  contactId String @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@index([createdAt])
+}

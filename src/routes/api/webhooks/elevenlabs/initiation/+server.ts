@@ -61,9 +61,17 @@ export const POST: RequestHandler = async ({ request }) => {
     // SECURITY: Do not expose the deployment owner's identity/LU to shared agent calls.
     // This endpoint has no authenticated participant session binding yet; do not consult owner records.
     if (configuredSharedBindingId() && deployment.bindingId === configuredSharedBindingId()) {
+      // Inbound SIP calls have no authenticated Relish browser session. Provide only
+      // generic context. The post-call bridge must not attribute them to the owner.
+      elevenLabsLog(traceId, 'RESPONSE', 'Shared Dorian initiation: anonymous phone-safe context returned.', {
+        status: 200,
+        identityStatus: 'UNRESOLVED',
+        agentBindingId: deployment.bindingId,
+        calledNumberBound: deployment.warning !== 'CALLED_NUMBER_NOT_BOUND'
+      });
       return json({ dynamic_variables: {
         relish_identity_status: 'UNRESOLVED',
-        call_instruction: 'Speak with the participant without using owner-specific private context.'
+        call_instruction: 'Speak with the participant without using owner-specific private context. Do not claim to remember or identify the caller.'
       } });
     }
 

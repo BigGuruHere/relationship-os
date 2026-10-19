@@ -13,7 +13,7 @@ export const POST: RequestHandler = async ({ request }) => {
   const traceId = elevenLabsTraceId('el-init');
   elevenLabsLog(traceId, 'REQUEST', 'Conversation initiation request received.', {
     method: request.method,
-    url: request.url,
+    path: new URL(request.url).pathname,
     contentType: request.headers.get('content-type'),
     hasAuthorization: Boolean(request.headers.get('authorization'))
   });
@@ -34,11 +34,11 @@ export const POST: RequestHandler = async ({ request }) => {
 
   elevenLabsLog(traceId, 'RECEIVED', 'Initiation identifiers received.', {
     agentId: body?.agent_id || null,
-    calledNumber: body?.called_number || null,
-    callerId: body?.caller_id || null,
-    providerUserId: body?.user_id || null,
-    relishContactId: body?.relish_contact_id || null,
-    relishPersonId: body?.relish_person_id || null,
+    hasCalledNumber: Boolean(body?.called_number),
+    hasCallerId: Boolean(body?.caller_id),
+    hasProviderUserId: Boolean(body?.user_id),
+    hasRelishContactId: Boolean(body?.relish_contact_id),
+    hasRelishPersonId: Boolean(body?.relish_person_id),
     conversationId: body?.conversation_id || null
   });
   // Never log initiation payloads that can contain session credentials.

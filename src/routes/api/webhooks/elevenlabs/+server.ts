@@ -17,7 +17,7 @@ export const POST: RequestHandler = async ({ request }) => {
   const rawBody = await request.text();
   elevenLabsLog(traceId, 'REQUEST', 'Post-call webhook received.', {
     method: request.method,
-    url: request.url,
+    path: new URL(request.url).pathname,
     contentType: request.headers.get('content-type'),
     bodyBytes: Buffer.byteLength(rawBody, 'utf8'),
     hasSignature: Boolean(request.headers.get('elevenlabs-signature'))
@@ -64,7 +64,7 @@ export const POST: RequestHandler = async ({ request }) => {
     conversationId: event?.data?.conversation_id || null,
     agentId: event?.data?.agent_id || null,
     agentName: event?.data?.agent_name || null,
-    providerUserId: event?.data?.user_id || null,
+    hasProviderUserId: Boolean(event?.data?.user_id),
     transcriptRows: Array.isArray(event?.data?.transcript) ? event.data.transcript.length : 0
   });
   // SECURITY: Do not log raw webhook payloads: they may include participant session tokens and transcripts.
@@ -93,9 +93,9 @@ export const POST: RequestHandler = async ({ request }) => {
       conversationId: normalized.metadata.externalConversationId,
       occurredAt: normalized.metadata.occurredAt,
       agentId: normalized.agentId || null,
-      callerPhone: normalized.callerPhone || null,
-      calledNumber: normalized.calledNumber || null,
-      providerUserId: normalized.userId || null,
+      hasCallerPhone: Boolean(normalized.callerPhone),
+      hasCalledNumber: Boolean(normalized.calledNumber),
+      hasProviderUserId: Boolean(normalized.userId),
       speakers: normalized.parsed.speakers,
       turns: normalized.parsed.turns.length,
       userTurns: normalized.parsed.turns.filter(turn => turn.speaker === 'User').length,

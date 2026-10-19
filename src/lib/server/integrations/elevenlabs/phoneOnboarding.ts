@@ -60,12 +60,20 @@ export async function startProvisionalPhoneCall(input: {
     userId: caller.userId, agentBindingId: input.bindingId, conversationId: { not: null }
   } });
   const token = randomBytes(32).toString('base64url');
-  await prisma.networkDorianSession.create({ data: {
-    tokenHash: networkSessionHash(token), userId: caller.userId,
-    contextSpaceId: caller.contextSpaceId, contactId: caller.contactId,
-    agentBindingId: input.bindingId, conversationId: input.conversationId,
-    expiresAt: new Date(Date.now() + SESSION_TTL_MS)
-  } });
+  try {
+    await prisma.networkDorianSession.create({ data: {
+      tokenHash: networkSessionHash(token), userId: caller.userId,
+      contextSpaceId: caller.contextSpaceId, contactId: caller.contactId,
+      agentBindingId: input.bindingId, conversationId: input.conversationId,
+      expiresAt: new Date(Date.now() + SESSION_TTL_MS)
+    } });
+  } catch (error) {
+    // Concurrent initiation for the same provider conversation can race after the
+    // preceding findUnique. The database unique constraint is the final arbiter.
+    // Never return a fresh token for a losing request or cause an avoidable 500.
+    if (error && typeof error === 'object' && 'code' in error && error.code === 'P2002') return null;
+    throw error;
+  }
   return { token, previousCalls };
 }
 

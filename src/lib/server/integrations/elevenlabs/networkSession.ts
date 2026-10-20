@@ -55,6 +55,8 @@ export async function resolveSharedNetworkSession(input: {
   bindingId: string; conversationId: string; agentId: string; sessionToken: unknown;
 }) {
   if (!configuredSharedBindingId() || input.bindingId !== configuredSharedBindingId()) return null;
+  // A session cannot be claimed by an empty or malformed provider conversation ID.
+  if (typeof input.conversationId !== 'string' || !input.conversationId.trim() || input.conversationId.length > 240) return null;
   const token = typeof input.sessionToken === 'string' ? input.sessionToken : '';
   if (!/^[A-Za-z0-9_-]{40,100}$/.test(token)) return null;
   const session = await prisma.networkDorianSession.findUnique({ where: { tokenHash: networkSessionHash(token) } });

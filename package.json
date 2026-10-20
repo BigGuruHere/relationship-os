@@ -166,7 +166,11 @@
     "check:stage8.15.4.6": "node --test tests/core/stage8-15-4-6-shared-dorian.test.mjs",
     "check:stage8.15.4.6a": "node --test tests/core/stage8-15-4-6a-self-contact.test.mjs",
     "check:stage8.15.4.6b": "node --test tests/core/stage8-15-4-6b-legacy-reconciliation.test.mjs",
-    "check:stage8.15.4.7c": "node --test tests/core/stage8-15-4-7b-phone-provisional.test.mjs tests/core/stage8-15-4-7-phone-ingress-safety.test.mjs tests/core/stage8-15-4-7c-pilot-hardening.test.mjs"
+    "check:stage8.15.4.7c": "node --test tests/core/stage8-15-4-7b-phone-provisional.test.mjs tests/core/stage8-15-4-7-phone-ingress-safety.test.mjs tests/core/stage8-15-4-7c-pilot-hardening.test.mjs",
+    "check:stage8.15.4.7c.2": "node --test tests/core/stage8-15-4-7c-2-database-guard.test.mjs",
+    "check:stage8.15.4.7c.2:db": "tsx scripts/check-stage8-15-4-7c-2-phone-db.ts",
+    "check:stage8.15.4.7c.3": "node --test tests/core/stage8-15-4-7c-3-session-security.test.mjs",
+    "check:stage8.15.4.7c.3:db": "tsx scripts/check-stage8-15-4-7c-3-session-security.ts"
   },
   "engines": {
     "node": ">=22.13.1 <23"

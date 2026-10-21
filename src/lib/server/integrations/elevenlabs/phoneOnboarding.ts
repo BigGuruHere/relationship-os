@@ -3,7 +3,7 @@
 // No private account data or prior Living Understanding is sent to a phone-only caller.
 import { randomBytes } from 'node:crypto';
 import { prisma } from '$lib/db';
-import { encrypt, buildScopedIndexToken, buildIndexToken } from '$lib/crypto';
+import { encrypt, decrypt, buildScopedIndexToken, buildIndexToken } from '$lib/crypto';
 import { networkSessionHash } from './networkSession';
 import { normalizePhoneForIdentity } from './phone';
 import { ensureOwnedDomainContextSpace } from '$lib/server/core/contextSpaceDirectory';
@@ -60,6 +60,22 @@ export async function startProvisionalPhoneCall(input: {
   // A session initiation is not proof that a meaningful call completed. For greetings,
   // count ingested participant-owned conversation evidence instead of attempted calls.
   // We intentionally do NOT retrieve prior text, names or private understanding from caller ID.
+  // Read a provisional caller's preferred name only from their own verified workspace.
+  // A Contact ID by itself is insufficient for Relish's fail-closed ContextSpace guard.
+  const nameContact = await prisma.contact.findFirst({
+    where: {
+      id: caller.contactId,
+      userId: caller.userId,
+      contextSpaceId: caller.contextSpaceId,
+      linkedUserId: caller.userId
+    },
+    select: { fullNameEnc: true }
+  });
+  let preferredName = '';
+  try {
+    const stored = nameContact?.fullNameEnc ? decrypt(nameContact.fullNameEnc, 'contact.full_name') : '';
+    if (stored !== 'Telephone caller') preferredName = stored.slice(0, 80);
+  } catch { /* Fail closed if encrypted display name cannot be read. */ }
   const previousCalls = await prisma.interaction.count({ where: {
     userId: caller.userId, contextSpaceId: caller.contextSpaceId,
     contactId: caller.contactId, channel: PERSON_CONVERSATION_SOURCE_CHANNEL
@@ -79,10 +95,10 @@ export async function startProvisionalPhoneCall(input: {
     if (error && typeof error === 'object' && 'code' in error && error.code === 'P2002') return null;
     throw error;
   }
-  return { token, previousCalls };
+  return { token, previousCalls, preferredName };
 }
 
-export function provisionalPhoneInitiationResponse(input: {token: string; previousCalls: number}) {
+export function provisionalPhoneInitiationResponse(input: {token: string; previousCalls: number; preferredName?: string}) {
   const returning = input.previousCalls > 0;
   return {
     type: 'conversation_initiation_client_data',
@@ -91,17 +107,17 @@ export function provisionalPhoneInitiationResponse(input: {token: string; previo
       relish_identity_status: 'PROVISIONAL_PHONE',
       call_type: 'INBOUND_PHONE',
       previous_calls: String(input.previousCalls),
-      user_name: '',
+      user_name: input.preferredName || '',
       last_call_summary: '',
       memory_and_identity_context: '',
       // Continuity is limited to a non-sensitive completed-conversation count.
       // Caller ID is NOT authentication, so do not supply summaries or private memory.
       call_instruction: returning
-        ? 'A previous conversation was completed from this telephone number, but the caller is not authenticated. Acknowledge a possible return warmly. Do not assume who is speaking, use a saved name, reveal past subjects, or claim to remember private details. Ask how you can help today.'
-        : 'There is no completed conversation recorded for this telephone number. Introduce Dorian briefly, ask what the caller prefers to be called, and invite an open conversation. Do not imply you know their identity.'
+        ? 'A previous conversation was completed from this number. A preferred name is a provisional conversational preference, NOT authentication. If a name is available, check whether you are speaking to that person before using it further. Never disclose previous subjects or private memories. The caller can correct their name using the save_preferred_name tool.'
+        : 'There is no completed conversation recorded for this number. Introduce Dorian, ask for a preferred name, and use the save_preferred_name tool when the caller gives it. Do not imply you know their identity.'
     },
     conversation_config_override: { agent: { first_message: returning
-      ? 'Hello, welcome back to Dorian. What would you like to talk about today?'
+      ? input.preferredName ? `Hello, welcome back to Dorian. Am I speaking with ${input.preferredName}?` : 'Hello, welcome back to Dorian. What would you like to talk about today?'
       : "Hello, I'm Dorian. What should I call you?" } }
   };
 }

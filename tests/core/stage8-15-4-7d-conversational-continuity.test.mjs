@@ -14,14 +14,14 @@ test('returning status uses ingested participant evidence instead of started ses
 test('provisional callers do not receive saved summaries or understanding', () => {
   assert.match(source, /last_call_summary: ''/);
   assert.match(source, /memory_and_identity_context: ''/);
-  assert.match(source, /user_name: ''/);
+  assert.match(source, /user_name: input.preferredName \|\| ''/);
   assert.match(source, /do not supply summaries or private memory/i);
 });
 test('new and returning call states have separate greetings and privacy instructions', () => {
   assert.match(source, /first_message: returning/);
   assert.match(source, /welcome back to Dorian/i);
   assert.match(source, /What should I call you\?/);
-  assert.match(source, /Do not assume who is speaking/);
+  assert.match(source, /check whether you are speaking to that person/);
 });
 test('provisional identity still requires an indexed telephone, scoped contact and unique session', () => {
   assert.match(source, /normalizePhoneForIdentity/);

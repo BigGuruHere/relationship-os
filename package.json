@@ -170,7 +170,8 @@
     "check:stage8.15.4.7c.2": "node --test tests/core/stage8-15-4-7c-2-database-guard.test.mjs",
     "check:stage8.15.4.7c.2:db": "tsx scripts/check-stage8-15-4-7c-2-phone-db.ts",
     "check:stage8.15.4.7c.3": "node --test tests/core/stage8-15-4-7c-3-session-security.test.mjs",
-    "check:stage8.15.4.7c.3:db": "tsx scripts/check-stage8-15-4-7c-3-session-security.ts"
+    "check:stage8.15.4.7c.3:db": "tsx scripts/check-stage8-15-4-7c-3-session-security.ts",
+    "check:stage8.15.4.7d": "node --test tests/core/stage8-15-4-7d-conversational-continuity.test.mjs"
   },
   "engines": {
     "node": ">=22.13.1 <23"

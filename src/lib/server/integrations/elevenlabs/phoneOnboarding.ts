@@ -7,6 +7,7 @@ import { encrypt, buildScopedIndexToken, buildIndexToken } from '$lib/crypto';
 import { networkSessionHash } from './networkSession';
 import { normalizePhoneForIdentity } from './phone';
 import { ensureOwnedDomainContextSpace } from '$lib/server/core/contextSpaceDirectory';
+import { PERSON_CONVERSATION_SOURCE_CHANNEL } from '$lib/server/core/conversationIngestion';
 
 const SESSION_TTL_MS = 2 * 60 * 60 * 1000;
 const phoneIndex = (phone: string) => buildScopedIndexToken(phone, 'network:provisional-phone:v1');
@@ -56,8 +57,12 @@ export async function startProvisionalPhoneCall(input: {
   if (!space || !contact || !owner || owner.email_Idx || owner.oauthAccounts.length) return null;
   const existingSession = await prisma.networkDorianSession.findUnique({ where: { conversationId: input.conversationId } });
   if (existingSession) return null; // duplicate initiation must never mint another credential
-  const previousCalls = await prisma.networkDorianSession.count({ where: {
-    userId: caller.userId, agentBindingId: input.bindingId, conversationId: { not: null }
+  // A session initiation is not proof that a meaningful call completed. For greetings,
+  // count ingested participant-owned conversation evidence instead of attempted calls.
+  // We intentionally do NOT retrieve prior text, names or private understanding from caller ID.
+  const previousCalls = await prisma.interaction.count({ where: {
+    userId: caller.userId, contextSpaceId: caller.contextSpaceId,
+    contactId: caller.contactId, channel: PERSON_CONVERSATION_SOURCE_CHANNEL
   } });
   const token = randomBytes(32).toString('base64url');
   try {
@@ -89,12 +94,14 @@ export function provisionalPhoneInitiationResponse(input: {token: string; previo
       user_name: '',
       last_call_summary: '',
       memory_and_identity_context: '',
+      // Continuity is limited to a non-sensitive completed-conversation count.
+      // Caller ID is NOT authentication, so do not supply summaries or private memory.
       call_instruction: returning
-        ? 'Welcome this returning telephone caller without mentioning private past details. Ask what they would like to talk about.'
-        : 'Welcome this new caller. Explain briefly who Dorian is and invite them to share what matters to them.'
+        ? 'A previous conversation was completed from this telephone number, but the caller is not authenticated. Acknowledge a possible return warmly. Do not assume who is speaking, use a saved name, reveal past subjects, or claim to remember private details. Ask how you can help today.'
+        : 'There is no completed conversation recorded for this telephone number. Introduce Dorian briefly, ask what the caller prefers to be called, and invite an open conversation. Do not imply you know their identity.'
     },
     conversation_config_override: { agent: { first_message: returning
-      ? 'Welcome back, good to hear from you again. What would you like to talk about today?'
-      : "Hello, I'm Dorian. It's good to meet you. What should I call you?" } }
+      ? 'Hello, welcome back to Dorian. What would you like to talk about today?'
+      : "Hello, I'm Dorian. What should I call you?" } }
   };
 }

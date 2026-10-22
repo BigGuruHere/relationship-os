@@ -72,6 +72,15 @@ export const POST: RequestHandler = async ({ request }) => {
           call_instruction: 'Do not use or disclose prior participant information.'
         } });
       }
+      if (prepared.status === 'WAIT') {
+        // Do not give the provider an authenticated session while last call is processing.
+        // Return a short message for the voice agent to speak before ending the call.
+        elevenLabsLog(traceId, 'RESPONSE', 'Previous call is not yet ready; no session issued.', { status: 200 });
+        return json({ type:'conversation_initiation_client_data',
+          dynamic_variables:{ relish_identity_status:'PROCESSING', call_instruction:'Politely explain that the previous conversation is still being processed. Do not continue a substantive conversation; ask the caller to call back later. Do not use private context.' },
+          conversation_config_override:{ agent:{ first_message:'Thanks for calling. I am still catching up on our last conversation. Please try again a little later.' } }
+        });
+      }
       const response = provisionalPhoneInitiationResponse(prepared);
       elevenLabsLog(traceId, 'RESPONSE', 'Provisional caller session issued.', {
         status: 200, identityStatus: 'PROVISIONAL_PHONE', previousCalls: prepared.previousCalls

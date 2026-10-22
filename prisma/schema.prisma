@@ -3806,5 +3806,9 @@ model NetworkPhoneCaller {
   contactId String @unique
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  // Durable per-caller gate for asynchronous understanding processing.
+  understandingState String @default("READY")
+  understandingConversationId String?
+  understandingStateAt DateTime?
   @@index([createdAt])
 }

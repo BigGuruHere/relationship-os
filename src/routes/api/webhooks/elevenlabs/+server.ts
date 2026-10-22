@@ -11,6 +11,7 @@ import { elevenLabsErrorLog, elevenLabsLog, elevenLabsPayloadLog, elevenLabsTrac
 import { describeLivingUnderstandingReviewHandoff } from '$lib/server/core/livingUnderstandingReviewHandoff';
 import { configuredSharedBindingId, resolveSharedNetworkSession } from '$lib/server/integrations/elevenlabs/networkSession';
 import { automaticLivingUnderstandingPreparationEnabled, prepareAutomaticLivingUnderstandingImpact } from '$lib/server/core/automaticLivingUnderstanding';
+import { phoneAutomaticLearningEnabled, beginPhoneUnderstanding, finishPhoneUnderstanding } from '$lib/server/core/phoneUnderstandingAutomation';
 
 export const POST: RequestHandler = async ({ request }) => {
   const traceId = elevenLabsTraceId('el-post');
@@ -80,6 +81,10 @@ export const POST: RequestHandler = async ({ request }) => {
     ? event.data.transcript.some((row: any) => row?.role === 'user' && String(row?.message ?? '').trim())
     : false;
   if (!spokenRows) {
+    // Empty calls have no evidence to interpret. Release only their own processing gate.
+    if (phoneAutomaticLearningEnabled() && typeof event?.data?.conversation_id === 'string') {
+      await finishPhoneUnderstanding(event.data.conversation_id, 'READY');
+    }
     elevenLabsLog(traceId, 'RESPONSE', 'Signed post-call event has no participant speech; no transcript stored.', {
       status: 'ignored_no_participant_speech',
       conversationId: event?.data?.conversation_id || null
@@ -228,7 +233,16 @@ export const POST: RequestHandler = async ({ request }) => {
     });
 
     let automaticLivingUnderstanding: any = null;
-    if (
+    if (phoneAutomaticLearningEnabled() && deployment.bindingId === configuredSharedBindingId() && ingested.contactId && ingested.participantSourceId) {
+      // The transcript and attributed evidence are committed before we acknowledge.
+      // AI interpretation is performed outside the webhook by the independent worker.
+      // This prevents long model calls from holding the provider's HTTP connection open.
+      await beginPhoneUnderstanding(normalized.metadata.externalConversationId);
+      automaticLivingUnderstanding = { status: 'QUEUED' };
+      elevenLabsLog(traceId, 'LU_AUTOMATION', 'Evidence committed; understanding queued for worker.', {
+        queued: true
+      });
+    } else if (
       automaticLivingUnderstandingPreparationEnabled() &&
       ingested.contactId &&
       ingested.participantSourceId &&

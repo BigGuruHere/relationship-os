@@ -14,7 +14,8 @@ export type CrossCustodyReason =
   | 'LEAD_CLAIM'
   | 'PUBLIC_LEAD_CAPTURE'
   | 'ELEVENLABS_CONVERSATION_INGEST'
-  | 'ELEVENLABS_CONVERSATION_INITIATION';
+  | 'ELEVENLABS_CONVERSATION_INITIATION'
+  | 'PILOT_PHONE_REVIEW';
 
 type CrossCustodyTransition = {
   sourceUserId: string | null;
@@ -256,6 +257,19 @@ const CROSS_CUSTODY_POLICIES: Record<CrossCustodyReason, { models: Record<string
       Contact: new Set(['findFirst', 'findMany']),
       LivingUnderstandingRevision: new Set(['findFirst']),
       Interaction: new Set(['findFirst', 'count'])
+    }
+  },
+  // SECURITY: Pilot supervision is read-only. This named exception is not permission to
+  // administer a caller's workspace; the route must separately verify operator authority.
+  PILOT_PHONE_REVIEW: {
+    models: {
+      Interaction: new Set(['findMany']),
+      Contact: new Set(['findMany', 'findFirst']),
+      LivingUnderstandingRevision: new Set(['findFirst']),
+      LivingUnderstandingRevisionSource: new Set(['findFirst']),
+      LivingUnderstandingSourceReviewDisposition: new Set(['findFirst']),
+      LivingUnderstandingDraft: new Set(['findFirst']),
+      Person: new Set(['findFirst'])
     }
   }
 };

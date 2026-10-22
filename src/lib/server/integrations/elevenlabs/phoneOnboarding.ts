@@ -1,6 +1,7 @@
 // Stage 8.15.4.7b: provisional caller custody for shared inbound Dorian calls.
 // Caller ID permits a continuity hint; it NEVER authenticates an existing Google/Relish account.
 // No private account data or prior Living Understanding is sent to a phone-only caller.
+// Automatic learning is opt-in, and the durable gate is enabled only with that policy.
 import { randomBytes } from 'node:crypto';
 import { prisma } from '$lib/db';
 import { encrypt, decrypt, buildScopedIndexToken, buildIndexToken } from '$lib/crypto';
@@ -8,6 +9,7 @@ import { networkSessionHash } from './networkSession';
 import { normalizePhoneForIdentity } from './phone';
 import { ensureOwnedDomainContextSpace } from '$lib/server/core/contextSpaceDirectory';
 import { PERSON_CONVERSATION_SOURCE_CHANNEL } from '$lib/server/core/conversationIngestion';
+import { phoneAutomaticLearningEnabled } from '$lib/server/core/phoneUnderstandingAutomation';
 
 const SESSION_TTL_MS = 2 * 60 * 60 * 1000;
 const phoneIndex = (phone: string) => buildScopedIndexToken(phone, 'network:provisional-phone:v1');
@@ -82,12 +84,29 @@ export async function startProvisionalPhoneCall(input: {
   } });
   const token = randomBytes(32).toString('base64url');
   try {
-    await prisma.networkDorianSession.create({ data: {
-      tokenHash: networkSessionHash(token), userId: caller.userId,
-      contextSpaceId: caller.contextSpaceId, contactId: caller.contactId,
-      agentBindingId: input.bindingId, conversationId: input.conversationId,
-      expiresAt: new Date(Date.now() + SESSION_TTL_MS)
-    } });
+    // Row update is an atomic per-caller claim. Two simultaneous incoming calls cannot
+    // both move READY -> IN_CALL. Only the winning request receives a session token.
+    const claimed = phoneAutomaticLearningEnabled() ? await prisma.networkPhoneCaller.updateMany({
+      where: { id: caller.id, understandingState: 'READY' },
+      data: { understandingState: 'IN_CALL', understandingConversationId: input.conversationId,
+        understandingStateAt: new Date() }
+    }) : { count: 1 };
+    if (claimed.count !== 1) return { status: 'WAIT' as const };
+    try {
+      await prisma.networkDorianSession.create({ data: {
+        tokenHash: networkSessionHash(token), userId: caller.userId,
+        contextSpaceId: caller.contextSpaceId, contactId: caller.contactId,
+        agentBindingId: input.bindingId, conversationId: input.conversationId,
+        expiresAt: new Date(Date.now() + SESSION_TTL_MS)
+      } });
+    } catch (error) {
+      // A failed session insert must never leave the participant locked unnecessarily.
+      if (phoneAutomaticLearningEnabled()) await prisma.networkPhoneCaller.updateMany({
+        where: { id: caller.id, understandingConversationId: input.conversationId, understandingState: 'IN_CALL' },
+        data: { understandingState: 'READY', understandingConversationId: null, understandingStateAt: new Date() }
+      });
+      throw error;
+    }
   } catch (error) {
     // Concurrent initiation for the same provider conversation can race after the
     // preceding findUnique. The database unique constraint is the final arbiter.
@@ -95,7 +114,7 @@ export async function startProvisionalPhoneCall(input: {
     if (error && typeof error === 'object' && 'code' in error && error.code === 'P2002') return null;
     throw error;
   }
-  return { token, previousCalls, preferredName };
+  return { status: 'READY' as const, token, previousCalls, preferredName };
 }
 
 export function provisionalPhoneInitiationResponse(input: {token: string; previousCalls: number; preferredName?: string}) {

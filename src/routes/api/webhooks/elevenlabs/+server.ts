@@ -12,6 +12,8 @@ import { describeLivingUnderstandingReviewHandoff } from '$lib/server/core/livin
 import { configuredSharedBindingId, resolveSharedNetworkSession } from '$lib/server/integrations/elevenlabs/networkSession';
 import { automaticLivingUnderstandingPreparationEnabled, prepareAutomaticLivingUnderstandingImpact } from '$lib/server/core/automaticLivingUnderstanding';
 import { phoneAutomaticLearningEnabled, beginPhoneUnderstanding, finishPhoneUnderstanding } from '$lib/server/core/phoneUnderstandingAutomation';
+import { prisma } from '$lib/db';
+import { recordPilotEvent } from '$lib/server/pilot';
 
 export const POST: RequestHandler = async ({ request }) => {
   const traceId = elevenLabsTraceId('el-post');
@@ -157,7 +159,7 @@ export const POST: RequestHandler = async ({ request }) => {
     }
     const targetUserId = shared?.userId ?? deployment.userId!;
     const targetContextSpaceId = shared?.contextSpaceId ?? deployment.contextSpaceId!;
-    const targetDomainKey = shared ? 'general' : deployment.domainKey!;
+    const targetDomainKey = shared ? shared.domainKey : deployment.domainKey!;
     const ingested = await runWithExternalWorkspaceCustody({ targetUserId, targetContextSpaceId, reason: 'ELEVENLABS_CONVERSATION_INGEST' }, async () => {
       elevenLabsLog(traceId, 'CUSTODY', 'Entered external workspace custody for conversation ingestion.', {
         userId: targetUserId,
@@ -232,12 +234,33 @@ export const POST: RequestHandler = async ({ request }) => {
       };
     });
 
+    // Signed provider callback is the only source for confirmed completion.
+    // Retry callbacks share a database idempotency key and never inflate the funnel.
+    if (shared?.pilotEntryId) {
+      const entry = await prisma.pilotProfileEntry.findUnique({ where: { id: shared.pilotEntryId } });
+      if (entry && entry.visitorUserId === shared.userId && entry.domainKey === shared.domainKey) {
+        await recordPilotEvent({ type: 'dorian.conversation_completed', env: entry.environment,
+          profileId: entry.profileId, ownerUserId: entry.ownerUserId,
+          domainKey: entry.domainKey as 'general' | 'business' | 'dating',
+          entryId: entry.id, visitorUserId: entry.visitorUserId, source: entry.entrySource,
+          conversationId: normalized.metadata.externalConversationId,
+          dedup: 'conversation:' + normalized.metadata.externalConversationId });
+      }
+    }
     let automaticLivingUnderstanding: any = null;
     if (phoneAutomaticLearningEnabled() && deployment.bindingId === configuredSharedBindingId() && ingested.contactId && ingested.participantSourceId) {
       // The transcript and attributed evidence are committed before we acknowledge.
       // AI interpretation is performed outside the webhook by the independent worker.
       // This prevents long model calls from holding the provider's HTTP connection open.
-      await beginPhoneUnderstanding(normalized.metadata.externalConversationId);
+      if (shared?.pilotEntryId) {
+        // The existing opt-in worker handles browser entries with the same durable
+        // source evidence but a different context-specific processing queue.
+        await prisma.networkDorianSession.updateMany({ where: { id: shared.sessionId,
+          pilotEntryId: shared.pilotEntryId, conversationId: normalized.metadata.externalConversationId,
+          understandingOutcome: null }, data: { understandingOutcome: 'QUEUED', understandingOutcomeAt: new Date() } });
+      } else {
+        await beginPhoneUnderstanding(normalized.metadata.externalConversationId);
+      }
       automaticLivingUnderstanding = { status: 'QUEUED' };
       elevenLabsLog(traceId, 'LU_AUTOMATION', 'Evidence committed; understanding queued for worker.', {
         queued: true

@@ -15,9 +15,9 @@ export function phoneAutomaticLearningEnabled() {
   return process.env.RELISH_PHONE_AUTO_LU === 'YES';
 }
 
-export async function processPhoneUnderstanding(scope:Scope, sourceInteractionId:string) {
+export async function processPhoneUnderstanding(scope:Scope, sourceInteractionId:string, domainKey: 'business' | 'general' | 'dating' = 'general') {
   // Existing authoritative source binding is checked before AI work or approval.
-  const handoff = await describeLivingUnderstandingReviewHandoff(scope,'general',sourceInteractionId);
+  const handoff = await describeLivingUnderstandingReviewHandoff(scope,domainKey,sourceInteractionId);
   if (handoff.state === 'ALREADY_APPLIED' || handoff.state === 'DISMISSED') return { status: 'COMPLETE' as const, detail:handoff.state };
   if (handoff.state === 'IMPACT_REVIEW_READY') {
     // The reviewer explicitly signals a valid no-change result with a typed exception.

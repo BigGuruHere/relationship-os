@@ -19,7 +19,7 @@
   let websiteUrl  = p.websiteUrl || '';
   let emailPublic = p.emailPublic || '';
   let phonePublic = p.phonePublic || '';
-  let kind        = p.kind || (data?.requestedProfileKind === 'personal' ? 'personal' : 'business');
+  let kind        = p.kind || data?.requestedProfileKind || 'business';
 
   // IT: extra inputs - one per EXTRA_KEYS entry
   const publicMeta = p.publicMeta || {};
@@ -98,17 +98,21 @@
         <input id="phonePublic" name="phonePublic" bind:value={phonePublic} />
       </div>
 
+      <div class="field span2">
+        <label><input type="checkbox" name="isPublished" checked={p.isPublished !== false} /> Published publicly</label>
+        <small>Uncheck to hide this profile and disable its public QR destination.</small>
+      </div>
       <div class="field">
         <label for="kind">Profile type</label>
-        <select id="kind" name="kind" bind:value={kind} disabled={data?.networkEntry}>
+        <select id="kind" name="kind" bind:value={kind} disabled={data?.networkEntry || !!p.id}>
           <option value="business">Business</option>
-          <option value="personal">Personal</option>
+          <option value="personal">Friendship</option>
           <option value="dating">Dating</option>
           <option value="custom">Custom</option>
         </select>
       </div>
 
-      {#if data?.networkEntry}<input type="hidden" name="kind" value="personal" />{/if}
+      {#if p.id || data?.networkEntry}<input type="hidden" name="kind" value={kind} />{/if}
 
       <!-- IT: flexible extras - one input per known key -->
       {#each EXTRA_KEYS as spec (spec.key)}

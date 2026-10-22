@@ -1,4 +1,6 @@
-import { configuredSharedBindingId } from '$lib/server/integrations/elevenlabs/networkSession';
+import { configuredSharedBindingId, resolveSharedNetworkSession } from '$lib/server/integrations/elevenlabs/networkSession';
+import { prepareNetworkDorianContext } from '$lib/server/integrations/elevenlabs/networkPreparation';
+import { recordPilotEvent } from '$lib/server/pilot';
 import { startProvisionalPhoneCall, provisionalPhoneInitiationResponse } from '$lib/server/integrations/elevenlabs/phoneOnboarding';
 // PURPOSE: ElevenLabs conversation-initiation bridge for inbound phone/SIP/widget calls.
 // SECURITY: Header-authenticated. Agent deployment resolves the destination ContextSpace before any participant data is read.
@@ -62,6 +64,37 @@ export const POST: RequestHandler = async ({ request }) => {
     // Shared Dorian inbound calls: provision separate non-login caller custody.
     // Never fall back to the deployment owner's private workspace.
     if (configuredSharedBindingId() && deployment.bindingId === configuredSharedBindingId()) {
+      // A browser must present its server-issued session token in the initiation payload.
+      // Never derive a browser identity from user_id, contact_id or an arbitrary page URL.
+      const browserToken = body?.dynamic_variables?.relish_network_session;
+      if (!body?.caller_id && typeof browserToken === 'string') {
+        const shared = await resolveSharedNetworkSession({ bindingId: deployment.bindingId,
+          conversationId: body?.conversation_id, agentId: body?.agent_id, sessionToken: browserToken });
+        if (!shared) return json({ error: 'Invalid browser session.' }, { status: 403 });
+        const context = await runWithExternalWorkspaceCustody({ targetUserId: shared.userId,
+          targetContextSpaceId: shared.contextSpaceId, reason: 'ELEVENLABS_CONVERSATION_INITIATION' },
+          () => prepareNetworkDorianContext({ userId: shared.userId,
+            contextSpaceId: shared.contextSpaceId, contactId: shared.contactId }));
+        const entry = shared.pilotEntryId ? await (await import('$lib/db')).prisma.pilotProfileEntry.findUnique({
+          where: { id: shared.pilotEntryId }, include: { profile: { select: { displayName: true, kind: true } } }
+        }) : null;
+        if (entry && shared.pilotEntryId) {
+          const source = await (await import('$lib/db')).prisma.pilotProfileEntry.findUnique({
+            where: { id: shared.pilotEntryId }, select: { ownerUserId: true, entrySource: true, environment: true, profileId: true }
+          });
+          if (source) await recordPilotEvent({ type: 'dorian.conversation_started',
+            env: source.environment, profileId: source.profileId, ownerUserId: source.ownerUserId,
+            domainKey: shared.domainKey as 'business' | 'general' | 'dating',
+            entryId: shared.pilotEntryId, visitorUserId: shared.userId,
+            source: source.entrySource, conversationId: body.conversation_id,
+            dedup: 'started:' + body.conversation_id });
+        }
+        const pilotPrompt = entry ? `You are speaking in the ${entry.profile.kind === 'personal' ? 'friendship' : entry.profile.kind} context of a public profile. Explore the visitor's interests naturally. This conversation is private and is not automatically available to ${entry.profile.displayName?.slice(0, 80) || 'the profile owner'}. Do not imply a mutual connection exists.` : '';
+        return json({ type: 'conversation_initiation_client_data', dynamic_variables: {
+          ...context, ...(pilotPrompt ? { call_instruction: pilotPrompt } : {}), relish_network_session: browserToken,
+          call_type: 'NETWORK_PARTICIPANT_BROWSER'
+        } });
+      }
       const prepared = await startProvisionalPhoneCall({
         callerId: body?.caller_id, conversationId: body?.conversation_id, bindingId: deployment.bindingId
       });

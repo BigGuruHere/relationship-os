@@ -5,12 +5,17 @@ import { prisma } from '$lib/db';
 import { decrypt } from '$lib/crypto';
 import { ensureNetworkSelfContact } from '$lib/server/core/networkSelfContact';
 import { prepareNetworkDorianContext } from './networkPreparation';
+import { runWithWorkspaceCustody } from '$lib/server/core/contextSpace';
+import { pilotDomainForKind } from '$lib/server/pilot';
 
 export const networkSessionHash = (token: string) => createHash('sha256').update(token).digest('hex');
 export function configuredSharedBindingId() {
   return String(process.env.RELISH_NETWORK_DORIAN_BINDING_ID || '').trim();
 }
-export async function startSharedNetworkSession(userId: string, contextSpaceId: string) {
+export async function startSharedNetworkSession(userId: string, contextSpaceId: string, pilot?: {
+  pilotEntryId: string; domainKey: 'business' | 'general' | 'dating';
+  profileName: string; profileKind: string;
+}) {
   const bindingId = configuredSharedBindingId();
   if (!bindingId) return null;
   const binding = await prisma.agentProviderBinding.findFirst({
@@ -20,27 +25,60 @@ export async function startSharedNetworkSession(userId: string, contextSpaceId: 
     select: { id: true, providerAgentIdEnc: true }
   });
   if (!binding?.providerAgentIdEnc) return null;
+  // SECURITY: The pilot entry, owner and domain are server-resolved and rechecked here.
+  if (pilot) {
+    const entry = await prisma.pilotProfileEntry.findFirst({ where: {
+      id: pilot.pilotEntryId, visitorUserId: userId, domainKey: pilot.domainKey
+    }, include: { profile: { select: { kind: true, isPublished: true } } } });
+    if (!entry?.profile.isPublished || pilotDomainForKind(entry.profile.kind) !== pilot.domainKey) return null;
+  }
+  const domainKey = pilot?.domainKey || 'general';
+  if (pilot && process.env.RELISH_PHONE_AUTO_LU === 'YES') {
+    // Avoid racing two automatic LU revisions of the same participant's private context.
+    const pending = await prisma.networkDorianSession.findFirst({ where: {
+      userId, contextSpaceId, pilotEntryId: { not: null },
+      OR: [ { understandingOutcome: { in: ['QUEUED', 'WORKING'] } },
+        { understandingOutcome: null, expiresAt: { gt: new Date() } } ]
+    }, select: { id: true } });
+    if (pending) return { status: 'UNDERSTANDING_PENDING' as const };
+  }
+  const verifiedSpace = await prisma.contextSpace.findFirst({ where: {
+    id: contextSpaceId, ownerUserId: userId, domainKey
+  }, select: { id: true } });
+  if (!verifiedSpace) return null;
   // Resolve/create a workspace-local compatibility contact for the authenticated identity.
   // Failure remains closed: never issue a session against an unverified identity.
   let selfContactId: string;
   try {
-    selfContactId = await ensureNetworkSelfContact({ userId, contextSpaceId });
+    selfContactId = await runWithWorkspaceCustody({ userId, contextSpaceId }, async () => {
+      if (domainKey === 'general') return ensureNetworkSelfContact({ userId, contextSpaceId });
+      // Other domains use the same canonical Person but independent self-contacts and custody.
+      const { ensurePilotSelfContact } = await import('$lib/server/pilot');
+      const own = await ensurePilotSelfContact(userId, domainKey);
+      if (own.contextSpaceId !== contextSpaceId) throw new Error('Pilot ContextSpace mismatch.');
+      return own.contactId;
+    });
   } catch {
     return { status: 'NO_SELF_IDENTITY' as const };
   }
   // Prepare the legacy-compatible voice context within the participant's verified custody.
   // An unavailable context is an explicit failure, never a fallback to the binding owner.
-  const participantContext = await prepareNetworkDorianContext({ userId, contextSpaceId, contactId: selfContactId });
+  const participantContext = await runWithWorkspaceCustody({ userId, contextSpaceId }, () =>
+    prepareNetworkDorianContext({ userId, contextSpaceId, contactId: selfContactId }));
+  // Only the public name and kind may enter the context-specific prompt, never owner LU.
+  const pilotInstruction = pilot ? `This is a ${pilot.profileKind === 'personal' ? 'friendship' : pilot.profileKind} introduction arising from a public profile. Have an exploratory, natural conversation about what matters to the participant and whether they wish to get to know ${pilot.profileName.slice(0, 90) || 'the owner'} better. The owner cannot read this conversation. Never imply that a mutual connection or information-sharing permission exists.` : '';
   const token = randomBytes(32).toString('base64url');
-  await prisma.networkDorianSession.create({ data: {
+  const session = await prisma.networkDorianSession.create({ data: {
     tokenHash: networkSessionHash(token), userId, contextSpaceId, contactId: selfContactId,
-    agentBindingId: binding.id, expiresAt: new Date(Date.now() + 2 * 60 * 60 * 1000)
+    agentBindingId: binding.id, pilotEntryId: pilot?.pilotEntryId || null, expiresAt: new Date(Date.now() + 2 * 60 * 60 * 1000)
   }});
   return {
     status: 'READY' as const,
+    sessionId: session.id,
     agentId: decrypt(binding.providerAgentIdEnc, 'agentProviderBinding.providerAgentId'),
     dynamicVariables: JSON.stringify({
       ...participantContext,
+      ...(pilot ? { call_instruction: pilotInstruction, relish_profile_context: pilot.profileKind } : {}),
       relish_network_session: token,
       call_type: 'NETWORK_PARTICIPANT_BROWSER',
       agent_id: decrypt(binding.providerAgentIdEnc, 'agentProviderBinding.providerAgentId'),
@@ -72,11 +110,20 @@ export async function resolveSharedNetworkSession(input: {
       if (fresh?.conversationId !== input.conversationId) return null;
     }
   }
+  // Normal telephone/Network sessions must remain strictly General. Only the separately
+  // validated pilot-entry association permits a different ContextSpace.
+  const entry = session.pilotEntryId ? await prisma.pilotProfileEntry.findFirst({
+    where: { id: session.pilotEntryId, visitorUserId: session.userId },
+    include: { profile: { select: { kind: true } } }
+  }) : null;
+  if (session.pilotEntryId && (!entry || pilotDomainForKind(entry.profile.kind) !== entry.domainKey)) return null;
+  const domainKey = entry?.domainKey || 'general';
   const [space, contact] = await Promise.all([
-    prisma.contextSpace.findFirst({ where: { id: session.contextSpaceId, ownerUserId: session.userId, domainKey: 'general' }, select: { id: true } }),
+    prisma.contextSpace.findFirst({ where: { id: session.contextSpaceId, ownerUserId: session.userId, domainKey }, select: { id: true } }),
     prisma.contact.findFirst({ where: { id: session.contactId, userId: session.userId,
       contextSpaceId: session.contextSpaceId, linkedUserId: session.userId }, select: { id: true } })
   ]);
   if (!space || !contact) return null;
-  return { userId: session.userId, contextSpaceId: session.contextSpaceId, contactId: contact.id };
+  return { userId: session.userId, contextSpaceId: session.contextSpaceId, contactId: contact.id,
+    domainKey, pilotEntryId: entry?.id || null, sessionId: session.id };
 }

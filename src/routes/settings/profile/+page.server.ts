@@ -49,9 +49,10 @@ export const load: PageServerLoad = async ({ locals, url }) => {
   const requestedProfileSlug = url.searchParams.get('profile');
   const networkEntry = url.searchParams.get('entry') === 'network';
   const requestedProfileKind = networkEntry ? 'personal' : url.searchParams.get('kind');
+  const safeRequestedKind = ['business', 'personal', 'dating', 'custom'].includes(requestedProfileKind || '') ? requestedProfileKind : null;
   // IT: Do not load an unrelated default Business profile when creating a Network profile.
   const profile = await prisma.profile.findFirst({
-    where: { userId: locals.user.id, ...(requestedProfileSlug ? { slug: requestedProfileSlug, ...(networkEntry ? { kind: 'personal' } : {}) } : requestedProfileKind === 'personal' ? { kind: 'personal' } : {}) },
+    where: { userId: locals.user.id, ...(requestedProfileSlug ? { slug: requestedProfileSlug, ...(safeRequestedKind ? { kind: safeRequestedKind as any } : {}) } : safeRequestedKind ? { kind: safeRequestedKind as any } : {}) },
     select: {
       id: true,
       userId: true,
@@ -69,6 +70,7 @@ export const load: PageServerLoad = async ({ locals, url }) => {
       kind: true,
       publicMeta: true,
       qrReady: true,
+      isPublished: true,
       updatedAt: true
     },
     orderBy: [{ isDefault: 'desc' }, { updatedAt: 'desc' }]
@@ -101,6 +103,8 @@ export const actions: Actions = {
     const websiteUrl  = String(fd.get('websiteUrl') || '').trim();
     const emailPublic = String(fd.get('emailPublic') || '').trim();
     const phonePublic = String(fd.get('phonePublic') || '').trim();
+    // SECURITY: Publication is an explicit owner decision, not inferred from QR generation.
+    const isPublished = fd.get('isPublished') === 'on';
     // IT: Network entry never permits changing another profile kind through form tampering.
     const networkEntry = String(fd.get('entry') || '') === 'network';
     const requestedKind = networkEntry ? 'personal' : String(fd.get('kind') || 'business').trim();
@@ -121,7 +125,6 @@ export const actions: Actions = {
     }
 
     // IT: A profile-specific create must not overwrite a default profile of another kind.
-    const createPersonal = kind === 'personal';
     // IT: read existing profile if any
     const existing = profileId
       ? await prisma.profile.findFirst({
@@ -129,13 +132,16 @@ export const actions: Actions = {
           select: { id: true, slug: true, isDefault: true, publicMeta: true, kind: true }
         })
       : await prisma.profile.findFirst({
-          where: { userId: locals.user.id, ...(createPersonal ? { kind: 'personal' as const } : {}) },
+          where: { userId: locals.user.id, kind },
           select: { id: true, slug: true, isDefault: true, publicMeta: true, kind: true },
           orderBy: [{ isDefault: 'desc' }, { updatedAt: 'desc' }]
         });
 
     // SECURITY: A Network request cannot overwrite a Business or Dating profile by supplying its id.
     if (networkEntry && existing && existing.kind !== 'personal') return fail(403, { error: 'Not a Network profile' });
+    // SECURITY: A profile's context cannot be changed by submitting a different kind or id.
+    if (profileId && !existing) return fail(404, { error: 'Profile not found' });
+    if (existing && existing.kind !== kind) return fail(403, { error: 'Profile kind cannot be changed.' });
 
     // IT: do DB work inside try - compute targetSlug, but DO NOT redirect here
     let targetSlug: string | null = null;
@@ -150,6 +156,7 @@ export const actions: Actions = {
           data: {
             slug: nextSlug,
             kind,
+            isPublished,
             displayName: displayName || null,
             headline: headline || null,
             bio: bio || null,
@@ -166,7 +173,7 @@ export const actions: Actions = {
         targetSlug = nextSlug;
       } else {
         // IT: new Network profile URLs have random stable identifiers, not names.
-        const wanted = networkEntry ? `p-${crypto.randomUUID()}` : slugify(displayName);
+        const wanted = ['business', 'personal', 'dating'].includes(kind) ? `p-${crypto.randomUUID()}` : slugify(displayName);
         const uniqueSlug = await ensureUniqueSlugGlobal(wanted);
 
         const hasDefault = await prisma.profile.findFirst({
@@ -182,6 +189,7 @@ export const actions: Actions = {
             slug: uniqueSlug,
             isDefault: hasDefault ? false : true,
             kind,
+            isPublished,
             displayName: displayName || null,
             headline: headline || null,
             bio: bio || null,

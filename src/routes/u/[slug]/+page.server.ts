@@ -10,8 +10,7 @@ import { prisma } from '$lib/db';
 import { createInviteToken } from '$lib/server/tokens';
 import { fail, redirect, error } from '@sveltejs/kit';
 import { absoluteUrlFromOrigin } from '$lib/url';
-import { createMutualConnection } from '$lib/connections';
-import { resolveOwnerFromSlug } from '$lib/server/owner';
+import { getOrCreatePilotVisitor, ensurePilotSelfContact, pilotDomainForKind, pilotSource, recordPilotEvent } from '$lib/server/pilot';
 
 
 
@@ -40,7 +39,8 @@ export const load: PageServerLoad = async ({ params, url, locals }) => {
       // flexible extras
       publicMeta: true,
       // share status
-      qrReady: true
+      qrReady: true,
+      isPublished: true
     }
   });
 
@@ -83,12 +83,15 @@ export const load: PageServerLoad = async ({ params, url, locals }) => {
         emailPublic: true,
         phonePublic: true,
         publicMeta: true,
-        qrReady: true
+        qrReady: true,
+        isPublished: true
       },
       orderBy: [{ isDefault: 'desc' }, { updatedAt: 'desc' }]
     });
   }
 
+  // An unpublished profile must never be visible to a public visitor or usable in onboarding.
+  if (!profile?.isPublished && locals.user?.id !== ownerId) throw error(404, 'Profile unavailable');
   // IT: generate invite token for guest flow
   const invite = await createInviteToken({ ownerId, ttlMinutes: 30 });
 
@@ -130,15 +133,7 @@ export const load: PageServerLoad = async ({ params, url, locals }) => {
         where: { userId_otherUserId: { userId: visitorUserId, otherUserId: ownerId } }, select: { id: true }
       }) : null;
       isAlreadyConnected = Boolean(networkOrigin && !removed);
-    } else {
-      // Older non-Network public profiles continue to use linked contacts.
-      // Read only the visitor's Contact, never the other owner's private rows.
-      const existingContact = await prisma.contact.findFirst({
-        where: { userId: visitorUserId, linkedUserId: ownerId },
-        select: { id: true }
-      });
-      isAlreadyConnected = Boolean(existingContact);
-    }
+    } // Business and Dating cannot infer a connection from cross-context Contact rows.
 
       // Get visitor's profile for the connect button
       if (!isAlreadyConnected) {
@@ -192,6 +187,7 @@ export const actions: Actions = {
     const websiteUrl  = String(form.get('websiteUrl') || '');
     const emailPublic = String(form.get('emailPublic') || '');
     const phonePublic = String(form.get('phonePublic') || '');
+    const isPublished = form.get('isPublished') === 'on';
 
     // IT: extras named extra_<key>
     const extras: Record<string, string> = {};
@@ -225,6 +221,7 @@ export const actions: Actions = {
         websiteUrl: websiteUrl || null,
         emailPublic: emailPublic || null,
         phonePublic: phonePublic || null,
+        isPublished,
         publicMeta: nextPublicMeta
       }
     });
@@ -234,35 +231,36 @@ export const actions: Actions = {
     throw redirect(303, to);
   },
 
-// IT: instant connect for logged-in users
-connectUsers: async ({ locals, params }) => {
-  // IT: require login
-  if (!locals.user) throw redirect(303, '/auth/login');
+// SECURITY: The legacy one-context instant connect cannot safely connect Business/Dating.
+// Friendship uses the existing explicit Network join flow, not this endpoint.
+connectUsers: async () => fail(410, { error: 'Use the context-specific connection invitation instead.' }),
 
-  // IT: resolve owner from slug using shared helper
-  const resolved = await resolveOwnerFromSlug(params.slug);
-  if (!resolved) return fail(404, { error: 'Profile not found' });
-
-  // IT: prevent self-connection
-  if (resolved.id === locals.user.id) {
-    return fail(400, { error: 'Cannot connect to yourself' });
+  // Participant initiation is an explicit opt-in, never a silent relationship assertion.
+  startDorian: async ({ locals, cookies, params, url }) => {
+    const profile = await prisma.profile.findUnique({ where: { slug: params.slug },
+      select: { id: true, slug: true, kind: true, userId: true, isPublished: true } });
+    if (!profile?.isPublished) return fail(404, { error: 'Profile unavailable.' });
+    const domainKey = pilotDomainForKind(profile.kind);
+    if (!domainKey) return fail(400, { error: 'This profile does not support Dorian.' });
+    // An owner must not create a visitor relation to themselves.
+    if (locals.user?.id === profile.userId) return fail(400, { error: 'Share your profile with someone else.' });
+    const visitorUserId = await getOrCreatePilotVisitor({ cookies, env: locals.env,
+      authenticatedUserId: locals.user?.id, isHttps: url.protocol === 'https:' });
+    try { await ensurePilotSelfContact(visitorUserId, domainKey); }
+    catch (e) { console.error('pilot self-contact unavailable', e); return fail(409, { error: 'Private conversation space could not be prepared.' }); }
+    const source = pilotSource(url.searchParams.get('via'));
+    const previous = await prisma.pilotProfileEntry.count({ where: {
+      profileId: profile.id, visitorUserId, domainKey } });
+    const entry = await prisma.pilotProfileEntry.create({ data: {
+      profileId: profile.id, ownerUserId: profile.userId, visitorUserId, domainKey,
+      environment: locals.env, entrySource: source
+    }, select: { id: true } });
+    await recordPilotEvent({ type: 'dorian.conversation_requested', env: locals.env,
+      profileId: profile.id, ownerUserId: profile.userId, visitorUserId,
+      domainKey, entryId: entry.id, source });
+    if (previous) await recordPilotEvent({ type: 'dorian.conversation_returned', env: locals.env,
+      profileId: profile.id, ownerUserId: profile.userId, visitorUserId,
+      domainKey, entryId: entry.id, source });
+    throw redirect(303, `/pilot/dorian/${entry.id}`);
   }
-
-  // IT: Stage 8.7 moves the profile-owner duplicate check inside the named cross-custody
-  // boundary. The route itself must not read another owner's private Contact table.
-  try {
-    const result = await createMutualConnection(resolved.id, locals.user.id);
-    if (!result.createdAny) {
-      return fail(400, { error: 'Already connected' });
-    }
-  } catch (err) {
-    console.error('Failed to create mutual connection:', err);
-    return fail(500, { error: 'Failed to connect' });
-  }
-
-  // IT: redirect with a friendly name if known
-  const who = resolved.displayName || 'user';
-  throw redirect(303, `/?connected=${encodeURIComponent(who)}`);
-}
-
 };

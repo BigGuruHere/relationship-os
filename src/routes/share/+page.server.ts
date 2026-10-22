@@ -32,6 +32,7 @@ export const load: PageServerLoad = async ({ locals, url }) => {
       slug: true,
       displayName: true,    // IT: add display name so the UI does not fall back to slug
       qrReady: true,
+      isPublished: true,
       qrSvg: true,
       updatedAt: true,
       isDefault: true
@@ -69,7 +70,7 @@ export const load: PageServerLoad = async ({ locals, url }) => {
       // IT: re-read the row so the page gets the svg immediately
       profile = await prisma.profile.findUnique({
         where: { id: profile.id },
-        select: { id: true, slug: true, displayName: true, qrReady: true, qrSvg: true, updatedAt: true, isDefault: true }
+        select: { id: true, slug: true, displayName: true, qrReady: true, qrSvg: true, isPublished: true, updatedAt: true, isDefault: true }
       });
     } catch (err) {
       console.error('QR auto-generate failed', err);

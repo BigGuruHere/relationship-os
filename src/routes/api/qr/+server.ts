@@ -16,14 +16,14 @@ export const GET: RequestHandler = async ({ url, locals }) => {
   // IT: ensure the profile exists - avoid generating for unknown slugs
   const exists = await prisma.profile.findFirst({
     where: { slug },
-    select: { slug: true }
+    select: { slug: true, isPublished: true }
   });
-  if (!exists) {
+  if (!exists?.isPublished) {
     return new Response('Not found', { status: 404 });
   }
 
   // IT: absolute URL that the QR should encode
-  const target = absoluteUrlFromOrigin(locals.appOrigin, `/u/${slug}`);
+  const target = absoluteUrlFromOrigin(locals.appOrigin, `/u/${encodeURIComponent(slug)}?via=qr`);
 
   // IT: generate SVG
   const svg = await generateQrSvg(target, 256);

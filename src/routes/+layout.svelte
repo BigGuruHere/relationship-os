@@ -228,6 +228,8 @@
 						{/if}
 					</a>
 
+					<!-- Stage 8.16: owner access to the three context profiles. -->
+                    <a class="btn" href="/profiles" title="My three profiles">Profiles</a>
 					<!-- Share -->
 					<a class="btn icon" href="/share" aria-label="Share your link" title="Share your link">
 						<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">

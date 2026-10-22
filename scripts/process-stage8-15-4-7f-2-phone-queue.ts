@@ -83,6 +83,62 @@ async function runOne() {
   return false;
 }
 
+// Stage 8.16: drain participant-owned browser pilot calls through the same source-validated
+// automatic LU pipeline. The existing phone-caller state machine remains unchanged.
+async function runPilotOne() {
+  const queued = await prisma.networkDorianSession.findMany({
+    where: { pilotEntryId: { not: null }, understandingOutcome: 'QUEUED', conversationId: { not: null } },
+    select: { id: true, userId: true, contextSpaceId: true, contactId: true,
+      pilotEntryId: true, conversationId: true }, orderBy: { understandingOutcomeAt: 'asc' }, take: 12
+  });
+  for (const session of queued) {
+    const claimed = await prisma.networkDorianSession.updateMany({
+      where: { id: session.id, pilotEntryId: session.pilotEntryId, understandingOutcome: 'QUEUED' },
+      data: { understandingOutcome: 'WORKING', understandingOutcomeAt: new Date() }
+    });
+    if (claimed.count !== 1 || !session.conversationId || !session.pilotEntryId) continue;
+    try {
+      const entry = await prisma.pilotProfileEntry.findFirst({
+        where: { id: session.pilotEntryId, visitorUserId: session.userId },
+        select: { domainKey: true }
+      });
+      if (!entry || !['business', 'general', 'dating'].includes(entry.domainKey)) throw new Error('Invalid pilot entry custody.');
+      const space = await prisma.contextSpace.findFirst({ where: {
+        id: session.contextSpaceId, ownerUserId: session.userId, domainKey: entry.domainKey
+      }, select: { id: true } });
+      if (!space) throw new Error('Pilot ContextSpace does not match the session.');
+      const digest = createHash('sha256').update(session.conversationId).digest('hex');
+      const original = await prisma.interaction.findFirst({ where: {
+        userId: session.userId, contextSpaceId: session.contextSpaceId,
+        channel: CONVERSATION_TRANSCRIPT_CHANNEL, externalRef: `conversation:elevenlabs:${digest}`
+      }, select: { id: true } });
+      if (!original) throw new Error('Pilot transcript is missing.');
+      const source = await prisma.interaction.findFirst({ where: {
+        userId: session.userId, contextSpaceId: session.contextSpaceId, contactId: session.contactId,
+        channel: PERSON_CONVERSATION_SOURCE_CHANNEL,
+        externalRef: `conversation:person-source:${original.id}:${session.contactId}`
+      }, select: { id: true } });
+      if (!source) throw new Error('Pilot participant evidence is missing.');
+      const result = await runWithWorkspaceCustody({ userId: session.userId,
+        contextSpaceId: session.contextSpaceId }, () => processPhoneUnderstanding({
+          userId: session.userId, contextSpaceId: session.contextSpaceId, contactId: session.contactId
+        }, source.id, entry.domainKey as 'business' | 'general' | 'dating'));
+      await prisma.networkDorianSession.updateMany({ where: { id: session.id, understandingOutcome: 'WORKING' },
+        data: { understandingOutcome: result.detail === 'NO_CHANGE' ? 'NO_CHANGE' : 'APPLIED',
+          understandingOutcomeAt: new Date() } });
+      console.log('[Pilot LU Worker] Completed', { outcome: result.detail });
+    } catch (error) {
+      // Retain failed session state for operator attention, without logging identity or content.
+      await prisma.networkDorianSession.updateMany({ where: { id: session.id, understandingOutcome: 'WORKING' },
+        data: { understandingOutcome: 'FAILED', understandingOutcomeAt: new Date() } });
+      console.error('[Pilot LU Worker] Failed', { errorClass: error instanceof Error ? error.name : 'UnknownError',
+        conversationDigest: createHash('sha256').update(session.conversationId).digest('hex').slice(0, 12) });
+    }
+    return true;
+  }
+  return false;
+}
+
 // Graceful shutdown: never interrupt an active processing request on a signal.
 let stopping = false;
 process.on('SIGTERM', () => { stopping = true; });
@@ -122,7 +178,7 @@ try {
     // Drain outstanding queued records before sleeping to minimise callback delay.
     let processed = false;
     do {
-      processed = await runOne();
+      processed = await runOne() || await runPilotOne();
     } while (WATCH && processed && !stopping);
     if (!WATCH) console.log(processed ? 'Processed one queued candidate.' : 'No queued candidates.');
     await reportBlockedStates();

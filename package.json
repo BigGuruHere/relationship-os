@@ -180,7 +180,8 @@
     "watch:stage8.15.4.7f.2:dev": "node --env-file=.env --import tsx scripts/process-stage8-15-4-7f-2-phone-queue.ts --watch",
     "check:stage8.15.4.7f.2b": "node --test tests/core/stage8-15-4-7f-2-queue.test.mjs tests/core/stage8-15-4-7f-2b-worker-loop.test.mjs",
     "check:stage8.15.4.7g.1": "node --test tests/core/stage8-15-4-7g-1-worker-startup.test.mjs",
-    "check:stage8.15.4.7g.3": "node --test tests/core/stage8-15-4-7g-3-processing-outcomes.test.mjs tests/core/stage8-15-4-7g-3a-no-change-exception.test.mjs"
+    "check:stage8.15.4.7g.3": "node --test tests/core/stage8-15-4-7g-3-processing-outcomes.test.mjs tests/core/stage8-15-4-7g-3a-no-change-exception.test.mjs",
+    "check:stage8.16": "node --test tests/core/stage8-16-three-context-pilot.test.mjs"
   },
   "engines": {
     "node": ">=22.13.1 <23"

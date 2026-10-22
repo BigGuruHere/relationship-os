@@ -7,12 +7,23 @@
 
   // IT: helper utilities for rendering and vCard link building
   import { headerFrom, publicRows, buildVcardUrl, EXTRA_KEYS } from '$lib/publicProfile';
+  import { onMount } from 'svelte';
+
 
   // IT: start in edit mode if the server requested it
   let editing = Boolean(data?.editingRequested);
 
   // IT: seed fields from server profile or defaults
   const prof: any = data?.profile || {};
+  const contextLabel = prof.kind === 'personal' ? 'Friendship' : prof.kind === 'dating' ? 'Dating' : 'Business';
+  const isPilotKind = ['business', 'personal', 'dating'].includes(prof.kind);
+  // Visibility is counted after browser render, not on server prefetch. No identity tracking on landing.
+  onMount(() => {
+    if (!data?.profile?.isPublished || !isPilotKind || data?.isOwner) return;
+    void fetch('/api/pilot/visit', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      credentials: 'same-origin', body: JSON.stringify({ slug: prof.slug,
+        via: new URLSearchParams(window.location.search).get('via') }) }).catch(() => {});
+  });
 
   // IT: derive a friendly owner name for the thanks banner
   const ownerName = (prof.displayName && prof.displayName.trim()) || 'the owner';
@@ -103,6 +114,22 @@
   </div>
 
   <div class="card page" style="padding:16px; max-width:720px; margin:0 auto; position:relative;">
+    {#if isPilotKind}<p style="margin:0 0 12px"><strong>{contextLabel} profile</strong>{#if !prof.isPublished} - Unpublished (owner preview){/if}</p>{/if}
+    {#if !data?.isOwner && isPilotKind && prof.isPublished}
+      <section class="card" style="padding:16px;margin:12px 0;border:1px solid #ddd">
+        <h2>Talk with Dorian</h2>
+        {#if prof.kind === 'business'}
+          <p>Explore what you're working on, what matters professionally, and whether you might be useful to one another.</p>
+        {:else if prof.kind === 'personal'}
+          <p>Get to know each other and discover what you might have in common.</p>
+        {:else}
+          <p>Explore whether you might enjoy getting to know each other, at your own pace.</p>
+        {/if}
+        <p>Dorian is an AI conversational partner. Your conversation is private to you and is not shared with this profile owner. We record basic usage to improve this pilot.</p>
+        <form method="post" action="?/startDorian"><button class="btn primary" type="submit">Continue to Dorian</button></form>
+        {#if form?.error}<p role="alert">{form.error}</p>{/if}
+      </section>
+    {/if}
 
     <!-- IT: owner only edit icon - toggles edit mode on this page -->
     {#if data?.isOwner}
@@ -131,7 +158,7 @@
     {/if}
 
     <!-- IT: LOGGED-IN USER DETECTION - show connect UI instead of lead capture -->
-    {#if !data?.isOwner && data?.isVisitorLoggedIn && !editing}
+    {#if !data?.isOwner && data?.isVisitorLoggedIn && !editing && prof.kind === 'personal'}
       
       {#if data?.isSelfView}
         <!-- IT: visitor is viewing their own profile -->
@@ -154,10 +181,6 @@
           
           {#if data?.profile?.kind === 'personal'}
             <a class="btn primary" href={'/network/join/' + encodeURIComponent(data.slugParam)} style="width:100%;justify-content:center;">Connect with {ownerName}</a>
-          {:else}
-            <form method="post" action="?/connectUsers">
-              <button class="btn primary" type="submit" style="width:100%;">Connect with {ownerName}</button>
-            </form>
           {/if}
           
           <p class="muted" style="margin:10px 0 0 0; font-size:0.9rem;">
@@ -212,7 +235,7 @@
         </div>
       {/if}
       <!-- IT: public actions - only show for non-logged-in visitors or after they connect -->
-      {#if !data?.isOwner && !data?.isVisitorLoggedIn}
+      {#if !data?.isOwner && !data?.isVisitorLoggedIn && prof.kind === 'personal'}
         <div class="btnrow" style="margin-top:12px;">
           <button class="btn primary" on:click|preventDefault={saveThenShare}>Save contact</button>
         </div>
@@ -233,6 +256,7 @@
       <!-- IT: edit mode - posts to the named save action -->
       <form method="post" action="?/save" class="grid">
         <input type="hidden" name="profileId" value={profileId} />
+        <label><input type="checkbox" name="isPublished" checked={prof.isPublished !== false} /> Published publicly</label>
 
         <div class="field"><label for="displayName">Name</label><input id="displayName" name="displayName" bind:value={displayName} /></div>
         <div class="field"><label for="headline">Headline</label><input id="headline" name="headline" bind:value={headline} /></div>

@@ -19,7 +19,7 @@
   }
 
   // IT: stored SVG markup for the QR if available
-  const svg = profile.qrSvg || '';
+  const svg = ''; // Legacy stored SVG may encode the wrong deployment origin.
   const hasSvg = typeof svg === 'string' && svg.trim().startsWith('<svg');
 
   // IT: derive a friendly owner name with safe fallbacks
@@ -65,11 +65,12 @@
 <div class="container">
   <div class="card" style="padding:20px; max-width:720px; margin:0 auto;">
     <h1 style="margin-top:0;">{heading}</h1>
+    {#if !profile.isPublished}<p role="status">This profile is unpublished. Publish it before sharing.</p>{/if}
 
     <div style="display:flex; gap:20px; align-items:flex-start; flex-wrap:wrap;">
       <div style="min-width:220px;">
-        {#if hasSvg}
-          <div class="qr" aria-label="QR code">{@html svg}</div>
+        {#if profile.isPublished}
+          <img class="qr-live" src={'/api/qr?slug=' + encodeURIComponent(profile.slug)} alt="Scan this profile QR code" width="220" height="220" />
         {:else}
           <div
             style="width:220px;height:220px;border:1px solid #eee;border-radius:10px;display:flex;align-items:center;justify-content:center;"

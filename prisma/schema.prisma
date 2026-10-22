@@ -144,6 +144,8 @@ model User {
   inviteTokens InviteToken[] @relation("OwnerInvites")
 
   profiles Profile[]
+  // Stage 8.16: pilot attribution is not a Contact or a sharing grant.
+  pilotBrowserSessions PilotBrowserSession[]
 
   // IT: Stage 8.6 custody containers owned by this account.
   contextSpaces ContextSpace[]
@@ -788,6 +790,10 @@ model Profile {
   qrReady       Boolean   @default(false)
   qrSvg         String?
   qrGeneratedAt DateTime?
+  // Stage 8.16: explicit owner-controlled publication. Existing profiles stay published.
+  isPublished Boolean @default(true)
+  pilotEntries PilotProfileEntry[]
+  productEvents ProductEvent[]
 
   publicMeta Json?
 
@@ -3796,6 +3802,9 @@ model NetworkDorianSession {
   // A NO_CHANGE result means validated analysis found no authoritative revision to apply.
   understandingOutcome String?
   understandingOutcomeAt DateTime?
+  pilotEntryId String?
+  pilotEntry PilotProfileEntry? @relation(fields: [pilotEntryId], references: [id], onDelete: SetNull)
+  @@index([pilotEntryId])
   @@index([userId, contextSpaceId, createdAt])
   @@index([agentBindingId, expiresAt])
 }
@@ -3815,4 +3824,78 @@ model NetworkPhoneCaller {
   understandingConversationId String?
   understandingStateAt DateTime?
   @@index([createdAt])
+}
+
+
+// Stage 8.16: opaque, server-issued same-browser provisional continuity.
+// A token is a credential; only its SHA-256 hash is ever stored. Not an authenticated login.
+model PilotBrowserSession {
+  id String @id @default(uuid())
+  tokenHash String @unique @db.VarChar(64)
+  visitorUserId String
+  visitor User @relation(fields: [visitorUserId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+  revokedAt DateTime?
+  @@index([visitorUserId, expiresAt])
+}
+
+// An entry records source provenance, not mutual friendship or disclosure consent.
+model PilotProfileEntry {
+  id String @id @default(uuid())
+  profileId String
+  profile Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  ownerUserId String
+  visitorUserId String
+  domainKey String
+  environment String @db.VarChar(12)
+  entrySource String @default("link")
+  createdAt DateTime @default(now())
+  sessions NetworkDorianSession[]
+  connectionRequest PilotConnectionRequest?
+  events ProductEvent[]
+  @@index([ownerUserId, domainKey, createdAt])
+  @@index([visitorUserId, domainKey, createdAt])
+  @@index([profileId, createdAt])
+}
+
+// First-party allowlisted product signals. No content, credentials, prompts, or LU text.
+model ProductEvent {
+  id String @id @default(uuid())
+  type String @db.VarChar(90)
+  schemaVersion Int @default(1)
+  environment String @db.VarChar(12)
+  profileId String
+  profile Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  ownerUserId String
+  domainKey String
+  entryId String?
+  entry PilotProfileEntry? @relation(fields: [entryId], references: [id], onDelete: SetNull)
+  visitorUserId String?
+  conversationId String?
+  source String @db.VarChar(24) @default("link")
+  value Boolean?
+  idempotencyKey String? @unique @db.VarChar(180)
+  occurredAt DateTime @default(now())
+  @@index([ownerUserId, domainKey, occurredAt])
+  @@index([entryId, occurredAt])
+  @@index([profileId, type, occurredAt])
+}
+
+
+// A visitor expressly offers these details to the profile owner for follow-up.
+// This request DOES NOT disclose their transcript or private Living Understanding.
+model PilotConnectionRequest {
+  id String @id @default(uuid())
+  entryId String @unique
+  entry PilotProfileEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  ownerUserId String
+  visitorUserId String
+  profileId String
+  domainKey String
+  nameEnc String
+  emailEnc String
+  status String @default("REQUESTED")
+  createdAt DateTime @default(now())
+  @@index([ownerUserId, domainKey, createdAt])
 }

@@ -31,6 +31,24 @@
       <p class="muted">Revision source links: {data.call.inspection.sourceInteractionIds.length}. These links establish provenance, not necessarily an individual topic change.</p>
     </section>
   {/if}
+  {#if data.call.automaticReview}
+    <section>
+      <h2>Original automatic impact review</h2>
+      <p class="muted">Stored encrypted pipeline trace from the completed automatic review. These are the original saved stages, not a reconstruction.</p>
+      <p class="muted">Completed: {new Date(data.call.automaticReview.completedAt).toLocaleString()} · Previous revision: {data.call.automaticReview.baselineRevisionNumber ?? 'none'}</p>
+      {#each data.call.automaticReview.pipelineStages as stage}
+        <details class="topic">
+          <summary>{stage.title} ({stage.status})</summary>
+          <pre>{JSON.stringify(stage.data, null, 2)}</pre>
+        </details>
+      {/each}
+    </section>
+  {:else if data.call.revisionNumber}
+    <section>
+      <h2>Intermediate review history</h2>
+      <p class="muted">No retained completed impact trace is available for this call. Initial revisions use a different pipeline; older completed drafts may already have expired. The authoritative before-and-after revision and source evidence above remain available.</p>
+    </section>
+  {/if}
   <section><h2>Conversation summary</h2><p>{data.call.summary || 'No separate summary available.'}</p></section>
   <section><h2>Original conversation evidence</h2><pre>{data.call.transcript}</pre></section>
 </div>

@@ -208,10 +208,40 @@ export async function loadLatestLivingUnderstandingDraftForSource(scope: Scope, 
 export async function completeLivingUnderstandingDraft(scope: Scope, draftId: string) {
   if (!draftId) return;
   const now = new Date();
+  const draft = await prisma.livingUnderstandingDraft.findFirst({
+    where: { id: draftId, ...scope }, select: { stage: true }
+  });
   await prisma.livingUnderstandingDraft.updateMany({
     where: { id: draftId, ...scope },
-    data: { status: 'COMPLETED', completedAt: now, expiresAt: new Date(now.getTime() + 60 * 60 * 1000) }
+    // IT: Auto-approved pilot impact traces remain available for read-only inspection.
+    // Other completed drafts retain their existing short cleanup window.
+    data: { status: 'COMPLETED', completedAt: now,
+      expiresAt: new Date(now.getTime() + (draft?.stage === 'AUTO_PROPOSAL_READY' ? 30 * 24 * 60 * 60 * 1000 : 60 * 60 * 1000)) }
   });
+}
+
+// IT: Read completed automatic impact stages without making the draft resumable.
+// SECURITY: Every record is bound to the requested source and scoped participant;
+// never use this function to generate an approval token or permit draft mutation.
+export async function inspectCompletedAutomaticImpactDraft(scope: Scope, sourceInteractionId: string) {
+  const row = await prisma.livingUnderstandingDraft.findFirst({
+    where: { ...scope, sourceInteractionId, stage: 'AUTO_PROPOSAL_READY', status: 'COMPLETED', expiresAt: { gt: new Date() } },
+    orderBy: { completedAt: 'desc' },
+    select: { id: true, stateEnc: true, completedAt: true, baselineRevisionNumber: true }
+  });
+  if (!row) return null;
+  const state = normaliseState(JSON.parse(decrypt(row.stateEnc, DRAFT_AAD)));
+  return {
+    completedAt: row.completedAt,
+    baselineRevisionNumber: row.baselineRevisionNumber,
+    // Historical original pipeline stages, not generated or re-evaluated during inspection.
+    pipelineStages: (state.pipelineStages ?? []).map((stage: any) => ({
+      key: String(stage?.key ?? '').slice(0, 80),
+      title: String(stage?.title ?? '').slice(0, 120),
+      status: String(stage?.status ?? '').slice(0, 60),
+      data: stage?.data ?? null
+    }))
+  };
 }
 
 export async function getLatestLivingUnderstandingDraftSummary(scope: Scope) {

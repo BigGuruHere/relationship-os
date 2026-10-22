@@ -10,7 +10,12 @@ import { normalizePhoneForIdentity } from './phone';
 import { ensureOwnedDomainContextSpace } from '$lib/server/core/contextSpaceDirectory';
 import { PERSON_CONVERSATION_SOURCE_CHANNEL } from '$lib/server/core/conversationIngestion';
 import { phoneAutomaticLearningEnabled } from '$lib/server/core/phoneUnderstandingAutomation';
+import { runWithWorkspaceCustody } from '$lib/server/core/contextSpace';
+import { getCurrentLivingUnderstanding } from '$lib/server/datingPersistedLivingUnderstanding';
+import { decryptInteractionSummary } from '$lib/server/core/interactionEncryption';
 
+// Explicit pilot opt-in: a recognised phone number is a continuity signal, not verified identity.
+const phoneLivingContextEnabled = () => process.env.RELISH_PHONE_LU_CONTEXT === 'YES';
 const SESSION_TTL_MS = 2 * 60 * 60 * 1000;
 const phoneIndex = (phone: string) => buildScopedIndexToken(phone, 'network:provisional-phone:v1');
 const acceptedConversation = (id: unknown): id is string => typeof id === 'string' && /^conv_[a-zA-Z0-9_-]{8,100}$/.test(id);
@@ -82,6 +87,56 @@ export async function startProvisionalPhoneCall(input: {
     userId: caller.userId, contextSpaceId: caller.contextSpaceId,
     contactId: caller.contactId, channel: PERSON_CONVERSATION_SOURCE_CHANNEL
   } });
+  // Read only the current authoritative understanding, and only within this provisional
+  // participant's custody. Never consult the deployment owner's workspace or draft reviews.
+  // A failed read must not issue a token with stale or incorrectly scoped context.
+  // Keep short-term continuity distinct from longitudinal Living Understanding.
+  // Only read completed, imported participant evidence in this caller's custody.
+  let lastCallSummary = '';
+  if (previousCalls > 0) {
+    try {
+      const latestSummarisedCall = await runWithWorkspaceCustody({
+        userId: caller.userId, contextSpaceId: caller.contextSpaceId
+      }, () => prisma.interaction.findFirst({
+        where: {
+          userId: caller.userId, contextSpaceId: caller.contextSpaceId,
+          contactId: caller.contactId, channel: PERSON_CONVERSATION_SOURCE_CHANNEL,
+          summaryEnc: { not: null }
+        },
+        orderBy: [{ occurredAt: 'desc' }, { createdAt: 'desc' }],
+        select: { summaryEnc: true }
+      }));
+      // Use the established encryption helper, including legacy-AAD compatibility.
+      // Never include unsummarised transcripts or encrypted payloads in prompts.
+      lastCallSummary = decryptInteractionSummary(latestSummarisedCall?.summaryEnc).trim().slice(0, 1600);
+    } catch {
+      // A custody/database read failure should not silently deliver untrusted context.
+      return { status: 'WAIT' as const };
+    }
+  }
+  let livingContext = '';
+  let livingRevision = '';
+  if (phoneLivingContextEnabled() && previousCalls > 0) {
+    try {
+      const living = await runWithWorkspaceCustody({
+        userId: caller.userId, contextSpaceId: caller.contextSpaceId
+      }, () => getCurrentLivingUnderstanding({
+        userId: caller.userId, contextSpaceId: caller.contextSpaceId,
+        contactId: caller.contactId
+      }));
+      if (living) {
+        // Keep initiation payload bounded; source provenance remains in Relish, not in the prompt.
+        livingContext = living.topics.slice(0, 12).map(topic =>
+          `${topic.realm} / ${topic.topicName}: ${topic.understanding}`
+        ).join('\n').slice(0, 6000);
+        livingRevision = String(living.revisionNumber);
+      }
+    } catch {
+      // Fail closed on an unexpected custody/decryption/database error.
+      // The caller is not locked because no IN_CALL claim has been attempted yet.
+      return { status: 'WAIT' as const };
+    }
+  }
   const token = randomBytes(32).toString('base64url');
   try {
     // Row update is an atomic per-caller claim. Two simultaneous incoming calls cannot
@@ -114,10 +169,10 @@ export async function startProvisionalPhoneCall(input: {
     if (error && typeof error === 'object' && 'code' in error && error.code === 'P2002') return null;
     throw error;
   }
-  return { status: 'READY' as const, token, previousCalls, preferredName };
+  return { status: 'READY' as const, token, previousCalls, preferredName, livingContext, livingRevision, lastCallSummary };
 }
 
-export function provisionalPhoneInitiationResponse(input: {token: string; previousCalls: number; preferredName?: string}) {
+export function provisionalPhoneInitiationResponse(input: {token: string; previousCalls: number; preferredName?: string; livingContext?: string; livingRevision?: string; lastCallSummary?: string}) {
   const returning = input.previousCalls > 0;
   return {
     type: 'conversation_initiation_client_data',
@@ -127,12 +182,16 @@ export function provisionalPhoneInitiationResponse(input: {token: string; previo
       call_type: 'INBOUND_PHONE',
       previous_calls: String(input.previousCalls),
       user_name: input.preferredName || '',
-      last_call_summary: '',
-      memory_and_identity_context: '',
-      // Continuity is limited to a non-sensitive completed-conversation count.
-      // Caller ID is NOT authentication, so do not supply summaries or private memory.
+      last_call_summary: input.lastCallSummary || '',
+      memory_and_identity_context: input.livingContext || '',
+      living_understanding: input.livingContext || '',
+      living_understanding_revision: input.livingRevision || '',
+      // Development-pilot opt-in supplies bounded private LU to this phone continuity identity.
+      // Caller ID does not authenticate the human: never use this for third-party disclosure.
       call_instruction: returning
-        ? 'A previous conversation was completed from this number. A preferred name is a provisional conversational preference, NOT authentication. If a name is available, check whether you are speaking to that person before using it further. Never disclose previous subjects or private memories. The caller can correct their name using the save_preferred_name tool.'
+        ? input.livingContext
+          ? 'This telephone number has previous conversations. First confirm the caller\'s preferred name, if available. Use the provided Living Understanding naturally as background, not as a script. Do not recite or volunteer sensitive details or disclose them to others. Treat the understanding as provisional and welcome corrections. The caller can correct their name using save_preferred_name.'
+          : 'A previous conversation was completed from this number. A preferred name is a provisional conversational preference, NOT authentication. If a name is available, check whether you are speaking to that person before using it further. Never disclose previous subjects or private memories. The caller can correct their name using the save_preferred_name tool.'
         : 'There is no completed conversation recorded for this number. Introduce Dorian, ask for a preferred name, and use the save_preferred_name tool when the caller gives it. Do not imply you know their identity.'
     },
     conversation_config_override: { agent: { first_message: returning

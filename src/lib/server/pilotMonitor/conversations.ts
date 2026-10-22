@@ -7,6 +7,7 @@ import { contactDisplayName } from '$lib/server/contactDisplay';
 import { decryptInteractionSummary } from '$lib/server/core/interactionEncryption';
 import { runWithCrossOwnerWorkspaceCustody, runWithWorkspaceCustody } from '$lib/server/core/contextSpace';
 import { PERSON_CONVERSATION_SOURCE_CHANNEL } from '$lib/server/core/conversationIngestion';
+import { inspectCompletedAutomaticImpactDraft } from '$lib/server/datingLivingUnderstandingDraft';
 
 // IT: Read-only snapshot of authoritative topics and their actual source relationships.
 export type RevisionInspection = {
@@ -97,7 +98,7 @@ export async function listDorianCalls(viewer: Viewer, requestedId?: string) {
   });
   const calls = [] as Array<{
     id: string; participantName: string; occurredAt: Date; summary: string; transcript: string;
-    status: string; revisionNumber: number | null; revisionId: string | null; contextState: string | null; inspection?: RevisionInspection | null;
+    status: string; revisionNumber: number | null; revisionId: string | null; contextState: string | null; inspection?: RevisionInspection | null; automaticReview?: Awaited<ReturnType<typeof inspectCompletedAutomaticImpactDraft>>;
   }>;
   const seen = new Set<string>();
   for (const session of sessions) {
@@ -145,6 +146,9 @@ export async function listDorianCalls(viewer: Viewer, requestedId?: string) {
       });
       const inspection = requestedId === source.id && applied?.revisionId
         ? await inspectRevision(scope, applied.revisionId) : null;
+      // IT: Read the stored automatic impact trace for this source only.
+      const automaticReview = requestedId === source.id && applied?.revisionId
+        ? await inspectCompletedAutomaticImpactDraft(scope, source.id) : null;
       const participantName = contact ? await contactDisplayName(contact) : 'Unnamed participant';
       let transcript = '';
       try { const payload = JSON.parse(decrypt(source.rawTextEnc, 'interaction.raw_text'));
@@ -156,7 +160,7 @@ export async function listDorianCalls(viewer: Viewer, requestedId?: string) {
         status: applied ? 'APPLIED' : 'PENDING',
         revisionNumber: applied?.revision.revisionNumber ?? null,
         revisionId: applied?.revisionId ?? null,
-        contextState: null, inspection
+        contextState: null, inspection, automaticReview
       };
     });
     if (row && (!requestedId || row.id === requestedId)) calls.push(row);

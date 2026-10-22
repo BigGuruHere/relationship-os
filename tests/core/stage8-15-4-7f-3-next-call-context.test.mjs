@@ -19,5 +19,5 @@ test('bounded memory is passed to existing ElevenLabs dynamic variables', () => 
   assert.match(source, /living_understanding_revision: input\.livingRevision/);
 });
 test('retrieval error does not provide a session token', () => {
-  assert.match(source, /catch \{[\s\S]*?return \{ status: 'WAIT' as const \};/);
+  assert.match(source, /catch \{[\s\S]*?return \{ status: 'WAIT' as const, preferredName \};/);
 });

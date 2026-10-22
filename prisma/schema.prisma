@@ -3792,6 +3792,10 @@ model NetworkDorianSession {
   createdAt DateTime @default(now())
   expiresAt DateTime
   conversationId String? @unique
+  // Stage 8.15.4.7g.3: durable, call-scoped automatic learning outcome.
+  // A NO_CHANGE result means validated analysis found no authoritative revision to apply.
+  understandingOutcome String?
+  understandingOutcomeAt DateTime?
   @@index([userId, contextSpaceId, createdAt])
   @@index([agentBindingId, expiresAt])
 }

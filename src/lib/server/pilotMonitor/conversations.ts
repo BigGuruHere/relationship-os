@@ -93,7 +93,7 @@ export async function listDorianCalls(viewer: Viewer, requestedId?: string) {
   if (!ids.length) return [];
   const sessions = await prisma.networkDorianSession.findMany({
     where: { agentBindingId: { in: ids }, conversationId: { not: null } },
-    select: { conversationId: true, userId: true, contextSpaceId: true, contactId: true, createdAt: true },
+    select: { conversationId: true, userId: true, contextSpaceId: true, contactId: true, createdAt: true, understandingOutcome: true },
     orderBy: { createdAt: 'desc' }, take: 250
   });
   const calls = [] as Array<{
@@ -157,10 +157,14 @@ export async function listDorianCalls(viewer: Viewer, requestedId?: string) {
       return {
         id: source.id, participantName, occurredAt: source.occurredAt,
         summary: decryptInteractionSummary(source.summaryEnc), transcript,
-        status: applied ? 'APPLIED' : 'PENDING',
+        // Provenance is authoritative. If a later correction linked a revision, show APPLIED
+        // even when a historic queue outcome originally said NO_CHANGE or FAILED.
+        status: applied ? 'APPLIED' : session.understandingOutcome === 'NO_CHANGE' ? 'NO_CHANGE' :
+          session.understandingOutcome === 'FAILED' ? 'FAILED' :
+          session.understandingOutcome === 'APPLIED' ? 'PENDING' : 'PENDING',
         revisionNumber: applied?.revision.revisionNumber ?? null,
         revisionId: applied?.revisionId ?? null,
-        contextState: null, inspection, automaticReview
+        contextState: session.understandingOutcome, inspection, automaticReview
       };
     });
     if (row && (!requestedId || row.id === requestedId)) calls.push(row);

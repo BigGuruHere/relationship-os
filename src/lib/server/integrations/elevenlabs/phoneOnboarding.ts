@@ -111,7 +111,7 @@ export async function startProvisionalPhoneCall(input: {
       lastCallSummary = decryptInteractionSummary(latestSummarisedCall?.summaryEnc).trim().slice(0, 1600);
     } catch {
       // A custody/database read failure should not silently deliver untrusted context.
-      return { status: 'WAIT' as const };
+      return { status: 'WAIT' as const, preferredName };
     }
   }
   let livingContext = '';
@@ -134,7 +134,7 @@ export async function startProvisionalPhoneCall(input: {
     } catch {
       // Fail closed on an unexpected custody/decryption/database error.
       // The caller is not locked because no IN_CALL claim has been attempted yet.
-      return { status: 'WAIT' as const };
+      return { status: 'WAIT' as const, preferredName };
     }
   }
   const token = randomBytes(32).toString('base64url');
@@ -146,7 +146,7 @@ export async function startProvisionalPhoneCall(input: {
       data: { understandingState: 'IN_CALL', understandingConversationId: input.conversationId,
         understandingStateAt: new Date() }
     }) : { count: 1 };
-    if (claimed.count !== 1) return { status: 'WAIT' as const };
+    if (claimed.count !== 1) return { status: 'WAIT' as const, preferredName };
     try {
       await prisma.networkDorianSession.create({ data: {
         tokenHash: networkSessionHash(token), userId: caller.userId,
@@ -195,7 +195,7 @@ export function provisionalPhoneInitiationResponse(input: {token: string; previo
         : 'There is no completed conversation recorded for this number. Introduce Dorian, ask for a preferred name, and use the save_preferred_name tool when the caller gives it. Do not imply you know their identity.'
     },
     conversation_config_override: { agent: { first_message: returning
-      ? input.preferredName ? `Hello, welcome back to Dorian. Am I speaking with ${input.preferredName}?` : 'Hello, welcome back to Dorian. What would you like to talk about today?'
-      : "Hello, I'm Dorian. What should I call you?" } }
+      ? input.preferredName ? `Hi ${input.preferredName}, how are you today?` : 'Hi there, good to speak with you again. How are you today?'
+      : "Hi there. This is Dorian Kreed - your AI networking partner. How can I help you today?" } }
   };
 }

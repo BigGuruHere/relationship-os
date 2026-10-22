@@ -36,6 +36,11 @@ try {
   if (!source) throw new Error('Participant evidence has not been attached. No gate changes were made.');
   const result = await runWithWorkspaceCustody({userId:caller.userId,contextSpaceId:caller.contextSpaceId},
     () => processPhoneUnderstanding({userId:caller.userId,contextSpaceId:caller.contextSpaceId,contactId:caller.contactId},source.id));
+  // Recovery is a real learning outcome, not an untracked manual unlock.
+  await prisma.networkDorianSession.updateMany({
+    where: { conversationId, userId: caller.userId, contextSpaceId: caller.contextSpaceId, contactId: caller.contactId },
+    data: { understandingOutcome: result.detail === 'NO_CHANGE' ? 'NO_CHANGE' : 'APPLIED', understandingOutcomeAt: new Date() }
+  });
   await finishPhoneUnderstanding(conversationId,'READY');
   console.log(`Recovered one DEVELOPMENT conversation: ${result.detail}. Caller ready.`);
 } finally {

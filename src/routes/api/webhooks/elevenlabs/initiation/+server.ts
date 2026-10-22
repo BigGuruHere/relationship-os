@@ -68,17 +68,34 @@ export const POST: RequestHandler = async ({ request }) => {
       if (!prepared) {
         elevenLabsLog(traceId, 'RESPONSE', 'Caller missing, duplicate or unsafe: generic response only.', { status: 200 });
         return json({ type: 'conversation_initiation_client_data', dynamic_variables: {
+          // Unresolved callers must not receive a real session credential.
+          relish_network_session: 'UNRESOLVED_NO_SESSION',
           relish_identity_status: 'UNRESOLVED',
           call_instruction: 'Do not use or disclose prior participant information.'
         } });
       }
       if (prepared.status === 'WAIT') {
-        // Do not give the provider an authenticated session while last call is processing.
-        // Return a short message for the voice agent to speak before ending the call.
-        elevenLabsLog(traceId, 'RESPONSE', 'Previous call is not yet ready; no session issued.', { status: 200 });
-        return json({ type:'conversation_initiation_client_data',
-          dynamic_variables:{ relish_identity_status:'PROCESSING', call_instruction:'Politely explain that the previous conversation is still being processed. Do not continue a substantive conversation; ask the caller to call back later. Do not use private context.' },
-          conversation_config_override:{ agent:{ first_message:'Thanks for calling. I am still catching up on our last conversation. Please try again a little later.' } }
+        // Give a spoken processing notice, but never issue a session credential or private context.
+        // A preferred name is only a provisional phone preference and is safe for this pilot greeting.
+        // Ending the call requires the ElevenLabs built-in end_call tool and a system-prompt rule.
+        const name = prepared.preferredName?.trim();
+        const waitingMessage = `${name ? `Hi ${name}. ` : 'Hi there. '}I'm just processing our last call. Could you call me back in a few minutes?`;
+        elevenLabsLog(traceId, 'RESPONSE', 'Previous call is not yet ready; processing-only greeting.', {
+          status: 200, hasPreferredName: Boolean(name), sessionIssued: false
+        });
+        return json({
+          type: 'conversation_initiation_client_data',
+          dynamic_variables: {
+            // ElevenLabs validates referenced dynamic variables before speaking.
+            // This sentinel satisfies its variable contract but is deliberately NOT a
+            // signed/issued Relish credential; every session-protected tool must reject it.
+            relish_network_session: 'PROCESSING_NO_SESSION',
+            relish_identity_status: 'PROCESSING',
+            user_name: name || '',
+            // This status is authoritative for the agent: do not take more turns.
+            call_instruction: 'PROCESSING ONLY: After the first message, immediately invoke the ElevenLabs built-in end_call tool. Do not ask questions, discuss any other topic, or attempt Relish tool calls. No participant session was issued.'
+          },
+          conversation_config_override: { agent: { first_message: waitingMessage } }
         });
       }
       const response = provisionalPhoneInitiationResponse(prepared);

@@ -9,6 +9,10 @@
     {#if data.call.revisionNumber}
       <p>Incorporated into authoritative Living Understanding revision {data.call.revisionNumber}.</p>
       <p class="muted">This revision is linked to the original source in Relish's revision provenance. This operator view does not grant access to the participant's private editing screen.</p>
+    {:else if data.call.status === 'NO_CHANGE'}
+      <p>Processing completed successfully. Validated analysis found no new or changed understanding to incorporate. No authoritative revision was created.</p>
+    {:else if data.call.status === 'FAILED'}
+      <p>Automatic processing failed. The caller remains gated until successful manual recovery. See the worker's redacted diagnostic log.</p>
     {:else}<p>No authoritative revision linked to this call yet. Processing state: {data.call.contextState || data.call.status}.</p>{/if}
   </section>
   {#if data.call.inspection}

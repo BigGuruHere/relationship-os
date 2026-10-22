@@ -10,13 +10,13 @@
   <p class="muted">Imported conversations and their actual Living Understanding outcomes. Completed updates remain visible.</p>
   <div class="controls"><label for="status">Status</label><select id="status" bind:value={filter}>
     <option value="ALL">All</option><option value="APPLIED">Applied to understanding</option>
-    <option value="PROCESSING">Processing</option><option value="PENDING">Pending or needs review</option>
+    <option value="NO_CHANGE">No understanding change</option><option value="FAILED">Failed</option><option value="PROCESSING">Processing</option><option value="PENDING">Pending or needs review</option>
   </select><a href="/general/admin/pilot-phone-reviews">Legacy review inbox</a></div>
   {#if !visible.length}<p>No imported conversations match this filter.</p>{/if}
   {#each visible as call (call.id)}
     <article class="call"><div><h2>{call.participantName}</h2><p class="muted">{new Date(call.occurredAt).toLocaleString()} · {call.status}</p>
       <p>{call.summary || call.transcript.slice(0, 230) || 'Conversation imported.'}</p>
-      <p>{call.revisionNumber ? `Applied to authoritative revision ${call.revisionNumber}` : 'No authoritative revision linked to this call yet.'}</p></div>
+      <p>{call.revisionNumber ? `Applied to authoritative revision ${call.revisionNumber}` : call.status === 'NO_CHANGE' ? 'Validated: no Living Understanding change required.' : call.status === 'FAILED' ? 'Automatic processing failed; operator recovery required.' : 'No authoritative revision linked to this call yet.'}</p></div>
       <a href={`/general/admin/dorian-conversations/${encodeURIComponent(call.id)}`}>View call and learning outcome</a></article>
   {/each}
 </div>

@@ -4,11 +4,11 @@
   "version": "0.0.1",
   "type": "module",
   "scripts": {
-    "dev": "vite dev",
+    "dev": "node --env-file-if-exists=.env scripts/start-relish.mjs --dev",
     "build": "prisma generate && vite build",
     "preview": "vite preview",
-    "start": "node build/index.js",
-    "start:with-migrations": "prisma migrate deploy && node build/index.js",
+    "start": "node scripts/start-relish.mjs",
+    "start:with-migrations": "prisma migrate deploy && node scripts/start-relish.mjs",
     "migrate": "prisma migrate deploy",
     "prepare": "svelte-kit sync || echo ''",
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
@@ -178,7 +178,9 @@
     "process:stage8.15.4.7f.2:dev": "node --env-file=.env --import tsx scripts/process-stage8-15-4-7f-2-phone-queue.ts",
     "check:stage8.15.4.7f.2": "node --test tests/core/stage8-15-4-7f-2-queue.test.mjs",
     "watch:stage8.15.4.7f.2:dev": "node --env-file=.env --import tsx scripts/process-stage8-15-4-7f-2-phone-queue.ts --watch",
-    "check:stage8.15.4.7f.2b": "node --test tests/core/stage8-15-4-7f-2-queue.test.mjs tests/core/stage8-15-4-7f-2b-worker-loop.test.mjs"
+    "check:stage8.15.4.7f.2b": "node --test tests/core/stage8-15-4-7f-2-queue.test.mjs tests/core/stage8-15-4-7f-2b-worker-loop.test.mjs",
+    "check:stage8.15.4.7g.1": "node --test tests/core/stage8-15-4-7g-1-worker-startup.test.mjs",
+    "check:stage8.15.4.7g.3": "node --test tests/core/stage8-15-4-7g-3-processing-outcomes.test.mjs tests/core/stage8-15-4-7g-3a-no-change-exception.test.mjs"
   },
   "engines": {
     "node": ">=22.13.1 <23"
@@ -201,7 +203,6 @@
     "svelte-check": "^4.0.0",
     "ts-node": "^10.9.2",
     "tsconfig-paths": "^4.2.0",
-    "tsx": "^4.20.6",
     "typescript": "^5.0.0",
     "typescript-eslint": "^8.20.0",
     "vite": "^7.0.4"
@@ -212,6 +213,7 @@
     "jose": "^6.1.0",
     "openai": "^6.2.0",
     "qrcode": "^1.5.4",
-    "zod": "^4.1.5"
+    "zod": "^4.1.5",
+    "tsx": "^4.20.6"
   }
 }

@@ -14,6 +14,16 @@ import {
 } from './datingPersistedLivingUnderstanding';
 import { requireDatingPerson, type Scope } from './datingUnderstandingTopics';
 
+// A validated, non-error review outcome: the source has no material LU delta.
+// Keep this typed rather than matching an exception message in phone automation.
+export class LivingUnderstandingNoChangeError extends Error {
+  readonly code = 'LIVING_UNDERSTANDING_NO_CHANGE';
+  constructor() {
+    super('This source does not materially change or reinforce the current Living Understanding. No new revision is required.');
+    this.name = 'LivingUnderstandingNoChangeError';
+  }
+}
+
 const REVIEW_TOKEN_SCOPE = 'dating:living-understanding:longitudinal-review:v1';
 const REVIEW_TOKEN_MAX_AGE_MS = 2 * 60 * 60 * 1000;
 const EFFECTS = ['UNCHANGED', 'REINFORCED', 'REFINED', 'EXPANDED', 'QUALIFIED', 'CONTRADICTED', 'SUPERSEDED'] as const;
@@ -588,7 +598,7 @@ export async function reviewLivingUnderstandingImpact(scope: Scope, sourceIntera
     });
   }
 
-  if (!affectedTopics.length && !newTopics.length) throw new Error('This source does not materially change or reinforce the current Living Understanding. No new revision is required.');
+  if (!affectedTopics.length && !newTopics.length) throw new LivingUnderstandingNoChangeError();
 
   const topicProposalBeforeValidation = {
     affectedTopics: affectedTopics.map(topic => ({ ...topic })),

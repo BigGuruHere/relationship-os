@@ -8,10 +8,11 @@ import { runWithWorkspaceCustody } from '../src/lib/server/core/contextSpace';
 import { processPhoneUnderstanding, finishPhoneUnderstanding } from '../src/lib/server/core/phoneUnderstandingAutomation';
 import { CONVERSATION_TRANSCRIPT_CHANNEL, PERSON_CONVERSATION_SOURCE_CHANNEL } from '../src/lib/server/core/conversationIngestion';
 
-if (process.env.RELISH_DB_ENV !== 'development' || process.env.ALLOW_RELISH_PHONE_DEV_DB_TEST !== 'YES' || process.env.NODE_ENV === 'production') {
-  throw new Error('Worker is DEVELOPMENT-only until the production recovery policy is verified.');
+// The worker inherits the application environment and its DATABASE_URL unchanged.
+// Automatic learning remains explicitly opt-in in each deployed environment.
+if (process.env.RELISH_PHONE_AUTO_LU !== 'YES') {
+  throw new Error('RELISH_PHONE_AUTO_LU=YES is required for automatic processing.');
 }
-if (process.env.RELISH_PHONE_AUTO_LU !== 'YES') throw new Error('RELISH_PHONE_AUTO_LU=YES is required.');
 
 // One invocation can run continuously as a development-only worker, or once for diagnosis.
 // The worker never logs participant identifiers, phone numbers, or conversation content.
@@ -50,13 +51,32 @@ async function runOne() {
         { userId: caller.userId, contextSpaceId: caller.contextSpaceId },
         () => processPhoneUnderstanding(
           { userId: caller.userId, contextSpaceId: caller.contextSpaceId, contactId: caller.contactId }, source.id));
+      // Persist the outcome on the exact call, including successful NO_CHANGE runs.
+      // Never report READY if recording the durable outcome fails.
+      const outcome = result.detail === 'NO_CHANGE' ? 'NO_CHANGE' : 'APPLIED';
+      await prisma.networkDorianSession.updateMany({
+        where: { conversationId, userId: caller.userId, contextSpaceId: caller.contextSpaceId, contactId: caller.contactId },
+        data: { understandingOutcome: outcome, understandingOutcomeAt: new Date() }
+      });
       await finishPhoneUnderstanding(conversationId, 'READY');
-      console.log('Phone LU processing completed', { status: result.status, detail: result.detail });
+      console.log('[Phone LU Worker] Completed', { status: result.status, detail: result.detail, outcome });
     } catch (error) {
       // Fail closed without exposing the conversation, identity, or sensitive transcript.
+      await prisma.networkDorianSession.updateMany({
+        where: { conversationId, userId: caller.userId, contextSpaceId: caller.contextSpaceId, contactId: caller.contactId },
+        data: { understandingOutcome: 'FAILED', understandingOutcomeAt: new Date() }
+      });
       await finishPhoneUnderstanding(conversationId, 'FAILED');
-      console.error('Phone LU processing failed; manual review required',
-        error instanceof Error ? error.name : 'UnknownError');
+      // Safe diagnostic codes: never log provider messages, free-form error text,
+      // transcript content, credentials, telephone numbers or person identifiers.
+      const code = error && typeof error === 'object' && 'code' in error &&
+        typeof error.code === 'string' ? error.code : 'UNCLASSIFIED';
+      console.error('[Phone LU Worker] Processing failed - manual retry required', {
+        conversationDigest: createHash('sha256').update(conversationId).digest('hex').slice(0, 12),
+        errorClass: error instanceof Error ? error.name : 'UnknownError',
+        errorCode: /^[A-Z0-9_]{1,24}$/.test(code) ? code : 'UNCLASSIFIED',
+        state: 'FAILED'
+      });
     }
     return true;
   }
@@ -68,6 +88,8 @@ let stopping = false;
 process.on('SIGTERM', () => { stopping = true; });
 process.on('SIGINT', () => { stopping = true; });
 
+let previousBlockedSignature = '';
+let lastBlockedReport = 0;
 async function reportBlockedStates() {
   // These states must not silently time out to READY. That would expose stale
   // understanding after an unprocessed or missing conversation.
@@ -75,9 +97,24 @@ async function reportBlockedStates() {
   const counts = await Promise.all(['IN_CALL', 'WORKING', 'FAILED'].map(state =>
     prisma.networkPhoneCaller.count({ where: { understandingState: state,
       understandingStateAt: { lt: cutoff } } })));
-  if (counts.some(Boolean)) console.warn('Phone understanding requires operator attention', {
-    staleInCall: counts[0], staleWorking: counts[1], failedOlderThan15Minutes: counts[2]
-  });
+  // Report only a transition or one hourly reminder; never spam every poll.
+  const signature = counts.join(':');
+  const now = Date.now();
+  if (signature !== previousBlockedSignature || (counts.some(Boolean) && now - lastBlockedReport >= 60 * 60 * 1000)) {
+    previousBlockedSignature = signature;
+    if (counts.some(Boolean)) {
+      lastBlockedReport = now;
+      const failures = counts[2] ? await prisma.networkPhoneCaller.findMany({
+        where: { understandingState: 'FAILED', understandingStateAt: { lt: cutoff } },
+        select: { understandingConversationId: true }, take: 10
+      }) : [];
+      console.warn('Phone understanding requires operator attention', {
+        staleInCall: counts[0], staleWorking: counts[1], failedOlderThan15Minutes: counts[2],
+        failedConversationDigests: failures.flatMap(row => row.understandingConversationId
+          ? [createHash('sha256').update(row.understandingConversationId).digest('hex').slice(0, 12)] : [])
+      });
+    }
+  }
 }
 
 try {

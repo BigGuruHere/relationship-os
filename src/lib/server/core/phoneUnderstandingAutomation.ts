@@ -1,6 +1,7 @@
 // Stage 8.15.4.7f - Reuse Relish's existing validated, source-attributed LU pipeline.
 // This is private learning only. It never changes matching, disclosure or sharing permissions.
 import { prisma } from '$lib/db';
+import { LivingUnderstandingNoChangeError } from '$lib/server/datingLongitudinalLivingUnderstanding';
 import { getCurrentLivingUnderstanding, adoptLivingUnderstanding, createLivingUnderstandingAdoptionToken } from '$lib/server/datingPersistedLivingUnderstanding';
 import { identifySemanticAreasReadOnly, reviseSemanticAreaReadOnly, restructureLivingUnderstandingReadOnly } from '$lib/server/datingUnderstandingRevisionExperiment';
 import { consolidateSemanticAreasForRevision } from '$lib/server/datingUnderstandingRevisionPolicy.mjs';
@@ -19,7 +20,17 @@ export async function processPhoneUnderstanding(scope:Scope, sourceInteractionId
   const handoff = await describeLivingUnderstandingReviewHandoff(scope,'general',sourceInteractionId);
   if (handoff.state === 'ALREADY_APPLIED' || handoff.state === 'DISMISSED') return { status: 'COMPLETE' as const, detail:handoff.state };
   if (handoff.state === 'IMPACT_REVIEW_READY') {
-    const prepared = await prepareAutomaticLivingUnderstandingImpact(scope,sourceInteractionId);
+    // The reviewer explicitly signals a valid no-change result with a typed exception.
+    // Other failures must still propagate and leave the caller in FAILED state.
+    let prepared;
+    try {
+      prepared = await prepareAutomaticLivingUnderstandingImpact(scope,sourceInteractionId);
+    } catch (error) {
+      if (error instanceof LivingUnderstandingNoChangeError) {
+        return {status:'COMPLETE' as const, detail:'NO_CHANGE' as const};
+      }
+      throw error;
+    }
     const proposal:any = prepared.draft.impactProposal;
     if (!proposal) throw new Error('The validated impact draft is missing.');
     // A conversation that only reinforces unchanged topics needs no empty authoritative revision.

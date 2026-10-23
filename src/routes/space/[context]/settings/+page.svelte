@@ -32,6 +32,23 @@
       {#if form?.error}<p role="alert">{form.error}</p>{/if}
     </form>
   </section>
+  <section class="workspace-panel">
+    <h2>My default context</h2>
+    <p>Dorian can use your default as a starting point when a conversation has no new QR invitation.
+      It does not share private understanding with other contexts or people.</p>
+    {#if data.isPrimaryContext}
+      <p role="status">This is your default context.</p>
+    {:else if data.workspace.configured}
+      <form method="POST" action="?/setDefault">
+        <button class="btn" type="submit">Make {data.workspace.label} my default</button>
+      </form>
+    {:else}
+      <p>Set up this context before selecting it as your default.</p>
+    {/if}
+    {#if form?.defaultSaved}<p role="status">Default context updated.</p>{/if}
+    <p style="font-size:13px">Telephone-only provisional identities use their own private default.
+      A verified account-linking flow is required before those identities can be combined.</p>
+  </section>
   <section class="workspace-panel"><h2>Account</h2>
     <p>Manage your sign-in separately from the information you share in this context.</p>
     <form method="POST" action="/auth/logout"><button class="btn" type="submit">Sign out</button></form>

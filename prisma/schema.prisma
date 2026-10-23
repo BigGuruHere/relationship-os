@@ -15,9 +15,12 @@ generator client {
   provider = "prisma-client-js" // Generate Prisma Client for Node and TS
 }
 
+// Application queries use the pooled connection.
+// Prisma migrations use the direct Neon connection.
 datasource db {
-  provider          = "postgresql" // Using Postgres
-  url               = env("DATABASE_URL") // Connection string from your .env
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 // IT: role for feature gating
@@ -44,6 +47,12 @@ model User {
   // IT: Stage 8.1 neutral identity bridge. Person carries identity only, not workspace-private CRM facts.
   personId String? @unique
   person   Person? @relation(fields: [personId], references: [id], onDelete: SetNull)
+
+  // Stage 8.18b: participant-owned starting ContextSpace for Dorian across channels.
+  // This is an owned ContextSpace ID, not a fixed domain or permission to cross contexts.
+  // Nullable so existing accounts can retain their current workspace until selected.
+  defaultContextSpaceId String?
+  defaultContextSpace ContextSpace? @relation("UserDefaultContextSpace", fields: [defaultContextSpaceId], references: [id], onDelete: SetNull)
 
   // IT: encrypted and indexed email - replaces legacy plaintext email
   email_Enc String? // ciphertext at rest
@@ -151,6 +160,7 @@ model User {
   contextSpaces ContextSpace[]
 
   @@index([createdAt])
+  @@index([defaultContextSpaceId])
 }
 
 // IT: Stage 8.1 canonical identity node.
@@ -183,6 +193,8 @@ model ContextSpace {
   id          String @id @default(uuid())
   ownerUserId String
   owner       User   @relation(fields: [ownerUserId], references: [id], onDelete: Cascade)
+  // A default ContextSpace may be selected by its owner; no sharing permission follows.
+  defaultForUsers User[] @relation("UserDefaultContextSpace")
 
   kind           ContextSpaceKind @default(WORKSPACE)
   // IT: Extensible application-domain key. This is intentionally a string rather than a closed enum.

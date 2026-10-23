@@ -110,20 +110,29 @@ export async function resolveSharedNetworkSession(input: {
       if (fresh?.conversationId !== input.conversationId) return null;
     }
   }
-  // Normal telephone/Network sessions must remain strictly General. Only the separately
-  // validated pilot-entry association permits a different ContextSpace.
+  // Stage 8.18b: a no-entry telephone session may use its caller's selected
+  // private default ContextSpace. Browser-only Network sessions remain General.
+  // An agent-supplied context/phone number NEVER controls this lookup.
   const entry = session.pilotEntryId ? await prisma.pilotProfileEntry.findFirst({
     where: { id: session.pilotEntryId, visitorUserId: session.userId },
     include: { profile: { select: { kind: true } } }
   }) : null;
   if (session.pilotEntryId && (!entry || pilotDomainForKind(entry.profile.kind) !== entry.domainKey)) return null;
-  const domainKey = entry?.domainKey || 'general';
   const [space, contact] = await Promise.all([
-    prisma.contextSpace.findFirst({ where: { id: session.contextSpaceId, ownerUserId: session.userId, domainKey }, select: { id: true } }),
+    prisma.contextSpace.findFirst({ where: { id: session.contextSpaceId, ownerUserId: session.userId },
+      select: { id: true, domainKey: true } }),
     prisma.contact.findFirst({ where: { id: session.contactId, userId: session.userId,
       contextSpaceId: session.contextSpaceId, linkedUserId: session.userId }, select: { id: true } })
   ]);
-  if (!space || !contact) return null;
+  if (!space || !contact || (entry && entry.domainKey !== space.domainKey)) return null;
+  if (!entry && space.domainKey !== 'general') {
+    const caller = await prisma.networkPhoneCaller.findFirst({ where: { userId: session.userId },
+      select: { id: true } });
+    // The token was issued for this exact ContextSpace and contact. A subsequently
+    // changed default does not invalidate the custody of an in-flight conversation.
+    if (!caller) return null;
+  }
+  const domainKey = space.domainKey;
   return { userId: session.userId, contextSpaceId: session.contextSpaceId, contactId: contact.id,
     domainKey, pilotEntryId: entry?.id || null, sessionId: session.id };
 }

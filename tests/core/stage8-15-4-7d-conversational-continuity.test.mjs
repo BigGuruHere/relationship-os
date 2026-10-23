@@ -8,24 +8,25 @@ const source = readFileSync(new URL('../../src/lib/server/integrations/elevenlab
 test('returning status uses ingested participant evidence instead of started sessions', () => {
   assert.match(source, /prisma\.interaction\.count\(\{ where: \{/);
   assert.match(source, /channel: PERSON_CONVERSATION_SOURCE_CHANNEL/);
-  assert.match(source, /contactId: caller\.contactId/);
+  assert.match(source, /contactId: selected\.contactId/);
   assert.doesNotMatch(source, /networkDorianSession\.count/);
 });
-test('provisional callers do not receive saved summaries or understanding', () => {
-  assert.match(source, /last_call_summary: ''/);
-  assert.match(source, /memory_and_identity_context: ''/);
+test('private understanding is opt-in and restricted to the selected caller custody', () => {
+  assert.match(source, /RELISH_PHONE_LU_CONTEXT === 'YES'/);
+  assert.match(source, /phoneLivingContextEnabled\(\) && previousCalls > 0/);
+  assert.match(source, /memory_and_identity_context: input.livingContext \|\| ''/);
   assert.match(source, /user_name: input.preferredName \|\| ''/);
-  assert.match(source, /do not supply summaries or private memory/i);
+  assert.match(source, /runWithWorkspaceCustody/);
 });
-test('new and returning call states have separate greetings and privacy instructions', () => {
+test('new and returning greetings require provisional name confirmation', () => {
   assert.match(source, /first_message: returning/);
-  assert.match(source, /welcome back to Dorian/i);
-  assert.match(source, /What should I call you\?/);
-  assert.match(source, /check whether you are speaking to that person/);
+  assert.match(source, /May I ask who is calling/);
+  assert.match(source, /ask for a preferred name/);
+  assert.match(source, /confirm the caller/);
 });
 test('provisional identity still requires an indexed telephone, scoped contact and unique session', () => {
   assert.match(source, /normalizePhoneForIdentity/);
   assert.match(source, /phoneIndex: idx/);
-  assert.match(source, /contextSpaceId: caller\.contextSpaceId/);
+  assert.match(source, /contextSpaceId: selected\.contextSpaceId/);
   assert.match(source, /networkDorianSession\.create/);
 });

@@ -1,7 +1,9 @@
 // Stage 8.15.4.7b: provisional caller custody for shared inbound Dorian calls.
 // Caller ID permits a continuity hint; it NEVER authenticates an existing Google/Relish account.
-// No private account data or prior Living Understanding is sent to a phone-only caller.
-// Automatic learning is opt-in, and the durable gate is enabled only with that policy.
+// Caller ID never authenticates an existing registered account or another user's data.
+// Within a private provisional phone identity, prior LU is available only with explicit
+// RELISH_PHONE_LU_CONTEXT opt-in and cautious conversational name confirmation.
+// Automatic learning is separately opt-in, with a durable per-caller gate.
 import { randomBytes } from 'node:crypto';
 import { prisma } from '$lib/db';
 import { encrypt, decrypt, buildScopedIndexToken, buildIndexToken } from '$lib/crypto';
@@ -13,6 +15,7 @@ import { phoneAutomaticLearningEnabled } from '$lib/server/core/phoneUnderstandi
 import { runWithWorkspaceCustody } from '$lib/server/core/contextSpace';
 import { getCurrentLivingUnderstanding } from '$lib/server/datingPersistedLivingUnderstanding';
 import { decryptInteractionSummary } from '$lib/server/core/interactionEncryption';
+import { resolvePhoneDefaultContext } from './phoneDefaultContext';
 
 // Explicit pilot opt-in: a recognised phone number is a continuity signal, not verified identity.
 const phoneLivingContextEnabled = () => process.env.RELISH_PHONE_LU_CONTEXT === 'YES';
@@ -22,7 +25,7 @@ const acceptedConversation = (id: unknown): id is string => typeof id === 'strin
 
 // Stage 8.18: SMS inbound and voice inbound share the same provisional telephone identity.
 // This creates no call credential, no owner access and never resolves registered identities.
-export async function ensureProvisionalPhoneCaller(value: unknown) {
+export async function ensureProvisionalPhoneCaller(value: unknown, initialDomainKey: 'general' | 'business' | 'dating' = 'general') {
   const phone = normalizePhoneForIdentity(value);
   if (!phone) return null;
   const idx = phoneIndex(phone);
@@ -35,15 +38,17 @@ export async function ensureProvisionalPhoneCaller(value: unknown) {
         const user = await tx.user.create({ data: { person: { create: {} } }, select: { id: true, personId: true } });
         const space = await ensureOwnedDomainContextSpace(tx, {
           ownerUserId: user.id,
-          domainKey: 'general',
-          displayName: 'General'
+          domainKey: initialDomainKey,
+          displayName: initialDomainKey === 'general' ? 'Friendship' : initialDomainKey === 'business' ? 'Business' : 'Dating'
         });
+        // The first QR/SMS domain becomes this caller's initial, private workspace.
         const contact = await tx.contact.create({ data: {
           userId: user.id, contextSpaceId: space.id, linkedUserId: user.id, personId: user.personId,
           fullNameEnc: encrypt('Telephone caller', 'contact.full_name'),
           fullNameIdx: buildIndexToken('Telephone caller'),
           phoneEnc: encrypt(phone, 'contact.phone'), phoneIdx: buildIndexToken(phone), source: 'MANUAL'
         }, select: { id: true } });
+        await tx.user.update({ where: { id: user.id }, data: { defaultContextSpaceId: space.id } });
         return tx.networkPhoneCaller.create({ data: {
           phoneIndex: idx, phoneEnc: encrypt(phone, 'network.phone'),
           userId: user.id, contextSpaceId: space.id, contactId: contact.id
@@ -65,25 +70,36 @@ export async function startProvisionalPhoneCall(input: {
   if (!phone || !acceptedConversation(input.conversationId)) return null;
   const caller = await ensureProvisionalPhoneCaller(phone);
   if (!caller) return null;
-  // Verify mapping survived and remains isolated from an authenticated/merged account.
-  const [space, contact, owner] = await Promise.all([
-    prisma.contextSpace.findFirst({ where: { id: caller.contextSpaceId, ownerUserId: caller.userId, domainKey: 'general' }, select: { id: true } }),
-    prisma.contact.findFirst({ where: { id: caller.contactId, userId: caller.userId, contextSpaceId: caller.contextSpaceId, linkedUserId: caller.userId }, select: { id: true } }),
-    prisma.user.findUnique({ where: { id: caller.userId }, select: { email_Idx: true, oauthAccounts: { select: { id: true }, take: 1 } } })
-  ]);
-  if (!space || !contact || !owner || owner.email_Idx || owner.oauthAccounts.length) return null;
+  // Stage 8.18b: select the verified participant-owned default, not the old fixed General row.
+  // No owner workspace or unverified context can be substituted when validation fails.
+  const selected = await resolvePhoneDefaultContext(caller);
+  if (!selected) return null;
+  const owner = await prisma.user.findUnique({ where: { id: caller.userId },
+    select: { email_Idx: true, oauthAccounts: { select: { id: true }, take: 1 } } });
+  if (!owner || owner.email_Idx || owner.oauthAccounts.length) return null;
+  // An earlier QR/SMS conversation may still be awaiting the automatic LU worker.
+  // Do not speak over unfinished understanding; use the existing processing greeting.
+  if (phoneAutomaticLearningEnabled()) {
+    const pendingPilot = await prisma.networkDorianSession.findFirst({ where: {
+      userId: selected.userId, contextSpaceId: selected.contextSpaceId,
+      pilotEntryId: { not: null },
+      OR: [ { understandingOutcome: { in: ['QUEUED', 'WORKING'] } },
+        { understandingOutcome: null, expiresAt: { gt: new Date() } } ]
+    }, select: { id: true } });
+    if (pendingPilot) return { status: 'WAIT' as const };
+  }
   const existingSession = await prisma.networkDorianSession.findUnique({ where: { conversationId: input.conversationId } });
   if (existingSession) return null; // duplicate initiation must never mint another credential
   // A session initiation is not proof that a meaningful call completed. For greetings,
   // count ingested participant-owned conversation evidence instead of attempted calls.
-  // We intentionally do NOT retrieve prior text, names or private understanding from caller ID.
+  // Phone-number recognition is provisional; callers must confirm identity conversationally.
   // Read a provisional caller's preferred name only from their own verified workspace.
   // A Contact ID by itself is insufficient for Relish's fail-closed ContextSpace guard.
   const nameContact = await prisma.contact.findFirst({
     where: {
-      id: caller.contactId,
-      userId: caller.userId,
-      contextSpaceId: caller.contextSpaceId,
+      id: selected.contactId,
+      userId: selected.userId,
+      contextSpaceId: selected.contextSpaceId,
       linkedUserId: caller.userId
     },
     select: { fullNameEnc: true }
@@ -94,8 +110,8 @@ export async function startProvisionalPhoneCall(input: {
     if (stored !== 'Telephone caller') preferredName = stored.slice(0, 80);
   } catch { /* Fail closed if encrypted display name cannot be read. */ }
   const previousCalls = await prisma.interaction.count({ where: {
-    userId: caller.userId, contextSpaceId: caller.contextSpaceId,
-    contactId: caller.contactId, channel: PERSON_CONVERSATION_SOURCE_CHANNEL
+    userId: selected.userId, contextSpaceId: selected.contextSpaceId,
+    contactId: selected.contactId, channel: PERSON_CONVERSATION_SOURCE_CHANNEL
   } });
   // Read only the current authoritative understanding, and only within this provisional
   // participant's custody. Never consult the deployment owner's workspace or draft reviews.
@@ -106,11 +122,11 @@ export async function startProvisionalPhoneCall(input: {
   if (previousCalls > 0) {
     try {
       const latestSummarisedCall = await runWithWorkspaceCustody({
-        userId: caller.userId, contextSpaceId: caller.contextSpaceId
+        userId: selected.userId, contextSpaceId: selected.contextSpaceId
       }, () => prisma.interaction.findFirst({
         where: {
-          userId: caller.userId, contextSpaceId: caller.contextSpaceId,
-          contactId: caller.contactId, channel: PERSON_CONVERSATION_SOURCE_CHANNEL,
+          userId: selected.userId, contextSpaceId: selected.contextSpaceId,
+          contactId: selected.contactId, channel: PERSON_CONVERSATION_SOURCE_CHANNEL,
           summaryEnc: { not: null }
         },
         orderBy: [{ occurredAt: 'desc' }, { createdAt: 'desc' }],
@@ -129,10 +145,10 @@ export async function startProvisionalPhoneCall(input: {
   if (phoneLivingContextEnabled() && previousCalls > 0) {
     try {
       const living = await runWithWorkspaceCustody({
-        userId: caller.userId, contextSpaceId: caller.contextSpaceId
+        userId: selected.userId, contextSpaceId: selected.contextSpaceId
       }, () => getCurrentLivingUnderstanding({
-        userId: caller.userId, contextSpaceId: caller.contextSpaceId,
-        contactId: caller.contactId
+        userId: selected.userId, contextSpaceId: selected.contextSpaceId,
+        contactId: selected.contactId
       }));
       if (living) {
         // Keep initiation payload bounded; source provenance remains in Relish, not in the prompt.
@@ -159,8 +175,8 @@ export async function startProvisionalPhoneCall(input: {
     if (claimed.count !== 1) return { status: 'WAIT' as const, preferredName };
     try {
       await prisma.networkDorianSession.create({ data: {
-        tokenHash: networkSessionHash(token), userId: caller.userId,
-        contextSpaceId: caller.contextSpaceId, contactId: caller.contactId,
+        tokenHash: networkSessionHash(token), userId: selected.userId,
+        contextSpaceId: selected.contextSpaceId, contactId: selected.contactId,
         agentBindingId: input.bindingId, conversationId: input.conversationId,
         expiresAt: new Date(Date.now() + SESSION_TTL_MS)
       } });
@@ -179,10 +195,11 @@ export async function startProvisionalPhoneCall(input: {
     if (error && typeof error === 'object' && 'code' in error && error.code === 'P2002') return null;
     throw error;
   }
-  return { status: 'READY' as const, token, previousCalls, preferredName, livingContext, livingRevision, lastCallSummary };
+  return { status: 'READY' as const, token, previousCalls, preferredName, livingContext,
+    livingRevision, lastCallSummary, domainKey: selected.domainKey };
 }
 
-export function provisionalPhoneInitiationResponse(input: {token: string; previousCalls: number; preferredName?: string; livingContext?: string; livingRevision?: string; lastCallSummary?: string}) {
+export function provisionalPhoneInitiationResponse(input: {token: string; previousCalls: number; preferredName?: string; livingContext?: string; livingRevision?: string; lastCallSummary?: string; domainKey?: string}) {
   const returning = input.previousCalls > 0;
   return {
     type: 'conversation_initiation_client_data',
@@ -193,6 +210,7 @@ export function provisionalPhoneInitiationResponse(input: {token: string; previo
       previous_calls: String(input.previousCalls),
       user_name: input.preferredName || '',
       last_call_summary: input.lastCallSummary || '',
+      relish_active_context: input.domainKey || 'general',
       memory_and_identity_context: input.livingContext || '',
       living_understanding: input.livingContext || '',
       living_understanding_revision: input.livingRevision || '',
@@ -200,12 +218,12 @@ export function provisionalPhoneInitiationResponse(input: {token: string; previo
       // Caller ID does not authenticate the human: never use this for third-party disclosure.
       call_instruction: returning
         ? input.livingContext
-          ? 'This telephone number has previous conversations. First confirm the caller\'s preferred name, if available. Use the provided Living Understanding naturally as background, not as a script. Do not recite or volunteer sensitive details or disclose them to others. Treat the understanding as provisional and welcome corrections. The caller can correct their name using save_preferred_name.'
-          : 'A previous conversation was completed from this number. A preferred name is a provisional conversational preference, NOT authentication. If a name is available, check whether you are speaking to that person before using it further. Never disclose previous subjects or private memories. The caller can correct their name using the save_preferred_name tool.'
+          ? 'This is the participant’s private ' + (input.domainKey || 'general') + ' context. This telephone number has previous conversations. First confirm the caller\'s preferred name, if available. Use the provided Living Understanding naturally as background, not as a script. Do not recite or volunteer sensitive details or disclose them to others. Treat the understanding as provisional and welcome corrections. The caller can correct their name using save_preferred_name.'
+          : 'This is the private ' + (input.domainKey || 'general') + ' context. A previous conversation was completed from this number. A preferred name is a provisional conversational preference, NOT authentication. If a name is available, check whether you are speaking to that person before using it further. Never disclose previous subjects or private memories. The caller can correct their name using the save_preferred_name tool.'
         : 'There is no completed conversation recorded for this number. Introduce Dorian, ask for a preferred name, and use the save_preferred_name tool when the caller gives it. Do not imply you know their identity.'
     },
     conversation_config_override: { agent: { first_message: returning
-      ? input.preferredName ? `Hi ${input.preferredName}, how are you today?` : 'Hi there, good to speak with you again. How are you today?'
-      : "Hi there. This is Dorian Kreed - your AI networking partner. How can I help you today?" } }
+      ? 'Hi there, good to speak with you again. May I ask who is calling?'
+      : "Hi there. This is Dorian Kreed, your AI conversation partner. How can I help you today?" } }
   };
 }

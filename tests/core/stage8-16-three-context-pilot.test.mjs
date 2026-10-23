@@ -25,7 +25,7 @@ test('session resolver requires profile provenance and domain custody', () => {
   const source = read('src/lib/server/integrations/elevenlabs/networkSession.ts');
   assert.match(source, /pilotEntryId/);
   assert.match(source, /pilotDomainForKind\(entry\.profile\.kind\)/);
-  assert.match(source, /domainKey \}, select/);
+  assert.match(source, /entry && entry.domainKey !== space.domainKey/);
   assert.match(source, /session\.agentBindingId !== input\.bindingId/);
 });
 test('telemetry is allowlisted, private contents omitted and signed callback controls completions', () => {

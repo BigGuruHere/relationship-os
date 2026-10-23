@@ -35,27 +35,42 @@ async function runOne() {
     });
     if (claimed.count !== 1) continue;
     try {
+      // 8.18b: use the immutable context/contact on the issued conversation session.
+      // The phone caller's original General contact is no longer always the active one.
+      const session = await prisma.networkDorianSession.findFirst({ where: {
+        conversationId, userId: caller.userId, pilotEntryId: null
+      }, select: { id: true, contextSpaceId: true, contactId: true } });
+      if (!session) throw new Error('Session custody not found.');
+      const space = await prisma.contextSpace.findFirst({ where: {
+        id: session.contextSpaceId, ownerUserId: caller.userId,
+        domainKey: { in: ['general', 'business', 'dating'] }
+      }, select: { domainKey: true } });
+      if (!space) throw new Error('Session ContextSpace custody not found.');
+      const contact = await prisma.contact.findFirst({ where: {
+        id: session.contactId, userId: caller.userId, contextSpaceId: session.contextSpaceId,
+        linkedUserId: caller.userId
+      }, select: { id: true } });
+      if (!contact) throw new Error('Session self-contact not found.');
       const digest = createHash('sha256').update(conversationId).digest('hex');
       const original = await prisma.interaction.findFirst({ where: {
-        userId: caller.userId, contextSpaceId: caller.contextSpaceId,
+        userId: caller.userId, contextSpaceId: session.contextSpaceId,
         channel: CONVERSATION_TRANSCRIPT_CHANNEL, externalRef: `conversation:elevenlabs:${digest}`
       }, select: { id: true } });
       if (!original) throw new Error('Original transcript missing; intervention required.');
       const source = await prisma.interaction.findFirst({ where: {
-        userId: caller.userId, contextSpaceId: caller.contextSpaceId, contactId: caller.contactId,
+        userId: caller.userId, contextSpaceId: session.contextSpaceId, contactId: session.contactId,
         channel: PERSON_CONVERSATION_SOURCE_CHANNEL,
-        externalRef: `conversation:person-source:${original.id}:${caller.contactId}`
+        externalRef: `conversation:person-source:${original.id}:${session.contactId}`
       }, select: { id: true } });
       if (!source) throw new Error('Participant source missing; intervention required.');
+      const scope = { userId: caller.userId, contextSpaceId: session.contextSpaceId, contactId: session.contactId };
       const result = await runWithWorkspaceCustody(
-        { userId: caller.userId, contextSpaceId: caller.contextSpaceId },
-        () => processPhoneUnderstanding(
-          { userId: caller.userId, contextSpaceId: caller.contextSpaceId, contactId: caller.contactId }, source.id));
-      // Persist the outcome on the exact call, including successful NO_CHANGE runs.
-      // Never report READY if recording the durable outcome fails.
+        { userId: caller.userId, contextSpaceId: session.contextSpaceId },
+        () => processPhoneUnderstanding(scope, source.id, space.domainKey as 'general' | 'business' | 'dating'));
+      // Persist the outcome against the exact call, regardless of a later default change.
       const outcome = result.detail === 'NO_CHANGE' ? 'NO_CHANGE' : 'APPLIED';
       await prisma.networkDorianSession.updateMany({
-        where: { conversationId, userId: caller.userId, contextSpaceId: caller.contextSpaceId, contactId: caller.contactId },
+        where: { id: session.id, conversationId, userId: caller.userId },
         data: { understandingOutcome: outcome, understandingOutcomeAt: new Date() }
       });
       await finishPhoneUnderstanding(conversationId, 'READY');
@@ -63,7 +78,7 @@ async function runOne() {
     } catch (error) {
       // Fail closed without exposing the conversation, identity, or sensitive transcript.
       await prisma.networkDorianSession.updateMany({
-        where: { conversationId, userId: caller.userId, contextSpaceId: caller.contextSpaceId, contactId: caller.contactId },
+        where: { conversationId, userId: caller.userId, pilotEntryId: null },
         data: { understandingOutcome: 'FAILED', understandingOutcomeAt: new Date() }
       });
       await finishPhoneUnderstanding(conversationId, 'FAILED');

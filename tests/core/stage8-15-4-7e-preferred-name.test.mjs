@@ -18,8 +18,8 @@ test('name is encrypted and future calls receive a bounded provisional name', ()
   const onboarding = read('src/lib/server/integrations/elevenlabs/phoneOnboarding.ts');
   assert.match(service, /encrypt\(name, 'contact.full_name'\)/);
   assert.match(onboarding, /preferredName/);
-  assert.match(onboarding, /Am I speaking with/);
-  assert.match(onboarding, /last_call_summary: ''/);
+  assert.match(onboarding, /May I ask who is calling/);
+  assert.match(onboarding, /last_call_summary: input\.lastCallSummary \|\| ''/);
 });
 
 // Regression: phone initiation must not query a Contact without caller custody.
@@ -29,7 +29,7 @@ test('preferred-name lookup is scoped to the provisional caller workspace', () =
   assert.match(onboarding, /const nameContact = await prisma\.contact\.findFirst\(/);
   const lookup = onboarding.split('const nameContact = await prisma.contact.findFirst(')[1]?.split('select: { fullNameEnc: true }')[0];
   assert.ok(lookup, 'preferred-name query must select encrypted full name');
-  for (const boundary of ['id: caller.contactId', 'userId: caller.userId', 'contextSpaceId: caller.contextSpaceId', 'linkedUserId: caller.userId']) {
+  for (const boundary of ['id: selected.contactId', 'userId: selected.userId', 'contextSpaceId: selected.contextSpaceId', 'linkedUserId: caller.userId']) {
     assert.ok(lookup.includes(boundary), `missing custody check: ${boundary}`);
   }
 });

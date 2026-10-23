@@ -21,8 +21,8 @@ test('worker retains atomic claim and redacted diagnostics', () => {
 });
 test('provisional greetings no longer say welcome back to Dorian', () => {
   const phone = read('src/lib/server/integrations/elevenlabs/phoneOnboarding.ts');
-  assert.match(phone, /Dorian Kreed - your AI networking partner/);
-  assert.match(phone, /how are you today/);
+  assert.match(phone, /Dorian Kreed, your AI conversation partner/);
+  assert.match(phone, /May I ask who is calling/);
   assert.doesNotMatch(phone, /welcome back to Dorian/i);
   assert.match(phone, /relish_network_session: input\.token/);
 });

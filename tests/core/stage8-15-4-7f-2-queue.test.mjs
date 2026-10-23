@@ -12,10 +12,10 @@ test('webhook queues after ingestion without running AI inline',()=>{
 test('worker atomically claims processing state and resolves scoped evidence',()=>{
   assert.match(worker,/understandingState: 'WORKING'/);
   assert.match(worker,/understandingState: 'PROCESSING'/);
-  assert.match(worker,/contactId: caller.contactId/);
+  assert.match(worker,/contactId: session.contactId/);
   assert.match(worker,/processPhoneUnderstanding\(/);
 });
-test('worker is explicitly development gated',()=>{
-  assert.match(worker,/RELISH_DB_ENV !== 'development'/);
-  assert.match(worker,/ALLOW_RELISH_PHONE_DEV_DB_TEST !== 'YES'/);
+test('worker requires explicit automatic learning opt-in in its deployment',()=>{
+  assert.match(worker,/RELISH_PHONE_AUTO_LU !== 'YES'/);
+  assert.match(worker,/processPhoneUnderstanding/);
 });

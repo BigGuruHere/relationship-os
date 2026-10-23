@@ -50,6 +50,8 @@ export function isRelationshipApplicationDomain(domainKey: string) {
 export function relationshipApplicationBase(domainKey: string) {
 	if (domainKey === DATING_DOMAIN_KEY) return '/dating';
 	if (domainKey === GENERAL_DOMAIN_KEY) return '/general';
+	// Stage 8.18b: broker-independent Business conversations need review URLs, too.
+	if (domainKey === BUSINESS_DOMAIN_KEY) return '/space/business';
 	throw new Error('This route is not inside a relationship application ContextSpace.');
 }
 

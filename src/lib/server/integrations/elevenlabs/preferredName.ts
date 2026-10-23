@@ -29,14 +29,18 @@ export async function saveProvisionalPreferredName(input: {
   if (!session || session.conversationId !== conversationId || session.agentBindingId !== bindingId || session.expiresAt <= new Date()) {
     return { status: 'UNAUTHORISED' as const };
   }
-  // Inbound phone sessions use General, while Stage 8.18 SMS invitations may use
-  // the same provisional caller's Business or Dating self-contact. Both are
-  // restricted to an original phone-only identity and an issued Relish session.
-  const caller = await prisma.networkPhoneCaller.findFirst({ where: {
-    userId: session.userId,
-    ...(session.pilotEntryId ? {} : { contextSpaceId: session.contextSpaceId, contactId: session.contactId })
-  }, select: { id: true } });
+  // All calls use their issued server-owned session as authority. A caller's
+  // default may be Business or Dating even when no fresh QR invitation was used.
+  const caller = await prisma.networkPhoneCaller.findFirst({ where: { userId: session.userId },
+    select: { id: true, contextSpaceId: true, contactId: true } });
   if (!caller) return { status: 'UNAUTHORISED' as const };
+  if (!session.pilotEntryId) {
+    // A direct call can save a name only to the currently configured default.
+    const space = await prisma.contextSpace.findFirst({ where: {
+      id: session.contextSpaceId, ownerUserId: session.userId
+    }, select: { id: true } });
+    if (!space) return { status: 'UNAUTHORISED' as const };
+  }
   if (session.pilotEntryId) {
     const entry = await prisma.pilotProfileEntry.findFirst({ where: {
       id: session.pilotEntryId, visitorUserId: session.userId

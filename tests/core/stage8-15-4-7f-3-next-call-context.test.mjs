@@ -10,7 +10,7 @@ test('private LU retrieval requires explicit pilot opt-in', () => {
 test('existing authoritative LU is read inside caller custody', () => {
   assert.match(source, /runWithWorkspaceCustody\(/);
   assert.match(source, /getCurrentLivingUnderstanding\(/);
-  assert.match(source, /contactId: caller\.contactId/);
+  assert.match(source, /contactId: selected\.contactId/);
 });
 test('bounded memory is passed to existing ElevenLabs dynamic variables', () => {
   assert.match(source, /\.slice\(0, 12\)/);

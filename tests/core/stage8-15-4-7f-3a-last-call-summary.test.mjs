@@ -7,8 +7,8 @@ const code = readFileSync(new URL('../../src/lib/server/integrations/elevenlabs/
 test('reads only caller-owned imported conversation summaries', () => {
   assert.match(code, /runWithWorkspaceCustody\(/);
   assert.match(code, /prisma\.interaction\.findFirst\(/);
-  assert.match(code, /userId: caller\.userId, contextSpaceId: caller\.contextSpaceId/);
-  assert.match(code, /contactId: caller\.contactId, channel: PERSON_CONVERSATION_SOURCE_CHANNEL/);
+  assert.match(code, /userId: selected\.userId, contextSpaceId: selected\.contextSpaceId/);
+  assert.match(code, /contactId: selected\.contactId, channel: PERSON_CONVERSATION_SOURCE_CHANNEL/);
   assert.match(code, /summaryEnc: \{ not: null \}/);
   assert.match(code, /orderBy: \[\{ occurredAt: 'desc' \}, \{ createdAt: 'desc' \}\]/);
 });
@@ -21,5 +21,5 @@ test('passes summary in initiation alongside unchanged long-term variables', () 
   assert.match(code, /last_call_summary: input\.lastCallSummary \|\| ''/);
   assert.match(code, /living_understanding: input\.livingContext \|\| ''/);
   assert.match(code, /memory_and_identity_context: input\.livingContext \|\| ''/);
-  assert.match(code, /livingRevision, lastCallSummary \}/);
+  assert.match(code, /livingRevision, lastCallSummary, domainKey: selected\.domainKey/);
 });

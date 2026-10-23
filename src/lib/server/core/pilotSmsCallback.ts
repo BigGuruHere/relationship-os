@@ -4,6 +4,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import { prisma } from '$lib/db';
 import { encrypt, buildScopedIndexToken } from '$lib/crypto';
 import { ensureProvisionalPhoneCaller } from '$lib/server/integrations/elevenlabs/phoneOnboarding';
+import { establishPhoneDefaultFromInvitation } from '$lib/server/integrations/elevenlabs/phoneDefaultContext';
 import { ensurePilotSelfContact, pilotDomainForKind, recordPilotEvent, type PilotDomain } from '$lib/server/pilot';
 import { startSharedNetworkSession } from '$lib/server/integrations/elevenlabs/networkSession';
 import { normalizePhoneForIdentity } from '$lib/server/integrations/elevenlabs/phone';
@@ -142,10 +143,15 @@ export async function consumePilotSmsForCallback(input: { messageId: string; fro
     } });
     if (attempts > 3) return fail('RATE_LIMIT');
     processingStage = 'PROVISIONAL_CALLER';
-    const caller = await ensureProvisionalPhoneCaller(phone);
+    const caller = await ensureProvisionalPhoneCaller(phone, invitation.domainKey as PilotDomain);
     if (!caller || caller.userId === invitation.ownerUserId) return fail('CALLER_UNAVAILABLE');
     processingStage = 'CONTEXT_SETUP';
     const { contextSpaceId } = await ensurePilotSelfContact(caller.userId, invitation.domainKey as PilotDomain);
+    // The first valid QR context becomes the long-term starting point unless the
+    // provisional caller already chose a default or had earlier phone conversations.
+    const selectedDefault = await establishPhoneDefaultFromInvitation(caller, contextSpaceId);
+    if (!selectedDefault) return fail('DEFAULT_CONTEXT_UNAVAILABLE');
+    trace('default_context.ready', undefined, invitation.id);
     // SMS invitation and the participant's private ContextSpace share a person, not owner custody.
     processingStage = 'PROFILE_ENTRY';
     const entry = await prisma.pilotProfileEntry.create({ data: {

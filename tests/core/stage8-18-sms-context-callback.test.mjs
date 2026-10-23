@@ -5,7 +5,8 @@ import { readFileSync, existsSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { generateKeyPairSync, sign } from 'node:crypto';
 const require = createRequire(import.meta.url);
-const ts = require('/opt/nvm/versions/node/v22.16.0/lib/node_modules/typescript');
+// Load TypeScript from the project's installed dependencies.
+const ts = require('typescript');
 const src = path => readFileSync(new URL('../../' + path, import.meta.url), 'utf8');
 const source = src('src/lib/server/integrations/telnyx/messaging.ts');
 const js = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } }).outputText;
@@ -47,7 +48,7 @@ test('signed webhook and single-use code required before originating call', () =
 test('only server-held profile and scoped participant identity determine custody', () => {
   const service = src('src/lib/server/core/pilotSmsCallback.ts');
   assert.match(service, /profile\.kind\) !== invitation\.domainKey/);
-  assert.match(service, /ensureProvisionalPhoneCaller\(phone\)/);
+  assert.match(service, /ensureProvisionalPhoneCaller\(phone, invitation\.domainKey/);
   assert.match(service, /ensurePilotSelfContact\(caller\.userId, invitation\.domainKey/);
   assert.match(service, /visitorUserId: caller\.userId/);
   assert.match(service, /profileId: profile\.id/);

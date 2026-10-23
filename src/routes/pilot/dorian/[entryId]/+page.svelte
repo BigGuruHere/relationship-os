@@ -19,7 +19,9 @@
   <h1>A conversation with Dorian</h1>
   <p>This invitation came from <strong>{data.profileName}'s {data.contextLabel.toLowerCase()} profile</strong>.</p>
   <p>Dorian is an AI conversational partner. Your conversation may be transcribed and used to develop your private Living Understanding. It is <strong>not shared with the profile owner</strong> and does not automatically create a connection.</p>
-  {#if !data.sharedEnabled}
+  {#if data.dorianMode !== 'BROWSER'}
+    <a class="btn primary" href={'/u/' + encodeURIComponent(data.profileSlug) + '/call'}>Call Dorian by phone</a>
+  {:else if !data.sharedEnabled}
     <p role="alert">The shared Dorian agent has not yet been configured. No conversation can start.</p>
   {:else if form?.launch}
     <section class="card" style="padding:20px;margin-top:16px">

@@ -11,11 +11,15 @@ export const load: PageServerLoad = async ({ locals, cookies, params }) => {
   if (!visitorUserId) throw error(403, 'This conversation belongs to another browser session.');
   const entry = await resolvePilotEntry({ entryId: params.entryId, visitorUserId });
   if (!entry) throw error(404, 'Conversation invitation unavailable.');
+  const preferences = await prisma.relishContextPreference.findUnique({ where: {
+    ownerUserId_domainKey: { ownerUserId: entry.ownerUserId, domainKey: entry.domainKey }
+  } });
   const connectionRequest = await prisma.pilotConnectionRequest.findUnique({ where: { entryId: entry.id }, select: { id: true } });
   return { entryId: entry.id, hasConnectionRequest: Boolean(connectionRequest),
     profileName: entry.profile.displayName || 'this person',
     contextLabel: pilotKindLabel(entry.profile.kind), sharedEnabled: Boolean(configuredSharedBindingId()),
-    source: entry.entrySource };
+    source: entry.entrySource, profileSlug: entry.profile.slug,
+    dorianMode: preferences?.dorianMode || 'SMS_CALLBACK' };
 };
 export const actions: Actions = {
   start: async ({ locals, cookies, params }) => {
@@ -23,6 +27,10 @@ export const actions: Actions = {
     if (!visitorUserId) return fail(403, { error: 'Your browser invitation has expired.' });
     const entry = await resolvePilotEntry({ entryId: params.entryId, visitorUserId });
     if (!entry) return fail(404, { error: 'Conversation invitation unavailable.' });
+    const preferences = await prisma.relishContextPreference.findUnique({ where: {
+      ownerUserId_domainKey: { ownerUserId: entry.ownerUserId, domainKey: entry.domainKey }
+    } });
+    if (preferences?.dorianMode !== 'BROWSER') return fail(409, { error: 'Use the telephone option for this context.' });
     // A session must remain in the participant's selected domain, never in the profile owner's space.
     const space = await prisma.contextSpace.findFirst({ where: {
       ownerUserId: visitorUserId, domainKey: entry.domainKey
@@ -55,12 +63,16 @@ export const actions: Actions = {
     const email = String(data.get('email') || '').trim().slice(0, 254);
     if (!name || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || data.get('consent') !== 'yes')
       return fail(400, { error: 'Enter your name, a valid email and agree to share them with the profile owner.' });
+    const preference = await prisma.relishContextPreference.findUnique({ where: {
+      ownerUserId_domainKey: { ownerUserId: entry.ownerUserId, domainKey: entry.domainKey }
+    } });
+    const automaticallyAccepted = preference?.connectionMode !== 'APPROVAL';
     try {
       await prisma.pilotConnectionRequest.create({ data: {
         entryId: entry.id, profileId: entry.profileId,
         ownerUserId: entry.ownerUserId, visitorUserId,
         domainKey: entry.domainKey, nameEnc: encrypt(name, 'pilot.connection.name'),
-        emailEnc: encrypt(email, 'pilot.connection.email')
+        emailEnc: encrypt(email, 'pilot.connection.email'), status: automaticallyAccepted ? 'ACCEPTED' : 'REQUESTED'
       } });
     } catch (error: any) {
       if (error?.code !== 'P2002') throw error;
@@ -70,6 +82,9 @@ export const actions: Actions = {
       profileId: entry.profileId, ownerUserId: entry.ownerUserId,
       domainKey: entry.domainKey as any, entryId: entry.id,
       visitorUserId, source: entry.entrySource, dedup: 'connection:' + entry.id });
+    if (automaticallyAccepted) await recordPilotEvent({ type: 'relationship.connection_accepted', env: locals.env,
+      profileId: entry.profileId, ownerUserId: entry.ownerUserId, domainKey: entry.domainKey as any,
+      entryId: entry.id, visitorUserId, source: entry.entrySource, dedup: 'accepted:' + entry.id });
     return { connectionRequested: true };
   },
   helpful: async ({ locals, cookies, params, request }) => {

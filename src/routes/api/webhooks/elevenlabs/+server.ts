@@ -239,6 +239,14 @@ export const POST: RequestHandler = async ({ request }) => {
     if (shared?.pilotEntryId) {
       const entry = await prisma.pilotProfileEntry.findUnique({ where: { id: shared.pilotEntryId } });
       if (entry && entry.visitorUserId === shared.userId && entry.domainKey === shared.domainKey) {
+        // Outbound SIP client-data skips initiation webhooks, so a spoken post-call
+        // transcription is the first authoritative proof of a started conversation.
+        await recordPilotEvent({ type: 'dorian.conversation_started', env: entry.environment,
+          profileId: entry.profileId, ownerUserId: entry.ownerUserId,
+          domainKey: entry.domainKey as 'general' | 'business' | 'dating',
+          entryId: entry.id, visitorUserId: entry.visitorUserId, source: entry.entrySource,
+          conversationId: normalized.metadata.externalConversationId,
+          dedup: 'started:' + normalized.metadata.externalConversationId });
         await recordPilotEvent({ type: 'dorian.conversation_completed', env: entry.environment,
           profileId: entry.profileId, ownerUserId: entry.ownerUserId,
           domainKey: entry.domainKey as 'general' | 'business' | 'dating',
@@ -247,6 +255,10 @@ export const POST: RequestHandler = async ({ request }) => {
           dedup: 'conversation:' + normalized.metadata.externalConversationId });
       }
     }
+    if (shared?.pilotEntryId) await prisma.pilotSmsInvitation.updateMany({
+      where: { pilotEntryId: shared.pilotEntryId, conversationId: normalized.metadata.externalConversationId, status: 'CALLING' },
+      data: { status: 'COMPLETED' }
+    });
     let automaticLivingUnderstanding: any = null;
     if (phoneAutomaticLearningEnabled() && deployment.bindingId === configuredSharedBindingId() && ingested.contactId && ingested.participantSourceId) {
       // The transcript and attributed evidence are committed before we acknowledge.

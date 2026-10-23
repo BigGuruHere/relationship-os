@@ -9,6 +9,8 @@
     'dorian.conversation_completed': 'Confirmed conversations',
     'dorian.conversation_failed': 'Technical failures',
     'dorian.conversation_returned': 'Returning participants', 'value.reported': 'Feedback received',
+    'sms.invitation_created': 'SMS invitations created', 'sms.invitation_received': 'SMS confirmations received',
+    'dorian.callback_requested': 'Outbound calls requested', 'relationship.connection_accepted': 'Connections accepted',
     'relationship.connection_requested': 'Connection requests'
   };
 </script>

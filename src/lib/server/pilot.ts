@@ -12,7 +12,7 @@ export type PilotDomain = 'business' | 'general' | 'dating';
 export const pilotDomainForKind = (kind: string): PilotDomain | null =>
   kind === 'business' ? 'business' : kind === 'personal' ? 'general' : kind === 'dating' ? 'dating' : null;
 export const pilotKindLabel = (kind: string) => kind === 'personal' ? 'Friendship' : kind === 'dating' ? 'Dating' : 'Business';
-export const pilotSource = (value: unknown) => value === 'qr' ? 'qr' : 'link';
+export const pilotSource = (value: unknown) => value === 'qr' ? 'qr' : value === 'sms' ? 'sms' : 'link';
 const tokenHash = (token: string) => createHash('sha256').update(token).digest('hex');
 const durationSeconds = 60 * 60 * 24 * 60;
 
@@ -91,7 +91,8 @@ const allowedEvents = new Set([
   'profile.viewed', 'qr.landing_opened', 'profile.conversation_offered',
   'dorian.conversation_requested', 'dorian.session_issued', 'dorian.conversation_started', 'dorian.conversation_completed',
   'dorian.conversation_failed', 'dorian.conversation_returned', 'value.reported',
-  'relationship.connection_requested'
+  'relationship.connection_requested', 'relationship.connection_accepted',
+  'sms.invitation_created', 'sms.invitation_received', 'dorian.callback_requested'
 ]);
 export async function recordPilotEvent(input: {
   type: string; env: string; profileId: string; ownerUserId: string;
@@ -118,7 +119,7 @@ export async function recordPilotEvent(input: {
 export async function resolvePilotEntry(input: { entryId: string; visitorUserId: string }) {
   const entry = await prisma.pilotProfileEntry.findFirst({ where: {
     id: input.entryId, visitorUserId: input.visitorUserId
-  }, include: { profile: { select: { id: true, kind: true, displayName: true, isPublished: true } } } });
+  }, include: { profile: { select: { id: true, slug: true, kind: true, displayName: true, isPublished: true } } } });
   if (!entry?.profile.isPublished || pilotDomainForKind(entry.profile.kind) !== entry.domainKey) return null;
   return entry;
 }

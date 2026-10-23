@@ -89,7 +89,7 @@
   }
 </script>
 
-<div class="container">
+<div class="container public-profile">
   <!-- IT: owner-facing context bar with return to Share on the right -->
   <div class="topbar" style="padding:10px 12px; max-width:720px; margin:0 auto 10px auto; position:relative; display:flex; align-items:center; gap:8px;">
     <!-- IT: helper text on the left -->
@@ -126,7 +126,11 @@
           <p>Explore whether you might enjoy getting to know each other, at your own pace.</p>
         {/if}
         <p>Dorian is an AI conversational partner. Your conversation is private to you and is not shared with this profile owner. We record basic usage to improve this pilot.</p>
-        <form method="post" action="?/startDorian"><button class="btn primary" type="submit">Continue to Dorian</button></form>
+        {#if data?.dorianMode === 'BROWSER'}
+          <form method="post" action="?/startDorian"><button class="btn primary" type="submit">Talk to Dorian in browser</button></form>
+        {:else}
+          <a class="btn primary" href={'/u/' + encodeURIComponent(profileSlug) + '/call'}>Call Dorian by phone</a>
+        {/if}
         {#if form?.error}<p role="alert">{form.error}</p>{/if}
       </section>
     {/if}
@@ -234,16 +238,16 @@
           <a class="btn primary" href={'/network/join/' + encodeURIComponent(data.slugParam)}>Connect on Relish</a>
         </div>
       {/if}
-      <!-- IT: public actions - only show for non-logged-in visitors or after they connect -->
-      {#if !data?.isOwner && !data?.isVisitorLoggedIn && prof.kind === 'personal'}
-        <div class="btnrow" style="margin-top:12px;">
-          <button class="btn primary" on:click|preventDefault={saveThenShare}>Save contact</button>
+      <!-- Stage 8.18: saving a contact is independent of logging in or making a connection. -->
+      {#if !data?.isOwner && prof.isPublished}
+        <div class="btnrow" style="margin-top:16px;">
+          <a class="btn primary" href={vcardUrl} download>Save contact to phone</a>
         </div>
-
-        <!-- IT: hidden form that will post to start guest flow and redirect to /u/<slug>/lead -->
-        <form id="start-share-form" method="post" action="/api/guest/start" style="display:none;">
-          <input type="hidden" name="inviteToken" value={data?.inviteToken} />
-        </form>
+        {#if prof.kind !== 'personal'}
+          <form method="post" action="?/startDorian" style="margin-top:12px">
+            <button class="btn" type="submit">Connect with {ownerName}</button>
+          </form>
+        {/if}
       {/if}
 
       {#if !data?.profile && !data?.isVisitorLoggedIn}
@@ -293,6 +297,12 @@
 
 <style>
   /* IT: simple page styles - align with your app.css tokens if you have them */
+  .public-profile { width: 100%; max-width: 100vw; box-sizing: border-box; overflow-x: clip; }
+  .public-profile :global(.page) { width: 100%; box-sizing: border-box; min-width: 0; }
+  .public-profile .topbar { width: 100%; box-sizing: border-box; min-width: 0; }
+  .public-profile header > div { min-width: 0; overflow-wrap: anywhere; }
+  .info-row { flex-wrap: wrap; min-width: 0; overflow-wrap: anywhere; }
+  @media (max-width: 520px) { .grid { grid-template-columns: minmax(0, 1fr) !important; } .span2 { grid-column: 1 !important; } }
   .avatar { width:64px; height:64px; border-radius:50%; object-fit:cover; }
   .muted { color:#666; }
   .small { font-size:0.95rem; }

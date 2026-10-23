@@ -1,45 +1,23 @@
-// src/routes/api/sms/inbound/+server.ts
-// PURPOSE: handle incoming SMS keyword and reply with a TwiML XML message.
-// BUILD: no external deps - builds in Vite without special config.
-// SECURITY: do not echo back sensitive info.
-
+// Stage 8.18: Telnyx Messaging Profile inbound webhook (replaces legacy Twilio TwiML).
+// A signed, fresh Telnyx message plus unspent QR invitation is required to originate a call.
+import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
+import { verifyTelnyxWebhook } from '$lib/server/integrations/telnyx/messaging';
+import { consumePilotSmsForCallback } from '$lib/server/core/pilotSmsCallback';
 
-// Minimal XML escape for user controlled text
-function xmlEscape(s: string) {
-  return s
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&apos;');
-}
-
-export const POST: RequestHandler = async ({ request }) => {
-  // Twilio posts form-encoded fields
-  const form = await request.formData();
-  const from = String(form.get('From') ?? '');
-  const body = String(form.get('Body') ?? '').trim();
-
-  // Your static link values - you can later derive these per account or slug
-  const connectLink = 'https://yourapp.com/u/terence';
-  const vcardLink =
-    'https://yourapp.com/api/vcard?name=Your%20Name&link=' +
-    encodeURIComponent(connectLink);
-
-  // Build the reply message
-  const message =
-    `Great to meet you. Save my contact: ${vcardLink}\n` +
-    `Connect here: ${connectLink}`;
-
-  // TwiML response - wrap the text, escape for XML safety
-  const twiml = `<?xml version="1.0" encoding="UTF-8"?>
-<Response>
-  <Message>${xmlEscape(message)}</Message>
-</Response>`;
-
-  return new Response(twiml, {
-    status: 200,
-    headers: { 'Content-Type': 'text/xml' }
+export const POST: RequestHandler = async ({ request, locals }) => {
+  const raw = await request.text();
+  if (!verifyTelnyxWebhook(raw, request.headers.get('telnyx-timestamp'), request.headers.get('telnyx-signature-ed25519')))
+    return json({ error: 'Invalid signature' }, { status: 401 });
+  let event: any;
+  try { event = JSON.parse(raw); } catch { return json({ error: 'Invalid payload' }, { status: 400 }); }
+  if (event?.data?.event_type !== 'message.received') return json({ status: 'ignored' });
+  const p = event.data.payload;
+  // Check both destinations and message id; no implicit caller lookup from browser cookies.
+  const result = await consumePilotSmsForCallback({
+    messageId: String(p?.id || ''), from: p?.from?.phone_number,
+    to: p?.to?.[0]?.phone_number, body: p?.text, environment: locals.env
   });
+  // Already claimed codes receive 200 on webhook retries, never another call.
+  return json({ status: result });
 };

@@ -16,7 +16,8 @@ export const load: PageServerLoad = async ({ locals }) => {
     orderBy: { createdAt: 'desc' }, take: 100 });
   const types = ['qr.landing_opened', 'profile.viewed', 'dorian.conversation_requested',
     'dorian.session_issued', 'dorian.conversation_started', 'dorian.conversation_completed', 'dorian.conversation_failed',
-    'dorian.conversation_returned', 'value.reported', 'relationship.connection_requested'];
+    'dorian.conversation_returned', 'value.reported', 'relationship.connection_requested',
+    'relationship.connection_accepted', 'sms.invitation_created', 'sms.invitation_received', 'dorian.callback_requested'];
   const metrics = ['business','general','dating'].map(domainKey => {
     const subset = events.filter(e => e.domainKey === domainKey);
     return { domainKey, counts: types.map(type => ({ type, count: subset.filter(e => e.type === type).length })),

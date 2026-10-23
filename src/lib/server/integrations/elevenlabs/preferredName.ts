@@ -29,10 +29,24 @@ export async function saveProvisionalPreferredName(input: {
   if (!session || session.conversationId !== conversationId || session.agentBindingId !== bindingId || session.expiresAt <= new Date()) {
     return { status: 'UNAUTHORISED' as const };
   }
+  // Inbound phone sessions use General, while Stage 8.18 SMS invitations may use
+  // the same provisional caller's Business or Dating self-contact. Both are
+  // restricted to an original phone-only identity and an issued Relish session.
   const caller = await prisma.networkPhoneCaller.findFirst({ where: {
-    userId: session.userId, contextSpaceId: session.contextSpaceId, contactId: session.contactId
+    userId: session.userId,
+    ...(session.pilotEntryId ? {} : { contextSpaceId: session.contextSpaceId, contactId: session.contactId })
   }, select: { id: true } });
   if (!caller) return { status: 'UNAUTHORISED' as const };
+  if (session.pilotEntryId) {
+    const entry = await prisma.pilotProfileEntry.findFirst({ where: {
+      id: session.pilotEntryId, visitorUserId: session.userId
+    }, select: { domainKey: true } });
+    if (!entry) return { status: 'UNAUTHORISED' as const };
+    const workspace = await prisma.contextSpace.findFirst({ where: {
+      id: session.contextSpaceId, ownerUserId: session.userId, domainKey: entry.domainKey
+    }, select: { id: true } });
+    if (!workspace) return { status: 'UNAUTHORISED' as const };
+  }
   const updated = await prisma.contact.updateMany({
     where: { id: session.contactId, userId: session.userId,
       contextSpaceId: session.contextSpaceId, linkedUserId: session.userId },

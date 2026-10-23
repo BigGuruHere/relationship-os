@@ -15,7 +15,13 @@
             {#if person.email}<p style="margin:4px 0"><a href={'mailto:' + encodeURIComponent(person.email)}>{person.email}</a></p>{/if}
             <small>{new Date(person.since).toLocaleDateString()}</small>
           </div>
-          <span>{person.status === 'CONNECTED' ? 'Connected' : person.status === 'SENT' ? 'Request sent' : 'Requested'}</span>
+          {#if person.status === 'REQUESTED'}
+            <form method="POST" action="?/approve">
+              <input type="hidden" name="requestId" value={person.id}/>
+              <button class="btn" type="submit">Accept</button>
+            </form>
+          {/if}
+          <span>{person.status === 'CONNECTED' ? 'Connected' : person.status === 'SENT' ? 'Request sent' : person.status === 'ACCEPTED' ? 'Accepted' : 'Requested'}</span>
         </div>
       {/each}
     </section>

@@ -107,6 +107,10 @@ export const load: PageServerLoad = async ({ params, url, locals }) => {
     select: { id: true, publicSlug: true }
   });
 
+  const contextPref = profile ? await prisma.relishContextPreference.findUnique({ where: {
+    ownerUserId_domainKey: { ownerUserId: ownerId!, domainKey: pilotDomainForKind(profile.kind) || 'general' }
+  } }) : null;
+
   // IT: NEW - check if the visitor is logged in
   const visitorUserId = locals.user?.id ?? null;
   const isVisitorLoggedIn = Boolean(visitorUserId);
@@ -164,7 +168,8 @@ export const load: PageServerLoad = async ({ params, url, locals }) => {
     isVisitorLoggedIn,
     isAlreadyConnected,
     isSelfView: visitorUserId === ownerId,
-    visitorProfile
+    visitorProfile,
+    dorianMode: contextPref?.dorianMode || 'SMS_CALLBACK'
   };
 };
 

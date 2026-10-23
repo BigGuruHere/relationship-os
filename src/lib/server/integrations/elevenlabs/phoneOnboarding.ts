@@ -20,11 +20,11 @@ const SESSION_TTL_MS = 2 * 60 * 60 * 1000;
 const phoneIndex = (phone: string) => buildScopedIndexToken(phone, 'network:provisional-phone:v1');
 const acceptedConversation = (id: unknown): id is string => typeof id === 'string' && /^conv_[a-zA-Z0-9_-]{8,100}$/.test(id);
 
-export async function startProvisionalPhoneCall(input: {
-  callerId: unknown; conversationId: unknown; bindingId: string;
-}) {
-  const phone = normalizePhoneForIdentity(input.callerId);
-  if (!phone || !acceptedConversation(input.conversationId)) return null;
+// Stage 8.18: SMS inbound and voice inbound share the same provisional telephone identity.
+// This creates no call credential, no owner access and never resolves registered identities.
+export async function ensureProvisionalPhoneCaller(value: unknown) {
+  const phone = normalizePhoneForIdentity(value);
+  if (!phone) return null;
   const idx = phoneIndex(phone);
   // Never search User or existing Contact by caller ID; avoid claiming a registered user's identity.
   let caller = await prisma.networkPhoneCaller.findUnique({ where: { phoneIndex: idx } });
@@ -55,6 +55,16 @@ export async function startProvisionalPhoneCall(input: {
       if (!caller) throw error;
     }
   }
+  return caller;
+}
+
+export async function startProvisionalPhoneCall(input: {
+  callerId: unknown; conversationId: unknown; bindingId: string;
+}) {
+  const phone = normalizePhoneForIdentity(input.callerId);
+  if (!phone || !acceptedConversation(input.conversationId)) return null;
+  const caller = await ensureProvisionalPhoneCaller(phone);
+  if (!caller) return null;
   // Verify mapping survived and remains isolated from an authenticated/merged account.
   const [space, contact, owner] = await Promise.all([
     prisma.contextSpace.findFirst({ where: { id: caller.contextSpaceId, ownerUserId: caller.userId, domainKey: 'general' }, select: { id: true } }),

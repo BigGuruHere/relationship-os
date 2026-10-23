@@ -3899,3 +3899,51 @@ model PilotConnectionRequest {
   createdAt DateTime @default(now())
   @@index([ownerUserId, domainKey, createdAt])
 }
+
+
+// Stage 8.18: a short-lived, single-use invitation. The SMS sender never chooses custody.
+model PilotSmsInvitation {
+  id String @id @default(uuid())
+  codeHash String @unique @db.VarChar(64)
+  profileId String
+  ownerUserId String
+  domainKey String
+  environment String @db.VarChar(12)
+  source String @default("link")
+  termsVersion String @db.VarChar(60)
+  offeredNameEnc String?
+  offeredEmailEnc String?
+  connectionConsentAt DateTime?
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+  status String @default("ISSUED")
+  telnyxMessageId String? @unique
+  phoneIndex String? @db.VarChar(64)
+  participantUserId String?
+  pilotEntryId String?
+  conversationId String? @unique
+  callAttemptedAt DateTime?
+  lastErrorCode String? @db.VarChar(60)
+  @@index([ownerUserId, createdAt])
+  @@index([phoneIndex, createdAt])
+  @@index([status, expiresAt])
+}
+
+// Each Relish context has independent contact and communication preferences.
+model RelishContextPreference {
+  id String @id @default(uuid())
+  ownerUserId String
+  domainKey String
+  connectionMode String @default("AUTOMATIC")
+  dorianMode String @default("SMS_CALLBACK")
+  updatedAt DateTime @updatedAt
+  @@unique([ownerUserId, domainKey])
+}
+
+
+// Telephone preference is keyed only by a deterministic secret-salted phone index.
+model PilotSmsOptOut {
+  phoneIndex String @id @db.VarChar(64)
+  optedOutAt DateTime @default(now())
+  resumedAt DateTime?
+}

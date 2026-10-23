@@ -80,7 +80,11 @@ export const load: PageServerLoad = async ({ locals, url }) => {
   const first = url.searchParams.get('first') === '1';
   const next = url.searchParams.get('next') || null;
 
-  return { profile: profile || null, requestedProfileKind, networkEntry, mode, first, next };
+  // Stage 8.17 - Only a matching context may request a contextual return after editing.
+  const requestedReturn = url.searchParams.get('returnContext');
+  const returnKinds: Record<string, string> = { business: 'business', friendship: 'personal', dating: 'dating' };
+  const returnContext = requestedReturn && returnKinds[requestedReturn] === (profile?.kind || safeRequestedKind) ? requestedReturn : null;
+  return { profile: profile || null, requestedProfileKind, networkEntry, mode, first, next, returnContext };
 };
 
 export const actions: Actions = {
@@ -223,6 +227,13 @@ export const actions: Actions = {
 
     // IT: stay in the Network experience after create and edit.
     if (networkEntry) throw redirect(303, '/network');
+
+    // Stage 8.17 - Keep normal editing inside the correct consumer context.
+    const returnContext = String(fd.get('returnContext') || '').trim();
+    const kindForContext: Record<string, string> = { business: 'business', friendship: 'personal', dating: 'dating' };
+    if (kindForContext[returnContext] === kind) {
+      throw redirect(303, `/space/${returnContext}/profile`);
+    }
 
     // First-time flow - preview public page
     const nextParam = url.searchParams.get('next');

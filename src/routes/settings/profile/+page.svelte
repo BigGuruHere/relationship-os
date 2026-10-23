@@ -44,6 +44,10 @@
 
     <!-- IT: main editor form - named action `save` -->
     <form method="post" action="?/save" style="display:grid; grid-template-columns: 1fr 1fr; gap:12px;">
+      {#if data?.returnContext}
+        <!-- IT: Return to the same context after editing, never to a mismatched profile. -->
+        <input type="hidden" name="returnContext" value={data.returnContext} />
+      {/if}
       {#if data?.networkEntry}
         <!-- IT: explicit Network workflow flag, checked by the server. -->
         <input type="hidden" name="entry" value="network" />

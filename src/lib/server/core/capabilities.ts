@@ -23,6 +23,9 @@ export function requiredCapabilityForPath(pathname: string): Capability | null {
   // SECURITY: Account management is owner-only in addition to the route capability gate.
   if (within('/settings/users') || within('/settings/context-spaces')) return 'ADMIN';
   if (within('/settings/agents')) return 'ADMIN';
+  // Stage 8.17: future broker product entry and operator console are capability-gated on the server.
+  if (within('/broker')) return 'BROKER';
+  if (within('/operator')) return 'OPERATOR';
   if (within('/general') && !within('/general/public')) return 'OPERATOR';
   if (['/leads', '/companies', '/deals', '/agents', '/workstreams', '/api/leads', '/api/task-commercial-links'].some(within)) return 'BROKER';
   return null;

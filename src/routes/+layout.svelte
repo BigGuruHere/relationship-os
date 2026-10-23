@@ -1,597 +1,120 @@
-<!-- src/routes/+layout.svelte
-     PURPOSE:
-     - Provide a responsive shell
-     - Show Login or Logout based on data.user
-     - Use black and white icon buttons in the topbar for primary actions
-     SECURITY:
-     - Client should never receive plaintext email. We only render a redacted string from server data.
--->
-
 <script lang="ts">
-	import '../app.css'; // ensure global styles load
+  // Stage 8.17 - One Relish shell and five consistent context-specific destinations.
+  // SECURITY: Links are presentation only. Each workspace route verifies participant custody.
+  import '../app.css';
+  import { onMount } from 'svelte';
+  export let data: any;
 
-	// IT: align with +layout.server.ts which now returns { id, emailRedacted } on user
-	export let data: {
-		user: { id: string; emailRedacted: string | null } | null;
-		activeContext?: { id: string; domainKey: string; displayName: string } | null;
-		activeDomainKey?: string;
-		routePathname?: string;
-		networkEntry?: boolean;
-		hasDatingContext?: boolean;
-		hasGeneralContext?: boolean;
-		capabilities?: string[];
-		accountRole?: string;
-		reconnectDue: number;
-		remindersOpenCount: number;
-		tasksOpenCount?: number;
-		actionsCount?: number;
-	};
+  const nav = [
+    { slug: '', label: 'Home', icon: '⌂' },
+    { slug: '/people', label: 'People', icon: '♧' },
+    { slug: '/profile', label: 'Profile', icon: '◉' },
+    { slug: '/share', label: 'Share', icon: '▦' },
+    { slug: '/settings', label: 'Settings', icon: '⚙' }
+  ];
 
-	// IT: Navigation is selected from the server-resolved route domain, never from a client-controlled context id.
-	// IT: Network is a member-facing experience even while using shared profile/share routes.
-	$: networkEntryRoute = data.routePathname === '/network' || data.routePathname?.startsWith('/network/');
-	$: networkProfileRoute = ['/settings/profile', '/share'].includes(data.routePathname || '') && data.networkEntry === true;
-	$: isNetworkSurface = networkEntryRoute || networkProfileRoute;
-	$: isDatingApplication = data.activeDomainKey === 'dating';
-	$: isGeneralApplication = data.activeDomainKey === 'general';
-	$: isRelationshipApplication = isDatingApplication || isGeneralApplication;
-	$: canBroker = data.capabilities?.includes('BROKER') ?? false;
-	$: canOperator = data.capabilities?.includes('OPERATOR') ?? false;
-	$: canAdmin = data.capabilities?.includes('ADMIN') ?? false;
-	$: isOwner = data.accountRole === 'owner';
-	$: applicationHome = isNetworkSurface ? '/network' : isDatingApplication ? '/dating' : isGeneralApplication ? '/general' : '/';
+  $: path = data.routePathname || '/';
+  $: isPublic = path.startsWith('/u/') || path.startsWith('/pilot/dorian/') || path.startsWith('/network/join/');
+  $: isBroker = ['/broker', '/leads', '/deals', '/companies', '/agents', '/workstreams', '/contacts', '/wants', '/offers', '/introductions', '/projects', '/tasks', '/actions', '/search'].some(prefix => path === prefix || path.startsWith(prefix + '/'));
+  $: isOperator = path === '/operator' || path.startsWith('/operator/') || path === '/general' || path.startsWith('/general/');
+  $: hint = (path === '/settings/profile' && data.profileKindHint === 'personal') ? 'friendship' : path === '/settings/profile' && ['business', 'dating'].includes(data.profileKindHint) ? data.profileKindHint : null;
+  $: requested = path.startsWith('/space/friendship') || path.startsWith('/network') ? 'friendship' : path.startsWith('/space/dating') || path.startsWith('/dating') ? 'dating' : path.startsWith('/space/business') ? 'business' : hint;
+  $: spaces = data.visibleSpaces || [];
+  $: activeName = spaces.some((s: any) => s.name === requested) ? requested : spaces[0]?.name || 'business';
+  $: activeSpace = spaces.find((s: any) => s.name === activeName) || { name: 'business', label: 'Business', color: '#3276b8' };
+  $: activeBase = '/space/' + activeName;
+  $: specialist = isBroker && data.capabilities?.includes('BROKER') ? 'broker' : isOperator && data.capabilities?.includes('OPERATOR') ? 'operator' : '';
+  $: selectedName = activeName;
 
-	import { onMount } from 'svelte';
+  function changeSpace(event: Event) {
+    const value = (event.currentTarget as HTMLSelectElement).value;
+    // IT: Client-side navigation is only for options the server exposed to this account.
+    if (spaces.some((space: any) => space.name === value)) window.location.assign('/space/' + value);
+  }
 
-	// PURPOSE: register service worker so Android can install as full PWA
-	if ('serviceWorker' in navigator) {
-		navigator.serviceWorker
-			.register('/service-worker.js')
-			.then(() => console.log('Service Worker registered'))
-			.catch((err) => console.error('SW registration failed:', err));
-	}
-
-	// IT: install prompt state
-	let canInstall = false; // controls Install button visibility on Android
-	let isInstalled = false; // reflects whether the app is currently installed
-	let showIosHint = false; // small helper banner for iOS Safari
-	let deferredPrompt: any = null;
-
-	// IT: detect iOS Safari - rough check that is good enough for this UI hint
-	function isIosSafari(): boolean {
-		if (typeof navigator === 'undefined') return false;
-		const ua = navigator.userAgent || navigator.vendor || '';
-		const isIOS = /iPad|iPhone|iPod/.test(ua);
-		const isSafari = /^((?!chrome|android).)*safari/i.test(ua);
-		return isIOS && isSafari;
-	}
-
-	// IT: detect installed state across platforms
-	function computeInstalled(): boolean {
-		// Android and most browsers
-		const standaloneMedia =
-			typeof window !== 'undefined' &&
-			window.matchMedia &&
-			window.matchMedia('(display-mode: standalone)').matches;
-		// iOS Safari fallback
-		const iosStandalone =
-			typeof navigator !== 'undefined' && (navigator as any).standalone === true;
-		return Boolean(standaloneMedia || iosStandalone);
-	}
-
-	function updateUiFlags() {
-		isInstalled = computeInstalled();
-
-		// Android logic: show Install only if not installed and Chrome fired beforeinstallprompt
-		canInstall = !isInstalled && !!deferredPrompt;
-
-		// iOS Safari: show hint if not installed - user must use Share -> Add to Home Screen
-		showIosHint = !isInstalled && isIosSafari();
-	}
-
-	// IT: call the saved prompt
-	async function install() {
-		if (!deferredPrompt) return;
-		deferredPrompt.prompt();
-		const { outcome } = await deferredPrompt.userChoice; // accepted or dismissed
-		deferredPrompt = null; // event cannot be reused
-		updateUiFlags(); // will hide button if accepted
-	}
-
-	function handleBeforeInstallPrompt(e: Event) {
-		// Prevent the default mini-infobar and remember the event for our button
-		e.preventDefault();
-		deferredPrompt = e;
-		updateUiFlags();
-	}
-
-	function handleAppInstalled() {
-		// App has been installed - hide controls
-		deferredPrompt = null;
-		updateUiFlags();
-	}
-
-	function handleVisibilityChange() {
-		// If the user installed from another tab or OS dialog, state can change
-		updateUiFlags();
-	}
-
-	onMount(() => {
-		updateUiFlags();
-
-		// Android install availability
-		window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt as any);
-		// Fired after successful install
-		window.addEventListener('appinstalled', handleAppInstalled);
-		// Re-check when tab visibility changes
-		document.addEventListener('visibilitychange', handleVisibilityChange);
-
-		return () => {
-			window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt as any);
-			window.removeEventListener('appinstalled', handleAppInstalled);
-			document.removeEventListener('visibilitychange', handleVisibilityChange);
-		};
-	});
+  onMount(() => {
+    // IT: Register the existing PWA only in the browser; no network work during SSR.
+    if ('serviceWorker' in navigator) navigator.serviceWorker.register('/service-worker.js').catch(() => {});
+  });
 </script>
 
-<div class="layout">
-	<!-- Mobile topbar -->
-	<header class="topbar mobile-only">
-		<a class="brand" href={applicationHome} aria-label="Relish home">
-			<div class="logo">
-				<img src="/relish-logo.png" alt="Relish logo" />
-			</div>
-		</a>
+<svelte:head><meta name="theme-color" content={activeSpace.color}/></svelte:head>
+<div class:relish-visitor={isPublic} class="relish-shell" style={'--workspace-accent:' + activeSpace.color}>
+  {#if !isPublic}
+    <header class="relish-header">
+      <a class="relish-brand" href={data.user ? activeBase : '/auth/login'} aria-label="Relish home">
+        <img src="/relish-logo.png" alt="" width="36" height="36" />
+        <strong>Relish</strong>
+      </a>
+      {#if data.user}
+        <div class="relish-context-picker">
+          {#if spaces.length > 1}
+            <label for="context-select">Context</label>
+            <select id="context-select" value={activeName} on:change={changeSpace}>
+              {#each spaces as space}
+                <option value={space.name}>{space.label}</option>
+              {/each}
+            </select>
+          {:else}
+            <span class="relish-context-only">{activeSpace.label}</span>
+          {/if}
+        </div>
+        <a class="relish-header-tools" href={activeBase + '/share'}>Share</a>
+        <details class="relish-more">
+          <summary aria-label="More account options">•••</summary>
+          <div class="relish-more-menu">
+            <a href={activeBase}>Relish home</a>
+            {#if data.capabilities?.includes('BROKER')}<a href="/broker">Business broker</a>{/if}
+            {#if data.capabilities?.includes('OPERATOR')}<a href="/operator">Operator tools</a>{/if}
+            {#if data.accountRole === 'owner'}<a href="/settings/users">Manage users</a>{/if}
+            <form method="POST" action="/auth/logout"><button type="submit">Sign out</button></form>
+          </div>
+        </details>
+      {:else}
+        <a class="relish-header-tools" href="/auth/login">Sign in</a>
+      {/if}
+    </header>
 
-		<!-- Compact mobile actions - icon only for a tidy topbar -->
-		<nav class="topbar-actions" aria-label="Primary">
-			{#if !isNetworkSurface && !isRelationshipApplication}
-				<!-- Add Contact -->
-				<a class="btn icon" href="/contacts/new" aria-label="Add Contact" title="Add Contact">
-					<!-- user plus icon -->
-					<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-						<path d="M12 12a4 4 0 1 0-4-4 4 4 0 0 0 4 4z" />
-						<path
-							d="M12 14c-4 0-7 2-7 4v2h8.5v-2c0-.7.2-1.4.6-2 .5-.8 1.3-1.4 2.3-1.8A9.7 9.7 0 0 0 12 14z"
-						/>
-						<path d="M19 10v-3h-2v3h-3v2h3v3h2v-3h3v-2z" />
-					</svg>
-				</a>
+    {#if data.user}
+      <aside class="relish-sidebar" aria-label="Application navigation">
+        <div class="relish-sidebar-title">{specialist === 'broker' ? 'Business broker' : specialist === 'operator' ? 'Operator tools' : activeSpace.label}</div>
+        {#if specialist}
+          <a class="relish-nav-item" href={activeBase}>← Back to Relish</a>
+          {#if specialist === 'broker'}<a class:current={path === '/broker'} class="relish-nav-item" href="/broker">Broker workspace</a>{/if}
+          {#if specialist === 'operator'}<a class:current={path === '/operator'} class="relish-nav-item" href="/operator">Operator tools</a>{/if}
+        {:else}
+          {#each nav as item}
+            <a class:current={path === activeBase + item.slug} class="relish-nav-item" href={activeBase + item.slug}>
+              <span class="relish-nav-icon" aria-hidden="true">{item.icon}</span>{item.label}
+            </a>
+          {/each}
+        {/if}
+        <div class="relish-sidebar-bottom">
+          {#if data.capabilities?.includes('BROKER')}
+            <a class="relish-special-link" href="/broker">Business broker <span>↗</span></a>
+          {/if}
+          {#if data.capabilities?.includes('OPERATOR')}
+            <a class="relish-special-link" href="/operator">Operator tools <span>↗</span></a>
+          {/if}
+          {#if data.accountRole === 'owner'}
+            <a class="relish-special-link" href="/settings/users">Manage users <span>↗</span></a>
+          {/if}
+          <form method="POST" action="/auth/logout"><button class="relish-sign-out" type="submit">Sign out</button></form>
+          {#if data.user.emailRedacted}<small>{data.user.emailRedacted}</small>{/if}
+        </div>
+      </aside>
+    {/if}
+  {/if}
 
-				<!-- Search -->
-				<a class="btn icon" href="/search" aria-label="Search">
-					<!-- magnifier icon -->
-					<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-						<path
-							d="M10 4a6 6 0 1 1 0 12A6 6 0 0 1 10 4zm8.707 13.293-3.4-3.4A8 8 0 1 0 11 20a7.96 7.96 0 0 0 4.893-1.693l3.4 3.4 1.414-1.414z"
-						/>
-					</svg>
-				</a>
+  <main class="relish-content"><slot /></main>
 
-				<!-- Business-only shortcuts -->
-				{#if data.user}
-					{#if canBroker}<a class="btn icon" href="/deals" aria-label="Deals" title="Deals">
-						<!-- diamond deal icon -->
-						<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-							<path d="M12 2 22 9l-10 13L2 9l10-7zm0 3.1L6.2 9 12 16.6 17.8 9 12 5.1z" />
-						</svg>
-					</a>{/if}
-
-					<!-- Companies -->
-					{#if canBroker}<a class="btn icon" href="/companies" aria-label="Companies" title="Companies">
-						<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-							<path
-								d="M4 21V5a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v16h-2v-4h-3v4h-2v-4H7v4H4zm3-6h3v-3H7v3zm5 0h3v-3h-3v3zM7 10h3V7H7v3zm5 0h3V7h-3v3z"
-							/>
-							<path d="M18 21v-9h2a2 2 0 0 1 2 2v7h-4z" />
-						</svg>
-					</a>{/if}
-
-					<!-- Leads -->
-					{#if canBroker}<a class="btn icon" href="/leads" aria-label="Leads" title="Leads">
-						<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"
-							><path
-								d="M12 2 21 7v10l-9 5-9-5V7l9-5zm0 2.3L5 8.1v7.8l7 3.9 7-3.9V8.1l-7-3.8z"
-							/></svg
-						>
-					</a>{/if}
-
-					<!-- Tasks -->
-					<a class="btn icon" href="/tasks" aria-label="Tasks" title="Tasks">
-						<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-							<path d="M9 11 6.8 8.8 5.4 10.2 9 13.8l7-7-1.4-1.4L9 11z" />
-							<path d="M4 4h16v16H4V4zm2 2v12h12V6H6z" />
-						</svg>
-						{#if (data.tasksOpenCount || 0) > 0}
-							<span class="pill">{data.tasksOpenCount}</span>
-						{/if}
-					</a>
-				{/if}
-			{/if}
-
-			{#if data.user}
-				{#if isNetworkSurface}
-					<a class="btn icon" href="/network/share" aria-label="Share Network profile">Share</a>
-				{:else if isRelationshipApplication}
-					<!-- IT: This link deliberately crosses back to the server-owned Business route boundary. -->
-					<a class="btn" href="/">Business</a>
-				{:else}
-					<!-- Actions -->
-					<a class="btn icon" href="/actions" aria-label="Actions" title="Actions">
-						<!-- bell icon -->
-						<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-							<path d="M12 22a2 2 0 0 0 2-2h-4a2 2 0 0 0 2 2z" />
-							<path d="M18 16v-5a6 6 0 1 0-12 0v5l-2 2v1h16v-1l-2-2z" />
-						</svg>
-						{#if (data.actionsCount || 0) > 0}
-							<span class="pill">{data.actionsCount}</span>
-						{/if}
-					</a>
-
-					<!-- Stage 8.16: owner access to the three context profiles. -->
-                    <a class="btn" href="/profiles" title="My three profiles">Profiles</a>
-					<!-- Share -->
-					<a class="btn icon" href="/share" aria-label="Share your link" title="Share your link">
-						<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-							<path
-								d="M18 8a3 3 0 1 0-2.83-4H15a3 3 0 0 0 3 3zM6 14a3 3 0 1 0 0 6 3 3 0 0 0 0-6zm12 0a3 3 0 1 0 0 6 3 3 0 0 0 0-6zM8.59 13.05l6.83-3.42.9 1.8-6.83 3.43-.9-1.81z"
-							/>
-						</svg>
-					</a>
-				{/if}
-
-				<!-- Logout -->
-				<form
-					method="POST"
-					action="/auth/logout?redirect=/auth/login"
-					class="inline-form"
-					aria-label="Logout"
-				>
-					<button class="btn icon" type="submit" aria-label="Logout" title="Logout">
-						<!-- logout icon -->
-						<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-							<path d="M3 3h12v2H5v14h10v2H3V3z" />
-							<path d="M13 12l5-5v3h6v4h-6v3l-5-5z" />
-						</svg>
-					</button>
-				</form>
-			{:else}
-				<!-- Login -->
-				<a class="btn icon" href="/auth/login" aria-label="Login" title="Login">
-					<!-- key icon -->
-					<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-						<path
-							d="M7 14a5 5 0 1 1 4.9-6h10.1v4h-2v2h-2v2h-4v-2H11.9A5 5 0 0 1 7 14zm0-2a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"
-						/>
-					</svg>
-				</a>
-			{/if}
-		</nav>
-
-		<!-- ANDROID: show Install button only when not installed and install prompt is available -->
-		{#if canInstall}
-			<button on:click={install} class="install-btn">Install Relish</button>
-		{/if}
-
-		<!-- iOS: show a tiny helper only when not installed -->
-		{#if showIosHint}
-			<div class="ios-hint">Add to Home Screen: tap Share, then Add to Home Screen</div>
-		{/if}
-	</header>
-
-	<!-- Desktop sidebar -->
-	<aside class="sidebar desktop-only">
-		<a class="brand" href={applicationHome} aria-label="Relish home">
-			<div class="logo">
-				<img src="/relish-logo.png" alt="Relish logo" width="28" height="28" />
-			</div>
-		</a>
-
-		<nav class="nav-group">
-			{#if isNetworkSurface || (data.user && !canAdmin && !canOperator && !canBroker)}
-				<!-- IT: Ordinary members see only the pilot surface, not ContextSpace administration. -->
-				<a class="nav-link" href="/network">Network home</a>
-				<a class="nav-link" href="/network/share">Share my QR</a>
-				<a class="nav-link" href="/settings/profile?kind=personal&entry=network">My profile</a>
-				{#if isOwner}<a class="nav-link" href="/settings/users">Manage users</a>{/if}
-				{#if data.user}
-					<form method="POST" action="/auth/logout"><button class="btn" type="submit">Logout</button></form>
-				{:else}
-					<a class="nav-link" href="/auth/login">Login</a>
-				{/if}
-			{:else}
-			{#if data.user}
-				<div class="card app-space-card">
-					<div class="app-space-label">Application</div>
-					<strong>{data.activeContext?.displayName || 'Setup required'}</strong>
-					<div class="app-space-links">
-						{#if isRelationshipApplication}
-							<!-- IT: Context changes happen only by crossing a server-owned route boundary. -->
-							<a href="/">Switch to Business</a>
-							{#if !isGeneralApplication}<a href="/general">Switch to General</a>{/if}
-							{#if !isDatingApplication}<a href="/dating">Switch to Dating</a>{/if}
-						{:else}
-							<a href="/general">Switch to General</a>
-							<a href="/dating">Switch to Dating</a>
-						{/if}
-						{#if canAdmin}<a href="/settings/context-spaces">Manage spaces</a>{/if}
-						{#if canAdmin}<a href="/settings/agents">Agent deployments</a>{/if}
-						{#if isOwner}<a href="/settings/users">Manage users</a>{/if}
-					</div>
-				</div>
-			{/if}
-			{#if data.user}<a class="nav-link" href="/network">Network</a>{/if}
-			{#if isDatingApplication}
-				<a class="nav-link" href="/dating">Dating home</a>
-				<a class="nav-link" href="/dating/people">People</a>
-				<a class="nav-link" href="/dating/introductions/new">New Introduction</a>
-				<div class="card" style="padding:10px; color:var(--muted); font-size:0.9rem;">
-					Voice reflections require review before an Outcome is created.
-				</div>
-			{:else if isGeneralApplication}
-				{#if canOperator}<a class="nav-link" href="/general">General operator home</a>{/if}
-				{#if canOperator}
-				<a class="nav-link" href="/general/people">People</a>
-				<a class="nav-link" href="/general/conversations/import">Import conversation</a>
-				<a class="nav-link" href="/general/admin/reviews">Review inbox</a>
-				{/if}
-				<div class="card" style="padding:10px; color:var(--muted); font-size:0.9rem;">
-					General conversations and Living Understanding remain isolated from Dating and Business.
-				</div>
-			{:else}
-				<a class="nav-link" href="/">Contacts</a>
-				{#if data.user}
-					{#if canBroker}<a class="nav-link" href="/leads">◇ Leads</a>{/if}
-					<a class="nav-link" href="/wants">◎ Wants</a>
-					<a class="nav-link" href="/offers">◌ Offers</a>
-					<a class="nav-link" href="/introductions">↔ Introductions</a>
-					{#if canBroker}<a class="nav-link" href="/deals">◆ Deals</a>{/if}
-					{#if canBroker}<a class="nav-link" href="/companies">▥ Companies</a>{/if}
-					<a class="nav-link" href="/tasks"
-						>☑ Tasks{#if (data.tasksOpenCount || 0) > 0}
-							<span class="pill">{data.tasksOpenCount}</span>{/if}</a
-					>
-					<a class="nav-link" href="/projects">▣ Projects</a>
-					{#if canBroker}<a class="nav-link" href="/workstreams">▤ Workstreams</a>{/if}
-					{#if canBroker}<a class="nav-link" href="/agents">⚙ Agents</a>{/if}
-				{/if}
-				<a class="nav-link" href="/search">Search</a>
-
-				{#if data.user}
-					<a class="nav-link" href="/contacts/new">➕ Add Contact</a>
-
-					<div class="nav-right" style="margin:6px 0;">
-						<a href="/actions" class="btn">
-							Inbox
-							<!-- IT: total actions = overdue cadences + open reminders + open tasks/actions -->
-							{#if (data.reconnectDue ?? 0) + (data.remindersOpenCount ?? 0) + (data.tasksOpenCount ?? 0) > 0}
-								<span class="pill">
-									{(data.reconnectDue ?? 0) +
-										(data.remindersOpenCount ?? 0) +
-										(data.tasksOpenCount ?? 0)}
-								</span>
-							{/if}
-						</a>
-					</div>
-				{/if}
-			{/if}
-
-			{#if data.user}
-				<form method="POST" action="/auth/logout">
-					<button class="btn" type="submit" style="width:100%;">Logout</button>
-				</form>
-
-				<!-- IT: show redacted email only - never plaintext -->
-				<div class="card" style="padding:10px;">
-					<div style="font-size:0.9rem; color:var(--muted);">Signed in as</div>
-					<div style="font-weight:600; word-break:break-all;">
-						{#if data.user.emailRedacted}{data.user.emailRedacted}{/if}
-					</div>
-				</div>
-			{:else}
-				<a class="nav-link" href="/auth/login">Login</a>
-				<a class="nav-link" href="/auth/register">Register</a>
-			{/if}
-			{/if}
-		</nav>
-
-		{#if !isNetworkSurface && (canAdmin || canOperator || canBroker)}
-		<div class="card" style="padding:12px; margin-top:auto;">
-			<div style="font-weight:600; margin-bottom:6px;">Quick tip</div>
-			<div style="color:var(--muted); font-size:0.95rem;">
-				{isDatingApplication
-					? 'Dating information remains separate from your Business workspace.'
-					: isGeneralApplication
-						? 'General conversations remain separate from Dating and Business.'
-						: 'Add a contact, then attach a note or link them to a deal.'}
-			</div>
-		</div>
-		{/if}
-	</aside>
-
-	<!-- Main content -->
-	<main class="main">
-		<slot />
-	</main>
-
-	<!-- Footer - links only on mobile -->
-	<footer class="footer">
-		<div
-			class="container"
-			style="display:flex; align-items:center; gap:12px; justify-content:space-between;"
-		>
-			<div>© {new Date().getFullYear()} Relationship OS</div>
-			<div class="mobile-only footer-links">
-				{#if isNetworkSurface}
-					<a href="/network">Network</a>
-					<span aria-hidden="true">·</span>
-					<a href="/network/share">Share</a>
-				{:else if isDatingApplication}
-					<a href="/dating" aria-label="Dating home">Dating</a>
-					<span aria-hidden="true">·</span>
-					<a href="/general" aria-label="Switch to General">General</a>
-					<span aria-hidden="true">·</span>
-					<a href="/" aria-label="Switch to Business">Business</a>
-				{:else if isGeneralApplication}
-					<a href="/general" aria-label="General home">General</a>
-					<span aria-hidden="true">·</span>
-					<a href="/dating" aria-label="Switch to Dating">Dating</a>
-					<span aria-hidden="true">·</span>
-					<a href="/" aria-label="Switch to Business">Business</a>
-				{:else}
-					<a href="/" aria-label="Home">Contacts</a>
-					{#if data.user}
-						<span aria-hidden="true">·</span>
-						{#if canBroker}<a href="/deals" aria-label="Deals">Deals</a>{/if}
-						<span aria-hidden="true">·</span>
-						{#if canBroker}<a href="/companies" aria-label="Companies">Companies</a>{/if}
-						<span aria-hidden="true">·</span>
-						<a href="/introductions" aria-label="Introductions">Introductions</a>
-						<span aria-hidden="true">·</span>
-						{#if canBroker}<a href="/agents" aria-label="Agents">Agents</a>{/if}
-					{/if}
-				{/if}
-				<span aria-hidden="true">·</span>
-				{#if !data.user}
-					<a href="/auth/login" aria-label="Login">Login</a>
-				{/if}
-			</div>
-		</div>
-	</footer>
+  {#if !isPublic && data.user && !specialist}
+    <nav class="relish-bottom-nav" aria-label={activeSpace.label + ' navigation'}>
+      {#each nav as item}
+        <a class:current={path === activeBase + item.slug} href={activeBase + item.slug}>
+          <span aria-hidden="true">{item.icon}</span><span>{item.label}</span>
+        </a>
+      {/each}
+    </nav>
+  {/if}
 </div>
-
-<style>
-	/* One place to tune sizes */
-
-	/* Mobile tweaks - pick your breakpoint */
-	:root {
-		/* clamp(min, preferred, max) - scales smoothly between widths */
-		--icon-size: clamp(20px, 2.2vw, 24px);
-		--icon-button-w: clamp(40px, 4.8vw, 48px);
-		--icon-button-h: clamp(36px, 4.2vw, 44px);
-		--logo-size: clamp(44px, 6vw, 60px);
-		--brand-gap: clamp(4px, 1vw, 8px);
-	}
-
-	/* Topbar layout */
-	.topbar {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		gap: 12px;
-		padding: 2px 14px;
-		border-bottom: 1px solid var(--border);
-		background: var(--surface-1);
-		box-sizing: border-box; /* ensure padding does not clip content */
-	}
-	.topbar .brand {
-		display: flex;
-		align-items: center;
-		gap: var(--brand-gap);
-		flex: 1 1 auto;
-		min-width: 0; /* allow text to truncate instead of pushing icons off */
-		text-decoration: none;
-		color: var(--text);
-	}
-	.topbar .topbar-actions {
-		display: inline-flex;
-		align-items: center;
-		gap: 8px;
-		flex: 0 0 auto; /* keep actions fixed - no shrinking */
-	}
-
-	/* Logo box - remove phantom spacing and fit exactly */
-	.logo {
-		width: var(--logo-size);
-		height: var(--logo-size);
-		padding: 0;
-		margin: 0;
-		line-height: 0;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		flex: 0 0 auto;
-	}
-	.logo img {
-		width: 100%;
-		height: 100%;
-		display: block;
-		object-fit: contain;
-	}
-
-	/* Generic button styles */
-	.btn {
-		display: inline-flex;
-		align-items: center;
-		gap: 8px;
-		padding: 6px 6px;
-		border-radius: 8px;
-		background: var(--surface-2);
-		border: 1px solid var(--border);
-		color: var(--text);
-		text-decoration: none;
-		cursor: pointer;
-	}
-	.btn:hover {
-		background: var(--surface-3);
-	}
-
-	/* Icon buttons - use the shared size variables */
-	.btn.icon {
-		width: var(--icon-button-w);
-		height: var(--icon-button-h);
-		justify-content: center;
-		padding: 0;
-	}
-	.btn.icon svg {
-		width: var(--icon-size);
-		height: var(--icon-size);
-	}
-
-	/* Keep the logout form inline so it looks like a button in the row */
-	.inline-form {
-		display: inline-flex;
-		margin: 0;
-	}
-
-	/* Right aligned nav cluster */
-	.nav-right {
-		display: flex;
-		align-items: center;
-		gap: 8px;
-	}
-
-	/* IT: Make the active application boundary visible without exposing internal ids. */
-	.app-space-card {
-		padding: 10px;
-		margin-bottom: 6px;
-		display: grid;
-		gap: 6px;
-	}
-	.app-space-label {
-		color: var(--muted);
-		font-size: 0.75rem;
-		text-transform: uppercase;
-		letter-spacing: 0.06em;
-	}
-	.app-space-links {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 8px;
-		font-size: 0.82rem;
-	}
-
-	/* Pills */
-	.pill {
-		display: inline-block;
-		min-width: 20px;
-		padding: 2px 6px;
-		border-radius: 9999px;
-		font-size: 12px;
-		text-align: center;
-		background: #e5f4ff;
-		color: #0369a1;
-		border: 1px solid #bae6fd;
-	}
-
-</style>

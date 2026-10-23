@@ -1,4 +1,4 @@
-# Relish / Relationship OS - Stage 8.16 - Three context pilot
+# Relish / Relationship OS - Stage 8.16
 
 **Three-context QR profiles, private Dorian onboarding and first-party Product Intelligence**
 

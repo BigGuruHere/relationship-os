@@ -603,3 +603,86 @@ label { display: block; color: var(--muted); font-size: 0.95rem; margin-bottom: 
     font-size: 0.95rem;            /* slightly smaller label */
   }
 }
+
+/* Stage 8.17 - Relish relationship app shell. Broker tools keep their existing routes.
+   The selected context changes accent colour but never changes server custody. */
+.relish-shell { --workspace-accent:#16877c; min-height:100dvh; display:grid; grid-template-columns:245px minmax(0,1fr); grid-template-rows:66px minmax(0,1fr); background:#f7f9f8; }
+.relish-header { grid-column:1/-1; grid-row:1; display:flex; align-items:center; gap:22px; border-bottom:1px solid #e1e7e6; padding:0 25px; background:#fff; position:sticky; top:0; z-index:20; }
+.relish-brand { display:flex; align-items:center; gap:9px; color:#132f30; font-size:1.24rem; text-decoration:none; white-space:nowrap; }
+.relish-brand img { width:36px; height:36px; object-fit:contain; }
+.relish-context-picker { display:flex; align-items:center; gap:10px; min-width:0; }
+.relish-context-picker label { font-size:.8rem; margin:0; }
+.relish-context-picker select { width:auto; min-width:154px; font-weight:650; padding:8px 29px 8px 12px; border:1px solid #d9e2e2; background:#fff; }
+.relish-context-only { border:1px solid #d9e2e2; padding:8px 12px; border-radius:10px; font-weight:650; }
+.relish-header-tools { margin-left:auto; color:var(--workspace-accent); font-weight:650; }
+.relish-sidebar { grid-column:1; grid-row:2; display:flex; flex-direction:column; padding:26px 14px 18px; border-right:1px solid #e1e7e6; background:#fff; min-width:0; }
+.relish-sidebar-title { color:var(--workspace-accent); text-transform:uppercase; letter-spacing:.09em; font-size:.77rem; font-weight:800; margin:0 11px 15px; }
+.relish-nav-item { display:flex; align-items:center; gap:11px; min-height:45px; padding:10px 12px; border-radius:10px; color:#3d5054; font-weight:550; }
+.relish-nav-item:hover { background:#f4f8f7; text-decoration:none; }
+.relish-nav-item.current { background:color-mix(in srgb, var(--workspace-accent) 11%, white); color:var(--workspace-accent); font-weight:750; }
+.relish-nav-icon { font-size:1.2rem; width:23px; text-align:center; }
+.relish-sidebar-bottom { margin-top:auto; display:grid; gap:12px; padding:18px 10px 0; border-top:1px solid #e9eeee; }
+.relish-special-link { display:flex; justify-content:space-between; color:#40565a; font-size:.89rem; }
+.relish-sidebar-bottom small { color:#8c9999; font-size:.75rem; overflow-wrap:anywhere; }
+.relish-sign-out { font:inherit; background:none; border:0; padding:0; color:#40565a; cursor:pointer; }
+.relish-content { grid-column:2; grid-row:2; width:100%; min-width:0; padding:28px 24px 70px; }
+.relish-bottom-nav { display:none; }
+.relish-visitor { display:block; min-height:100dvh; background:#f7f9f8; }
+.relish-visitor .relish-content { padding:16px 8px 36px; }
+.workspace-page { max-width:950px; margin:0 auto; }
+.workspace-kicker { margin:0 0 8px; color:var(--workspace-accent); font-size:.78rem; font-weight:800; letter-spacing:.08em; }
+.workspace-page h1 { margin:0; font-size:clamp(1.85rem, 3vw, 2.4rem); letter-spacing:-.025em; }
+.workspace-page h2 { margin:0 0 9px; font-size:1.13rem; }
+.workspace-intro { margin:12px 0 23px; color:#52666b; line-height:1.6; max-width:660px; }
+.workspace-panel { display:block; padding:23px; border:1px solid #e1e8e6; border-radius:16px; background:white; margin:0 0 16px; box-shadow:0 5px 18px rgba(20,45,45,.035); color:#193336; }
+.workspace-panel p { color:#5c6b70; line-height:1.55; }
+.workspace-panel a:not(.btn) { color:var(--workspace-accent); }
+.workspace-tiles { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; }
+.workspace-tile { display:flex; flex-direction:column; min-height:190px; text-decoration:none; }
+.workspace-tile:hover { border-color:var(--workspace-accent); text-decoration:none; transform:translateY(-1px); }
+.workspace-tile-icon { color:var(--workspace-accent); font-size:1.7rem; margin-bottom:12px; }
+.workspace-tile p { margin:0; }
+.workspace-tile-action { font-weight:700; color:var(--workspace-accent); margin-top:auto; padding-top:18px; }
+.workspace-person { display:flex; justify-content:space-between; gap:14px; align-items:center; padding:15px 0; border-bottom:1px solid #edf1f1; }
+.workspace-person:last-of-type { border-bottom:0; }
+.workspace-person span,.workspace-person small { color:#748386; font-size:.82rem; }
+.workspace-recent { margin-top:10px; }
+.workspace-buttons { display:flex; gap:10px; flex-wrap:wrap; margin-top:18px; }
+.workspace-share { max-width:600px; }
+.workspace-qr { display:flex; justify-content:center; padding:17px; margin:15px 0; background:white; }
+.workspace-qr svg { display:block; max-width:100%; height:auto; }
+.workspace-small { font-size:.85rem; }
+@media(max-width:850px) {
+  .relish-shell { display:block; min-height:100dvh; }
+  .relish-header { min-height:64px; padding:0 15px; gap:12px; }
+  .relish-brand strong { font-size:1.05rem; }
+  .relish-brand img { width:30px; height:30px; }
+  .relish-context-picker { margin-left:auto; }
+  .relish-context-picker label { display:none; }
+  .relish-context-picker select { min-width:120px; max-width:155px; }
+  .relish-header-tools { margin-left:0; font-size:.88rem; }
+  .relish-sidebar { display:none; }
+  .relish-content { padding:20px 14px 96px; }
+  .relish-bottom-nav { position:fixed; left:0; right:0; bottom:0; padding:6px 6px max(9px,env(safe-area-inset-bottom)); display:flex; justify-content:space-around; gap:3px; background:#fff; border-top:1px solid #e1e8e6; z-index:30; box-shadow:0 -4px 18px rgba(15,30,30,.035); }
+  .relish-bottom-nav a { display:flex; flex:1; flex-direction:column; align-items:center; gap:3px; text-align:center; font-size:.69rem; color:#627579; padding:5px 1px; text-decoration:none; border-radius:9px; }
+  .relish-bottom-nav a span:first-child { font-size:1.24rem; line-height:1.2; }
+  .relish-bottom-nav a.current { color:var(--workspace-accent); background:color-mix(in srgb, var(--workspace-accent) 8%, white); font-weight:750; }
+  .workspace-tiles { grid-template-columns:1fr 1fr; gap:10px; }
+  .workspace-panel { padding:16px; }
+  .workspace-tile { min-height:162px; }
+}
+@media(max-width:420px) {
+  .relish-brand strong { display:none; }
+  .relish-context-picker select { min-width:118px; }
+  .workspace-tiles { grid-template-columns:1fr; }
+  .workspace-tile { min-height:135px; }
+}
+
+/* Stage 8.17 - Compact owner and member account menu on mobile. */
+.relish-more { display:none; position:relative; }
+.relish-more summary { list-style:none; padding:8px; min-width:36px; text-align:center; border:1px solid #e0e7e7; border-radius:10px; cursor:pointer; font-weight:800; }
+.relish-more summary::-webkit-details-marker { display:none; }
+.relish-more-menu { position:absolute; right:0; top:42px; z-index:60; background:white; border:1px solid #dde5e5; border-radius:12px; width:210px; box-shadow:0 12px 32px rgba(12,40,40,.13); padding:8px; display:grid; }
+.relish-more-menu a,.relish-more-menu button { display:block; background:transparent; border:0; text-align:left; color:#314b4c; width:100%; padding:10px; font:inherit; cursor:pointer; }
+.relish-more-menu a:hover,.relish-more-menu button:hover { background:#f3f7f6; text-decoration:none; }
+@media(max-width:850px) { .relish-more { display:block; } }

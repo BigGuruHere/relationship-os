@@ -33,6 +33,10 @@ export function normalizeContextDomainKey(value: unknown) {
 export function contextDomainForPathname(pathname: string): ContextDomainKey {
 	const path = String(pathname || '/');
 	// IT: Domain selection comes from a server-owned route boundary, not from an arbitrary query parameter.
+	// IT: Pilot UI paths select custody through a trusted route prefix, never a query or cookie.
+	if (path === '/space/dating' || path.startsWith('/space/dating/')) return DATING_DOMAIN_KEY;
+	if (path === '/space/friendship' || path.startsWith('/space/friendship/')) return GENERAL_DOMAIN_KEY;
+	if (path === '/space/business' || path.startsWith('/space/business/')) return BUSINESS_DOMAIN_KEY;
 	if (path === '/dating' || path.startsWith('/dating/')) return DATING_DOMAIN_KEY;
 	if (path === '/general' || path.startsWith('/general/') || path === '/network' || path.startsWith('/network/')) return GENERAL_DOMAIN_KEY;
 	return BUSINESS_DOMAIN_KEY;

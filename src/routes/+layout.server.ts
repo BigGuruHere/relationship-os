@@ -9,6 +9,7 @@ import type { LayoutServerLoad } from './$types';
 import { prisma } from '$lib/db';
 import { decryptUserEmail } from '$lib/server/userEmail'; // IT - server-only decrypt helper
 import { decryptContextSpaceDisplayName } from '$lib/server/core/contextSpaceDirectory';
+import { visibleRelishWorkspaces } from '$lib/server/core/relishWorkspace';
 
 // IT - helper to redact an email for safe display
 function redactEmail(email: string | null) {
@@ -25,6 +26,7 @@ export const load: LayoutServerLoad = async ({ locals, url }) => {
 	let activeContext: { id: string; domainKey: string; displayName: string } | null = null;
 	let hasDatingContext = false;
 	let hasGeneralContext = false;
+	let visibleSpaces: Awaited<ReturnType<typeof visibleRelishWorkspaces>> = [];
 
 	if (locals.user?.id) {
 		// IT - read encrypted email for this user and produce a redacted string
@@ -40,6 +42,7 @@ export const load: LayoutServerLoad = async ({ locals, url }) => {
 			where: { ownerUserId: locals.user.id },
 			select: { id: true, domainKey: true, displayNameEnc: true }
 		});
+		visibleSpaces = await visibleRelishWorkspaces(locals.user.id, locals.user.role || 'member');
 		hasDatingContext = spaces.some((space) => space.domainKey === 'dating');
 		hasGeneralContext = spaces.some((space) => space.domainKey === 'general');
 		const selected = spaces.find((space) => space.id === locals.contextSpaceId) ?? null;
@@ -99,9 +102,11 @@ export const load: LayoutServerLoad = async ({ locals, url }) => {
 		activeContext,
 		activeDomainKey: locals.contextDomainKey,
 		routePathname,
+		profileKindHint: url.pathname === '/settings/profile' ? url.searchParams.get('kind') : null,
 		networkEntry: url.searchParams.get('entry') === 'network',
 		hasDatingContext,
 		hasGeneralContext,
+		visibleSpaces,
 		capabilities: locals.capabilities ?? [],
 		accountRole: locals.user?.role ?? null,
 		reconnectDue,

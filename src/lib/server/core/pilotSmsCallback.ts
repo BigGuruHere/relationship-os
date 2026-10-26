@@ -40,6 +40,28 @@ export function pilotTermsConfig() {
   const privacyUrl = process.env.RELISH_PILOT_PRIVACY_URL || '';
   const version = process.env.RELISH_PILOT_TERMS_VERSION || '';
   const safeUrl = (value: string) => { try { return new URL(value).protocol === 'https:'; } catch { return false; } };
+  
+  // TEMPORARY PRODUCTION DIAGNOSTIC
+  // Logs only validation results, never credentials or secret values.
+  console.info('[pilot-sms-config]', {
+    enabled: process.env.RELISH_PILOT_SMS_CALLBACK_ENABLED === 'YES',
+    termsHttps: safeUrl(termsUrl),
+    privacyHttps: safeUrl(privacyUrl),
+    termsVersionValid: /^[\w.-]{1,60}$/.test(version),
+    smsNumberValid: /^\+[1-9]\d{7,14}$/.test(
+      process.env.RELISH_DORIAN_SMS_NUMBER || ''
+    ),
+    telnyxApiKeyPresent: Boolean(process.env.TELNYX_API_KEY),
+    telnyxPublicKeyPresent: Boolean(process.env.TELNYX_PUBLIC_KEY),
+    elevenLabsApiKeyPresent: Boolean(process.env.ELEVENLABS_API_KEY),
+    outboundPhoneIdPresent: Boolean(
+      process.env.ELEVENLABS_OUTBOUND_PHONE_NUMBER_ID
+    ),
+    dorianBindingPresent: Boolean(
+      process.env.RELISH_NETWORK_DORIAN_BINDING_ID
+    )
+  });
+
   return { termsUrl, privacyUrl, version, ready: Boolean(smsCallEnabled() &&
     safeUrl(termsUrl) && safeUrl(privacyUrl) && /^[\w.-]{1,60}$/.test(version) &&
     /^\+[1-9]\d{7,14}$/.test(process.env.RELISH_DORIAN_SMS_NUMBER || '') &&

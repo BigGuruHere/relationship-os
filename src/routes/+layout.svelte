@@ -14,7 +14,7 @@
   ];
 
   $: path = data.routePathname || '/';
-  $: isPublic = path.startsWith('/u/') || path.startsWith('/pilot/dorian/') || path.startsWith('/network/join/');
+  $: isPublic = path.startsWith('/u/') || path.startsWith('/pilot/dorian/') || path.startsWith('/network/join/') || path === '/legal' || path.startsWith('/legal/');
   $: isBroker = ['/broker', '/leads', '/deals', '/companies', '/agents', '/workstreams', '/contacts', '/wants', '/offers', '/introductions', '/projects', '/tasks', '/actions', '/search'].some(prefix => path === prefix || path.startsWith(prefix + '/'));
   $: isOperator = path === '/operator' || path.startsWith('/operator/') || path === '/general' || path.startsWith('/general/');
   $: hint = (path === '/settings/profile' && data.profileKindHint === 'personal') ? 'friendship' : path === '/settings/profile' && ['business', 'dating'].includes(data.profileKindHint) ? data.profileKindHint : null;

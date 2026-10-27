@@ -147,7 +147,7 @@
     {#if form?.error}<p role="alert" class="fc-error">{form.error}</p>{/if}
     <details class="fc-details"><summary>More about Dorian</summary>
       <p>Dorian is an AI, not a human. He gets to know you over time, explores what matters to you and what you enjoy contributing, and may eventually help you find people who can support or collaborate with you. Introductions and private information-sharing require permission.</p>
-      <p>Requesting a call uses your phone number to arrange the callback and support provisional future-call recognition. Your conversation is private to you, not shared with the person below. Relish provides the current <a href={data.pilotTerms.termsUrl} target="_blank" rel="noopener noreferrer">Terms</a> and <a href={data.pilotTerms.privacyUrl} target="_blank" rel="noopener noreferrer">Privacy Notice</a> by SMS. Dorian will ask for your agreement before substantive processing. Calls may involve recording and transcription if you agree. Carrier charges may apply.</p>
+      <p>Requesting a call uses your phone number to arrange the callback and support provisional future-call recognition. Your conversation is private to you, not shared with the person below. Relish provides the <a href="/legal" target="_blank" rel="noopener noreferrer">Terms and Privacy information</a> at one link, which is also sent by SMS. Dorian will ask for your agreement before substantive processing. Calls may involve recording and transcription if you agree. Carrier charges may apply.</p>
     </details>
   </section>
   <section class="fc-person" aria-label="Person who shared this invitation">

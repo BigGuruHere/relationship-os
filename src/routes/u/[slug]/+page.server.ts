@@ -172,7 +172,7 @@ export const load: PageServerLoad = async ({ params, url, locals }) => {
     visitorProfile,
     dorianMode: contextPref?.dorianMode || 'SMS_CALLBACK',
     smsReady: pilotTermsConfig().ready,
-    pilotTerms: { termsUrl: pilotTermsConfig().termsUrl, privacyUrl: pilotTermsConfig().privacyUrl, version: pilotTermsConfig().version }
+    pilotTerms: { legalUrl: pilotTermsConfig().legalUrl, termsUrl: pilotTermsConfig().termsUrl, privacyUrl: pilotTermsConfig().privacyUrl, version: pilotTermsConfig().version }
   };
 };
 

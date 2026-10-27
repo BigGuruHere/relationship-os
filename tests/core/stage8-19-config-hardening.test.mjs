@@ -35,8 +35,7 @@ const pilot = {
   RELISH_NETWORK_DORIAN_BINDING_ID: 'binding',
   RELISH_DORIAN_SMS_NUMBER: '+61400000000',
   RELISH_PILOT_TERMS_VERSION: '2026.10',
-  RELISH_PILOT_TERMS_URL: 'https://example.test/terms',
-  RELISH_PILOT_PRIVACY_URL: 'https://example.test/privacy',
+  RELISH_LEGAL_DOCUMENTS_PUBLISHED: 'YES',
   TELEPHONY_DEFAULT_COUNTRY: 'AU',
   ELEVENLABS_WEBHOOK_MAX_AGE_SECONDS: '1800',
   LU_AUTO_PREPARE_AFTER_INGEST: 'YES'
@@ -68,7 +67,7 @@ test('pilot startup requires renamed secrets and does not accept old keys', () =
 
 test('missing or invalid pilot config names exact required settings without printing values', () => {
   assert.throws(() => validateRequiredEnvironment({ ...pilot, ELEVENLABS_INITIATION_SECRET: undefined }), /ELEVENLABS_INITIATION_SECRET/);
-  assert.throws(() => validateRequiredEnvironment({ ...pilot, RELISH_PILOT_TERMS_URL: 'http://example.test/terms' }), /RELISH_PILOT_TERMS_URL must use HTTPS/);
+  assert.throws(() => validateRequiredEnvironment({ ...pilot, APP_ORIGIN: 'http://example.test' }), /APP_ORIGIN must use HTTPS/);
   assert.throws(() => validateRequiredEnvironment({ ...pilot, RELISH_PILOT_CONVERSATIONAL_TERMS: 'NO' }), /RELISH_PILOT_CONVERSATIONAL_TERMS/);
   assert.throws(() => validateRequiredEnvironment({ ...pilot, ELEVENLABS_TOOL_SECRET: 'short' }), /ELEVENLABS_TOOL_SECRET/);
   assert.doesNotThrow(() => validateRequiredEnvironment({ ...base, RELISH_PILOT_SMS_CALLBACK_ENABLED: 'NO' }));

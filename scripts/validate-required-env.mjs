@@ -54,8 +54,29 @@ export function validateRequiredEnvironment(env = process.env) {
     need('ELEVENLABS_TOOL_SECRET', 24);
     positiveInteger('ELEVENLABS_WEBHOOK_MAX_AGE_SECONDS');
     yesNo('LU_AUTO_PREPARE_AFTER_INGEST');
-    httpsUrl('RELISH_PILOT_TERMS_URL');
-    httpsUrl('RELISH_PILOT_PRIVACY_URL');
+    // The same checked-in legal documents are served on each environment's host.
+    // One public origin is used for the web app and checked-in legal documents.
+    // Telephone onboarding requires the same APP_ORIGIN to be public HTTPS, with
+    // no path/query/credentials, so all legal links remain unambiguous.
+    httpsUrl('APP_ORIGIN');
+    if (env.APP_ORIGIN) {
+      try {
+        const origin = new URL(env.APP_ORIGIN);
+        if (origin.username || origin.password || origin.pathname !== '/' || origin.search || origin.hash) {
+          invalid.push('APP_ORIGIN must be a public HTTPS origin (no path, query, credentials or fragment)');
+        }
+      } catch { /* httpsUrl() has already reported the invalid URL. */ }
+    }
+    if (env.HOSTING_URL !== undefined) {
+      invalid.push('Remove HOSTING_URL: use APP_ORIGIN as the only public base URL');
+    }
+    if (env.RELISH_PILOT_TERMS_URL || env.RELISH_PILOT_PRIVACY_URL) {
+      invalid.push('Remove RELISH_PILOT_TERMS_URL and RELISH_PILOT_PRIVACY_URL: all legal links now derive from APP_ORIGIN');
+    }
+    need('RELISH_LEGAL_DOCUMENTS_PUBLISHED');
+    if (env.RELISH_LEGAL_DOCUMENTS_PUBLISHED !== 'YES') {
+      invalid.push('RELISH_LEGAL_DOCUMENTS_PUBLISHED must be YES after reviewing and publishing the legal documents');
+    }
     if (env.RELISH_DORIAN_SMS_NUMBER && !/^\+[1-9]\d{7,14}$/.test(env.RELISH_DORIAN_SMS_NUMBER)) {
       invalid.push('RELISH_DORIAN_SMS_NUMBER must be in E.164 format');
     }

@@ -1,7 +1,7 @@
 // Stage 8.18: single-use QR -> signed SMS -> provisional telephone identity -> outbound SIP.
 // A scan alone never triggers a callback. SMS source is a recognition hint, not login proof.
 import { createHash, randomBytes } from 'node:crypto';
-import { conversationalPolicyEnabled, policyInstructionForCaller, withConsentGate } from './relishCallPolicy';
+import { conversationalPolicyEnabled, currentRelishPolicy, policyInstructionForCaller, withConsentGate } from './relishCallPolicy';
 import { prisma } from '$lib/db';
 import { encrypt, buildScopedIndexToken } from '$lib/crypto';
 import { ensureProvisionalPhoneCaller } from '$lib/server/integrations/elevenlabs/phoneOnboarding';
@@ -37,12 +37,9 @@ const index = (phone: string) => buildScopedIndexToken(phone, 'network:provision
 const expirationMinutes = 20;
 
 export function pilotTermsConfig() {
-  const termsUrl = process.env.RELISH_PILOT_TERMS_URL ?? '';
-  const privacyUrl = process.env.RELISH_PILOT_PRIVACY_URL ?? '';
-  const version = process.env.RELISH_PILOT_TERMS_VERSION ?? '';
-  const safeUrl = (value: string) => { try { return new URL(value).protocol === 'https:'; } catch { return false; } };
-  return { termsUrl, privacyUrl, version, ready: Boolean(smsCallEnabled() && conversationalPolicyEnabled() &&
-    safeUrl(termsUrl) && safeUrl(privacyUrl) && /^[\w.-]{1,60}$/.test(version) &&
+  const policy = currentRelishPolicy();
+  return { ...policy, ready: Boolean(smsCallEnabled() && conversationalPolicyEnabled() &&
+    policy.valid &&
     /^\+[1-9]\d{7,14}$/.test(process.env.RELISH_DORIAN_SMS_NUMBER || '') &&
     process.env.TELNYX_API_KEY && process.env.TELNYX_PUBLIC_KEY && process.env.ELEVENLABS_API_KEY &&
     process.env.ELEVENLABS_OUTBOUND_PHONE_NUMBER_ID && process.env.RELISH_NETWORK_DORIAN_BINDING_ID) };
@@ -51,7 +48,7 @@ export function pilotTermsConfig() {
 export async function issuePilotSmsInvitation(input: { profileId: string; ownerUserId: string;
   domainKey: PilotDomain; env: string; source: string; offeredName?: string; offeredEmail?: string }) {
   const cfg = pilotTermsConfig();
-  if (!cfg.ready) throw new Error('SMS_CALL_NOT_CONFIGURED: Check RELISH_PILOT_SMS_CALLBACK_ENABLED, RELISH_PILOT_CONVERSATIONAL_TERMS, policy URLs/version and required ElevenLabs/Telnyx variables.');
+  if (!cfg.ready) throw new Error('SMS_CALL_NOT_CONFIGURED: Check APP_ORIGIN, RELISH_LEGAL_DOCUMENTS_PUBLISHED, RELISH_PILOT_TERMS_VERSION, callback/consent flags and ElevenLabs/Telnyx configuration.');
   // Generate an 80-bit base32 invitation (16 letters/digits), without exposing the profile ID.
   const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   const code = Array.from(randomBytes(16), (byte) => alphabet[byte & 31]).join('');
@@ -193,7 +190,7 @@ export async function consumePilotSmsForCallback(input: { messageId: string; fro
     processingStage = 'TERMS_SMS';
     trace('terms_sms.requested', undefined, invitation.id);
     try {
-      await sendTelnyxSms(phone, `Dorian (Relish AI) will call shortly. Terms (${invitation.termsVersion}): ${cfg.termsUrl} Privacy: ${cfg.privacyUrl}. Conversations may be transcribed and privately processed. Reply STOP to opt out of texts.`);
+      await sendTelnyxSms(phone, `Dorian (Relish AI) will call shortly. Please read our Terms and Privacy information (${invitation.termsVersion}): ${cfg.legalUrl} Dorian will ask for your agreement before chatting. Calls may be recorded/transcribed and privately processed if you agree. Reply STOP to opt out of texts.`);
     } catch (error) {
       // Preserve the status code, when available, without emitting provider bodies or credentials.
       const safeCode = error instanceof Error && /^TELNYX_SMS_HTTP_\d{3}$/.test(error.message)

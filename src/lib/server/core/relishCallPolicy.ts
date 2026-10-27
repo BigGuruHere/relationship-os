@@ -6,14 +6,29 @@ import { configuredSharedBindingId, networkSessionHash } from '$lib/server/integ
 
 export const conversationalPolicyEnabled = () => process.env.RELISH_PILOT_CONVERSATIONAL_TERMS === 'YES';
 
+// Stage 8.19a: legal pages are bundled with the application and published on
+// each deployment's APP_ORIGIN. Never use a second hosting variable or hardcoded hosts.
+// URL construction is centralized so voice consent, SMS, and the visitor page
+// always refer to the same documents for a given environment.
 export function currentRelishPolicy() {
   const version = process.env.RELISH_PILOT_TERMS_VERSION ?? '';
-  const termsUrl = process.env.RELISH_PILOT_TERMS_URL ?? '';
-  const privacyUrl = process.env.RELISH_PILOT_PRIVACY_URL ?? '';
-  const valid = /^[\w.-]{1,60}$/.test(version) && [termsUrl, privacyUrl].every((value) => {
-    try { return new URL(value).protocol === 'https:'; } catch { return false; }
-  });
-  return { version, termsUrl, privacyUrl, valid };
+  const appOrigin = process.env.APP_ORIGIN ?? '';
+  const published = process.env.RELISH_LEGAL_DOCUMENTS_PUBLISHED === 'YES';
+  let legalUrl = '';
+  let termsUrl = '';
+  let privacyUrl = '';
+  try {
+    const root = new URL(appOrigin);
+    if (root.protocol === 'https:' && root.username === '' && root.password === '' &&
+        root.pathname === '/' && !root.search && !root.hash) {
+      legalUrl = new URL('/legal', root).href;
+      termsUrl = new URL('/legal/terms', root).href;
+      privacyUrl = new URL('/legal/privacy', root).href;
+    }
+  } catch { /* Invalid/missing APP_ORIGIN leaves policy invalid: fail closed. */ }
+  const valid = published && /^[\w.-]{1,60}$/.test(version) &&
+    Boolean(legalUrl && termsUrl && privacyUrl);
+  return { version, legalUrl, termsUrl, privacyUrl, published, valid };
 }
 
 export async function callerHasAcceptedCurrentTerms(userId: string) {
@@ -72,7 +87,7 @@ export async function policyInstructionForCaller(userId: string) {
   if (!policy.valid) return { instruction: 'POLICY UNAVAILABLE: Explain that the conversation cannot proceed and end the call.', accepted: false };
   return { accepted, instruction: accepted
     ? 'The caller has previously accepted the current Terms and Privacy Notice. Do not repeat the consent request unless asked.'
-    : `CONSENT GATE: You are an AI networking partner. Before asking substantive questions, clearly explain that the call may be recorded/transcribed and privately processed by Relish. The current Terms (${policy.version}) and Privacy Notice links are available on the invitation page and may also have been sent by SMS. Ask for explicit agreement. Only after the caller clearly agrees, immediately invoke the ElevenLabs tool record_relish_policy_acceptance with agreement=true, the current conversation_id and relish_network_session. Wait for status ACCEPTED before continuing. If declined, unclear or tool fails, do not proceed: politely end the call. Do not tell anyone that merely continuing or sending an SMS constitutes consent.` };
+    : `CONSENT GATE: You are an AI networking partner. Before asking substantive questions, clearly explain that the call may be recorded/transcribed and privately processed by Relish. The Terms and Privacy Notice are both available at ${policy.legalUrl}, linked on the invitation page and sent by SMS.  Ask for explicit agreement. Only after the caller clearly agrees, immediately invoke the ElevenLabs tool record_relish_policy_acceptance with agreement=true, the current conversation_id and relish_network_session. Wait for status ACCEPTED before continuing. If declined, unclear or tool fails, do not proceed: politely end the call. Do not tell anyone that merely continuing or sending an SMS constitutes consent.` };
 }
 
 // Remove private memory before agreement. This remains a one-call limitation if a returning

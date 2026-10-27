@@ -43,7 +43,7 @@ The page means development/test/production agent changes do not require a source
 
 Still required:
 
-- `ELEVENLABS_WEBHOOK_SECRET` for post-call HMAC verification
+- `ELEVENLABS_POST_CALL_WEBHOOK_SECRET` for post-call HMAC verification
 - `ELEVENLABS_INITIATION_SECRET` for the pre-call initiation endpoint
 - `ELEVENLABS_API_KEY` only when API fetch/recovery is wanted
 

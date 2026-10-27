@@ -1,3 +1,4 @@
+import { requiredEnv } from '$lib/server/config/requiredEnv';
 // PURPOSE: Resolve a shared Dorian agent's signed webhook into the actual participant's custody.
 // SECURITY: Never accept contact/user/context ids from ElevenLabs dynamic variables as authority.
 import { createHash, randomBytes } from 'node:crypto';
@@ -10,7 +11,7 @@ import { pilotDomainForKind } from '$lib/server/pilot';
 
 export const networkSessionHash = (token: string) => createHash('sha256').update(token).digest('hex');
 export function configuredSharedBindingId() {
-  return String(process.env.RELISH_NETWORK_DORIAN_BINDING_ID || '').trim();
+  return requiredEnv('RELISH_NETWORK_DORIAN_BINDING_ID').trim();
 }
 export async function startSharedNetworkSession(userId: string, contextSpaceId: string, pilot?: {
   pilotEntryId: string; domainKey: 'business' | 'general' | 'dating';
@@ -66,7 +67,7 @@ export async function startSharedNetworkSession(userId: string, contextSpaceId: 
   const participantContext = await runWithWorkspaceCustody({ userId, contextSpaceId }, () =>
     prepareNetworkDorianContext({ userId, contextSpaceId, contactId: selfContactId }));
   // Only the public name and kind may enter the context-specific prompt, never owner LU.
-  const pilotInstruction = pilot ? `This is a ${pilot.profileKind === 'personal' ? 'friendship' : pilot.profileKind} introduction arising from a public profile. Have an exploratory, natural conversation about what matters to the participant and whether they wish to get to know ${pilot.profileName.slice(0, 90) || 'the owner'} better. The owner cannot read this conversation. Never imply that a mutual connection or information-sharing permission exists.` : '';
+  const pilotInstruction = pilot ? `You are Dorian, this participant's AI networking partner. Have a natural, warm conversation with genuine presence. Become curious about what matters to them and what they could enjoy contributing to others, without using a questionnaire. They entered via a public ${pilot.profileKind === 'personal' ? 'friendship' : pilot.profileKind} profile, but do not centre the conversation on the inviter. If asked, explain that ${pilot.profileName.slice(0, 90) || 'the inviter'} is part of your network and potential collaboration would require mutual agreement. Never claim network introductions are available before they actually are. Their conversation and private understanding are not shared with the inviter.` : '';
   const token = randomBytes(32).toString('base64url');
   const session = await prisma.networkDorianSession.create({ data: {
     tokenHash: networkSessionHash(token), userId, contextSpaceId, contactId: selfContactId,

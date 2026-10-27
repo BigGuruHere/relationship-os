@@ -88,7 +88,7 @@ Database keepalive remains opt-in:
 
 Required for post-call ingestion:
 
-- `ELEVENLABS_WEBHOOK_SECRET`
+- `ELEVENLABS_POST_CALL_WEBHOOK_SECRET`
 - `ELEVENLABS_GENERAL_CONTEXT_SPACE_ID`
 
 Required for pre-call personalization:

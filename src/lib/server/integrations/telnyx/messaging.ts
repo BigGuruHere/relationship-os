@@ -3,7 +3,9 @@
 import { createPublicKey, verify } from 'node:crypto';
 
 export function verifyTelnyxWebhook(raw: string, timestamp: string | null, signature: string | null,
-  publicKey = process.env.TELNYX_PUBLIC_KEY || '') {
+  publicKey = process.env.TELNYX_PUBLIC_KEY) {
+  // Missing verification configuration is an error, not a silent authentication fallback.
+  if (publicKey === undefined) throw new Error('[Relish config] Missing required environment variable: TELNYX_PUBLIC_KEY');
   if (!timestamp || !/^\d{10}$/.test(timestamp) || !signature || !publicKey) return false;
   if (Math.abs(Date.now() / 1000 - Number(timestamp)) > 300) return false;
   try {

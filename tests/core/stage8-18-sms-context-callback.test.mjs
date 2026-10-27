@@ -5,7 +5,6 @@ import { readFileSync, existsSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { generateKeyPairSync, sign } from 'node:crypto';
 const require = createRequire(import.meta.url);
-// Load TypeScript from the project's installed dependencies.
 const ts = require('typescript');
 const src = path => readFileSync(new URL('../../' + path, import.meta.url), 'utf8');
 const source = src('src/lib/server/integrations/telnyx/messaging.ts');
@@ -27,7 +26,7 @@ test('valid signed Telnyx webhook verifies against exact timestamp and raw bytes
 
 test('SMS invitation persists only hashed random code and no plain telephone number', () => {
   const service = src('src/lib/server/core/pilotSmsCallback.ts');
-  assert.match(service, /randomBytes\(10\)/);
+  assert.match(service, /randomBytes\(16\)/);
   assert.match(service, /codeHash: sha\(code\)/);
   assert.match(service, /buildScopedIndexToken\(phone/);
   assert.match(service, /expiresAt: new Date\(Date\.now\(\) \+ expirationMinutes/);
@@ -57,13 +56,13 @@ test('only server-held profile and scoped participant identity determine custody
 test('outbound dynamic context carries protected session, not owner private memory', () => {
   const service = src('src/lib/server/core/pilotSmsCallback.ts');
   assert.match(service, /startSharedNetworkSession\(caller\.userId, contextSpaceId/);
-  assert.match(service, /conversation_initiation_client_data: \{ dynamic_variables: dynamicVariables \}/);
+  assert.match(service, /conversation_initiation_client_data: \{ dynamic_variables: withConsentGate\(dynamicVariables, policy\) \}/);
   assert.match(service, /agent_phone_number_id: process\.env\.ELEVENLABS_OUTBOUND_PHONE_NUMBER_ID/);
   assert.match(service, /networkDorianSession\.updateMany/);
   assert.match(src('src/routes/api/webhooks/elevenlabs/+server.ts'), /resolveSharedNetworkSession/);
 });
 
-test('privacy notice, consent and optional sharing appear before SMS link', () => {
+test('legacy second screen preserves opt-in checks for old link; new route uses voice consent', () => {
   const page = src('src/routes/u/[slug]/call/+page.svelte');
   const server = src('src/routes/u/[slug]/call/+page.server.ts');
   assert.match(page, /agreeTerms/);
@@ -75,8 +74,8 @@ test('privacy notice, consent and optional sharing appear before SMS link', () =
 
 test('real contact saving is visible to visitors in every published context', () => {
   const page = src('src/routes/u/[slug]/+page.svelte');
-  assert.match(page, /!data\?\.isOwner && prof\.isPublished/);
-  assert.match(page, /href=\{vcardUrl\} download>Save contact to phone/);
+  assert.match(page, /isFirstContact/);
+  assert.match(page, /href=\{vcardUrl\} download>Save/);
 });
 
 test('owner can choose browser or SMS and automatic or manual acceptance in each context', () => {

@@ -1,3 +1,4 @@
+import { conversationalPolicyEnabled, callerHasAcceptedCurrentTerms } from '$lib/server/core/relishCallPolicy';
 // PURPOSE: Receive ElevenLabs post-call transcription webhooks into the ContextSpace selected by the stable Relish agent deployment.
 // SECURITY: HMAC verification occurs before parsing. Agent binding resolution occurs before workspace custody is entered. The endpoint never runs AI.
 import { json } from '@sveltejs/kit';
@@ -14,6 +15,7 @@ import { automaticLivingUnderstandingPreparationEnabled, prepareAutomaticLivingU
 import { phoneAutomaticLearningEnabled, beginPhoneUnderstanding, finishPhoneUnderstanding } from '$lib/server/core/phoneUnderstandingAutomation';
 import { prisma } from '$lib/db';
 import { recordPilotEvent } from '$lib/server/pilot';
+import { requiredEnv, requiredPositiveIntEnv } from '$lib/server/config/requiredEnv';
 
 export const POST: RequestHandler = async ({ request }) => {
   const traceId = elevenLabsTraceId('el-post');
@@ -26,13 +28,12 @@ export const POST: RequestHandler = async ({ request }) => {
     hasSignature: Boolean(request.headers.get('elevenlabs-signature'))
   });
 
-  const primarySecret = String(process.env.ELEVENLABS_WEBHOOK_SECRET || '').trim();
-  const legacySecret = String(process.env.POST_CALL_WEBHOOK_SECRET || '').trim();
-  const secret = primarySecret || legacySecret;
-  const secretSource = primarySecret ? 'ELEVENLABS_WEBHOOK_SECRET' : (legacySecret ? 'POST_CALL_WEBHOOK_SECRET' : 'NONE');
+  // A missing post-call signing secret is a deployment error, not an alternative authentication mode.
+  const secret = requiredEnv('ELEVENLABS_POST_CALL_WEBHOOK_SECRET');
+  const secretSource = 'ELEVENLABS_POST_CALL_WEBHOOK_SECRET';
   let signatureCheck;
   try {
-    signatureCheck = inspectElevenLabsSignature(rawBody, request.headers.get('elevenlabs-signature'), secret);
+    signatureCheck = inspectElevenLabsSignature(rawBody, request.headers.get('elevenlabs-signature'), secret, Math.floor(Date.now() / 1000), requiredPositiveIntEnv('ELEVENLABS_WEBHOOK_MAX_AGE_SECONDS'));
   } catch (error) {
     elevenLabsErrorLog(traceId, 'AUTH', 'Unable to verify post-call signature.', error);
     return json({ error: 'Invalid webhook signature.' }, { status: 401 });
@@ -156,6 +157,21 @@ export const POST: RequestHandler = async ({ request }) => {
       return isPhoneCall
         ? json({ status: 'unlinked_phone_call', conversationId: normalized.metadata.externalConversationId }, { status: 202 })
         : json({ error: 'Missing or invalid Network participant session.' }, { status: 403 });
+    }
+    // Stage 8.19: never store a new shared-Dorian transcript as Living Understanding
+    // when the current policy has not been explicitly acknowledged through the tool.
+    if (shared && conversationalPolicyEnabled() && !(await callerHasAcceptedCurrentTerms(shared.userId))) {
+      await prisma.networkDorianSession.updateMany({ where: { id: shared.sessionId }, data: {
+        understandingOutcome: 'NO_CHANGE', understandingOutcomeAt: new Date()
+      } });
+      // Release the provisional telephone readiness gate for an unaccepted conversation.
+      // No understanding work is enqueued, so leaving IN_CALL would strand future calls.
+      await prisma.networkPhoneCaller.updateMany({ where: {
+        userId: shared.userId, understandingConversationId: normalized.metadata.externalConversationId,
+        understandingState: 'IN_CALL'
+      }, data: { understandingState: 'READY', understandingConversationId: null, understandingStateAt: new Date() } });
+      console.warn('[relish-policy] conversation skipped: no current voice consent');
+      return json({ status: 'policy_not_accepted' }, { status: 202 });
     }
     const targetUserId = shared?.userId ?? deployment.userId!;
     const targetContextSpaceId = shared?.contextSpaceId ?? deployment.contextSpaceId!;

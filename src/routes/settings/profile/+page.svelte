@@ -30,6 +30,40 @@
 
   // IT: first time banner flag from loader
   const isFirstTime = Boolean(data?.first);
+
+  let photoError = '';
+  let photoBusy = false;
+  // Resize locally to avoid ephemeral Railway filesystem storage or a new provider dependency.
+  // Only the explicit profile image (not private photos) is saved as a compact JPEG data URL.
+  async function uploadProfilePhoto(event: Event) {
+    const file = (event.currentTarget as HTMLInputElement).files?.[0];
+    if (!file) return;
+    photoError = '';
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type) || file.size > 12 * 1024 * 1024) {
+      photoError = 'Choose a JPEG, PNG or WebP photo smaller than 12 MB.'; return;
+    }
+    photoBusy = true;
+    const objectUrl = URL.createObjectURL(file);
+    try {
+      const image = new Image();
+      image.src = objectUrl;
+      await image.decode();
+      const scale = Math.min(1, 512 / Math.max(image.naturalWidth, image.naturalHeight));
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
+      canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+      const ctx = canvas.getContext('2d');
+      if (!ctx) throw new Error('Image editing unavailable');
+      ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
+      let result = canvas.toDataURL('image/jpeg', 0.76);
+      if (result.length > 320000) result = canvas.toDataURL('image/jpeg', 0.52);
+      if (result.length > 320000) throw new Error('Photo could not be reduced enough. Choose a smaller image.');
+      avatarUrl = result;
+    } catch (error) {
+      photoError = error instanceof Error ? error.message : 'Could not process this photo.';
+    } finally { URL.revokeObjectURL(objectUrl); photoBusy = false; }
+  }
+
 </script>
 
 <div class="container">
@@ -72,9 +106,14 @@
         <textarea id="bio" name="bio" rows="4" bind:value={bio}></textarea>
       </div>
 
-      <div class="field">
-        <label for="avatarUrl">Avatar URL</label>
-        <input id="avatarUrl" name="avatarUrl" bind:value={avatarUrl} placeholder="https://..." />
+      <div class="field span2">
+        <label for="photoFile">Profile photo (specific to this profile)</label>
+        {#if avatarUrl}<img src={avatarUrl} alt="Current profile photo" class="profile-photo-preview" />{/if}
+        <input id="photoFile" type="file" accept="image/jpeg,image/png,image/webp" on:change={uploadProfilePhoto} />
+        <small>Choose a photo from your phone. It will be resized and displayed publicly on this profile only.</small>
+        {#if photoBusy}<small>Preparing photo…</small>{/if}
+        {#if photoError}<p role="alert">{photoError}</p>{/if}
+        <input type="hidden" name="avatarUrl" value={avatarUrl} />
       </div>
 
       <div class="field">
@@ -140,6 +179,8 @@
 </div>
 
 <style>
+  .profile-photo-preview { width:76px; height:76px; border-radius:50%; object-fit:cover; }
+  @media(max-width:540px){form{grid-template-columns:minmax(0,1fr)!important;} .span2{grid-column:1!important;} input,textarea,select{min-width:0;max-width:100%;box-sizing:border-box;} }
   .field { display:flex; flex-direction:column; gap:6px; }
   .field input, .field textarea, .field select { padding:8px 10px; border:1px solid #ddd; border-radius:10px; font-family:inherit; }
   .span2 { grid-column: 1 / span 2; }

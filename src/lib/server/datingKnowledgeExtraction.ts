@@ -1,3 +1,4 @@
+import { requiredEnv } from '$lib/server/config/requiredEnv';
 // PURPOSE: Evidence-backed extraction with opt-in development-only rejection inspection.
 // SECURITY: The selected reflection is custody-validated before any opt-in model processing.
 // Only explicit operator reviews can promote suggestions; no disclosure or cross-context use is granted.
@@ -32,7 +33,7 @@ async function extractPass(scope: Scope, sourceText: string, systemPrompt: strin
   const answer = await generateStructured<{ items?: unknown }>({
     userId: scope.userId,
     provider: 'openai',
-    model: process.env.DATING_KNOWLEDGE_MODEL || 'gpt-4o-mini',
+    model: requiredEnv('DATING_KNOWLEDGE_MODEL'),
     purpose,
     auditDataClass: 'sensitive',
     systemPrompt,

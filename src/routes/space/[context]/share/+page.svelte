@@ -14,7 +14,7 @@
 <svelte:head><title>Share - {data.workspace.label} - Relish</title></svelte:head>
 <div class="workspace-page">
   <p class="workspace-kicker">{data.workspace.label.toUpperCase()} / SHARE</p><h1>Share my profile</h1>
-  <p class="workspace-intro">Use this QR code when you want to make a {data.workspace.label.toLowerCase()} connection.</p>
+  <p class="workspace-intro">Introduce someone to Dorian through this QR code. This workspace determines the private starting context, not what they must discuss.</p>
   {#if data.qrSvg}
     <section class="workspace-panel workspace-share">
       <h2>{data.profile.displayName || data.workspace.label}</h2>

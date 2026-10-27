@@ -1,10 +1,11 @@
+import { requiredEnv } from '../../config/requiredEnv.ts';
 // PURPOSE: Pure telephony normalization shared by call-initiation identity and post-call ingestion.
 function clean(value: unknown, max = 240) {
   const text = String(value ?? '').trim();
   return text ? text.slice(0, max) : '';
 }
 
-export function normalizePhoneForIdentity(value: unknown, defaultCountry = process.env.TELEPHONY_DEFAULT_COUNTRY || 'AU') {
+export function normalizePhoneForIdentity(value: unknown, defaultCountry = requiredEnv('TELEPHONY_DEFAULT_COUNTRY')) {
   const raw = clean(value, 80);
   if (!raw) return null;
   let compact = raw.replace(/[()\s.-]/g, '');

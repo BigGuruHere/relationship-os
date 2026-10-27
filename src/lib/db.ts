@@ -1,3 +1,4 @@
+import { requiredPositiveIntEnv } from '$lib/server/config/requiredEnv';
 // src/lib/db.ts
 // PURPOSE: Provide one Prisma client and enforce Stage 8.6 custody scoping for context-owned models.
 // SECURITY: Context-scoped model reads/writes are narrowed before Prisma executes the query.
@@ -33,8 +34,9 @@ const globalForPrisma = globalThis as unknown as {
 export const prisma = globalForPrisma.prisma ?? createPrismaClient();
 if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = prisma;
 
-const KEEPALIVE_MINUTES = Number(process.env.DB_KEEPALIVE_MINUTES ?? '4');
 const KEEPALIVE_ENABLED = process.env.DB_KEEPALIVE_ENABLED === 'YES' && process.env.DB_KEEPALIVE_DISABLED !== 'YES';
+// Only require an interval when this optional feature is explicitly enabled.
+const KEEPALIVE_MINUTES = KEEPALIVE_ENABLED ? requiredPositiveIntEnv('DB_KEEPALIVE_MINUTES') : 0;
 
 // Stage 8.14.2: keepalive is opt-in. An unset environment must allow serverless Neon compute to suspend.
 if (KEEPALIVE_ENABLED && !globalForPrisma.__keepaliveIntervalId__) {

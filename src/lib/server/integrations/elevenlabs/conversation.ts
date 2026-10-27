@@ -1,3 +1,4 @@
+import { requiredEnv } from '../../config/requiredEnv.ts';
 // PURPOSE: Direct ElevenLabs conversation adapter for the provider-independent Relish conversation source.
 // SECURITY: Webhook signatures are verified before any provider payload enters workspace custody.
 import { createHmac, timingSafeEqual } from 'node:crypto';
@@ -69,7 +70,7 @@ export type ElevenLabsSignatureCheck = {
   scheme: string | null;
 };
 
-export function inspectElevenLabsSignature(rawBody: string, signatureHeader: string | null, secretInput: string, nowSeconds = Math.floor(Date.now() / 1000)): ElevenLabsSignatureCheck {
+export function inspectElevenLabsSignature(rawBody: string, signatureHeader: string | null, secretInput: string, nowSeconds = Math.floor(Date.now() / 1000), maxAgeSeconds = 1800): ElevenLabsSignatureCheck {
   const secret = String(secretInput || '').trim();
   if (!secret) return { valid: false, reason: 'MISSING_SECRET', timestamp: null, ageSeconds: null, scheme: null };
   const header = String(signatureHeader || '').trim();
@@ -87,8 +88,7 @@ export function inspectElevenLabsSignature(rawBody: string, signatureHeader: str
   const ageSeconds = nowSeconds - timestamp;
   // ElevenLabs' SDK accepts signatures up to 30 minutes old. Keep the same default so
   // webhook delivery/retry latency cannot cause a false rejection. This can still be tightened.
-  const configured = Number(process.env.ELEVENLABS_WEBHOOK_MAX_AGE_SECONDS || '1800');
-  const maxAge = Number.isFinite(configured) ? Math.max(60, configured) : 1800;
+  const maxAge = maxAgeSeconds;
   if (ageSeconds > maxAge) return { valid: false, reason: 'STALE_TIMESTAMP', timestamp, ageSeconds, scheme: 'v0' };
 
   const expected = createHmac('sha256', secret).update(`${timestamp}.${rawBody}`).digest('hex');
@@ -147,7 +147,7 @@ export function normalizeElevenLabsConversation(input: ElevenLabsConversationDat
   };
 }
 
-export async function fetchElevenLabsConversation(conversationId: string, apiKey = process.env.ELEVENLABS_API_KEY || '') {
+export async function fetchElevenLabsConversation(conversationId: string, apiKey = requiredEnv('ELEVENLABS_API_KEY')) {
   const id = String(conversationId || '').trim();
   if (!id || id.length > 240 || !/^[A-Za-z0-9_-]+$/.test(id)) throw new Error('Enter a valid ElevenLabs conversation ID.');
   if (!apiKey) throw new Error('ELEVENLABS_API_KEY is not configured.');

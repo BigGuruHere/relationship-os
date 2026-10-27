@@ -1,3 +1,4 @@
+import { requiredEnv } from '$lib/server/config/requiredEnv';
 // PURPOSE: Opt-in read-only experiments for topic-aware Living Understanding revision.
 // SECURITY: No claims, summaries, permissions or comparison events are persisted here.
 import { generateStructured } from '$lib/server/agents/modelGateway';
@@ -16,7 +17,7 @@ export function revisionExperimentEnabled() {
 }
 
 function modelName() {
-  return process.env.DATING_REVISION_MODEL || process.env.DATING_KNOWLEDGE_MODEL || 'gpt-4o-mini';
+  return requiredEnv('DATING_REVISION_MODEL');
 }
 
 function buildTurnPacket(source: Awaited<ReturnType<typeof requireSourceReflection>>) {

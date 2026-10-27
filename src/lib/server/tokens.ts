@@ -4,8 +4,9 @@
 
 import crypto from 'node:crypto';
 import { prisma } from '$lib/db';
+import { requiredEnv } from '$lib/server/config/requiredEnv';
 
-const HMAC_SECRET = process.env.SESSION_COOKIE_SECRET || 'change-me';
+const HMAC_SECRET = requiredEnv('SESSION_COOKIE_SECRET', 24);
 
 // IT: helper to HMAC a token for storage
 function hmac(input: string) {

@@ -2,6 +2,10 @@
 // Both children inherit exactly this application's environment and DATABASE_URL.
 import { spawn } from 'node:child_process';
 import { resolve } from 'node:path';
+import { validateRequiredEnvironment } from './validate-required-env.mjs';
+
+// Refuse to launch web/worker with missing mandatory config; the error names keys, not secrets.
+validateRequiredEnvironment();
 
 const dev = process.argv.includes('--dev');
 const isWorkerEnabled = process.env.RELISH_PHONE_AUTO_LU === 'YES';

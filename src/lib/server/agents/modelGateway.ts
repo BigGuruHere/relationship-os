@@ -1,3 +1,4 @@
+import { requiredEnv } from '$lib/server/config/requiredEnv';
 // src/lib/server/agents/modelGateway.ts
 // PURPOSE: Provider-independent model gateway for agents.
 // IT: Agents call this wrapper rather than directly calling OpenAI, Claude, etc.
@@ -125,10 +126,7 @@ export async function generateStructured<T>(
 }
 
 async function generateWithOpenAI<T>(input: GenerateStructuredInput): Promise<GenerateStructuredResult<T>> {
-  const apiKey = process.env.OPENAI_API_KEY || '';
-  if (!apiKey) {
-    throw new Error('OPENAI_API_KEY is not set.');
-  }
+  const apiKey = requiredEnv('OPENAI_API_KEY');
 
   const res = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',

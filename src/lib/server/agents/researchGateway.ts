@@ -1,3 +1,4 @@
+import { requiredEnv } from '$lib/server/config/requiredEnv';
 // src/lib/server/agents/researchGateway.ts
 // PURPOSE: Provider-independent live research gateway for Stage 3 agents.
 // IT: Agents call this wrapper so Relish can swap Tavily/Brave/OpenAI/other research providers later.
@@ -29,12 +30,9 @@ export type WebSearchOutput = {
 };
 
 function normaliseProvider(provider?: string): ResearchProvider {
-  const requested = String(provider || process.env.RESEARCH_PROVIDER || '').trim().toLowerCase();
-  if (requested === 'tavily' || requested === 'brave' || requested === 'openai') return requested;
-  if (process.env.TAVILY_API_KEY) return 'tavily';
-  if (process.env.BRAVE_SEARCH_API_KEY) return 'brave';
-  if (process.env.OPENAI_API_KEY && process.env.RESEARCH_PROVIDER === 'openai') return 'openai';
-  return 'none';
+  const requested = String(provider || requiredEnv('RESEARCH_PROVIDER')).trim().toLowerCase();
+  if (requested === 'tavily' || requested === 'brave' || requested === 'openai' || requested === 'none') return requested;
+  throw new Error('[Relish config] RESEARCH_PROVIDER must be tavily, brave, openai or none');
 }
 
 function asPositiveInt(value: unknown, fallback: number, max: number) {
@@ -68,8 +66,7 @@ export async function searchWeb(input: WebSearchInput): Promise<WebSearchOutput>
 }
 
 async function searchTavily(query: string, maxResults: number): Promise<WebSearchOutput> {
-  const apiKey = process.env.TAVILY_API_KEY;
-  if (!apiKey) return { provider: 'tavily', query, results: [], note: 'TAVILY_API_KEY is not set.' };
+  const apiKey = requiredEnv('TAVILY_API_KEY');
 
   const res = await fetch('https://api.tavily.com/search', {
     method: 'POST',
@@ -106,8 +103,7 @@ async function searchTavily(query: string, maxResults: number): Promise<WebSearc
 }
 
 async function searchBrave(query: string, maxResults: number): Promise<WebSearchOutput> {
-  const apiKey = process.env.BRAVE_SEARCH_API_KEY;
-  if (!apiKey) return { provider: 'brave', query, results: [], note: 'BRAVE_SEARCH_API_KEY is not set.' };
+  const apiKey = requiredEnv('BRAVE_SEARCH_API_KEY');
 
   const url = new URL('https://api.search.brave.com/res/v1/web/search');
   url.searchParams.set('q', query);
@@ -142,8 +138,7 @@ async function searchBrave(query: string, maxResults: number): Promise<WebSearch
 }
 
 async function searchOpenAI(query: string, maxResults: number): Promise<WebSearchOutput> {
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) return { provider: 'openai', query, results: [], note: 'OPENAI_API_KEY is not set.' };
+  const apiKey = requiredEnv('OPENAI_API_KEY');
 
   // IT: This uses OpenAI Responses with web search as a provider behind the ResearchGateway.
   // IT: The rest of Relish only sees normalized search results and does not depend on OpenAI-specific shapes.
@@ -154,7 +149,7 @@ async function searchOpenAI(query: string, maxResults: number): Promise<WebSearc
       'Content-Type': 'application/json'
     },
     body: JSON.stringify({
-      model: process.env.RESEARCH_OPENAI_MODEL || 'gpt-4o-mini',
+      model: requiredEnv('RESEARCH_OPENAI_MODEL'),
       tools: [{ type: 'web_search_preview' }],
       input: `Search the web for: ${query}\nReturn up to ${maxResults} concise search results as JSON with title, url and snippet.`
     })

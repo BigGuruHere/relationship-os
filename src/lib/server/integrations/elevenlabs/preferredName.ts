@@ -3,6 +3,7 @@
 import { prisma } from '$lib/db';
 import { encrypt, buildIndexToken } from '$lib/crypto';
 import { networkSessionHash, configuredSharedBindingId } from './networkSession';
+import { conversationalPolicyEnabled, callerHasAcceptedCurrentTerms } from '$lib/server/core/relishCallPolicy';
 
 export function normalizePreferredName(value: unknown) {
   if (typeof value !== 'string') return null;
@@ -28,6 +29,10 @@ export async function saveProvisionalPreferredName(input: {
   const session = await prisma.networkDorianSession.findUnique({ where: { tokenHash: networkSessionHash(token) } });
   if (!session || session.conversationId !== conversationId || session.agentBindingId !== bindingId || session.expiresAt <= new Date()) {
     return { status: 'UNAUTHORISED' as const };
+  }
+  // Don't persist new personal details from the conversation before voice consent.
+  if (conversationalPolicyEnabled() && !(await callerHasAcceptedCurrentTerms(session.userId))) {
+    return { status: 'POLICY_REQUIRED' as const };
   }
   // All calls use their issued server-owned session as authority. A caller's
   // default may be Business or Dating even when no fresh QR invitation was used.

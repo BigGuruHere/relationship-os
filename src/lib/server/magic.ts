@@ -15,31 +15,25 @@
 
 import { createMagicToken } from '$lib/server/tokens';
 import { absoluteUrlFromOrigin } from '$lib/url';
+import { requiredEnv } from '$lib/server/config/requiredEnv';
 
 type SendArgs = {
   userId: string;   // recipient user id
   to: string;       // email or phone
-  origin?: string;  // absolute origin from locals.appOrigin - optional with safe fallback
+  origin?: string;  // absolute origin from locals.appOrigin, otherwise explicit APP_ORIGIN
 };
 
-// Resolve an origin with a safe fallback for tests or ad hoc calls
+// Use a caller-supplied origin or APP_ORIGIN. Never generate sign-in links at localhost silently.
 function resolveOriginFallback(origin?: string): string {
-  // Prefer the provided origin from callers like endpoints using locals.appOrigin
-  if (origin && origin.trim()) return origin.trim();
-
-  // Fall back to env for non-request contexts
-  const raw =
-    process.env.APP_ORIGIN ??
-    process.env.APP_ORIGIN_DEV ??
-    process.env.APP_ORIGIN_PROD ??
-    'http://localhost:5173';
-
-  try {
-    const u = new URL(raw);
-    return u.toString().replace(/\/$/, ''); // strip trailing slash
-  } catch {
-    return 'http://localhost:5173';
+  const raw = origin?.trim() || requiredEnv('APP_ORIGIN');
+  let parsed: URL;
+  try { parsed = new URL(raw); } catch {
+    throw new Error('[Relish config] APP_ORIGIN must be a valid absolute HTTP(S) origin');
   }
+  if (!['http:', 'https:'].includes(parsed.protocol)) {
+    throw new Error('[Relish config] APP_ORIGIN must use HTTP or HTTPS');
+  }
+  return parsed.origin;
 }
 
 /**

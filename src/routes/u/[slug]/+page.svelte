@@ -8,15 +8,18 @@
   // IT: helper utilities for rendering and vCard link building
   import { headerFrom, publicRows, buildVcardUrl, EXTRA_KEYS } from '$lib/publicProfile';
   import { onMount } from 'svelte';
+  import { enhance } from '$app/forms';
 
 
   // IT: start in edit mode if the server requested it
-  let editing = Boolean(data?.editingRequested);
+  let editing = Boolean(data?.isOwner && data?.editingRequested);
 
   // IT: seed fields from server profile or defaults
   const prof: any = data?.profile || {};
   const contextLabel = prof.kind === 'personal' ? 'Friendship' : prof.kind === 'dating' ? 'Dating' : 'Business';
   const isPilotKind = ['business', 'personal', 'dating'].includes(prof.kind);
+  // The visitor sees one Dorian-first experience regardless of ContextSpace.
+  $: isFirstContact = isPilotKind && prof.isPublished && !data?.isOwner && !editing;
   // Visibility is counted after browser render, not on server prefetch. No identity tracking on landing.
   onMount(() => {
     if (!data?.profile?.isPublished || !isPilotKind || data?.isOwner) return;
@@ -66,6 +69,22 @@
     showThanks = new URLSearchParams(window.location.search).get('thanks') === '1';
   }
 
+  // A server-generated invitation is returned to this enhanced form without a second page.
+  // The visitor explicitly presses Send in the native messaging app.
+  let smsOpening = false;
+  $: issuedSms = form?.issued || null;
+  $: smsHref = issuedSms ? `sms:${issuedSms.smsTo}?body=${encodeURIComponent(issuedSms.smsText)}` : '';
+  function requestSms() {
+    return async ({ result, update }: {result: any; update: () => Promise<void>}) => {
+      await update();
+      smsOpening = false;
+      if (result.type === 'success' && result.data?.issued) {
+        const outgoing = result.data.issued;
+        window.location.href = `sms:${outgoing.smsTo}?body=${encodeURIComponent(outgoing.smsText)}`;
+      }
+    };
+  }
+
   // IT: save vCard then submit hidden form to /api/guest/start which redirects to /u/<slug>/lead
   async function saveThenShare() {
     try {
@@ -89,6 +108,65 @@
   }
 </script>
 
+<!-- Stage 8.19: the entire guest journey lives on this screen. No account, connection form or second call page. -->
+{#if isFirstContact}
+<svelte:head>
+  <title>Meet Dorian | Relish</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+</svelte:head>
+<main class="first-contact">
+  <div class="fc-brand">Relish</div>
+  <section class="fc-dorian" aria-labelledby="dorian-title">
+    <div class="fc-title-row">
+      <div class="fc-symbol" aria-hidden="true">D</div>
+      <div><h1 id="dorian-title">Meet Dorian</h1><p>Your AI networking partner</p></div>
+    </div>
+    <p class="fc-lead">I'd love to get to know you, understand what matters to you, and explore what we might make possible through people and relationships.</p>
+    {#if data?.dorianMode === 'BROWSER'}
+      <form method="post" action="?/startDorian">
+        <button class="fc-primary" type="submit">Talk with Dorian</button>
+      </form>
+    {:else if data?.smsReady}
+      {#if issuedSms}
+        <a class="fc-primary" href={smsHref}>Open SMS to Dorian</a>
+        <p class="fc-hint">Your phone should open Messages. Press Send. Dorian will then call you.</p>
+        <details class="fc-details"><summary>SMS not opening?</summary>
+          <p>Send <code>{issuedSms.smsText}</code> to <strong>{issuedSms.smsTo}</strong>. The reference is single-use and expires after {issuedSms.expiresMinutes} minutes.</p>
+        </details>
+      {:else}
+        <form method="POST" action="?/requestDorian" use:enhance={requestSms}>
+          <button class="fc-primary" type="submit" disabled={smsOpening} on:click={() => smsOpening = true}>
+            {smsOpening ? 'Preparing your SMS…' : "Send Dorian a 'Call me' message"}
+          </button>
+        </form>
+        <p class="fc-hint">Opens a prefilled SMS. You press Send, then Dorian calls you.</p>
+      {/if}
+    {:else}
+      <p role="alert" class="fc-hint">Telephone calling is temporarily unavailable. Please try again later.</p>
+    {/if}
+    {#if form?.error}<p role="alert" class="fc-error">{form.error}</p>{/if}
+    <details class="fc-details"><summary>More about Dorian</summary>
+      <p>Dorian is an AI, not a human. He gets to know you over time, explores what matters to you and what you enjoy contributing, and may eventually help you find people who can support or collaborate with you. Introductions and private information-sharing require permission.</p>
+      <p>Requesting a call uses your phone number to arrange the callback and support provisional future-call recognition. Your conversation is private to you, not shared with the person below. Relish provides the current <a href={data.pilotTerms.termsUrl} target="_blank" rel="noopener noreferrer">Terms</a> and <a href={data.pilotTerms.privacyUrl} target="_blank" rel="noopener noreferrer">Privacy Notice</a> by SMS. Dorian will ask for your agreement before substantive processing. Calls may involve recording and transcription if you agree. Carrier charges may apply.</p>
+    </details>
+  </section>
+  <section class="fc-person" aria-label="Person who shared this invitation">
+    <div class="fc-person-top">
+      {#if avatarUrl}<img class="fc-photo" src={avatarUrl} alt="Photo of {ownerName}" />
+      {:else}<div class="fc-photo fc-placeholder" aria-hidden="true">{ownerName.charAt(0).toUpperCase()}</div>{/if}
+      <div class="fc-person-name"><strong>{ownerName}</strong><small>The person who introduced you to Dorian</small></div>
+    </div>
+    <details class="fc-details"><summary>View {ownerName}'s profile</summary>
+      {#if headline}<p>{headline}</p>{/if}
+      {#if bio}<p class="fc-bio">{bio}</p>{/if}
+      {#if title || company}<p>{[title, company].filter(Boolean).join(' · ')}</p>{/if}
+      {#each rows as r}<p class="fc-contact-row"><strong>{r.label}:</strong> {#if r.href}<a href={r.href} rel="noopener noreferrer">{r.value}</a>{:else}{r.value}{/if}</p>{/each}
+    </details>
+    <a class="fc-secondary" href={vcardUrl} download>Save {ownerName}'s contact</a>
+  </section>
+  <p class="fc-footer">Relish helps people develop and enrich their relationships. A scan or call does not share your private understanding with someone else.</p>
+</main>
+{:else}
 <div class="container public-profile">
   <!-- IT: owner-facing context bar with return to Share on the right -->
   <div class="topbar" style="padding:10px 12px; max-width:720px; margin:0 auto 10px auto; position:relative; display:flex; align-items:center; gap:8px;">
@@ -294,8 +372,38 @@
     {/if}
   </div>
 </div>
+{/if}
 
 <style>
+  /* Stage 8.19 guest layout uses its own narrow mobile-first viewport, not the old CRM grid. */
+  :global(body) { overflow-x: clip; }
+  .first-contact { width:100%; max-width:420px; margin:0 auto; padding:20px 14px 35px; box-sizing:border-box; min-width:0; overflow-wrap:anywhere; }
+  .fc-brand { font-size:15px; font-weight:750; letter-spacing:.025em; margin-bottom:22px; }
+  .fc-dorian { padding:20px; border-radius:20px; background:var(--surface, #fff); border:1px solid #d9e3e1; min-width:0; }
+  .fc-title-row { display:flex; align-items:center; gap:13px; }
+  .fc-symbol { width:53px; height:53px; flex-shrink:0; border-radius:50%; display:grid; place-items:center; background:#183e39; color:white; font-weight:800; font-size:25px; }
+  .fc-title-row h1 { font-size:24px; letter-spacing:-.03em; line-height:1.2; margin:0 0 3px; }
+  .fc-title-row p { margin:0; color:var(--muted, #536864); font-size:13px; }
+  .fc-lead { font-size:15px; line-height:1.6; margin:20px 0; }
+  .fc-primary,.fc-secondary { display:flex; align-items:center; justify-content:center; width:100%; box-sizing:border-box; min-height:49px; border-radius:12px; font-weight:650; font-size:15px; text-align:center; text-decoration:none; cursor:pointer; padding:10px 12px; }
+  .fc-primary { border:1px solid #183e39; background:#183e39; color:#fff; }
+  .fc-primary:disabled { opacity:.65; }
+  .fc-secondary { background:transparent; border:1px solid #9fafac; color:inherit; margin-top:14px; }
+  .fc-hint { color:var(--muted, #536864); font-size:12px; line-height:1.5; margin:10px 0 4px; }
+  .fc-error { color:#b42318; font-size:14px; }
+  .fc-details { margin-top:14px; padding-top:13px; border-top:1px solid #e2e8e6; font-size:13px; line-height:1.55; }
+  .fc-details summary { cursor:pointer; font-weight:600; list-style-position:inside; }
+  .fc-details p { margin:10px 0; }
+  .fc-person { margin-top:14px; background:var(--surface, #fff); border:1px solid #dce3e0; border-radius:18px; padding:17px; min-width:0; }
+  .fc-person-top { display:flex; align-items:center; gap:12px; min-width:0; }
+  .fc-photo { height:53px; width:53px; flex:0 0 53px; object-fit:cover; border-radius:50%; }
+  .fc-placeholder { background:#e5eae8; display:grid; place-items:center; font-size:19px; font-weight:700; }
+  .fc-person-name { min-width:0; } .fc-person-name strong { display:block; overflow-wrap:anywhere; }
+  .fc-person-name small { display:block; font-size:12px; color:var(--muted, #536864); margin-top:4px; }
+  .fc-bio { white-space:pre-wrap; } .fc-contact-row { overflow-wrap:anywhere; }
+  .fc-footer { text-align:center; font-size:11px; line-height:1.55; color:var(--muted, #536864); margin:20px 8px; }
+  @media(max-width:400px) { .first-contact { padding:14px 10px 25px; } .fc-dorian { padding:16px; } }
+
   /* IT: simple page styles - align with your app.css tokens if you have them */
   .public-profile { width: 100%; max-width: 100vw; box-sizing: border-box; overflow-x: clip; }
   .public-profile :global(.page) { width: 100%; box-sizing: border-box; min-width: 0; }

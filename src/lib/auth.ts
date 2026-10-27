@@ -14,14 +14,12 @@ import { prisma } from '$lib/db';
 import * as argon2 from 'argon2'; // Argon2id by default from this lib
 import { randomBytes, createHmac, timingSafeEqual } from 'crypto';
 import { dev } from '$app/environment'; // kept for legacy helpers
+import { requiredEnv, requiredPositiveIntEnv } from '$lib/server/config/requiredEnv';
 
 // Secret and lifetime
-const SESSION_COOKIE_SECRET = process.env.SESSION_COOKIE_SECRET || 'dev-secret'; // do not rely on this in prod
-const SESSION_DAYS = parseInt(process.env.SESSION_DAYS || '30', 10);
-
-if (process.env.NODE_ENV === 'production' && SESSION_COOKIE_SECRET === 'dev-secret') {
-  throw new Error('SESSION_COOKIE_SECRET must be set in production');
-}
+// Missing session configuration must never silently create weak or unexpected sessions.
+const SESSION_COOKIE_SECRET = requiredEnv('SESSION_COOKIE_SECRET', 24);
+const SESSION_DAYS = requiredPositiveIntEnv('SESSION_DAYS');
 
 // ---------------------------------------------------------------------------
 // Token signing helpers

@@ -11,6 +11,7 @@ import { createInviteToken } from '$lib/server/tokens';
 import { fail, redirect, error } from '@sveltejs/kit';
 import { absoluteUrlFromOrigin } from '$lib/url';
 import { getOrCreatePilotVisitor, ensurePilotSelfContact, pilotDomainForKind, pilotSource, recordPilotEvent } from '$lib/server/pilot';
+import { issuePilotSmsInvitation, pilotTermsConfig } from '$lib/server/core/pilotSmsCallback';
 
 
 
@@ -169,11 +170,41 @@ export const load: PageServerLoad = async ({ params, url, locals }) => {
     isAlreadyConnected,
     isSelfView: visitorUserId === ownerId,
     visitorProfile,
-    dorianMode: contextPref?.dorianMode || 'SMS_CALLBACK'
+    dorianMode: contextPref?.dorianMode || 'SMS_CALLBACK',
+    smsReady: pilotTermsConfig().ready,
+    pilotTerms: { termsUrl: pilotTermsConfig().termsUrl, privacyUrl: pilotTermsConfig().privacyUrl, version: pilotTermsConfig().version }
   };
 };
 
 export const actions: Actions = {
+  // One-step SMS request from the QR landing page. The caller still has to press Send.
+  // Neither profile opening nor this action records policy acceptance or connection consent.
+  requestDorian: async ({ params, request, locals, url }) => {
+    const profile = await prisma.profile.findUnique({ where: { slug: params.slug },
+      select: { id: true, userId: true, kind: true, isPublished: true } });
+    if (!profile?.isPublished) return fail(404, { error: 'This profile is unavailable.' });
+    const domainKey = pilotDomainForKind(profile.kind);
+    if (!domainKey) return fail(400, { error: 'Telephone onboarding is unavailable for this profile.' });
+    if (locals.user?.id === profile.userId) return fail(409, { error: 'Use a different phone to test a new participant.' });
+    const preference = await prisma.relishContextPreference.findUnique({ where: {
+      ownerUserId_domainKey: { ownerUserId: profile.userId, domainKey }
+    } });
+    if (preference?.dorianMode === 'BROWSER') return fail(409, { error: 'This profile is configured for browser conversations.' });
+    if (!pilotTermsConfig().ready) return fail(503, { error: 'Telephone conversations are not yet configured.' });
+    // Refuse speculative requests without browser origin metadata. No phone number is collected here.
+    const origin = request.headers.get('origin');
+    if (origin && origin !== url.origin) return fail(403, { error: 'Please use the public profile to request a call.' });
+    const recent = await prisma.pilotSmsInvitation.count({ where: { profileId: profile.id,
+      createdAt: { gte: new Date(Date.now() - 3600000) } } });
+    if (recent >= 100) return fail(429, { error: 'Please try again later.' });
+    try {
+      const issued = await issuePilotSmsInvitation({ profileId: profile.id, ownerUserId: profile.userId,
+        domainKey, env: locals.env, source: pilotSource(url.searchParams.get('via')) });
+      return { issued };
+    } catch {
+      return fail(503, { error: 'Could not prepare the SMS. Please try again.' });
+    }
+  },
   // IT: save edits to a profile - owner only
   save: async ({ request, locals }) => {
     // IT: require login

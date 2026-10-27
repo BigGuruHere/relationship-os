@@ -59,7 +59,7 @@
     <h2>ElevenLabs connection</h2>
     <p class="muted">Post-call webhook path: <code>/api/webhooks/elevenlabs</code></p>
     <p class="muted">Automatic calls are routed through <a href="/settings/agents">Agent deployments</a>. Relish resolves the ElevenLabs agent ID and/or called number to a stable Relish agent and ContextSpace.</p>
-    <p class="muted">The webhook validates <code>ElevenLabs-Signature</code> with <code>ELEVENLABS_WEBHOOK_SECRET</code>. No fixed <code>ELEVENLABS_AGENT_ID</code> is required.</p>
+    <p class="muted">The webhook validates <code>ElevenLabs-Signature</code> with <code>ELEVENLABS_POST_CALL_WEBHOOK_SECRET</code>. No fixed <code>ELEVENLABS_AGENT_ID</code> is required.</p>
   </section>
 
   <section class="card">

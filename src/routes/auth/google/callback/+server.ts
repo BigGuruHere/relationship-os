@@ -1,3 +1,4 @@
+import { requiredEnv } from '$lib/server/config/requiredEnv';
 // src/routes/auth/google/callback/+server.ts
 // PURPOSE: exchange code for tokens, verify ID token, upsert OAuthAccount, create first party session
 // SECURITY NOTES:
@@ -81,9 +82,9 @@ export const GET: RequestHandler = async ({ url, cookies, locals, getClientAddre
   }
 
   // 5 - exchange code for tokens at Google
-  const clientId = process.env.GOOGLE_CLIENT_ID || '';
-  const clientSecret = process.env.GOOGLE_CLIENT_SECRET || '';
-  const redirectUri = process.env.OAUTH_REDIRECT_URI || 'http://localhost:5173/auth/google/callback';
+  const clientId = requiredEnv('GOOGLE_CLIENT_ID');
+  const clientSecret = requiredEnv('GOOGLE_CLIENT_SECRET');
+  const redirectUri = requiredEnv('OAUTH_REDIRECT_URI');
 
   const form = new URLSearchParams({
     grant_type: 'authorization_code',

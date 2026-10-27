@@ -1,3 +1,4 @@
+import { requiredEnv } from '$lib/server/config/requiredEnv';
 // Stage 8.15.4.7e: ElevenLabs server tool. Configure a dedicated Bearer secret.
 // SECURITY: Secret authenticates provider; opaque session token + conversation id authorise target.
 import { json } from '@sveltejs/kit';
@@ -6,8 +7,7 @@ import { timingSafeEqual, randomUUID } from 'node:crypto';
 import { saveProvisionalPreferredName } from '$lib/server/integrations/elevenlabs/preferredName';
 
 function providerAuthorised(value: string | null) {
-  const secret = process.env.RELISH_ELEVENLABS_TOOL_SECRET || '';
-  if (secret.length < 24) return false;
+  const secret = requiredEnv('ELEVENLABS_TOOL_SECRET', 24);
   const supplied = Buffer.from(value || '');
   const expected = Buffer.from(`Bearer ${secret}`);
   return supplied.length === expected.length && timingSafeEqual(supplied, expected);

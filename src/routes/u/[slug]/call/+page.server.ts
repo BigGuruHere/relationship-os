@@ -1,5 +1,5 @@
 // Stage 8.18: mobile-first QR handoff. The visitor must personally send the SMS.
-import { error, fail } from '@sveltejs/kit';
+import { error, fail, redirect } from '@sveltejs/kit';
 import type { PageServerLoad, Actions } from './$types';
 import { prisma } from '$lib/db';
 import { pilotDomainForKind, pilotKindLabel, pilotSource } from '$lib/server/pilot';
@@ -13,6 +13,8 @@ export const load: PageServerLoad = async ({ params }) => {
   const pref = await prisma.relishContextPreference.findUnique({ where: {
     ownerUserId_domainKey: { ownerUserId: profile.userId, domainKey }
   } });
+  // Old links now land on the single-action public page.
+  throw redirect(303, `/u/${encodeURIComponent(params.slug)}`);
   return { profileName: profile.displayName || 'this person', contextLabel: pilotKindLabel(profile.kind),
     slug: params.slug, mode: pref?.dorianMode || 'SMS_CALLBACK', ...pilotTermsConfig() };
 };

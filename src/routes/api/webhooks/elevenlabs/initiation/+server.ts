@@ -1,3 +1,4 @@
+import { policyInstructionForCaller, withConsentGate } from '$lib/server/core/relishCallPolicy';
 import { configuredSharedBindingId, resolveSharedNetworkSession } from '$lib/server/integrations/elevenlabs/networkSession';
 import { prepareNetworkDorianContext } from '$lib/server/integrations/elevenlabs/networkPreparation';
 import { recordPilotEvent } from '$lib/server/pilot';
@@ -89,11 +90,12 @@ export const POST: RequestHandler = async ({ request }) => {
             source: source.entrySource, conversationId: body.conversation_id,
             dedup: 'started:' + body.conversation_id });
         }
-        const pilotPrompt = entry ? `You are speaking in the ${entry.profile.kind === 'personal' ? 'friendship' : entry.profile.kind} context of a public profile. Explore the visitor's interests naturally. This conversation is private and is not automatically available to ${entry.profile.displayName?.slice(0, 80) || 'the profile owner'}. Do not imply a mutual connection exists.` : '';
-        return json({ type: 'conversation_initiation_client_data', dynamic_variables: {
+        const pilotPrompt = entry ? `You are the participant's own AI networking partner. Talk naturally about what matters to them and what they enjoy contributing to others. The introduction came through a public profile, but do not center the inviter or imply that personal data is shared with them.` : '';
+        const browserPolicy = await policyInstructionForCaller(shared.userId);
+        return json({ type: 'conversation_initiation_client_data', dynamic_variables: withConsentGate({
           ...context, ...(pilotPrompt ? { call_instruction: pilotPrompt } : {}), relish_network_session: browserToken,
           call_type: 'NETWORK_PARTICIPANT_BROWSER'
-        } });
+        }, browserPolicy) });
       }
       const prepared = await startProvisionalPhoneCall({
         callerId: body?.caller_id, conversationId: body?.conversation_id, bindingId: deployment.bindingId
@@ -132,6 +134,9 @@ export const POST: RequestHandler = async ({ request }) => {
         });
       }
       const response = provisionalPhoneInitiationResponse(prepared);
+      // Stage 8.19: returning direct calls must check the current accepted policy version.
+      const callPolicy = await policyInstructionForCaller(prepared.userId);
+      response.dynamic_variables = withConsentGate(response.dynamic_variables as Record<string, unknown>, callPolicy) as any;
       elevenLabsLog(traceId, 'RESPONSE', 'Provisional caller session issued.', {
         status: 200, identityStatus: 'PROVISIONAL_PHONE', previousCalls: prepared.previousCalls
       });

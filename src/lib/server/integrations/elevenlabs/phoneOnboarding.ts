@@ -195,7 +195,7 @@ export async function startProvisionalPhoneCall(input: {
     if (error && typeof error === 'object' && 'code' in error && error.code === 'P2002') return null;
     throw error;
   }
-  return { status: 'READY' as const, token, previousCalls, preferredName, livingContext,
+  return { status: 'READY' as const, userId: selected.userId, token, previousCalls, preferredName, livingContext,
     livingRevision, lastCallSummary, domainKey: selected.domainKey };
 }
 

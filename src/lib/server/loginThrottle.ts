@@ -6,18 +6,14 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from '$lib/db';
 import { loginThrottleKey, normalizeLoginEmail } from './loginThrottleKeys';
+import { requiredEnv } from '$lib/server/config/requiredEnv';
 
 export const LOGIN_WINDOW_SECONDS = 15 * 60;
 export const LOGIN_IP_LIMIT = 30;
 export const LOGIN_ACCOUNT_LIMIT = 8;
 
 function throttleSecret(): string {
-  const secret = process.env.LOGIN_THROTTLE_SECRET || process.env.SESSION_COOKIE_SECRET ||
-    (process.env.NODE_ENV === 'production' ? '' : 'dev-secret');
-  if (!secret || (process.env.NODE_ENV === 'production' && secret === 'dev-secret')) {
-    throw new Error('Configure LOGIN_THROTTLE_SECRET or SESSION_COOKIE_SECRET before enabling login');
-  }
-  return secret;
+  return requiredEnv('LOGIN_THROTTLE_SECRET', 24);
 }
 
 type LoginBucket = 'ip' | 'account';

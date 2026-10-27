@@ -1,3 +1,4 @@
+import { requiredYesNoEnv } from '$lib/server/config/requiredEnv';
 // Stage 8.14.4 - automatically prepare a validated longitudinal LU candidate after trusted conversation ingestion.
 // SECURITY: This creates only an encrypted WORKING draft. It never mutates authoritative Living Understanding.
 import { reviewLivingUnderstandingImpact, approveLivingUnderstandingImpact, createLongitudinalImpactApprovalTokenForValidatedProposal } from '$lib/server/datingLongitudinalLivingUnderstanding';
@@ -20,8 +21,7 @@ function stageRows(proposal: any) {
 }
 
 export function automaticLivingUnderstandingPreparationEnabled() {
-  const raw = String(process.env.LU_AUTO_PREPARE_AFTER_INGEST ?? 'YES').trim().toUpperCase();
-  return !['NO', 'FALSE', '0', 'OFF'].includes(raw);
+  return requiredYesNoEnv('LU_AUTO_PREPARE_AFTER_INGEST');
 }
 
 export async function prepareAutomaticLivingUnderstandingImpact(scope: Scope, sourceInteractionId: string) {

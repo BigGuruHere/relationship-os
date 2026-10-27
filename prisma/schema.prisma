@@ -15,12 +15,9 @@ generator client {
   provider = "prisma-client-js" // Generate Prisma Client for Node and TS
 }
 
-// Application queries use the pooled connection.
-// Prisma migrations use the direct Neon connection.
 datasource db {
-  provider  = "postgresql"
-  url       = env("DATABASE_URL")
-  directUrl = env("DIRECT_URL")
+  provider          = "postgresql" // Using Postgres
+  url               = env("DATABASE_URL") // Connection string from your .env
 }
 
 // IT: role for feature gating
@@ -155,6 +152,7 @@ model User {
   profiles Profile[]
   // Stage 8.16: pilot attribution is not a Contact or a sharing grant.
   pilotBrowserSessions PilotBrowserSession[]
+  callPolicyAcceptances RelishCallPolicyAcceptance[]
 
   // IT: Stage 8.6 custody containers owned by this account.
   contextSpaces ContextSpace[]
@@ -3958,4 +3956,21 @@ model PilotSmsOptOut {
   phoneIndex String @id @db.VarChar(64)
   optedOutAt DateTime @default(now())
   resumedAt DateTime?
+}
+
+// Stage 8.19 - Auditable consent recorded by a session-authorised Dorian tool.
+// A profile scan or SMS alone never signifies policy acceptance.
+model RelishCallPolicyAcceptance {
+  id String @id @default(uuid())
+  userId String
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  policyVersion String @db.VarChar(60)
+  termsUrl String
+  privacyUrl String
+  sessionId String
+  conversationId String
+  method String @default("VOICE_EXPLICIT")
+  acceptedAt DateTime @default(now())
+  @@unique([sessionId, policyVersion])
+  @@index([userId, policyVersion, acceptedAt])
 }

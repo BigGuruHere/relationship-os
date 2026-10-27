@@ -7,7 +7,7 @@ import { WORKSPACE_CONFIG, type WorkspaceName } from './relishWorkspace';
 export async function loadContextProfile(ownerUserId: string, name: WorkspaceName) {
   return prisma.profile.findFirst({
     where: { userId: ownerUserId, kind: WORKSPACE_CONFIG[name].kind },
-    select: { id: true, slug: true, displayName: true, headline: true, isPublished: true, qrSvg: true },
+    select: { id: true, slug: true, displayName: true, headline: true, avatarUrl: true, isPublished: true, qrSvg: true },
     orderBy: [{ isDefault: 'desc' }, { updatedAt: 'desc' }]
   });
 }

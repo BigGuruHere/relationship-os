@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs';
 const read = p => readFileSync(new URL('../../'+p, import.meta.url), 'utf8');
 test('name tool validates provider authentication and avoids provider-selected contact IDs', () => {
   const route = read('src/routes/api/webhooks/elevenlabs/tools/save-preferred-name/+server.ts');
-  assert.match(route, /RELISH_ELEVENLABS_TOOL_SECRET/);
+  assert.match(route, /ELEVENLABS_TOOL_SECRET/);
   assert.match(route, /providerAuthorised/);
   assert.doesNotMatch(route, /body\.contactId|body\.userId/);
 });

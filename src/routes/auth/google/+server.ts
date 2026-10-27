@@ -11,6 +11,7 @@ import type { RequestHandler } from './$types';
 import { redirect, error } from '@sveltejs/kit';
 import { randomBytes, createHash } from 'crypto';
 import { safeNetworkJoinReturn } from '$lib/server/networkJoinReturn';
+import { requiredEnv } from '$lib/server/config/requiredEnv';
 
 // Google endpoints
 const AUTH_ENDPOINT = 'https://accounts.google.com/o/oauth2/v2/auth';
@@ -32,11 +33,8 @@ function toCodeChallenge(verifier: string) {
 
 export const GET: RequestHandler = async ({ locals, cookies, url }) => {
   // IT: required env vars
-  const clientId = process.env.GOOGLE_CLIENT_ID || '';
-  const redirectUri = process.env.OAUTH_REDIRECT_URI || 'http://localhost:5173/auth/google/callback';
-
-  if (!clientId) throw error(500, 'Missing GOOGLE_CLIENT_ID');
-  if (!redirectUri) throw error(500, 'Missing OAUTH_REDIRECT_URI');
+  const clientId = requiredEnv('GOOGLE_CLIENT_ID');
+  const redirectUri = requiredEnv('OAUTH_REDIRECT_URI');
 
   // IT: generate CSRF and replay protection values
   const state = b64url(randomBytes(16));

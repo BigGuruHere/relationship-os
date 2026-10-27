@@ -5,6 +5,8 @@ import { createHmac } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { normalizeElevenLabsConversation, verifyElevenLabsSignature } from '../../src/lib/server/integrations/elevenlabs/conversation.ts';
 
+// The test is explicit about its phone-country context; production has no default.
+process.env.TELEPHONY_DEFAULT_COUNTRY = 'AU';
 const read = path => readFileSync(new URL(path, import.meta.url), 'utf8');
 const webhook = read('../../src/routes/api/webhooks/elevenlabs/+server.ts');
 const inbox = read('../../src/lib/server/core/conversationInbox.ts');
@@ -38,7 +40,7 @@ test('webhook HMAC validates timestamp.body and rejects bad signatures', () => {
 });
 
 test('public webhook is HMAC protected, deployment-routed, idempotent and does not run AI', () => {
-  assert.match(webhook, /ELEVENLABS_WEBHOOK_SECRET/);
+  assert.match(webhook, /ELEVENLABS_POST_CALL_WEBHOOK_SECRET/);
   assert.match(webhook, /resolveElevenLabsAgentDeployment/);
   assert.doesNotMatch(webhook, /ELEVENLABS_GENERAL_CONTEXT_SPACE_ID/);
   assert.match(webhook, /post_call_transcription/);

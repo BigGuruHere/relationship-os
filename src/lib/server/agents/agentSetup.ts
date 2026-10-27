@@ -1,3 +1,4 @@
+import { requiredEnv } from '$lib/server/config/requiredEnv';
 // src/lib/server/agents/agentSetup.ts
 // PURPOSE: Create core agent definitions and tool permissions if missing.
 
@@ -646,7 +647,7 @@ export async function ensureCoreAgentSetup(userId: string) {
 				allowedDomainKeys: cfg.allowedDomainKeys,
 				allowedContextSpaceIds: [],
 				defaultModelProvider: 'openai',
-				defaultModelName: process.env.AGENT_DEFAULT_MODEL || 'gpt-4o-mini',
+				defaultModelName: requiredEnv('AGENT_DEFAULT_MODEL'),
 				systemPrompt: cfg.systemPrompt,
 				instructions: cfg.instructions,
 				outputSchemaJson: cfg.outputSchemaJson as any,
@@ -666,7 +667,7 @@ export async function ensureCoreAgentSetup(userId: string) {
 				allowedDomainKeys: cfg.allowedDomainKeys,
 				allowedContextSpaceIds: [],
 				defaultModelProvider: 'openai',
-				defaultModelName: process.env.AGENT_DEFAULT_MODEL || 'gpt-4o-mini',
+				defaultModelName: requiredEnv('AGENT_DEFAULT_MODEL'),
 				systemPrompt: cfg.systemPrompt,
 				instructions: cfg.instructions,
 				outputSchemaJson: cfg.outputSchemaJson as any,

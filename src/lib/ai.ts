@@ -1,3 +1,4 @@
+import { requiredEnv } from '$lib/server/config/requiredEnv';
 // src/lib/ai.ts
 // PURPOSE:
 // - Provide AI helpers for transcription and summarization.
@@ -11,11 +12,8 @@ import path from "path";
 
 // Keep runtime-safe checks - in Node 18+/22+ fetch and FormData are available globally.
 // If you run into environment issues, ensure Node is >=18 and the global fetch/FormData are present.
-const OPENAI_API_KEY = process.env.OPENAI_API_KEY || "";
-if (!OPENAI_API_KEY) {
-  // Log a warning but do not throw - calling functions will fail with clearer errors.
-  console.warn("OPENAI_API_KEY not set - AI features will fail until configured.");
-}
+// Resolve only when an AI feature runs, and fail explicitly rather than send an empty API key.
+const openAiKey = () => requiredEnv('OPENAI_API_KEY');
 
 /**
  * Transcribe audio using OpenAI Whisper endpoint.
@@ -73,7 +71,7 @@ export async function transcribeAudio(input: File | Blob | Buffer | string, audi
   const res = await fetch("https://api.openai.com/v1/audio/transcriptions", {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${OPENAI_API_KEY}`
+      Authorization: `Bearer ${openAiKey()}`
       // NOTE: do not set Content-Type here; the runtime FormData sets the multipart boundary.
     },
     body: fd as any
@@ -133,7 +131,7 @@ export async function summarizeText(text: string): Promise<{ summary: string; ta
   const resp = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${OPENAI_API_KEY}`,
+      Authorization: `Bearer ${openAiKey()}`,
       "Content-Type": "application/json"
     },
     body: JSON.stringify(payload)

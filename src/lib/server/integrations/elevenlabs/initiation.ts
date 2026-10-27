@@ -1,3 +1,4 @@
+import { requiredEnv } from '$lib/server/config/requiredEnv';
 // PURPOSE: Build the bounded, agent-facing context package returned to ElevenLabs before a call.
 // SECURITY: This is an agent view, not a dump of private source material or a disclosure permission.
 import { timingSafeEqual } from 'node:crypto';
@@ -8,7 +9,7 @@ import { resolveElevenLabsIdentity, type ConversationIdentityScope, type ElevenL
 import { PERSON_CONVERSATION_SOURCE_CHANNEL } from '$lib/server/core/conversationIngestion';
 import { decryptInteractionSummary } from '$lib/server/core/interactionEncryption';
 
-export function verifyInitiationAuthorization(header: string | null, secret = process.env.ELEVENLABS_INITIATION_SECRET || '') {
+export function verifyInitiationAuthorization(header: string | null, secret = requiredEnv('ELEVENLABS_INITIATION_SECRET')) {
   if (!secret) return false;
   const supplied = Buffer.from(String(header || '').trim());
   const expected = Buffer.from(`Bearer ${secret}`);

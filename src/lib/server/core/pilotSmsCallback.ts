@@ -1,6 +1,7 @@
 // Stage 8.18: single-use QR -> signed SMS -> provisional telephone identity -> outbound SIP.
 // A scan alone never triggers a callback. SMS source is a recognition hint, not login proof.
 import { createHash, randomBytes } from 'node:crypto';
+import { conversationalPolicyEnabled, policyInstructionForCaller, withConsentGate } from './relishCallPolicy';
 import { prisma } from '$lib/db';
 import { encrypt, buildScopedIndexToken } from '$lib/crypto';
 import { ensureProvisionalPhoneCaller } from '$lib/server/integrations/elevenlabs/phoneOnboarding';
@@ -36,33 +37,11 @@ const index = (phone: string) => buildScopedIndexToken(phone, 'network:provision
 const expirationMinutes = 20;
 
 export function pilotTermsConfig() {
-  const termsUrl = process.env.RELISH_PILOT_TERMS_URL || '';
-  const privacyUrl = process.env.RELISH_PILOT_PRIVACY_URL || '';
-  const version = process.env.RELISH_PILOT_TERMS_VERSION || '';
+  const termsUrl = process.env.RELISH_PILOT_TERMS_URL ?? '';
+  const privacyUrl = process.env.RELISH_PILOT_PRIVACY_URL ?? '';
+  const version = process.env.RELISH_PILOT_TERMS_VERSION ?? '';
   const safeUrl = (value: string) => { try { return new URL(value).protocol === 'https:'; } catch { return false; } };
-  
-  // TEMPORARY PRODUCTION DIAGNOSTIC
-  // Logs only validation results, never credentials or secret values.
-  console.info('[pilot-sms-config]', {
-    enabled: process.env.RELISH_PILOT_SMS_CALLBACK_ENABLED === 'YES',
-    termsHttps: safeUrl(termsUrl),
-    privacyHttps: safeUrl(privacyUrl),
-    termsVersionValid: /^[\w.-]{1,60}$/.test(version),
-    smsNumberValid: /^\+[1-9]\d{7,14}$/.test(
-      process.env.RELISH_DORIAN_SMS_NUMBER || ''
-    ),
-    telnyxApiKeyPresent: Boolean(process.env.TELNYX_API_KEY),
-    telnyxPublicKeyPresent: Boolean(process.env.TELNYX_PUBLIC_KEY),
-    elevenLabsApiKeyPresent: Boolean(process.env.ELEVENLABS_API_KEY),
-    outboundPhoneIdPresent: Boolean(
-      process.env.ELEVENLABS_OUTBOUND_PHONE_NUMBER_ID
-    ),
-    dorianBindingPresent: Boolean(
-      process.env.RELISH_NETWORK_DORIAN_BINDING_ID
-    )
-  });
-
-  return { termsUrl, privacyUrl, version, ready: Boolean(smsCallEnabled() &&
+  return { termsUrl, privacyUrl, version, ready: Boolean(smsCallEnabled() && conversationalPolicyEnabled() &&
     safeUrl(termsUrl) && safeUrl(privacyUrl) && /^[\w.-]{1,60}$/.test(version) &&
     /^\+[1-9]\d{7,14}$/.test(process.env.RELISH_DORIAN_SMS_NUMBER || '') &&
     process.env.TELNYX_API_KEY && process.env.TELNYX_PUBLIC_KEY && process.env.ELEVENLABS_API_KEY &&
@@ -72,9 +51,10 @@ export function pilotTermsConfig() {
 export async function issuePilotSmsInvitation(input: { profileId: string; ownerUserId: string;
   domainKey: PilotDomain; env: string; source: string; offeredName?: string; offeredEmail?: string }) {
   const cfg = pilotTermsConfig();
-  if (!cfg.ready) throw new Error('SMS_CALL_NOT_CONFIGURED');
-  // 80 bits, no sequential QR code or profile ID exposed in the SMS.
-  const code = randomBytes(10).toString('hex').toUpperCase();
+  if (!cfg.ready) throw new Error('SMS_CALL_NOT_CONFIGURED: Check RELISH_PILOT_SMS_CALLBACK_ENABLED, RELISH_PILOT_CONVERSATIONAL_TERMS, policy URLs/version and required ElevenLabs/Telnyx variables.');
+  // Generate an 80-bit base32 invitation (16 letters/digits), without exposing the profile ID.
+  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  const code = Array.from(randomBytes(16), (byte) => alphabet[byte & 31]).join('');
   // Opportunistic 30-day data minimisation for short-lived SMS invitations.
   // In production also arrange scheduled retention cleanup if no new invitations arrive.
   await prisma.pilotSmsInvitation.deleteMany({ where: { createdAt: { lt: new Date(Date.now() - 30 * 86400000) } } });
@@ -92,7 +72,7 @@ export async function issuePilotSmsInvitation(input: { profileId: string; ownerU
   await recordPilotEvent({ type: 'sms.invitation_created', env: input.env, profileId: input.profileId,
     ownerUserId: input.ownerUserId, domainKey: input.domainKey, source: input.source,
     dedup: 'sms.invite:' + row.id });
-  return { smsTo: process.env.RELISH_DORIAN_SMS_NUMBER!, smsText: `CALL ${code}`, expiresMinutes: expirationMinutes };
+  return { smsTo: process.env.RELISH_DORIAN_SMS_NUMBER!, smsText: `Hi Dorian, call me! (ref ${code})`, expiresMinutes: expirationMinutes };
 }
 
 const quietReply = 'Dorian could not start that call. Please open the profile again for a new invitation.';
@@ -124,7 +104,8 @@ export async function consumePilotSmsForCallback(input: { messageId: string; fro
     await prisma.pilotSmsOptOut.updateMany({ where: { phoneIndex: phoneIdx }, data: { resumedAt: new Date() } });
     return 'resumed';
   }
-  const match = /^CALL\s+([0-9A-F]{20})$/i.exec(text);
+  // Recognise friendly invitations and previously issued Stage 8.18 codes during rollout.
+  const match = /^Hi Dorian,\s*call me!\s*\(ref ([A-HJ-NP-Z2-9]{16})\)$/i.exec(text) || /^CALL\s+([0-9A-F]{20})$/i.exec(text);
   if (!match) { trace('sms.skipped', 'UNRECOGNISED_SMS_COMMAND'); return 'ignored'; }
   if (!/^[\w-]{8,160}$/.test(input.messageId)) { trace('sms.skipped', 'INVALID_MESSAGE_ID'); return 'ignored'; }
   const optOut = await prisma.pilotSmsOptOut.findUnique({ where: { phoneIndex: phoneIdx } });
@@ -204,9 +185,11 @@ export async function consumePilotSmsForCallback(input: { messageId: string; fro
         domainKey: invitation.domainKey as PilotDomain, entryId: entry.id,
         visitorUserId: caller.userId, source: 'sms', dedup: 'sms.accept:' + entry.id });
     }
-    // Terms link is a notice, not an authenticated account-sharing permission.
-    // The website separately captured explicit consent and this inbound SMS confirms call intent.
+    // SMS requests a call but does NOT establish consent to policy, recording or data sharing.
+    // Dorian must obtain explicit affirmative acceptance via a session-bound tool.
     const cfg = pilotTermsConfig();
+    // Invitation and effective policy must match: never send newer terms under an old version.
+    if (invitation.termsVersion !== cfg.version) return fail('POLICY_CHANGED_REISSUE');
     processingStage = 'TERMS_SMS';
     trace('terms_sms.requested', undefined, invitation.id);
     try {
@@ -227,6 +210,7 @@ export async function consumePilotSmsForCallback(input: { messageId: string; fro
     if (!session || session.status !== 'READY') return fail('PRIVATE_SESSION_UNAVAILABLE');
     trace('session.ready', undefined, invitation.id);
     const dynamicVariables = JSON.parse(session.dynamicVariables);
+    const policy = await policyInstructionForCaller(caller.userId);
     // Outbound calls do not run initiation webhooks if client data is supplied. The opaque
     // Relish session binds post-call ingestion to the exact participant and context.
     Object.assign(dynamicVariables, {
@@ -234,7 +218,7 @@ export async function consumePilotSmsForCallback(input: { messageId: string; fro
       agent_website: '', agent_type: 'DORIAN', emotion_label: '',
       living_understanding: dynamicVariables.relish_living_understanding || '',
       living_understanding_revision: dynamicVariables.relish_living_understanding_revision || '',
-      call_instruction: `${dynamicVariables.call_instruction} This call was requested through a signed SMS invitation. Introduce yourself as Dorian, an AI. Mention the ${profile.kind === 'personal' ? 'Friendship' : profile.kind} context without discussing the inviter's private data. Verify the caller's preferred name before using prior provisional phone memories.`
+      call_instruction: `${dynamicVariables.call_instruction} This call was requested through a signed SMS invitation. Introduce yourself as Dorian, the participant's AI networking partner. Do not lead with the inviter or profile category. Be warm, interested in what matters to this person and what they enjoy contributing to others. Do not suggest network introductions are already available. Verify identity before relying on provisional phone memories.`
     });
     processingStage = 'ELEVENLABS_REQUEST';
     trace('elevenlabs.requested', undefined, invitation.id);
@@ -242,7 +226,7 @@ export async function consumePilotSmsForCallback(input: { messageId: string; fro
       method: 'POST', headers: { 'xi-api-key': process.env.ELEVENLABS_API_KEY!, 'Content-Type': 'application/json' },
       body: JSON.stringify({ agent_id: session.agentId,
         agent_phone_number_id: process.env.ELEVENLABS_OUTBOUND_PHONE_NUMBER_ID,
-        to_number: phone, conversation_initiation_client_data: { dynamic_variables: dynamicVariables } }),
+        to_number: phone, conversation_initiation_client_data: { dynamic_variables: withConsentGate(dynamicVariables, policy) } }),
       signal: AbortSignal.timeout(20000)
     });
     if (!apiResult.ok) {

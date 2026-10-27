@@ -1,3 +1,4 @@
+import { requiredEnv } from '$lib/server/config/requiredEnv';
 // Stage 8.13.1 - production longitudinal Living Understanding review.
 // SECURITY: The authoritative baseline is loaded from persisted revision membership. The browser
 // never chooses topic identities, source custody or baseline revision membership for approval.
@@ -105,7 +106,7 @@ type ApprovalPayload = {
 };
 
 function modelName() {
-  return process.env.DATING_REVISION_MODEL || process.env.DATING_KNOWLEDGE_MODEL || 'gpt-4o-mini';
+  return requiredEnv('DATING_REVISION_MODEL');
 }
 
 function cleanText(value: unknown, max: number) {

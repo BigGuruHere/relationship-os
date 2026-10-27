@@ -116,6 +116,12 @@ export const actions: Actions = {
       ? requestedKind as 'business' | 'personal' | 'dating' | 'custom'
       : 'business';
 
+    // Do not store arbitrary data URIs, executable SVG, or unbounded base64 in the database.
+    // On-device uploads are converted to compact JPEG before submission.
+    const avatarAllowed = !avatarUrl ||
+      (/^https:\/\/[^\s]{1,2000}$/i.test(avatarUrl)) ||
+      (/^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(avatarUrl) && avatarUrl.length <= 320000);
+    if (!avatarAllowed) return fail(400, { error: 'Use a HTTPS image URL or upload a supported photo.' });
     if (!displayName) return fail(400, { error: 'Display name is required' });
 
     // IT: collect extras from inputs named extra_<key>

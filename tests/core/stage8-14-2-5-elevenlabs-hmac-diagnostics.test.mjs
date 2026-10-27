@@ -39,17 +39,19 @@ test('HMAC diagnostics distinguish a wrong secret without logging secret materia
   assert.doesNotMatch(JSON.stringify(inspected), /correct-secret|wrong-secret/);
 });
 
-test('post-call route supports the current secret name, legacy compatibility fallback, and safe signature diagnostics', () => {
-  assert.match(webhook, /ELEVENLABS_WEBHOOK_SECRET/);
-  assert.match(webhook, /POST_CALL_WEBHOOK_SECRET/);
+test('post-call route requires only the explicit current secret and preserves safe signature diagnostics', () => {
+  assert.match(webhook, /ELEVENLABS_POST_CALL_WEBHOOK_SECRET/);
+  assert.doesNotMatch(webhook, /process\.env\.POST_CALL_WEBHOOK_SECRET/);
   assert.match(webhook, /secretSource/);
   assert.match(webhook, /signatureCheck\.reason/);
   assert.match(webhook, /ageSeconds/);
   assert.doesNotMatch(webhook, /expected.*digest|supplied.*digest/);
 });
 
-test('widget harness defaults to the current General test participant', () => {
-  assert.match(harness, /e7b6f115-780d-411b-a68f-1ad3b19364e6/);
+test('widget harness needs explicitly configured participant and origin', () => {
+  assert.match(harness, /ELEVENLABS_TEST_PERSON_ID/);
+  assert.match(harness, /ELEVENLABS_TEST_PUBLIC_ORIGIN/);
+  assert.doesNotMatch(harness, /e7b6f115-780d-411b-a68f-1ad3b19364e6/);
 });
 
 test('ngrok Vite host support remains included in the package', () => {

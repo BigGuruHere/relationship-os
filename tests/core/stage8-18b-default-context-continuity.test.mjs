@@ -5,7 +5,6 @@ import assert from 'node:assert/strict';
 import { readFileSync, existsSync } from 'node:fs';
 import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url);
-// Load TypeScript from the project's installed dependencies.
 const ts = require('typescript');
 const src = path => readFileSync(new URL('../../' + path, import.meta.url), 'utf8');
 

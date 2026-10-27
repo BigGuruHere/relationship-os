@@ -1,3 +1,4 @@
+import { requiredEnv } from '$lib/server/config/requiredEnv';
 // PURPOSE: Development-only harness for exercising the ElevenLabs initiation bridge and then
 // feeding the exact returned dynamic variables into the ElevenLabs web widget.
 // SECURITY: The initiation secret stays server-side. Only owner-scoped active bindings can be used.
@@ -9,8 +10,9 @@ import { decrypt } from '$lib/crypto';
 import { runWithWorkspaceCustody } from '$lib/server/core/contextSpace';
 
 const PROVIDER_AGENT_AAD = 'agentProviderBinding.providerAgentId';
-const DEFAULT_TEST_PERSON_ID = (process.env.ELEVENLABS_TEST_PERSON_ID || 'e7b6f115-780d-411b-a68f-1ad3b19364e6').trim();
-const DEFAULT_TEST_ORIGIN = (process.env.ELEVENLABS_TEST_PUBLIC_ORIGIN || 'https://creative-basilisk-painfully.ngrok-free.app').trim();
+// Development harness identifiers must be explicit. Never insert another person's ID or URL.
+const testPersonId = () => requiredEnv('ELEVENLABS_TEST_PERSON_ID').trim();
+const testOrigin = () => requiredEnv('ELEVENLABS_TEST_PUBLIC_ORIGIN').trim();
 
 function clean(value: FormDataEntryValue | null, max = 500) {
   return String(value ?? '').trim().slice(0, max);
@@ -93,20 +95,19 @@ export const load: PageServerLoad = async ({ locals }) => {
   if (!locals.user) throw redirect(303, '/auth/login');
   return {
     bindings: await activeBindingsForUser(locals.user.id),
-    defaultTestPersonId: DEFAULT_TEST_PERSON_ID,
-    testPublicOrigin: normalizeOrigin(DEFAULT_TEST_ORIGIN)
+    defaultTestPersonId: testPersonId(),
+    testPublicOrigin: normalizeOrigin(testOrigin())
   };
 };
 
 export const actions: Actions = {
   mockInitiation: async ({ locals, request }) => {
     if (!locals.user) throw redirect(303, '/auth/login');
-    const secret = String(process.env.ELEVENLABS_INITIATION_SECRET || '').trim();
-    if (!secret) return fail(500, { error: 'ELEVENLABS_INITIATION_SECRET is not configured.' });
+    const secret = requiredEnv('ELEVENLABS_INITIATION_SECRET');
 
     const form = await request.formData();
     const bindingId = clean(form.get('bindingId'), 80);
-    const participantId = clean(form.get('personId'), 80) || DEFAULT_TEST_PERSON_ID;
+    const participantId = clean(form.get('personId'), 80) || testPersonId();
     if (!validUuid(participantId)) return fail(400, { error: 'Enter a valid Relish Contact or Person UUID.', personId: participantId, bindingId });
 
     const binding = await prisma.agentProviderBinding.findFirst({
@@ -147,7 +148,7 @@ export const actions: Actions = {
     }
 
     const agentId = decrypt(binding.providerAgentIdEnc, PROVIDER_AGENT_AAD);
-    const publicOrigin = normalizeOrigin(DEFAULT_TEST_ORIGIN);
+    const publicOrigin = normalizeOrigin(testOrigin());
     const endpoint = `${publicOrigin}/api/webhooks/elevenlabs/initiation`;
     const conversationId = `relish-init-test-${randomUUID()}`;
     const payload = {

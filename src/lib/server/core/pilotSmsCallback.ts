@@ -34,7 +34,20 @@ export function logPilotSmsCallback(action: string, details: SmsDiagnostic = {},
 export const smsCallEnabled = () => process.env.RELISH_PILOT_SMS_CALLBACK_ENABLED === 'YES';
 const sha = (s: string) => createHash('sha256').update(s).digest('hex');
 const index = (phone: string) => buildScopedIndexToken(phone, 'network:provisional-phone:v1');
-const expirationMinutes = 20;
+// Read the invitation lifetime explicitly at issuance time. The expiry timestamp is saved
+// with each invitation, so changing configuration will not alter already-issued codes.
+// This must never silently fall back to a hard-coded lifetime.
+export function pilotSmsCodeExpiryMinutes(): number {
+  const raw = process.env.RELISH_PILOT_SMS_CODE_EXPIRY_MINUTES;
+  if (!raw || !/^[1-9]\d*$/.test(raw.trim())) {
+    throw new Error('RELISH_PILOT_SMS_CODE_EXPIRY_MINUTES must be an integer from 1 to 1440');
+  }
+  const minutes = Number(raw.trim());
+  if (!Number.isSafeInteger(minutes) || minutes > 1440) {
+    throw new Error('RELISH_PILOT_SMS_CODE_EXPIRY_MINUTES must be an integer from 1 to 1440');
+  }
+  return minutes;
+}
 
 export function pilotTermsConfig() {
   const policy = currentRelishPolicy();
@@ -49,6 +62,7 @@ export async function issuePilotSmsInvitation(input: { profileId: string; ownerU
   domainKey: PilotDomain; env: string; source: string; offeredName?: string; offeredEmail?: string }) {
   const cfg = pilotTermsConfig();
   if (!cfg.ready) throw new Error('SMS_CALL_NOT_CONFIGURED: Check APP_ORIGIN, RELISH_LEGAL_DOCUMENTS_PUBLISHED, RELISH_PILOT_TERMS_VERSION, callback/consent flags and ElevenLabs/Telnyx configuration.');
+  const expirationMinutes = pilotSmsCodeExpiryMinutes();
   // Generate an 80-bit base32 invitation (16 letters/digits), without exposing the profile ID.
   const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   const code = Array.from(randomBytes(16), (byte) => alphabet[byte & 31]).join('');

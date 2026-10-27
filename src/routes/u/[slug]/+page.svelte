@@ -108,12 +108,14 @@
   }
 </script>
 
-<!-- Stage 8.19: the entire guest journey lives on this screen. No account, connection form or second call page. -->
-{#if isFirstContact}
+<!-- Svelte special head elements must be at component root, never inside {#if}. -->
 <svelte:head>
-  <title>Meet Dorian | Relish</title>
+  <title>{isFirstContact ? 'Meet Dorian | Relish' : `${ownerName} | Relish`}</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
 </svelte:head>
+
+<!-- Stage 8.19: guests meet Dorian on one screen. Owner/legacy UI remains in the alternate branch. -->
+{#if isFirstContact}
 <main class="first-contact">
   <div class="fc-brand">Relish</div>
   <section class="fc-dorian" aria-labelledby="dorian-title">

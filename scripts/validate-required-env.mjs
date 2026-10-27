@@ -53,6 +53,12 @@ export function validateRequiredEnvironment(env = process.env) {
       'RELISH_DORIAN_SMS_NUMBER', 'RELISH_PILOT_TERMS_VERSION', 'TELEPHONY_DEFAULT_COUNTRY']) need(name);
     need('ELEVENLABS_TOOL_SECRET', 24);
     positiveInteger('ELEVENLABS_WEBHOOK_MAX_AGE_SECONDS');
+    // Explicit, bounded SMS invitation lifetime. No hardcoded 20-minute fallback.
+    positiveInteger('RELISH_PILOT_SMS_CODE_EXPIRY_MINUTES');
+    if (env.RELISH_PILOT_SMS_CODE_EXPIRY_MINUTES &&
+        Number(env.RELISH_PILOT_SMS_CODE_EXPIRY_MINUTES) > 1440) {
+      invalid.push('RELISH_PILOT_SMS_CODE_EXPIRY_MINUTES must be between 1 and 1440 minutes');
+    }
     yesNo('LU_AUTO_PREPARE_AFTER_INGEST');
     // The same checked-in legal documents are served on each environment's host.
     // One public origin is used for the web app and checked-in legal documents.

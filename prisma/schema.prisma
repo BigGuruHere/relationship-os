@@ -16,8 +16,9 @@ generator client {
 }
 
 datasource db {
-  provider          = "postgresql" // Using Postgres
-  url               = env("DATABASE_URL") // Connection string from your .env
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 // IT: role for feature gating
@@ -3836,6 +3837,28 @@ model NetworkPhoneCaller {
   @@index([createdAt])
 }
 
+
+// Stage 8.20.1: append-only operator action trail for interrupted Dorian calls.
+// Intentionally contains no telephone number, transcript, prompts or private LU content.
+model DorianCallRecoveryEvent {
+  id String @id @default(uuid())
+  actorUserId String
+  agentBindingId String
+  sessionId String
+  conversationId String
+  participantUserId String
+  contextSpaceId String
+  operation String @db.VarChar(32)
+  reasonCode String @db.VarChar(48)
+  previousState String? @db.VarChar(32)
+  nextState String? @db.VarChar(32)
+  previousOutcome String? @db.VarChar(32)
+  nextOutcome String? @db.VarChar(32)
+  createdAt DateTime @default(now())
+
+  @@index([agentBindingId, createdAt])
+  @@index([sessionId, createdAt])
+}
 
 // Stage 8.16: opaque, server-issued same-browser provisional continuity.
 // A token is a credential; only its SHA-256 hash is ever stored. Not an authenticated login.

@@ -276,7 +276,18 @@ export const POST: RequestHandler = async ({ request }) => {
       data: { status: 'COMPLETED' }
     });
     let automaticLivingUnderstanding: any = null;
-    if (phoneAutomaticLearningEnabled() && deployment.bindingId === configuredSharedBindingId() && ingested.contactId && ingested.participantSourceId) {
+    // A late provider callback may arrive AFTER an operator explicitly released
+    // an abandoned call. Retain its evidence, but never silently restart automatic
+    // learning for a call already marked RELEASED_UNPROCESSED.
+    const recoveredCall = shared ? await prisma.networkDorianSession.findUnique({
+      where: { id: shared.sessionId }, select: { understandingOutcome: true }
+    }) : null;
+    if (recoveredCall?.understandingOutcome === 'RELEASED_UNPROCESSED') {
+      automaticLivingUnderstanding = { status: 'RELEASED_UNPROCESSED', requiresOperatorReview: true };
+      elevenLabsLog(traceId, 'LU_AUTOMATION', 'Late provider callback retained after explicit operator release; manual review required.', {
+        conversationId: normalized.metadata.externalConversationId
+      });
+    } else if (phoneAutomaticLearningEnabled() && deployment.bindingId === configuredSharedBindingId() && ingested.contactId && ingested.participantSourceId) {
       // The transcript and attributed evidence are committed before we acknowledge.
       // AI interpretation is performed outside the webhook by the independent worker.
       // This prevents long model calls from holding the provider's HTTP connection open.

@@ -108,8 +108,7 @@ export async function fetchPublishedDorianConfig(): Promise<{revision:number; co
   try {
     response = await fetch(url, {
       method:'GET', headers:{ Authorization:`Bearer ${token}` },
-      cache:'no-store', 
-signal: AbortSignal.timeout(validatedSnapshot ? 1800 : 10000)
+      cache:'no-store', signal:AbortSignal.timeout(validatedSnapshot ? 1800 : 10000)
     });
   } catch {
     if (validatedSnapshot) {

@@ -1,6 +1,6 @@
 import { policyInstructionForCaller, withConsentGate } from '$lib/server/core/relishCallPolicy';
 import { configureDorianCall, safeFirstMessage, fetchPublishedDorianConfig } from '$lib/server/integrations/elevenlabs/dorianControlPlane';
-import { configuredSharedBindingId, resolveSharedNetworkSession } from '$lib/server/integrations/elevenlabs/networkSession';
+import { activeSharedDorianBindingId, resolveSharedNetworkSession } from '$lib/server/integrations/elevenlabs/networkSession';
 import { prepareNetworkDorianContext } from '$lib/server/integrations/elevenlabs/networkPreparation';
 import { recordPilotEvent } from '$lib/server/pilot';
 import { startProvisionalPhoneCall, provisionalPhoneInitiationResponse } from '$lib/server/integrations/elevenlabs/phoneOnboarding';
@@ -65,7 +65,7 @@ export const POST: RequestHandler = async ({ request }) => {
 
     // Shared Dorian inbound calls: provision separate non-login caller custody.
     // Never fall back to the deployment owner's private workspace.
-    if (configuredSharedBindingId() && deployment.bindingId === configuredSharedBindingId()) {
+    if (deployment.bindingId === await activeSharedDorianBindingId() && deployment.agentKey === 'DORIAN') {
       // A browser must present its server-issued session token in the initiation payload.
       // Never derive a browser identity from user_id, contact_id or an arbitrary page URL.
       const browserToken = body?.dynamic_variables?.relish_network_session;

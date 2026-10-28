@@ -2,7 +2,7 @@
 // A signed ElevenLabs tool must call the acceptance endpoint after the caller says yes.
 // Never interpret a QR scan, SMS, silence or mere continuation as acceptance.
 import { prisma } from '$lib/db';
-import { configuredSharedBindingId, networkSessionHash } from '$lib/server/integrations/elevenlabs/networkSession';
+import { activeSharedDorianBindingId, networkSessionHash } from '$lib/server/integrations/elevenlabs/networkSession';
 
 export const conversationalPolicyEnabled = () => process.env.RELISH_PILOT_CONVERSATIONAL_TERMS === 'YES';
 
@@ -54,7 +54,7 @@ export async function recordRelishVoicePolicyAcceptance(input: {
   if (!/^[A-Za-z0-9_-]{40,100}$/.test(token) || !/^conv_[A-Za-z0-9_-]{8,100}$/.test(conversationId)) {
     return { status: 'UNAUTHORISED' as const };
   }
-  const bindingId = configuredSharedBindingId();
+  const bindingId = await activeSharedDorianBindingId();
   if (!bindingId) return { status: 'UNAUTHORISED' as const };
   const session = await prisma.networkDorianSession.findUnique({
     where: { tokenHash: networkSessionHash(token) },

@@ -67,6 +67,11 @@ export function validateRequiredEnvironment(env = process.env) {
     }
   }
 
+  if (env.RELISH_DORIAN_DEPLOYMENT_OWNER_USER_ID) {
+    if (!/^[0-9a-f]{8}-[0-9a-f-]{27,}$/i.test(env.RELISH_DORIAN_DEPLOYMENT_OWNER_USER_ID))
+      invalid.push('RELISH_DORIAN_DEPLOYMENT_OWNER_USER_ID must be a UUID');
+    need('RELISH_DORIAN_DEPLOYMENT_REGISTRATION_TOKEN', 32);
+  }
   // Only enabled telephone onboarding requires every telephony/provider setting.
   const smsEnabled = env.RELISH_PILOT_SMS_CALLBACK_ENABLED === 'YES';
   const voiceTermsEnabled = env.RELISH_PILOT_CONVERSATIONAL_TERMS === 'YES';
@@ -74,8 +79,11 @@ export function validateRequiredEnvironment(env = process.env) {
     if (!smsEnabled || !voiceTermsEnabled) invalid.push('RELISH_PILOT_SMS_CALLBACK_ENABLED and RELISH_PILOT_CONVERSATIONAL_TERMS must both be YES');
     for (const name of ['ELEVENLABS_INITIATION_SECRET', 'ELEVENLABS_POST_CALL_WEBHOOK_SECRET',
       'ELEVENLABS_API_KEY', 'ELEVENLABS_OUTBOUND_PHONE_NUMBER_ID',
-      'TELNYX_API_KEY', 'TELNYX_PUBLIC_KEY', 'RELISH_NETWORK_DORIAN_BINDING_ID',
+      'TELNYX_API_KEY', 'TELNYX_PUBLIC_KEY',
       'RELISH_DORIAN_SMS_NUMBER', 'RELISH_PILOT_TERMS_VERSION', 'TELEPHONY_DEFAULT_COUNTRY']) need(name);
+    if (!env.RELISH_DORIAN_DEPLOYMENT_OWNER_USER_ID && !env.RELISH_NETWORK_DORIAN_BINDING_ID) {
+      missing.push('RELISH_DORIAN_DEPLOYMENT_OWNER_USER_ID or RELISH_NETWORK_DORIAN_BINDING_ID');
+    }
     need('ELEVENLABS_TOOL_SECRET', 24);
     positiveInteger('ELEVENLABS_WEBHOOK_MAX_AGE_SECONDS');
     // Explicit, bounded SMS invitation lifetime. No hardcoded 20-minute fallback.

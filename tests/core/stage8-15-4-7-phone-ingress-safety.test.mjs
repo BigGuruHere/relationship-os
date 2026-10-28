@@ -14,7 +14,7 @@ test('shared call missing a verified session never falls back to deployment owne
   assert.match(route, /unlinked_phone_call/);
   assert.match(route, /status: 202/);
   assert.match(route, /Missing or invalid Network participant session/);
-  assert.ok(route.indexOf('if (deployment.bindingId === configuredSharedBindingId() && !shared)') < route.indexOf('const targetUserId = shared?.userId'));
+  assert.ok(route.indexOf('if (deployment.bindingId === await activeSharedDorianBindingId() && !shared)') < route.indexOf('const targetUserId = shared?.userId'));
 });
 test('unsafe or unresolved shared phone initiation receives no private context', () => {
   // Stage 8.15.4.7b replaced the anonymous-only route with provisional caller custody.

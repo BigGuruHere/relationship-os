@@ -4,7 +4,7 @@ import type { PageServerLoad, Actions } from './$types';
 import { prisma } from '$lib/db';
 import { encrypt } from '$lib/crypto';
 import { readPilotBrowser, resolvePilotEntry, pilotKindLabel, recordPilotEvent } from '$lib/server/pilot';
-import { startSharedNetworkSession, configuredSharedBindingId } from '$lib/server/integrations/elevenlabs/networkSession';
+import { startSharedNetworkSession, activeSharedDorianBindingId } from '$lib/server/integrations/elevenlabs/networkSession';
 
 export const load: PageServerLoad = async ({ locals, cookies, params }) => {
   const visitorUserId = locals.user?.id || await readPilotBrowser(cookies, locals.env);
@@ -17,7 +17,7 @@ export const load: PageServerLoad = async ({ locals, cookies, params }) => {
   const connectionRequest = await prisma.pilotConnectionRequest.findUnique({ where: { entryId: entry.id }, select: { id: true } });
   return { entryId: entry.id, hasConnectionRequest: Boolean(connectionRequest),
     profileName: entry.profile.displayName || 'this person',
-    contextLabel: pilotKindLabel(entry.profile.kind), sharedEnabled: Boolean(configuredSharedBindingId()),
+    contextLabel: pilotKindLabel(entry.profile.kind), sharedEnabled: Boolean(await activeSharedDorianBindingId()),
     source: entry.entrySource, profileSlug: entry.profile.slug,
     dorianMode: preferences?.dorianMode || 'SMS_CALLBACK' };
 };

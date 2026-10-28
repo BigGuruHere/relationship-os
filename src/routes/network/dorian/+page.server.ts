@@ -6,7 +6,7 @@ import { redirect } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
 import { prisma } from '$lib/db';
 import { decrypt } from '$lib/crypto';
-import { startSharedNetworkSession, configuredSharedBindingId } from '$lib/server/integrations/elevenlabs/networkSession';
+import { startSharedNetworkSession, activeSharedDorianBindingId } from '$lib/server/integrations/elevenlabs/networkSession';
 import type { Actions } from './$types';
 import { ensureNetworkSelfContact } from '$lib/server/core/networkSelfContact';
 
@@ -15,7 +15,7 @@ export const load: PageServerLoad = async ({ locals }) => {
   const userId = locals.user.id;
   const contextSpaceId = locals.contextDomainKey === 'general' ? locals.contextSpaceId : null;
   if (!contextSpaceId) return { status: 'NO_GENERAL_CONTEXT' as const, launch: null, sharedEnabled: false };
-  if (configuredSharedBindingId()) return { status: 'SHARED_AVAILABLE' as const, launch: null, sharedEnabled: true };
+  if (await activeSharedDorianBindingId()) return { status: 'SHARED_AVAILABLE' as const, launch: null, sharedEnabled: true };
 
   // Only the current member's General deployment may be used: the signed post-call
   // webhook resolves the destination from this deployment, not from browser variables.

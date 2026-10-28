@@ -10,7 +10,7 @@ import { resolveElevenLabsIdentity } from '$lib/server/integrations/elevenlabs/i
 import { resolveElevenLabsAgentDeployment } from '$lib/server/integrations/elevenlabs/deployment';
 import { elevenLabsErrorLog, elevenLabsLog, elevenLabsPayloadLog, elevenLabsTraceId } from '$lib/server/integrations/elevenlabs/debug';
 import { describeLivingUnderstandingReviewHandoff } from '$lib/server/core/livingUnderstandingReviewHandoff';
-import { configuredSharedBindingId, resolveSharedNetworkSession } from '$lib/server/integrations/elevenlabs/networkSession';
+import { activeSharedDorianBindingId, resolveSharedNetworkSession } from '$lib/server/integrations/elevenlabs/networkSession';
 import { automaticLivingUnderstandingPreparationEnabled, prepareAutomaticLivingUnderstandingImpact } from '$lib/server/core/automaticLivingUnderstanding';
 import { phoneAutomaticLearningEnabled, beginPhoneUnderstanding, finishPhoneUnderstanding } from '$lib/server/core/phoneUnderstandingAutomation';
 import { prisma } from '$lib/db';
@@ -135,13 +135,13 @@ export const POST: RequestHandler = async ({ request }) => {
 
     // For the configured shared agent, the deployment owner is NEVER the transcript owner.
     // The session token is an unguessable server-issued credential and must match this binding.
-    const shared = deployment.bindingId === configuredSharedBindingId()
+    const shared = deployment.bindingId === await activeSharedDorianBindingId()
       ? await resolveSharedNetworkSession({
           bindingId: deployment.bindingId!, conversationId: normalized.metadata.externalConversationId,
           agentId: normalized.agentId, sessionToken: normalized.dynamicVariables.relish_network_session
         })
       : null;
-    if (deployment.bindingId === configuredSharedBindingId() && !shared) {
+    if (deployment.bindingId === await activeSharedDorianBindingId() && !shared) {
       // A real inbound SIP call does not have a browser-issued Network session.
       // Treat it as unlinked, not as an authentication failure that could cause
       // webhook retries. Never fall back to the shared deployment owner's workspace.
@@ -287,7 +287,7 @@ export const POST: RequestHandler = async ({ request }) => {
       elevenLabsLog(traceId, 'LU_AUTOMATION', 'Late provider callback retained after explicit operator release; manual review required.', {
         conversationId: normalized.metadata.externalConversationId
       });
-    } else if (phoneAutomaticLearningEnabled() && deployment.bindingId === configuredSharedBindingId() && ingested.contactId && ingested.participantSourceId) {
+    } else if (phoneAutomaticLearningEnabled() && deployment.bindingId === await activeSharedDorianBindingId() && ingested.contactId && ingested.participantSourceId) {
       // The transcript and attributed evidence are committed before we acknowledge.
       // AI interpretation is performed outside the webhook by the independent worker.
       // This prevents long model calls from holding the provider's HTTP connection open.

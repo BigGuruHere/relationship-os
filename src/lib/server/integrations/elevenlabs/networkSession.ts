@@ -1,4 +1,3 @@
-import { requiredEnv } from '$lib/server/config/requiredEnv';
 // PURPOSE: Resolve a shared Dorian agent's signed webhook into the actual participant's custody.
 // SECURITY: Never accept contact/user/context ids from ElevenLabs dynamic variables as authority.
 import { createHash, randomBytes } from 'node:crypto';
@@ -10,14 +9,28 @@ import { runWithWorkspaceCustody } from '$lib/server/core/contextSpace';
 import { pilotDomainForKind } from '$lib/server/pilot';
 
 export const networkSessionHash = (token: string) => createHash('sha256').update(token).digest('hex');
+// Legacy env binding remains supported for deployments not yet registered by the console.
+// Once the owner is configured, the active DB binding becomes authoritative.
 export function configuredSharedBindingId() {
-  return requiredEnv('RELISH_NETWORK_DORIAN_BINDING_ID').trim();
+  return process.env.RELISH_DORIAN_DEPLOYMENT_OWNER_USER_ID
+    ? '' : (process.env.RELISH_NETWORK_DORIAN_BINDING_ID || '').trim();
+}
+export async function activeSharedDorianBindingId() {
+  const ownerUserId = process.env.RELISH_DORIAN_DEPLOYMENT_OWNER_USER_ID?.trim();
+  if (!ownerUserId) return configuredSharedBindingId();
+  const rows = await prisma.agentProviderBinding.findMany({ where: {
+    userId: ownerUserId, provider: 'ELEVENLABS', isActive: true,
+    agentDefinition: { key: 'DORIAN', userId: ownerUserId, category: 'conversation', deploymentScope: 'external_voice' },
+    validFrom: { lte: new Date() }, OR: [{ validTo: null }, { validTo: { gt: new Date() } }]
+  }, select: { id: true }, take: 2 });
+  // Missing and ambiguous are both closed. Never fall back to an old Dev UUID.
+  return rows.length === 1 ? rows[0].id : '';
 }
 export async function startSharedNetworkSession(userId: string, contextSpaceId: string, pilot?: {
   pilotEntryId: string; domainKey: 'business' | 'general' | 'dating';
   profileName: string; profileKind: string;
 }) {
-  const bindingId = configuredSharedBindingId();
+  const bindingId = await activeSharedDorianBindingId();
   if (!bindingId) return null;
   const binding = await prisma.agentProviderBinding.findFirst({
     where: { id: bindingId, provider: 'ELEVENLABS', isActive: true, providerAgentIdEnc: { not: null },
@@ -93,7 +106,7 @@ export async function startSharedNetworkSession(userId: string, contextSpaceId: 
 export async function resolveSharedNetworkSession(input: {
   bindingId: string; conversationId: string; agentId: string; sessionToken: unknown;
 }) {
-  if (!configuredSharedBindingId() || input.bindingId !== configuredSharedBindingId()) return null;
+  if (!input.bindingId || input.bindingId !== await activeSharedDorianBindingId()) return null;
   // A session cannot be claimed by an empty or malformed provider conversation ID.
   if (typeof input.conversationId !== 'string' || !input.conversationId.trim() || input.conversationId.length > 240) return null;
   const token = typeof input.sessionToken === 'string' ? input.sessionToken : '';

@@ -56,7 +56,8 @@ export function pilotTermsConfig() {
     policy.valid &&
     /^\+[1-9]\d{7,14}$/.test(process.env.RELISH_DORIAN_SMS_NUMBER || '') &&
     process.env.TELNYX_API_KEY && process.env.TELNYX_PUBLIC_KEY && process.env.ELEVENLABS_API_KEY &&
-    process.env.ELEVENLABS_OUTBOUND_PHONE_NUMBER_ID && process.env.RELISH_NETWORK_DORIAN_BINDING_ID) };
+    process.env.ELEVENLABS_OUTBOUND_PHONE_NUMBER_ID &&
+    (process.env.RELISH_DORIAN_DEPLOYMENT_OWNER_USER_ID || process.env.RELISH_NETWORK_DORIAN_BINDING_ID)) }; 
 }
 
 export async function issuePilotSmsInvitation(input: { profileId: string; ownerUserId: string;

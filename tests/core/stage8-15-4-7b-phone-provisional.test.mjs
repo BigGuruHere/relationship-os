@@ -38,7 +38,7 @@ test('initiation uses shared binding and issues only scoped session token', () =
   const text = read('src/routes/api/webhooks/elevenlabs/initiation/+server.ts');
 
   assert.ok(text.includes('startProvisionalPhoneCall'));
-  assert.ok(text.includes('configuredSharedBindingId()'));
+  assert.ok(text.includes('activeSharedDorianBindingId()'));
 });
 
 test('post-call custody requires shared network session token', () => {

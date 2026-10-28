@@ -32,7 +32,7 @@ async function ownedSpace(userId: string, contextSpaceId: string) {
   return space;
 }
 async function ownedAgent(userId: string, id: string) {
-  const agent = await prisma.agentDefinition.findFirst({ where: { id, userId }, select: { id: true, allowedDomainKeys: true, allowedContextSpaceIds: true } });
+  const agent = await prisma.agentDefinition.findFirst({ where: { id, userId, key: { not: 'DORIAN' } }, select: { id: true, allowedDomainKeys: true, allowedContextSpaceIds: true } });
   if (!agent) throw new Error('Choose one of your Relish agents.');
   return agent;
 }
@@ -68,10 +68,10 @@ export const load: PageServerLoad = async ({ locals }) => {
   if (!locals.user) throw redirect(303, '/auth/login');
   const userId = locals.user.id;
   const [agents, spaces, bindings] = await Promise.all([
-    prisma.agentDefinition.findMany({ where: { userId }, select: { id: true, key: true, name: true, status: true, personaKey: true, purposeKey: true, allowedDomainKeys: true, allowedContextSpaceIds: true }, orderBy: { name: 'asc' } }),
+    prisma.agentDefinition.findMany({ where: { userId, key: { not: 'DORIAN' } }, select: { id: true, key: true, name: true, status: true, personaKey: true, purposeKey: true, allowedDomainKeys: true, allowedContextSpaceIds: true }, orderBy: { name: 'asc' } }),
     prisma.contextSpace.findMany({ where: { ownerUserId: userId }, select: { id: true, domainKey: true, displayNameEnc: true }, orderBy: [{ domainKey: 'asc' }, { createdAt: 'asc' }] }),
     prisma.agentProviderBinding.findMany({
-      where: { userId },
+      where: { userId, agentDefinition: { key: { not: 'DORIAN' } } },
       select: { id: true, provider: true, environment: true, providerAgentIdEnc: true, inboundPhoneEnc: true, isActive: true, validFrom: true, validTo: true, createdAt: true, contextSpaceId: true, agentDefinition: { select: { id: true, key: true, name: true } }, contextSpace: { select: { domainKey: true, displayNameEnc: true } } },
       orderBy: [{ isActive: 'desc' }, { createdAt: 'desc' }]
     })
@@ -103,6 +103,7 @@ export const actions: Actions = {
       const name = clean(form.get('name'), 120);
       if (!name) throw new Error('Enter an agent name.');
       const key = agentKey(clean(form.get('key'), 80) || name);
+      if (key === 'DORIAN') throw new Error('Dorian is registered through the standalone Agent Management console.');
       const contextSpaceId = clean(form.get('contextSpaceId'), 80);
       const space = await ownedSpace(locals.user.id, contextSpaceId);
       await prisma.agentDefinition.create({ data: {
@@ -152,7 +153,7 @@ export const actions: Actions = {
     const form = await request.formData();
     try {
       const bindingId = clean(form.get('bindingId'), 80);
-      const current = await prisma.agentProviderBinding.findFirst({ where: { id: bindingId, userId: locals.user.id }, select: { id: true, agentDefinitionId: true, contextSpaceId: true, environment: true, isActive: true } });
+      const current = await prisma.agentProviderBinding.findFirst({ where: { id: bindingId, userId: locals.user.id, agentDefinition: { key: { not: 'DORIAN' } } }, select: { id: true, agentDefinitionId: true, contextSpaceId: true, environment: true, isActive: true } });
       if (!current || !current.isActive) throw new Error('Choose an active binding to replace.');
       const environment = cleanEnvironment(form.get('environment') || current.environment);
       const providerAgentId = clean(form.get('providerAgentId'), 240);
@@ -171,7 +172,7 @@ export const actions: Actions = {
     if (!locals.user) throw redirect(303, '/auth/login');
     const form = await request.formData();
     const bindingId = clean(form.get('bindingId'), 80);
-    const binding = await prisma.agentProviderBinding.findFirst({ where: { id: bindingId, userId: locals.user.id, isActive: true }, select: { id: true } });
+    const binding = await prisma.agentProviderBinding.findFirst({ where: { id: bindingId, userId: locals.user.id, isActive: true, agentDefinition: { key: { not: 'DORIAN' } } }, select: { id: true } });
     if (!binding) return fail(404, { error: 'Active binding not found.' });
     await prisma.agentProviderBinding.update({ where: { id: binding.id }, data: { isActive: false, validTo: new Date() } });
     return { success: 'Binding deactivated.' };

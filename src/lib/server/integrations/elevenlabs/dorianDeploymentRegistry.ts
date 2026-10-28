@@ -73,7 +73,10 @@ export async function registerDorianDeployment(input: { environment:unknown; con
   // works with both Neon direct connections and transaction pooling; no permanent
   // session lock is left behind when a request finishes.
   return prisma.$transaction(async tx=>{
-    await tx.$queryRaw`SELECT pg_advisory_xact_lock(820300031)`;
+    // PostgreSQL advisory-lock functions return VOID. Prisma cannot deserialize a
+    // selected VOID column, so return a supported integer instead.
+    // Keep the lock acquisition inside the same transaction as registration.
+    await tx.$queryRaw`SELECT 1::integer AS locked FROM (SELECT pg_advisory_xact_lock(820300031)) AS lock_row`;
     const current=await tx.agentDefinition.findUnique({where:{userId_key:{userId:ownerUserId,key:'DORIAN'}}});
     if(current && (current.category!=='conversation'||current.deploymentScope!=='external_voice'))
       throw new DorianRegistrationConflict('An incompatible DORIAN definition already exists; review it before registration.');

@@ -37,7 +37,16 @@ export const POST:RequestHandler=async({request})=>{
   try{return json(await registerDorianDeployment(body),{headers:NO_STORE});}
   catch(error){
     const conflict=error instanceof DorianRegistrationConflict;
-    if(!conflict)console.error('[dorian-registration] registration failed',error instanceof Error?error.name:'UNKNOWN');
+    if(!conflict) {
+      // Never log credentials, request bodies or participant context. The Prisma
+      // code is safe to log and makes database failures diagnosable in Railway.
+      const code = error && typeof error === 'object' && 'code' in error && typeof error.code === 'string'
+        ? error.code : null;
+      console.error('[dorian-registration] registration failed', {
+        name: error instanceof Error ? error.name : 'UNKNOWN',
+        code
+      });
+    }
     return json({error:conflict?'REGISTRATION_CONFLICT':'REGISTRATION_FAILED',
       detail:conflict?error.message:undefined},{status:conflict?409:400,headers:NO_STORE});
   }

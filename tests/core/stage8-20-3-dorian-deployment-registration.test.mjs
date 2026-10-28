@@ -43,3 +43,12 @@ test('prior call recovery and consent procedure remain installed',()=>{
   assert.ok(existsSync('src/lib/server/pilotMonitor/dorianRecovery.ts'));
   assert.ok(existsSync('src/lib/server/core/dorianConsentProjection.ts'));
 });
+
+test('transaction-scoped registration lock does not return PostgreSQL VOID to Prisma',()=>{
+  // Directly selecting pg_advisory_xact_lock() as a result column causes Prisma
+  // known request errors on PostgreSQL because the result type is VOID.
+  assert.doesNotMatch(registry,/\$queryRaw`SELECT pg_advisory_xact_lock\(820300031\)`/);
+  assert.match(registry,/\$queryRaw`SELECT 1::integer AS locked FROM \(SELECT pg_advisory_xact_lock\(820300031\)\) AS lock_row`/);
+  assert.match(endpoint,/\[dorian-registration\] registration failed/);
+  assert.match(endpoint,/error\.code/);
+});

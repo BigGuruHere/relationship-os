@@ -42,6 +42,31 @@ export function validateRequiredEnvironment(env = process.env) {
     catch { invalid.push('APP_ORIGIN must be a valid absolute URL'); }
   }
   if (env.DB_KEEPALIVE_ENABLED === 'YES' && env.DB_KEEPALIVE_DISABLED !== 'YES') positiveInteger('DB_KEEPALIVE_MINUTES');
+  // Stage 8.20: opt in deliberately to the single external control plane.
+  // This key is required even when disabled; no implicit fallback configuration.
+  yesNo('RELISH_CONTROL_PLANE_ENABLED');
+  if (env.RELISH_CONTROL_PLANE_ENABLED === 'YES') {
+    httpsUrl('RELISH_CONTROL_PLANE_URL');
+    need('RELISH_CONTROL_PLANE_READ_TOKEN', 32);
+    need('RELISH_CONTROL_PLANE_ENV');
+    positiveInteger('RELISH_CONTROL_PLANE_REFRESH_SECONDS');
+    if (env.RELISH_CONTROL_PLANE_REFRESH_SECONDS &&
+        Number(env.RELISH_CONTROL_PLANE_REFRESH_SECONDS) > 3600) {
+      invalid.push('RELISH_CONTROL_PLANE_REFRESH_SECONDS must not exceed 3600');
+    }
+    if (!['local', 'dev', 'prod'].includes(env.RELISH_CONTROL_PLANE_ENV)) {
+      invalid.push('RELISH_CONTROL_PLANE_ENV must be local, dev or prod');
+    }
+    if (env.RELISH_CONTROL_PLANE_URL) {
+      try {
+        const origin = new URL(env.RELISH_CONTROL_PLANE_URL);
+        if (origin.username || origin.password || origin.pathname !== '/' || origin.search || origin.hash) {
+          invalid.push('RELISH_CONTROL_PLANE_URL must be a bare HTTPS origin');
+        }
+      } catch { /* httpsUrl() already reports syntax errors. */ }
+    }
+  }
+
   // Only enabled telephone onboarding requires every telephony/provider setting.
   const smsEnabled = env.RELISH_PILOT_SMS_CALLBACK_ENABLED === 'YES';
   const voiceTermsEnabled = env.RELISH_PILOT_CONVERSATIONAL_TERMS === 'YES';

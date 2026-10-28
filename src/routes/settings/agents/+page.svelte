@@ -17,8 +17,10 @@
       <h1>Agent deployments</h1>
       <p class="muted">Relish owns the durable agent identity. ElevenLabs agent IDs and phone assignments are replaceable bindings, so moving a number to a new ElevenLabs agent does not change who the agent is inside Relish.</p>
     </div>
-    <div class="header-actions"><a class="btn" href="/settings/agents/test">Test ElevenLabs bridge</a><a class="btn" href="/agents">Agent framework</a></div>
+    <div class="header-actions">{#if data.controlPlaneConsoleUrl}<a class="btn primary" href={data.controlPlaneConsoleUrl} target="_blank" rel="noopener noreferrer">Manage Dorian conversation settings</a>{/if}<a class="btn" href="/settings/agents/test">Test ElevenLabs bridge</a><a class="btn" href="/agents">Agent framework</a></div>
   </div>
+
+  {#if data.controlPlaneConsoleUrl}<p class="card panel"><strong>Central Agent Management:</strong> Edit greetings, persona and ContextSpace instructions using the single deployment linked above. This screen still manages local provider bindings and does not automatically update proxy routing.</p>{/if}
 
   {#if form?.error}<p class="card error" role="alert">{form.error}</p>{/if}
   {#if form?.success}<p class="card success">{form.success}</p>{/if}

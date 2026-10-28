@@ -19,7 +19,8 @@ const base = {
   SESSION_COOKIE_SECRET: 'b'.repeat(32),
   SESSION_DAYS: '30',
   LOGIN_THROTTLE_SECRET: 'c'.repeat(32),
-  APP_ORIGIN: 'https://example.test'
+  APP_ORIGIN: 'https://example.test',
+  RELISH_CONTROL_PLANE_ENABLED: 'NO'
 };
 const pilot = {
   ...base,

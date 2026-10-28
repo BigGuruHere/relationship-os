@@ -77,6 +77,9 @@ export const load: PageServerLoad = async ({ locals }) => {
     })
   ]);
   return {
+    // The operator console is a separate, single-deployment service. Never proxy
+    // its authentication through a per-user session or store admin credentials here.
+    controlPlaneConsoleUrl: process.env.RELISH_CONTROL_PLANE_ENABLED === 'YES' ? process.env.RELISH_CONTROL_PLANE_URL : '',
     environments: [...ENVIRONMENTS],
     agents,
     spaces: spaces.map(space => ({ id: space.id, domainKey: space.domainKey, displayName: decryptContextSpaceDisplayName(space.displayNameEnc, space.domainKey) })),

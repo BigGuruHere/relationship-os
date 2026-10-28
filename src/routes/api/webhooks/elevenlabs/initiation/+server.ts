@@ -1,4 +1,5 @@
 import { policyInstructionForCaller, withConsentGate } from '$lib/server/core/relishCallPolicy';
+import { configureDorianCall, safeFirstMessage, fetchPublishedDorianConfig } from '$lib/server/integrations/elevenlabs/dorianControlPlane';
 import { configuredSharedBindingId, resolveSharedNetworkSession } from '$lib/server/integrations/elevenlabs/networkSession';
 import { prepareNetworkDorianContext } from '$lib/server/integrations/elevenlabs/networkPreparation';
 import { recordPilotEvent } from '$lib/server/pilot';
@@ -92,11 +93,25 @@ export const POST: RequestHandler = async ({ request }) => {
         }
         const pilotPrompt = entry ? `You are the participant's own AI networking partner. Talk naturally about what matters to them and what they enjoy contributing to others. The introduction came through a public profile, but do not center the inviter or imply that personal data is shared with them.` : '';
         const browserPolicy = await policyInstructionForCaller(shared.userId);
-        return json({ type: 'conversation_initiation_client_data', dynamic_variables: withConsentGate({
-          ...context, ...(pilotPrompt ? { call_instruction: pilotPrompt } : {}), relish_network_session: browserToken,
-          call_type: 'NETWORK_PARTICIPANT_BROWSER'
-        }, browserPolicy) });
+        const browserProjection = await configureDorianCall({
+          dynamicVariables: {
+            ...context, ...(pilotPrompt ? { call_instruction: pilotPrompt } : {}),
+            relish_network_session: browserToken, call_type: 'NETWORK_PARTICIPANT_BROWSER'
+          },
+          domainKey: shared.domainKey,
+          previousCalls: Number(context.previous_calls || 0),
+          preferredName: String(context.user_name || ''),
+          providerAgentId: String(body.agent_id || '')
+        });
+        const browserFirstMessage = safeFirstMessage(browserProjection.firstMessage, browserPolicy);
+        return json({
+          type: 'conversation_initiation_client_data',
+          dynamic_variables: withConsentGate(browserProjection.dynamicVariables, browserPolicy),
+          ...(browserFirstMessage ? { conversation_config_override: { agent: { first_message: browserFirstMessage } } } : {})
+        });
       }
+      // Preflight before issuing a provisional phone session or claiming IN_CALL.
+      const publishedDorian = await fetchPublishedDorianConfig();
       const prepared = await startProvisionalPhoneCall({
         callerId: body?.caller_id, conversationId: body?.conversation_id, bindingId: deployment.bindingId
       });
@@ -134,9 +149,21 @@ export const POST: RequestHandler = async ({ request }) => {
         });
       }
       const response = provisionalPhoneInitiationResponse(prepared);
+      // Stage 8.20: the *one* external control plane selects a published greeting
+      // and ContextSpace guidance. It cannot change server-owned identity or consent.
+      const phoneProjection = await configureDorianCall({
+        dynamicVariables: response.dynamic_variables,
+        domainKey: prepared.domainKey,
+        previousCalls: prepared.previousCalls,
+        preferredName: prepared.preferredName,
+        providerAgentId: String(body.agent_id || ''),
+        published: publishedDorian
+      });
       // Stage 8.19: returning direct calls must check the current accepted policy version.
       const callPolicy = await policyInstructionForCaller(prepared.userId);
-      response.dynamic_variables = withConsentGate(response.dynamic_variables as Record<string, unknown>, callPolicy) as any;
+      response.dynamic_variables = withConsentGate(phoneProjection.dynamicVariables, callPolicy) as any;
+      const firstMessage = safeFirstMessage(phoneProjection.firstMessage || response.conversation_config_override.agent.first_message, callPolicy);
+      if (firstMessage) response.conversation_config_override.agent.first_message = firstMessage;
       elevenLabsLog(traceId, 'RESPONSE', 'Provisional caller session issued.', {
         status: 200, identityStatus: 'PROVISIONAL_PHONE', previousCalls: prepared.previousCalls
       });

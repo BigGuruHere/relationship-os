@@ -49,7 +49,7 @@ test('outbound, returning inbound and browser calls use the same explicit consen
   const outgoing = src('src/lib/server/core/pilotSmsCallback.ts');
   const initiation = src('src/routes/api/webhooks/elevenlabs/initiation/+server.ts');
   const webhook = src('src/routes/api/webhooks/elevenlabs/+server.ts');
-  assert.match(outgoing, /withConsentGate\(dynamicVariables, policy\)/);
+  assert.match(outgoing, /withConsentGate\(projected\.dynamicVariables, policy\)/);
   assert.match(initiation, /policyInstructionForCaller\(prepared\.userId\)/);
   assert.match(initiation, /policyInstructionForCaller\(shared\.userId\)/);
   assert.match(webhook, /status: 'policy_not_accepted'/);

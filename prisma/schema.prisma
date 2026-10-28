@@ -3974,3 +3974,19 @@ model RelishCallPolicyAcceptance {
   @@unique([sessionId, policyVersion])
   @@index([userId, policyVersion, acceptedAt])
 }
+
+// Stage 8.20: last verified, versioned Dorian config from the ONE external
+// Agent Management service. No participant data is stored in these rows.
+// The snapshot lets live calls use known-good instructions if the management
+// deployment is temporarily offline. Local and Dev share Neon dev but do not
+// share a snapshot because their environment keys are different.
+model DorianAgentConfigSnapshot {
+  id          String   @id @default(uuid())
+  environment String   @db.VarChar(10)
+  agentKey    String   @default("DORIAN") @db.VarChar(24)
+  revision    Int
+  content     Json
+  fetchedAt   DateTime @default(now())
+
+  @@unique([environment, agentKey])
+}

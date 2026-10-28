@@ -18,7 +18,7 @@ const pilot = {
   TELNYX_API_KEY: 'key', TELNYX_PUBLIC_KEY: 'key', RELISH_NETWORK_DORIAN_BINDING_ID: 'binding',
   RELISH_DORIAN_SMS_NUMBER: '+61400000000', RELISH_PILOT_TERMS_VERSION: '2026-10-27-v1',
   TELEPHONY_DEFAULT_COUNTRY: 'AU', LU_AUTO_PREPARE_AFTER_INGEST: 'YES',
-  RELISH_PILOT_SMS_CODE_EXPIRY_MINUTES: '20'
+  RELISH_PILOT_SMS_CODE_EXPIRY_MINUTES: '20', RELISH_CONTROL_PLANE_ENABLED: 'NO'
 };
 test('public profile Svelte head is at the component root, not nested in the guest conditional', () => {
   assert.match(profile, /<svelte:head>[\s\S]*<\/svelte:head>[\s\S]*\{#if isFirstContact\}/);

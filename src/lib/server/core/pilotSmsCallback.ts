@@ -1,3 +1,4 @@
+import { configureDorianCall, safeFirstMessage, fetchPublishedDorianConfig } from '$lib/server/integrations/elevenlabs/dorianControlPlane';
 // Stage 8.18: single-use QR -> signed SMS -> provisional telephone identity -> outbound SIP.
 // A scan alone never triggers a callback. SMS source is a recognition hint, not login proof.
 import { createHash, randomBytes } from 'node:crypto';
@@ -212,6 +213,10 @@ export async function consumePilotSmsForCallback(input: { messageId: string; fro
       return fail(safeCode);
     }
     trace('terms_sms.accepted', undefined, invitation.id);
+    // Preflight before creating the private Dorian session; a failed central
+    // fetch must not leave a stale pending conversation session.
+    processingStage = 'AGENT_CONFIGURATION';
+    const publishedDorian = await fetchPublishedDorianConfig();
     processingStage = 'PRIVATE_SESSION';
     trace('session.requested', undefined, invitation.id);
     const session = await startSharedNetworkSession(caller.userId, contextSpaceId, {
@@ -231,13 +236,26 @@ export async function consumePilotSmsForCallback(input: { messageId: string; fro
       living_understanding_revision: dynamicVariables.relish_living_understanding_revision || '',
       call_instruction: `${dynamicVariables.call_instruction} This call was requested through a signed SMS invitation. Introduce yourself as Dorian, the participant's AI networking partner. Do not lead with the inviter or profile category. Be warm, interested in what matters to this person and what they enjoy contributing to others. Do not suggest network introductions are already available. Verify identity before relying on provisional phone memories.`
     });
+    processingStage = 'AGENT_CONFIGURATION';
+    const projected = await configureDorianCall({
+      dynamicVariables,
+      domainKey: invitation.domainKey,
+      previousCalls: Number(dynamicVariables.previous_calls || 0),
+      preferredName: String(dynamicVariables.user_name || ''),
+      providerAgentId: session.agentId,
+      published: publishedDorian
+    });
+    const firstMessage = safeFirstMessage(projected.firstMessage, policy);
     processingStage = 'ELEVENLABS_REQUEST';
     trace('elevenlabs.requested', undefined, invitation.id);
     const apiResult = await fetch('https://api.elevenlabs.io/v1/convai/sip-trunk/outbound-call', {
       method: 'POST', headers: { 'xi-api-key': process.env.ELEVENLABS_API_KEY!, 'Content-Type': 'application/json' },
       body: JSON.stringify({ agent_id: session.agentId,
         agent_phone_number_id: process.env.ELEVENLABS_OUTBOUND_PHONE_NUMBER_ID,
-        to_number: phone, conversation_initiation_client_data: { dynamic_variables: withConsentGate(dynamicVariables, policy) } }),
+        to_number: phone, conversation_initiation_client_data: {
+          dynamic_variables: withConsentGate(projected.dynamicVariables, policy),
+          ...(firstMessage ? { conversation_config_override: { agent: { first_message: firstMessage } } } : {})
+        } }),
       signal: AbortSignal.timeout(20000)
     });
     if (!apiResult.ok) {

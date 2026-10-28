@@ -56,7 +56,8 @@ test('only server-held profile and scoped participant identity determine custody
 test('outbound dynamic context carries protected session, not owner private memory', () => {
   const service = src('src/lib/server/core/pilotSmsCallback.ts');
   assert.match(service, /startSharedNetworkSession\(caller\.userId, contextSpaceId/);
-  assert.match(service, /conversation_initiation_client_data: \{ dynamic_variables: withConsentGate\(dynamicVariables, policy\) \}/);
+  assert.match(service, /dynamic_variables: withConsentGate\(projected\.dynamicVariables, policy\)/);
+  assert.match(service, /conversation_config_override: \{ agent: \{ first_message: firstMessage \} \}/);
   assert.match(service, /agent_phone_number_id: process\.env\.ELEVENLABS_OUTBOUND_PHONE_NUMBER_ID/);
   assert.match(service, /networkDorianSession\.updateMany/);
   assert.match(src('src/routes/api/webhooks/elevenlabs/+server.ts'), /resolveSharedNetworkSession/);

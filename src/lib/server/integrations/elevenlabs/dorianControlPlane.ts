@@ -204,7 +204,9 @@ export async function configureDorianCall(input: {
   };
 }
 
-// Consent is a server-owned gate independent of the editable first messages.
+// Consent is a server-owned opening procedure independent of editable greetings.
+// Stage 8.20.2: put the actual question into the first spoken turn, rather than
+// hoping the model follows up a vague offer to explain the policy.
 export function safeFirstMessage(firstMessage:string | null, policy:{accepted:boolean}):string | null {
-  return policy.accepted ? firstMessage : "Hi, I'm Dorian, an AI networking partner. Before we get started, I'd like to explain our Terms and Privacy Notice.";
+  return policy.accepted ? firstMessage : "Hi, I'm Dorian, your AI networking partner. Before we get started, Relish may record, transcribe and privately process our conversation. The current Terms and Privacy Notice are available through Relish. Do you agree to continue under those terms?";
 }

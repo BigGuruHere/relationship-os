@@ -159,7 +159,8 @@ export const POST: RequestHandler = async ({ request }) => {
         providerAgentId: String(body.agent_id || ''),
         published: publishedDorian
       });
-      // Stage 8.19: returning direct calls must check the current accepted policy version.
+      // Stage 8.20.2: consent controls the mandatory first procedure, not delivery
+      // of participant-scoped name, previous understanding or call context.
       const callPolicy = await policyInstructionForCaller(prepared.userId);
       response.dynamic_variables = withConsentGate(phoneProjection.dynamicVariables, callPolicy) as any;
       const firstMessage = safeFirstMessage(phoneProjection.firstMessage || response.conversation_config_override.agent.first_message, callPolicy);

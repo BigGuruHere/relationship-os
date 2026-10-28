@@ -245,6 +245,8 @@ export async function consumePilotSmsForCallback(input: { messageId: string; fro
       providerAgentId: session.agentId,
       published: publishedDorian
     });
+    // Stage 8.20.2: retain participant context in the outgoing client data;
+    // the first message and server tools still enforce explicit voice consent.
     const firstMessage = safeFirstMessage(projected.firstMessage, policy);
     processingStage = 'ELEVENLABS_REQUEST';
     trace('elevenlabs.requested', undefined, invitation.id);

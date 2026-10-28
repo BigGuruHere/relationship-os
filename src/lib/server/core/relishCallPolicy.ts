@@ -86,19 +86,12 @@ export async function policyInstructionForCaller(userId: string) {
   const policy = currentRelishPolicy();
   if (!policy.valid) return { instruction: 'POLICY UNAVAILABLE: Explain that the conversation cannot proceed and end the call.', accepted: false };
   return { accepted, instruction: accepted
-    ? 'The caller has previously accepted the current Terms and Privacy Notice. Do not repeat the consent request unless asked.'
-    : `CONSENT GATE: You are an AI networking partner. Before asking substantive questions, clearly explain that the call may be recorded/transcribed and privately processed by Relish. The Terms and Privacy Notice are both available at ${policy.legalUrl}, linked on the invitation page and sent by SMS.  Ask for explicit agreement. Only after the caller clearly agrees, immediately invoke the ElevenLabs tool record_relish_policy_acceptance with agreement=true, the current conversation_id and relish_network_session. Wait for status ACCEPTED before continuing. If declined, unclear or tool fails, do not proceed: politely end the call. Do not tell anyone that merely continuing or sending an SMS constitutes consent.` };
+    ? 'CONSENT STATUS ACCEPTED: The caller has already accepted the current Terms and Privacy Notice. Do not repeat the request unless the caller asks about it. Continue with the normal conversation and the participant-specific context supplied for this call.'
+    : `MANDATORY FIRST PROCEDURE — CONSENT REQUIRED: You are Dorian, an AI networking partner. Before any substantive discussion, use of prior personal context, personal questions, or other Relish tools, explain briefly that the call may be recorded, transcribed, and privately processed by Relish. The current Terms and Privacy Notice are available at ${policy.legalUrl} (also linked on the invitation page or sent by SMS). Ask for the caller's explicit agreement to continue under the current Terms and Privacy Notice. Do NOT treat silence, mere continuation, an SMS or an invitation as acceptance. After an unambiguous affirmative response, IMMEDIATELY invoke record_relish_policy_acceptance with agreement=true, the current conversation_id and relish_network_session, and WAIT for the tool result. Only if its status is ACCEPTED may you begin the substantive conversation and use the name, Living Understanding, last-call summary and ContextSpace guidance already supplied at initiation. Continue naturally in this same call; do not restart onboarding or ask the caller to call back. If declined, acceptance remains unclear after a brief clarification, the policy is unavailable or the tool result is anything other than ACCEPTED, politely end the call using end_call. This procedure takes precedence over persona, scenario and context guidance until accepted.` };
 }
 
-// Remove private memory before agreement. This remains a one-call limitation if a returning
-// participant must agree to a newer policy; the next call can retrieve their history.
-export function withConsentGate(dynamicVariables: Record<string, unknown>, policy: {instruction: string; accepted: boolean}) {
-  const vars = { ...dynamicVariables };
-  if (!policy.accepted) {
-    for (const key of ['living_understanding','living_understanding_revision','relish_living_understanding',
-      'relish_living_understanding_revision','last_call_summary','memory_and_identity_context','user_name']) vars[key] = '';
-  }
-  vars.relish_terms_status = policy.accepted ? 'ACCEPTED' : 'REQUIRED';
-  vars.call_instruction = [String(vars.call_instruction || ''), policy.instruction].filter(Boolean).join(' ');
-  return vars;
-}
+// Stage 8.20.2: consent is a mandatory first-call procedure, not a filter on
+// previously authorised, participant-scoped initiation context. The tool and
+// post-call ingestion remain server-enforced gates to substantive processing.
+// Keep the public import path used by inbound phone, browser and SMS callback.
+export { withConsentGate } from './dorianConsentProjection';

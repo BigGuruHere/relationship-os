@@ -123,7 +123,8 @@ export const POST: RequestHandler = async ({ request }) => {
       elevenLabsLog(traceId, 'RESPONSE', 'Rejecting post-call webhook because agent deployment identifiers conflict.', { status: 409 });
       return json({ error: 'Agent deployment identifiers conflict.' }, { status: 409 });
     }
-    if (deployment.status !== 'RESOLVED' || !deployment.userId || !deployment.contextSpaceId || !deployment.domainKey) {
+    if (deployment.status !== 'RESOLVED' || !deployment.userId ||
+        (deployment.agentKey !== 'DORIAN' && (!deployment.contextSpaceId || !deployment.domainKey))) {
       elevenLabsLog(traceId, 'RESPONSE', 'Signed webhook accepted but agent deployment is unresolved.', {
         status: 202,
         agentId: normalized.agentId || null,
@@ -133,15 +134,18 @@ export const POST: RequestHandler = async ({ request }) => {
       return json({ status: 'unresolved_agent_deployment', agentId: normalized.agentId || null, calledNumber: normalized.calledNumber || null }, { status: 202 });
     }
 
-    // For the configured shared agent, the deployment owner is NEVER the transcript owner.
-    // The session token is an unguessable server-issued credential and must match this binding.
-    const shared = deployment.bindingId === await activeSharedDorianBindingId()
+    // For Dorian, there is never a fallback to the deployment owner's workspace.
+    // Only a server-issued participant session can authorize transcript custody.
+    const sharedBindingId = await activeSharedDorianBindingId();
+    if (deployment.agentKey === 'DORIAN' && deployment.bindingId !== sharedBindingId)
+      return json({ status: 'unconfigured_shared_dorian' }, { status: 202 });
+    const shared = deployment.agentKey === 'DORIAN' && deployment.bindingId === sharedBindingId
       ? await resolveSharedNetworkSession({
           bindingId: deployment.bindingId!, conversationId: normalized.metadata.externalConversationId,
           agentId: normalized.agentId, sessionToken: normalized.dynamicVariables.relish_network_session
         })
       : null;
-    if (deployment.bindingId === await activeSharedDorianBindingId() && !shared) {
+    if (deployment.agentKey === 'DORIAN' && !shared) {
       // A real inbound SIP call does not have a browser-issued Network session.
       // Treat it as unlinked, not as an authentication failure that could cause
       // webhook retries. Never fall back to the shared deployment owner's workspace.

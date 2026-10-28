@@ -72,8 +72,12 @@ export async function resolveElevenLabsAgentDeployment(input: {
 
   const sameDeployment = (a: any, b: any) => a.userId === b.userId && a.contextSpaceId === b.contextSpaceId && a.agentDefinitionId === b.agentDefinitionId;
   const choose = (row: any, method: ElevenLabsDeploymentResolution['method'], warning: string | null = null): ElevenLabsDeploymentResolution => ({
-    status: 'RESOLVED', bindingId: row.id, userId: row.userId, contextSpaceId: row.contextSpaceId,
-    domainKey: row.contextSpace.domainKey, agentDefinitionId: row.agentDefinitionId, agentKey: row.agentDefinition.key, agentName: row.agentDefinition.name,
+    status: 'RESOLVED', bindingId: row.id, userId: row.userId,
+    // Dorian resolves participant scope from a verified call session or caller
+    // default; this historical binding FK is never a conversation authority.
+    contextSpaceId: row.agentDefinition.key === 'DORIAN' ? null : row.contextSpaceId,
+    domainKey: row.agentDefinition.key === 'DORIAN' ? null : row.contextSpace.domainKey,
+    agentDefinitionId: row.agentDefinitionId, agentKey: row.agentDefinition.key, agentName: row.agentDefinition.name,
     environment: row.environment, method, warning
   });
 

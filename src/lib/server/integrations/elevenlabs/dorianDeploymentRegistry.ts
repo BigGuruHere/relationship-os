@@ -1,4 +1,6 @@
-// Stage 8.20.3 — Relish owns the Dorian provider binding and participant custody.
+// Stage 8.20.4 — Relish owns Dorian deployment identity, not conversation context.
+// AgentProviderBinding.contextSpaceId remains a legacy required FK. It is NOT an
+// instruction to select or access that space for a Dorian conversation.
 // An authenticated external operator may register ONLY the configured owner in this
 // deployment. The control plane never gets direct database access or caller data.
 import { prisma } from '$lib/db';
@@ -28,6 +30,12 @@ async function scopedSpaces(ownerUserId: string) {
   // No personal names or private context are transferred to the control plane.
   return rows.filter(row => DOMAINS.has(row.domainKey));
 }
+// The schema's existing required FK is a registration anchor ONLY. Prefer the
+// owner's General space; when unavailable use an existing owned domain space.
+// This choice never grants caller access to the owner or selects call context.
+function legacyAnchor(spaces: { id:string; domainKey:string }[]) {
+  return spaces.find(space => space.domainKey === 'general') ?? spaces[0] ?? null;
+}
 
 export async function readDorianDeploymentRegistration() {
   const ownerUserId = configuredOwner();
@@ -44,27 +52,34 @@ export async function readDorianDeploymentRegistration() {
     select: { id:true, contextSpaceId:true, environment:true, providerAgentIdEnc:true }, take: 3
   }) : [];
   const binding = rows.length === 1 ? {
-    id: rows[0].id, contextSpaceId:rows[0].contextSpaceId, environment:rows[0].environment,
+    id: rows[0].id, environment:rows[0].environment,
     agentId: rows[0].providerAgentIdEnc ? decrypt(rows[0].providerAgentIdEnc,PROVIDER_AAD) : ''
   } : null;
-  return { environment:env, providerEnvironment:expectedProviderEnvironment(), ready:rows.length<=1 && !(definition && (definition.category!=='conversation' || definition.deploymentScope!=='external_voice')),
-    reason:rows.length>1?'MULTIPLE_ACTIVE_DORIAN_BINDINGS':
-      definition && (definition.category!=='conversation' || definition.deploymentScope!=='external_voice')?'INCOMPATIBLE_AGENT_DEFINITION':null,
-    spaces, binding };
+  const environmentMatches = !binding || binding.environment === expectedProviderEnvironment();
+  return { environment:env, providerEnvironment:expectedProviderEnvironment(),
+    runtimeContextSource:'PARTICIPANT_SESSION',
+    ready:rows.length<=1 && environmentMatches && (rows.length===1 || Boolean(legacyAnchor(spaces))) && !(definition && (definition.category!=='conversation' || definition.deploymentScope!=='external_voice')),
+    reason:!environmentMatches?'BINDING_ENVIRONMENT_MISMATCH':
+      rows.length>1?'MULTIPLE_ACTIVE_DORIAN_BINDINGS':
+      definition && (definition.category!=='conversation' || definition.deploymentScope!=='external_voice')?'INCOMPATIBLE_AGENT_DEFINITION':
+      !binding && !legacyAnchor(spaces)?'OWNER_CONTEXT_ANCHOR_NOT_FOUND':null,
+    binding };
 }
 
 export class DorianRegistrationConflict extends Error { status=409; }
 
-export async function registerDorianDeployment(input: { environment:unknown; contextSpaceId:unknown; agentId:unknown }) {
+export async function registerDorianDeployment(input: { environment:unknown; agentId:unknown }) {
   const env=expectedRelishDorianEnvironment();
   if(input.environment !== env) throw new DorianRegistrationConflict('The selected environment does not match this Relish server.');
   const ownerUserId=configuredOwner();
-  const spaceId=String(input.contextSpaceId ?? '');
   const agentId=String(input.agentId ?? '').trim();
-  if (!/^[0-9a-f-]{36}$/i.test(spaceId) || !validElevenLabsAgentId(agentId))
-    throw new Error('Select an owned ContextSpace and a valid ElevenLabs Agent ID.');
-  const space=await prisma.contextSpace.findFirst({ where:{id:spaceId,ownerUserId,domainKey:{in:['general','business','dating']}},select:{id:true,domainKey:true}});
-  if(!space) throw new Error('Selected ContextSpace does not belong to the configured deployment owner.');
+  if (!validElevenLabsAgentId(agentId)) throw new Error('Enter a valid ElevenLabs Agent ID.');
+  // Never accept a ContextSpace from the operator or provider as runtime authority.
+  // An existing binding retains its historic anchor; new ones receive an
+  // automatically selected owned FK solely for schema compatibility.
+  const spaces = await scopedSpaces(ownerUserId);
+  const anchor = legacyAnchor(spaces);
+  if (!anchor) throw new DorianRegistrationConflict('The deployment owner needs an owned ContextSpace for the legacy binding foreign key.');
   const owner=await prisma.user.findUnique({where:{id:ownerUserId},select:{id:true}});
   if(!owner) throw new Error('Configured deployment owner was not found.');
   const agentIdIdx=buildScopedIndexToken(agentId,PROVIDER_SCOPE);
@@ -83,8 +98,8 @@ export async function registerDorianDeployment(input: { environment:unknown; con
     const agent=current || await tx.agentDefinition.create({data:{
       userId:ownerUserId,key:'DORIAN',name:'Dorian',description:'External conversational relationship partner',
       category:'conversation',status:'active',personaKey:'dorian',purposeKey:'conversation',
-      deploymentScope:'external_voice',authorityLevel:'advisory',allowedDomainKeys:[space.domainKey],
-      allowedContextSpaceIds:[space.id],defaultModelProvider:'openai',defaultModelName:'provider-managed',
+      deploymentScope:'external_voice',authorityLevel:'advisory',allowedDomainKeys:['general','business','dating'],
+      allowedContextSpaceIds:[],defaultModelProvider:'openai',defaultModelName:'provider-managed',
       systemPrompt:'You are Dorian, a Relish conversation partner. Use only server-authorised participant context, consent procedures and tool permissions.'
     }});
     const validity={provider:'ELEVENLABS',isActive:true,validFrom:{lte:new Date()},OR:[{validTo:null},{validTo:{gt:new Date()}}]};
@@ -94,17 +109,15 @@ export async function registerDorianDeployment(input: { environment:unknown; con
       select:{id:true,userId:true,agentDefinitionId:true,contextSpaceId:true,environment:true}});
     if(active.length>1 || sameProviderId.length>1) throw new DorianRegistrationConflict('Ambiguous active bindings; resolve the duplicates before registering.');
     const candidate=active[0];
-    if(candidate && (candidate.providerAgentIdIdx!==agentIdIdx || candidate.contextSpaceId!==space.id || candidate.environment!==environment))
-      throw new DorianRegistrationConflict('An active Dorian binding already uses another Agent ID, environment or ContextSpace. Registration never silently replaces it.');
+    if(candidate && (candidate.providerAgentIdIdx!==agentIdIdx || candidate.environment!==environment))
+      throw new DorianRegistrationConflict('An active Dorian binding already uses another Agent ID or environment. Registration never silently replaces it.');
     if(sameProviderId[0] && (!candidate || sameProviderId[0].id!==candidate.id || sameProviderId[0].userId!==ownerUserId))
       throw new DorianRegistrationConflict('The ElevenLabs Agent ID is already bound to a different active deployment.');
     if(candidate) return {status:'ALREADY_REGISTERED',bindingId:candidate.id,agentDefinitionId:agent.id,environment};
-    if(current) await tx.agentDefinition.update({where:{id:agent.id},data:{
-      allowedDomainKeys:[...new Set([...agent.allowedDomainKeys,space.domainKey])],
-      allowedContextSpaceIds:[...new Set([...agent.allowedContextSpaceIds,space.id])]
-    }});
+    // Existing definition permissions are preserved. Deployment registration
+    // must not implicitly grant access to any participant's private data.
     const binding=await tx.agentProviderBinding.create({data:{
-      userId:ownerUserId,agentDefinitionId:agent.id,contextSpaceId:space.id,
+      userId:ownerUserId,agentDefinitionId:agent.id,contextSpaceId:anchor.id,
       provider:'ELEVENLABS',environment,isActive:true,
       providerAgentIdEnc:encrypt(agentId,PROVIDER_AAD),providerAgentIdIdx:agentIdIdx
     },select:{id:true}});

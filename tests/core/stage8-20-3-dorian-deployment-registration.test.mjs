@@ -10,7 +10,7 @@ const legacy=readFileSync('src/routes/settings/agents/+page.server.ts','utf8');
 test('registration is owner scoped and never trusts a caller-provided user id',()=>{
   assert.match(registry,/RELISH_DORIAN_DEPLOYMENT_OWNER_USER_ID/);
   assert.match(registry,/ownerUserId[:,}]|ownerUserId:ownerUserId/);
-  assert.match(registry,/contextSpace\.findFirst/);
+  assert.match(registry,/scopedSpaces/);
   assert.match(registry,/agentDefinition\.findUnique/);
   assert.doesNotMatch(registry,/input\.ownerUserId/);
 });

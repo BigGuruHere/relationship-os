@@ -58,14 +58,18 @@ export const POST: RequestHandler = async ({ request }) => {
       elevenLabsLog(traceId, 'RESPONSE', 'Rejecting initiation because agent deployment identifiers conflict.', { status: 409 });
       return json({ error: 'Agent deployment identifiers conflict.' }, { status: 409 });
     }
-    if (deployment.status !== 'RESOLVED' || !deployment.userId || !deployment.contextSpaceId) {
+    if (deployment.status !== 'RESOLVED' || !deployment.userId ||
+        (deployment.agentKey !== 'DORIAN' && !deployment.contextSpaceId)) {
       elevenLabsLog(traceId, 'RESPONSE', 'No Relish agent deployment matched this initiation.', { status: 404, warning: deployment.warning });
       return json({ error: 'No Relish agent deployment matches this call.' }, { status: 404 });
     }
 
-    // Shared Dorian inbound calls: provision separate non-login caller custody.
-    // Never fall back to the deployment owner's private workspace.
-    if (deployment.bindingId === await activeSharedDorianBindingId() && deployment.agentKey === 'DORIAN') {
+    // Shared Dorian uses session-verified participant scope only. The binding's
+    // legacy ContextSpace FK is NOT a fallback. Reject unconfigured Dorian here.
+    const sharedBindingId = await activeSharedDorianBindingId();
+    if (deployment.agentKey === 'DORIAN' && deployment.bindingId !== sharedBindingId)
+      return json({ error: 'Shared Dorian deployment is not configured.' }, { status: 404 });
+    if (deployment.agentKey === 'DORIAN' && deployment.bindingId === sharedBindingId) {
       // A browser must present its server-issued session token in the initiation payload.
       // Never derive a browser identity from user_id, contact_id or an arbitrary page URL.
       const browserToken = body?.dynamic_variables?.relish_network_session;

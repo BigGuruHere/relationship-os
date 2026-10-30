@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 // Stage 8.20: centrally published *conversational* configuration for Dorian.
 // This file deliberately does NOT make identity, ContextSpace, data access, consent
 // or proxy-routing decisions. It only projects already authorised information into
@@ -70,7 +71,7 @@ const safeContext = (domainKey: string): Domain => {
 // outages. This is NOT a silent default: it uses only a published configuration
 // successfully authenticated, validated and saved on an earlier request.
 // A fresh installation with no snapshot fails explicitly until first sync.
-export async function fetchPublishedDorianConfig(): Promise<{revision:number; config:ControlConfig} | null> {
+export async function fetchPublishedDorianConfig(providerAgentId?:string): Promise<{revision:number; config:ControlConfig} | null> {
   if (process.env.RELISH_CONTROL_PLANE_ENABLED === 'NO') return null;
   if (process.env.RELISH_CONTROL_PLANE_ENABLED !== 'YES') {
     throw new Error('[Relish control plane] RELISH_CONTROL_PLANE_ENABLED must be YES or NO.');
@@ -91,8 +92,11 @@ export async function fetchPublishedDorianConfig(): Promise<{revision:number; co
   const token = requiredEnv('RELISH_CONTROL_PLANE_READ_TOKEN',32);
   // Never ask a caller or an LLM to choose the environment. This selector is
   // solely a server-side deployment variable.
+  // One cache slot per provider agent, never cross-contaminate two personas.
+  // Historic callers without an explicit ID use the original DORIAN slot.
+  const cacheKey=providerAgentId ? 'A'+createHash('sha256').update(providerAgentId).digest('hex').slice(0,22) : 'DORIAN';
   const snapshot = await prisma.dorianAgentConfigSnapshot.findUnique({
-    where: { environment_agentKey: { environment, agentKey: 'DORIAN' } }
+    where: { environment_agentKey: { environment, agentKey: cacheKey } }
   });
   const validatedSnapshot = snapshot ? {
     revision: snapshot.revision,
@@ -104,6 +108,7 @@ export async function fetchPublishedDorianConfig(): Promise<{revision:number; co
   }
   const url = new URL('/api/v1/agents/DORIAN/config', origin);
   url.searchParams.set('env', environment);
+  if(providerAgentId) url.searchParams.set('agent_id',providerAgentId);
   let response: Response;
   try {
     response = await fetch(url, {
@@ -139,6 +144,7 @@ export async function fetchPublishedDorianConfig(): Promise<{revision:number; co
     throw new Error('[Relish control plane] Published revision went backwards unexpectedly.');
   }
   const config = mandatoryConfig(payload.config);
+  if(providerAgentId && config.agentId !== providerAgentId)throw new Error('[Relish control plane] Provider ID not matched by the selected published agent.');
   // Reject same-revision mutation: published content is immutable. Restoring
   // a previous version always creates a *new* numbered revision centrally.
   if (validatedSnapshot && payload.revision === validatedSnapshot.revision &&
@@ -149,8 +155,8 @@ export async function fetchPublishedDorianConfig(): Promise<{revision:number; co
   // domain interface; validate first and materialise a plain JSON value.
   const storedContent = JSON.parse(JSON.stringify(config));
   await prisma.dorianAgentConfigSnapshot.upsert({
-    where: { environment_agentKey: { environment, agentKey:'DORIAN' } },
-    create: { environment, agentKey:'DORIAN', revision:payload.revision, content:storedContent, fetchedAt:new Date() },
+    where: { environment_agentKey: { environment, agentKey:cacheKey } },
+    create: { environment, agentKey:cacheKey, revision:payload.revision, content:storedContent, fetchedAt:new Date() },
     update: { revision:payload.revision, content:storedContent, fetchedAt:new Date() }
   });
   return { revision:payload.revision, config };
@@ -174,7 +180,7 @@ export async function configureDorianCall(input: {
   if (process.env.RELISH_CONTROL_PLANE_ENABLED !== 'YES') {
     throw new Error('[Relish control plane] RELISH_CONTROL_PLANE_ENABLED must be YES or NO.');
   }
-  const published = input.published === undefined ? await fetchPublishedDorianConfig() : input.published;
+  const published = input.published === undefined ? await fetchPublishedDorianConfig(input.providerAgentId) : input.published;
   if (!published) throw new Error('[Relish control plane] Published configuration required when enabled.');
   const {revision,config} = published;
   if (config.agentId && config.agentId !== input.providerAgentId) {

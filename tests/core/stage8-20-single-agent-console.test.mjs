@@ -24,10 +24,10 @@ test('required runtime env is explicit, version and audience checked',()=>{
  assert.match(resolver, /Telephone caller' is the provisional placeholder/);
 });
 test('outbound and inbound call paths use published configuration before consent',()=>{
- assert.match(outbound,/const publishedDorian = await fetchPublishedDorianConfig\(\);/);
+ assert.match(outbound,/const publishedDorian\s*=\s*await fetchPublishedDorianConfig\(defaultProviderId\);/);
  assert.match(outbound,/const projected = await configureDorianCall/);
  assert.match(outbound,/withConsentGate\(projected\.dynamicVariables, policy\)/);
- assert.match(inbound,/const publishedDorian = await fetchPublishedDorianConfig\(\);/);
+ assert.match(inbound,/const publishedDorian\s*=\s*await fetchPublishedDorianConfig\(String\(body.agent_id \|\| ''\)\);/);
  assert.match(inbound,/const phoneProjection = await configureDorianCall/);
  assert.match(inbound,/withConsentGate\(phoneProjection\.dynamicVariables, callPolicy\)/);
  assert.match(inbound,/policyInstructionForCaller\(shared\.userId\)/);

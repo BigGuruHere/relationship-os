@@ -1,6 +1,6 @@
 import { policyInstructionForCaller, withConsentGate } from '$lib/server/core/relishCallPolicy';
 import { configureDorianCall, safeFirstMessage, fetchPublishedDorianConfig } from '$lib/server/integrations/elevenlabs/dorianControlPlane';
-import { activeSharedDorianBindingId, resolveSharedNetworkSession } from '$lib/server/integrations/elevenlabs/networkSession';
+import { isAuthorizedSharedDorianBindingId, resolveSharedNetworkSession } from '$lib/server/integrations/elevenlabs/networkSession';
 import { prepareNetworkDorianContext } from '$lib/server/integrations/elevenlabs/networkPreparation';
 import { recordPilotEvent } from '$lib/server/pilot';
 import { startProvisionalPhoneCall, provisionalPhoneInitiationResponse } from '$lib/server/integrations/elevenlabs/phoneOnboarding';
@@ -66,10 +66,10 @@ export const POST: RequestHandler = async ({ request }) => {
 
     // Shared Dorian uses session-verified participant scope only. The binding's
     // legacy ContextSpace FK is NOT a fallback. Reject unconfigured Dorian here.
-    const sharedBindingId = await activeSharedDorianBindingId();
-    if (deployment.agentKey === 'DORIAN' && deployment.bindingId !== sharedBindingId)
+    const sharedAllowed = deployment.agentKey === 'DORIAN' && await isAuthorizedSharedDorianBindingId(deployment.bindingId!);
+    if (deployment.agentKey === 'DORIAN' && !sharedAllowed)
       return json({ error: 'Shared Dorian deployment is not configured.' }, { status: 404 });
-    if (deployment.agentKey === 'DORIAN' && deployment.bindingId === sharedBindingId) {
+    if (deployment.agentKey === 'DORIAN' && sharedAllowed) {
       // A browser must present its server-issued session token in the initiation payload.
       // Never derive a browser identity from user_id, contact_id or an arbitrary page URL.
       const browserToken = body?.dynamic_variables?.relish_network_session;
@@ -115,7 +115,7 @@ export const POST: RequestHandler = async ({ request }) => {
         });
       }
       // Preflight before issuing a provisional phone session or claiming IN_CALL.
-      const publishedDorian = await fetchPublishedDorianConfig();
+      const publishedDorian = await fetchPublishedDorianConfig(String(body.agent_id || ''));
       const prepared = await startProvisionalPhoneCall({
         callerId: body?.caller_id, conversationId: body?.conversation_id, bindingId: deployment.bindingId
       });

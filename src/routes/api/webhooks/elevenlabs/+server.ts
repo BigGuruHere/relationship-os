@@ -10,7 +10,7 @@ import { resolveElevenLabsIdentity } from '$lib/server/integrations/elevenlabs/i
 import { resolveElevenLabsAgentDeployment } from '$lib/server/integrations/elevenlabs/deployment';
 import { elevenLabsErrorLog, elevenLabsLog, elevenLabsPayloadLog, elevenLabsTraceId } from '$lib/server/integrations/elevenlabs/debug';
 import { describeLivingUnderstandingReviewHandoff } from '$lib/server/core/livingUnderstandingReviewHandoff';
-import { activeSharedDorianBindingId, resolveSharedNetworkSession } from '$lib/server/integrations/elevenlabs/networkSession';
+import { isAuthorizedSharedDorianBindingId, resolveSharedNetworkSession } from '$lib/server/integrations/elevenlabs/networkSession';
 import { automaticLivingUnderstandingPreparationEnabled, prepareAutomaticLivingUnderstandingImpact } from '$lib/server/core/automaticLivingUnderstanding';
 import { phoneAutomaticLearningEnabled, beginPhoneUnderstanding, finishPhoneUnderstanding } from '$lib/server/core/phoneUnderstandingAutomation';
 import { prisma } from '$lib/db';
@@ -136,10 +136,10 @@ export const POST: RequestHandler = async ({ request }) => {
 
     // For Dorian, there is never a fallback to the deployment owner's workspace.
     // Only a server-issued participant session can authorize transcript custody.
-    const sharedBindingId = await activeSharedDorianBindingId();
-    if (deployment.agentKey === 'DORIAN' && deployment.bindingId !== sharedBindingId)
+    const sharedAllowed = deployment.agentKey === 'DORIAN' && await isAuthorizedSharedDorianBindingId(deployment.bindingId!, true);
+    if (deployment.agentKey === 'DORIAN' && !sharedAllowed)
       return json({ status: 'unconfigured_shared_dorian' }, { status: 202 });
-    const shared = deployment.agentKey === 'DORIAN' && deployment.bindingId === sharedBindingId
+    const shared = deployment.agentKey === 'DORIAN' && sharedAllowed
       ? await resolveSharedNetworkSession({
           bindingId: deployment.bindingId!, conversationId: normalized.metadata.externalConversationId,
           agentId: normalized.agentId, sessionToken: normalized.dynamicVariables.relish_network_session
@@ -291,7 +291,7 @@ export const POST: RequestHandler = async ({ request }) => {
       elevenLabsLog(traceId, 'LU_AUTOMATION', 'Late provider callback retained after explicit operator release; manual review required.', {
         conversationId: normalized.metadata.externalConversationId
       });
-    } else if (phoneAutomaticLearningEnabled() && deployment.bindingId === await activeSharedDorianBindingId() && ingested.contactId && ingested.participantSourceId) {
+    } else if (phoneAutomaticLearningEnabled() && await isAuthorizedSharedDorianBindingId(deployment.bindingId!,true) && ingested.contactId && ingested.participantSourceId) {
       // The transcript and attributed evidence are committed before we acknowledge.
       // AI interpretation is performed outside the webhook by the independent worker.
       // This prevents long model calls from holding the provider's HTTP connection open.

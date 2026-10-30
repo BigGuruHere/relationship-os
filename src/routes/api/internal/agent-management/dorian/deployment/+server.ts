@@ -3,7 +3,7 @@
 import { json } from '@sveltejs/kit';
 import { timingSafeEqual } from 'node:crypto';
 import type { RequestHandler } from './$types';
-import { readDorianDeploymentRegistration, registerDorianDeployment,
+import { readDorianDeploymentRegistration, registerDorianDeployment, replaceDorianDeployment,
   DorianRegistrationConflict } from '$lib/server/integrations/elevenlabs/dorianDeploymentRegistry';
 
 const NO_STORE={'cache-control':'no-store'};
@@ -33,8 +33,10 @@ export const POST:RequestHandler=async({request})=>{
   let body:Record<string,unknown>;
   try{const raw=await request.text();if(raw.length>3000)throw Error('size');const v=JSON.parse(raw);if(!v||typeof v!=='object'||Array.isArray(v))throw Error('shape');body=v;}
   catch{return json({error:'INVALID_REQUEST'},{status:400,headers:NO_STORE});}
-  if(body.confirm!=='REGISTER')return json({error:'EXPLICIT_CONFIRMATION_REQUIRED'},{status:400,headers:NO_STORE});
-  try{return json(await registerDorianDeployment(body),{headers:NO_STORE});}
+  const replacing=body.operation==='REPLACE';
+  if(body.confirm!==(replacing?'REPLACE':'REGISTER'))
+    return json({error:'EXPLICIT_CONFIRMATION_REQUIRED'},{status:400,headers:NO_STORE});
+  try{return json(await (replacing?replaceDorianDeployment(body):registerDorianDeployment(body)),{headers:NO_STORE});}
   catch(error){
     const conflict=error instanceof DorianRegistrationConflict;
     if(!conflict) {

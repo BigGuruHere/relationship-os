@@ -44,3 +44,15 @@ npm run build
 You can preview the production build with `npm run preview`.
 
 > To deploy your app, you may need to install an [adapter](https://svelte.dev/docs/kit/adapters) for your target environment.
+
+## Stage 8.21 revised — Multi-agent provider bindings
+
+Multiple active ElevenLabs provider IDs may now be registered to the existing
+DORIAN conversational runtime in each Relish database. Inbound initiation and
+post-call handling use the exact authorized binding; Relish session tokens remain
+bound to their original `agentBindingId` and participant ContextSpace. Each
+provider's published config is cached separately. This requires **no Prisma
+migration**. If an environment has more than one registered Dorian provider,
+set `RELISH_DORIAN_DEFAULT_PROVIDER_AGENT_ID` explicitly for outbound SMS and
+browser-initiated calls; cold incoming telephone calls resolve their own agent ID.
+See `Stage_8_21_Revised_Agent_First_Multi_Agent_Management.md` for deployment.

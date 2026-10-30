@@ -15,21 +15,56 @@ export function configuredSharedBindingId() {
   return process.env.RELISH_DORIAN_DEPLOYMENT_OWNER_USER_ID
     ? '' : (process.env.RELISH_NETWORK_DORIAN_BINDING_ID || '').trim();
 }
+// Authorize a particular incoming provider binding, not a global single-agent
+// binding. Session and tool calls still require their own signed token.
+export async function isAuthorizedSharedDorianBindingId(bindingId: string, allowHistorical=false) {
+  if(!bindingId)return false;
+  const ownerUserId=process.env.RELISH_DORIAN_DEPLOYMENT_OWNER_USER_ID?.trim();
+  if(!ownerUserId)return bindingId===configuredSharedBindingId();
+  const row=await prisma.agentProviderBinding.findFirst({where:{
+    id:bindingId,userId:ownerUserId,provider:'ELEVENLABS',
+    ...(!allowHistorical?{isActive:true,validFrom:{lte:new Date()},OR:[{validTo:null},{validTo:{gt:new Date()}}]}:{}),
+    agentDefinition:{key:'DORIAN',userId:ownerUserId,category:'conversation',deploymentScope:'external_voice'}
+  },select:{id:true}});
+  return Boolean(row);
+}
+// Outbound SMS/browser calls need a single server-selected default. Direct
+// inbound calls do not use this default; their signed provider ID resolves the
+// exact binding. With one binding the legacy default remains automatic.
 export async function activeSharedDorianBindingId() {
-  const ownerUserId = process.env.RELISH_DORIAN_DEPLOYMENT_OWNER_USER_ID?.trim();
-  if (!ownerUserId) return configuredSharedBindingId();
-  const rows = await prisma.agentProviderBinding.findMany({ where: {
-    userId: ownerUserId, provider: 'ELEVENLABS', isActive: true,
-    agentDefinition: { key: 'DORIAN', userId: ownerUserId, category: 'conversation', deploymentScope: 'external_voice' },
-    validFrom: { lte: new Date() }, OR: [{ validTo: null }, { validTo: { gt: new Date() } }]
-  }, select: { id: true }, take: 2 });
-  // Missing and ambiguous are both closed. Never fall back to an old Dev UUID.
-  return rows.length === 1 ? rows[0].id : '';
+  const ownerUserId=process.env.RELISH_DORIAN_DEPLOYMENT_OWNER_USER_ID?.trim();
+  if(!ownerUserId)return configuredSharedBindingId();
+  const rows=await prisma.agentProviderBinding.findMany({ where: {
+    userId:ownerUserId,provider:'ELEVENLABS',isActive:true,
+    agentDefinition:{key:'DORIAN',userId:ownerUserId,category:'conversation',deploymentScope:'external_voice'},
+    validFrom:{lte:new Date()},OR:[{validTo:null},{validTo:{gt:new Date()}}]
+  },select:{id:true,providerAgentIdIdx:true},take:100});
+  const preferred=process.env.RELISH_DORIAN_DEFAULT_PROVIDER_AGENT_ID?.trim();
+  if(preferred){
+    const {buildScopedIndexToken}=await import('$lib/crypto');
+    const idx=buildScopedIndexToken(preferred,'agent-provider:elevenlabs:agent-id');
+    const matching=rows.filter(row=>row.providerAgentIdIdx===idx);
+    if(matching.length!==1)throw Error('[Relish Dorian] RELISH_DORIAN_DEFAULT_PROVIDER_AGENT_ID does not uniquely match an active binding.');
+    return matching[0].id;
+  }
+  if(rows.length>1)throw Error('[Relish Dorian] Multiple active provider agents: set RELISH_DORIAN_DEFAULT_PROVIDER_AGENT_ID for browser and outbound calls.');
+  return rows.length===1?rows[0].id:'';
+}
+// Resolve the outbound/browser default before creating a participant session so
+// config-service failure cannot leave an unstarted session pending.
+export async function defaultSharedDorianProviderAgentId(): Promise<string | null> {
+  const bindingId=await activeSharedDorianBindingId();
+  if(!bindingId)return null;
+  const row=await prisma.agentProviderBinding.findFirst({
+    where:{id:bindingId,provider:'ELEVENLABS',isActive:true,providerAgentIdEnc:{not:null}},
+    select:{providerAgentIdEnc:true}
+  });
+  return row?.providerAgentIdEnc ? decrypt(row.providerAgentIdEnc,'agentProviderBinding.providerAgentId') : null;
 }
 export async function startSharedNetworkSession(userId: string, contextSpaceId: string, pilot?: {
   pilotEntryId: string; domainKey: 'business' | 'general' | 'dating';
   profileName: string; profileKind: string;
-}) {
+}, expectedProviderAgentId?: string) {
   const bindingId = await activeSharedDorianBindingId();
   if (!bindingId) return null;
   const binding = await prisma.agentProviderBinding.findFirst({
@@ -39,6 +74,7 @@ export async function startSharedNetworkSession(userId: string, contextSpaceId: 
     select: { id: true, providerAgentIdEnc: true }
   });
   if (!binding?.providerAgentIdEnc) return null;
+  if (expectedProviderAgentId && decrypt(binding.providerAgentIdEnc,'agentProviderBinding.providerAgentId') !== expectedProviderAgentId) return null;
   // SECURITY: The pilot entry, owner and domain are server-resolved and rechecked here.
   if (pilot) {
     const entry = await prisma.pilotProfileEntry.findFirst({ where: {
@@ -106,7 +142,7 @@ export async function startSharedNetworkSession(userId: string, contextSpaceId: 
 export async function resolveSharedNetworkSession(input: {
   bindingId: string; conversationId: string; agentId: string; sessionToken: unknown;
 }) {
-  if (!input.bindingId || input.bindingId !== await activeSharedDorianBindingId()) return null;
+  if (!input.bindingId || !(await isAuthorizedSharedDorianBindingId(input.bindingId,true))) return null;
   // A session cannot be claimed by an empty or malformed provider conversation ID.
   if (typeof input.conversationId !== 'string' || !input.conversationId.trim() || input.conversationId.length > 240) return null;
   const token = typeof input.sessionToken === 'string' ? input.sessionToken : '';

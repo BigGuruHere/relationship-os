@@ -8,7 +8,7 @@ import { encrypt, buildScopedIndexToken } from '$lib/crypto';
 import { ensureProvisionalPhoneCaller } from '$lib/server/integrations/elevenlabs/phoneOnboarding';
 import { establishPhoneDefaultFromInvitation } from '$lib/server/integrations/elevenlabs/phoneDefaultContext';
 import { ensurePilotSelfContact, pilotDomainForKind, recordPilotEvent, type PilotDomain } from '$lib/server/pilot';
-import { startSharedNetworkSession } from '$lib/server/integrations/elevenlabs/networkSession';
+import { startSharedNetworkSession, defaultSharedDorianProviderAgentId } from '$lib/server/integrations/elevenlabs/networkSession';
 import { normalizePhoneForIdentity } from '$lib/server/integrations/elevenlabs/phone';
 import { sendTelnyxSms } from '$lib/server/integrations/telnyx/messaging';
 
@@ -217,15 +217,18 @@ export async function consumePilotSmsForCallback(input: { messageId: string; fro
     // Preflight before creating the private Dorian session; a failed central
     // fetch must not leave a stale pending conversation session.
     processingStage = 'AGENT_CONFIGURATION';
-    const publishedDorian = await fetchPublishedDorianConfig();
+    const defaultProviderId=await defaultSharedDorianProviderAgentId();
+    if(!defaultProviderId)return fail('PRIVATE_SESSION_UNAVAILABLE');
+    const publishedDorian=await fetchPublishedDorianConfig(defaultProviderId);
     processingStage = 'PRIVATE_SESSION';
     trace('session.requested', undefined, invitation.id);
     const session = await startSharedNetworkSession(caller.userId, contextSpaceId, {
       pilotEntryId: entry.id, domainKey: invitation.domainKey as PilotDomain,
       profileName: profile.displayName || '', profileKind: profile.kind
-    });
+    },defaultProviderId);
     if (!session || session.status !== 'READY') return fail('PRIVATE_SESSION_UNAVAILABLE');
     trace('session.ready', undefined, invitation.id);
+    if(session.agentId!==defaultProviderId)return fail('DORIAN_DEFAULT_CHANGED');
     const dynamicVariables = JSON.parse(session.dynamicVariables);
     const policy = await policyInstructionForCaller(caller.userId);
     // Outbound calls do not run initiation webhooks if client data is supplied. The opaque

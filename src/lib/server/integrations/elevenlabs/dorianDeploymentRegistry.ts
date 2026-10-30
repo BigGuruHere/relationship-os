@@ -45,25 +45,27 @@ export async function readDorianDeploymentRegistration() {
     scopedSpaces(ownerUserId),
     prisma.agentDefinition.findUnique({ where: { userId_key: { userId: ownerUserId, key: 'DORIAN' } }, select: { id: true, category: true, deploymentScope: true } })
   ]);
-  if (!owner) return { environment: env, ready: false, reason: 'OWNER_NOT_FOUND', spaces: [], binding: null };
+  if (!owner) return { environment: env, ready: false, reason: 'OWNER_NOT_FOUND', spaces: [], bindings:[],binding:null };
   const rows = definition ? await prisma.agentProviderBinding.findMany({
     where: { userId:ownerUserId, agentDefinitionId:definition.id, provider:'ELEVENLABS', isActive:true,
-      validFrom:{ lte:new Date() }, OR:[{validTo:null},{validTo:{gt:new Date()}}] },
-    select: { id:true, contextSpaceId:true, environment:true, providerAgentIdEnc:true }, take: 3
+      validFrom:{lte:new Date()},OR:[{validTo:null},{validTo:{gt:new Date()}}] },
+    select:{id:true,environment:true,providerAgentIdEnc:true},take:1000
   }) : [];
-  const binding = rows.length === 1 ? {
-    id: rows[0].id, environment:rows[0].environment,
-    agentId: rows[0].providerAgentIdEnc ? decrypt(rows[0].providerAgentIdEnc,PROVIDER_AAD) : ''
-  } : null;
-  const environmentMatches = !binding || binding.environment === expectedProviderEnvironment();
-  return { environment:env, providerEnvironment:expectedProviderEnvironment(),
-    runtimeContextSource:'PARTICIPANT_SESSION',
-    ready:rows.length<=1 && environmentMatches && (rows.length===1 || Boolean(legacyAnchor(spaces))) && !(definition && (definition.category!=='conversation' || definition.deploymentScope!=='external_voice')),
-    reason:!environmentMatches?'BINDING_ENVIRONMENT_MISMATCH':
-      rows.length>1?'MULTIPLE_ACTIVE_DORIAN_BINDINGS':
-      definition && (definition.category!=='conversation' || definition.deploymentScope!=='external_voice')?'INCOMPATIBLE_AGENT_DEFINITION':
-      !binding && !legacyAnchor(spaces)?'OWNER_CONTEXT_ANCHOR_NOT_FOUND':null,
-    binding };
+  const bindings = rows.map(row=>({
+    id:row.id,environment:row.environment,
+    agentId:row.providerAgentIdEnc?decrypt(row.providerAgentIdEnc,PROVIDER_AAD):''
+  }));
+  const environmentMatches=rows.every(row=>row.environment===expectedProviderEnvironment());
+  const compatible=!(definition && (definition.category!=='conversation'||definition.deploymentScope!=='external_voice'));
+  const ready=Boolean(owner && legacyAnchor(spaces) && environmentMatches && compatible);
+  return {environment:env,providerEnvironment:expectedProviderEnvironment(),
+    runtimeContextSource:'PARTICIPANT_SESSION',ready,
+    reason:!owner?'OWNER_NOT_FOUND':!environmentMatches?'BINDING_ENVIRONMENT_MISMATCH':
+      !compatible?'INCOMPATIBLE_AGENT_DEFINITION':!legacyAnchor(spaces)?'OWNER_CONTEXT_ANCHOR_NOT_FOUND':null,
+    bindings,
+    // Compatibility with old console versions; never select one binding from
+    // multiple active choices as the implicit primary.
+    binding:bindings.length===1?bindings[0]:null};
 }
 
 export class DorianRegistrationConflict extends Error { status=409; }
@@ -103,17 +105,15 @@ export async function registerDorianDeployment(input: { environment:unknown; age
       systemPrompt:'You are Dorian, a Relish conversation partner. Use only server-authorised participant context, consent procedures and tool permissions.'
     }});
     const validity={provider:'ELEVENLABS',isActive:true,validFrom:{lte:new Date()},OR:[{validTo:null},{validTo:{gt:new Date()}}]};
-    const active=await tx.agentProviderBinding.findMany({where:{...validity,agentDefinitionId:agent.id},
-      select:{id:true,userId:true,contextSpaceId:true,environment:true,providerAgentIdIdx:true}});
-    const sameProviderId=await tx.agentProviderBinding.findMany({where:{...validity,providerAgentIdIdx:agentIdIdx},
-      select:{id:true,userId:true,agentDefinitionId:true,contextSpaceId:true,environment:true}});
-    if(active.length>1 || sameProviderId.length>1) throw new DorianRegistrationConflict('Ambiguous active bindings; resolve the duplicates before registering.');
-    const candidate=active[0];
-    if(candidate && (candidate.providerAgentIdIdx!==agentIdIdx || candidate.environment!==environment))
-      throw new DorianRegistrationConflict('An active Dorian binding already uses another Agent ID or environment. Registration never silently replaces it.');
-    if(sameProviderId[0] && (!candidate || sameProviderId[0].id!==candidate.id || sameProviderId[0].userId!==ownerUserId))
-      throw new DorianRegistrationConflict('The ElevenLabs Agent ID is already bound to a different active deployment.');
-    if(candidate) return {status:'ALREADY_REGISTERED',bindingId:candidate.id,agentDefinitionId:agent.id,environment};
+    // Multiple provider IDs may be active for the same Dorian definition.
+    // Authorization is exact-ID; a different ID never replaces the old one.
+    const activeForId=await tx.agentProviderBinding.findMany({where:{...validity,providerAgentIdIdx:agentIdIdx},
+      select:{id:true,userId:true,agentDefinitionId:true,environment:true},take:2});
+    if(activeForId.length>1)throw new DorianRegistrationConflict('Ambiguous provider ID; review the existing bindings.');
+    const candidate=activeForId[0];
+    if(candidate && (candidate.userId!==ownerUserId || candidate.agentDefinitionId!==agent.id || candidate.environment!==environment))
+      throw new DorianRegistrationConflict('ElevenLabs Agent ID is already bound to a different active deployment.');
+    if(candidate)return {status:'ALREADY_REGISTERED',bindingId:candidate.id,agentDefinitionId:agent.id,environment};
     // Existing definition permissions are preserved. Deployment registration
     // must not implicitly grant access to any participant's private data.
     const binding=await tx.agentProviderBinding.create({data:{
@@ -122,5 +122,60 @@ export async function registerDorianDeployment(input: { environment:unknown; age
       providerAgentIdEnc:encrypt(agentId,PROVIDER_AAD),providerAgentIdIdx:agentIdIdx
     },select:{id:true}});
     return {status:'REGISTERED',bindingId:binding.id,agentDefinitionId:agent.id,environment};
+  },{timeout:15000});
+}
+
+// Stage 8.21 — explicit replacement of a provider agent ID. Historical bindings
+// are archived (never deleted) so audit/session relationships stay intact.
+// This is intended for a quiet pilot cutover; recent calls prevent rotation.
+export async function replaceDorianDeployment(input: {
+  environment:unknown; agentId:unknown; previousBindingId:unknown;
+}) {
+  const env=expectedRelishDorianEnvironment();
+  if(input.environment!==env)throw new DorianRegistrationConflict('Relish environment mismatch.');
+  const ownerUserId=configuredOwner();
+  const agentId=String(input.agentId??'').trim();
+  const previousBindingId=String(input.previousBindingId??'');
+  if(!validElevenLabsAgentId(agentId)||!/^[a-fA-F0-9-]{36}$/.test(previousBindingId))
+    throw new Error('Invalid replacement identifiers.');
+  const idx=buildScopedIndexToken(agentId,PROVIDER_SCOPE);
+  const providerEnvironment=expectedProviderEnvironment();
+  return prisma.$transaction(async tx=>{
+    await tx.$queryRaw`SELECT 1::integer AS locked FROM (SELECT pg_advisory_xact_lock(820300031)) AS lock_row`;
+    const definition=await tx.agentDefinition.findUnique({where:{userId_key:{userId:ownerUserId,key:'DORIAN'}}});
+    if(!definition||definition.category!=='conversation'||definition.deploymentScope!=='external_voice')
+      throw new DorianRegistrationConflict('Dorian definition missing or incompatible.');
+    const active=await tx.agentProviderBinding.findMany({where:{userId:ownerUserId,
+      agentDefinitionId:definition.id,provider:'ELEVENLABS',isActive:true,
+      validFrom:{lte:new Date()},OR:[{validTo:null},{validTo:{gt:new Date()}}]},
+      select:{id:true,providerAgentIdIdx:true,environment:true,userId:true,contextSpaceId:true}});
+    if(active.length!==1 || active[0].id!==previousBindingId || active[0].environment!==providerEnvironment)
+      throw new DorianRegistrationConflict('Current binding changed. Refresh before replacing it.');
+    if(active[0].providerAgentIdIdx===idx)
+      return {status:'ALREADY_REGISTERED',bindingId:active[0].id,agentDefinitionId:definition.id,environment:providerEnvironment};
+    const collision=await tx.agentProviderBinding.count({where:{provider:'ELEVENLABS',providerAgentIdIdx:idx,isActive:true}});
+    if(collision)throw new DorianRegistrationConflict('New ElevenLabs agent ID is already used by an active binding.');
+    const cutoff=new Date(Date.now()-2*60*60*1000);
+    const recent=await tx.networkDorianSession.count({where:{agentBindingId:previousBindingId,createdAt:{gte:cutoff}}});
+    if(recent>0)throw new DorianRegistrationConflict('Recent Dorian calls exist for this binding. Wait at least two hours after the final call before replacing.');
+    const activeWork=await tx.networkDorianSession.count({where:{agentBindingId:previousBindingId,
+      understandingOutcome:{in:['QUEUED','WORKING']}}});
+    if(activeWork>0)throw new DorianRegistrationConflict('Unfinished understanding processing must be recovered before replacing this binding.');
+    const priorSessions=await tx.networkDorianSession.findMany({where:{agentBindingId:previousBindingId,
+      conversationId:{not:null}},select:{conversationId:true},take:2001});
+    if(priorSessions.length>2000)throw new DorianRegistrationConflict('Too many historical sessions to verify safely. Manual audit required.');
+    const conversationIds=priorSessions.map(x=>x.conversationId).filter((x):x is string=>!!x);
+    if(conversationIds.length) {
+      const stillInCall=await tx.networkPhoneCaller.count({where:{understandingState:'IN_CALL',understandingConversationId:{in:conversationIds}}});
+      if(stillInCall>0)throw new DorianRegistrationConflict('A phone caller is still IN_CALL. Resolve this in Call Recovery before replacing.');
+    }
+    const now=new Date();
+    await tx.agentProviderBinding.update({where:{id:previousBindingId},data:{isActive:false,validTo:now}});
+    const next=await tx.agentProviderBinding.create({data:{
+      userId:ownerUserId,agentDefinitionId:definition.id,contextSpaceId:active[0].contextSpaceId,
+      provider:'ELEVENLABS',environment:providerEnvironment,isActive:true,
+      providerAgentIdEnc:encrypt(agentId,PROVIDER_AAD),providerAgentIdIdx:idx
+    },select:{id:true}});
+    return {status:'REPLACED',bindingId:next.id,previousBindingId,agentDefinitionId:definition.id,environment:providerEnvironment};
   },{timeout:15000});
 }

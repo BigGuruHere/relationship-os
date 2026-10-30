@@ -2,7 +2,7 @@
 // SECURITY: A phone number is not authentication, and the provider cannot select a target contact.
 import { prisma } from '$lib/db';
 import { encrypt, buildIndexToken } from '$lib/crypto';
-import { networkSessionHash, activeSharedDorianBindingId } from './networkSession';
+import { networkSessionHash, activeSharedDorianBindingId, isAuthorizedSharedDorianBindingId } from './networkSession';
 import { conversationalPolicyEnabled, callerHasAcceptedCurrentTerms } from '$lib/server/core/relishCallPolicy';
 
 export function normalizePreferredName(value: unknown) {
@@ -24,10 +24,8 @@ export async function saveProvisionalPreferredName(input: {
   if (!/^[A-Za-z0-9_-]{40,100}$/.test(token) || !/^conv_[A-Za-z0-9_-]{8,100}$/.test(conversationId)) {
     return { status: 'UNAUTHORISED' as const };
   }
-  const bindingId = await activeSharedDorianBindingId();
-  if (!bindingId) return { status: 'UNAUTHORISED' as const };
   const session = await prisma.networkDorianSession.findUnique({ where: { tokenHash: networkSessionHash(token) } });
-  if (!session || session.conversationId !== conversationId || session.agentBindingId !== bindingId || session.expiresAt <= new Date()) {
+  if (!session || session.conversationId !== conversationId || !(await isAuthorizedSharedDorianBindingId(session.agentBindingId)) || session.expiresAt <= new Date()) {
     return { status: 'UNAUTHORISED' as const };
   }
   // Don't persist new personal details from the conversation before voice consent.

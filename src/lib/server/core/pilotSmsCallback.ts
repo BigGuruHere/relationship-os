@@ -204,16 +204,23 @@ export async function consumePilotSmsForCallback(input: { messageId: string; fro
     // Invitation and effective policy must match: never send newer terms under an old version.
     if (invitation.termsVersion !== cfg.version) return fail('POLICY_CHANGED_REISSUE');
     processingStage = 'TERMS_SMS';
-    trace('terms_sms.requested', undefined, invitation.id);
-    try {
-      await sendTelnyxSms(phone, `Dorian (Relish AI) will call shortly. Please read our Terms and Privacy information (${invitation.termsVersion}): ${cfg.legalUrl} Dorian will ask for your agreement before chatting. Calls may be recorded/transcribed and privately processed if you agree. Reply STOP to opt out of texts.`);
-    } catch (error) {
-      // Preserve the status code, when available, without emitting provider bodies or credentials.
-      const safeCode = error instanceof Error && /^TELNYX_SMS_HTTP_\d{3}$/.test(error.message)
-        ? error.message : 'TELNYX_TERMS_SMS_FAILED';
-      return fail(safeCode);
+    // Check policy on EVERY outbound invitation too. Already accepted callers don't
+    // get another notice. The existing QR-outbound path still sends before calling.
+    const outboundPolicy = await policyInstructionForCaller(caller.userId);
+    let outboundSmsStatus: 'SENT' | 'NOT_REQUIRED' = 'NOT_REQUIRED';
+    if (!outboundPolicy.accepted) {
+      trace('terms_sms.requested', undefined, invitation.id);
+      try {
+        await sendTelnyxSms(phone, `Dorian (Relish AI) will call shortly. Please read our Terms and Privacy information (${invitation.termsVersion}): ${cfg.legalUrl} Dorian will ask for your agreement before chatting. Calls may be recorded/transcribed and privately processed if you agree. Reply STOP to opt out of texts.`);
+      } catch (error) {
+        // Preserve provider status only; never log SMS content or caller number.
+        const safeCode = error instanceof Error && /^TELNYX_SMS_HTTP_\d{3}$/.test(error.message)
+          ? error.message : 'TELNYX_TERMS_SMS_FAILED';
+        return fail(safeCode);
+      }
+      outboundSmsStatus = 'SENT';
+      trace('terms_sms.accepted', undefined, invitation.id);
     }
-    trace('terms_sms.accepted', undefined, invitation.id);
     // Preflight before creating the private Dorian session; a failed central
     // fetch must not leave a stale pending conversation session.
     processingStage = 'AGENT_CONFIGURATION';
@@ -230,7 +237,7 @@ export async function consumePilotSmsForCallback(input: { messageId: string; fro
     trace('session.ready', undefined, invitation.id);
     if(session.agentId!==defaultProviderId)return fail('DORIAN_DEFAULT_CHANGED');
     const dynamicVariables = JSON.parse(session.dynamicVariables);
-    const policy = await policyInstructionForCaller(caller.userId);
+    const policy = await policyInstructionForCaller(caller.userId, outboundSmsStatus);
     // Outbound calls do not run initiation webhooks if client data is supplied. The opaque
     // Relish session binds post-call ingestion to the exact participant and context.
     Object.assign(dynamicVariables, {

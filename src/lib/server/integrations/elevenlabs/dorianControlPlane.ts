@@ -213,6 +213,13 @@ export async function configureDorianCall(input: {
 // Consent is a server-owned opening procedure independent of editable greetings.
 // Stage 8.20.2: put the actual question into the first spoken turn, rather than
 // hoping the model follows up a vague offer to explain the policy.
-export function safeFirstMessage(firstMessage:string | null, policy:{accepted:boolean}):string | null {
-  return policy.accepted ? firstMessage : "Hi, I'm Dorian, your AI networking partner. Before we get started, Relish may record, transcribe and privately process our conversation. The current Terms and Privacy Notice are available through Relish. Do you agree to continue under those terms?";
+export function safeFirstMessage(firstMessage:string | null, policy:{accepted:boolean; smsStatus?:string}):string | null {
+  if (policy.accepted) return firstMessage;
+  // The initial voice turn must match the actual SMS submission state.
+  const sms = policy.smsStatus === 'SENT'
+    ? "I've just sent a text with our terms and privacy information. "
+    : policy.smsStatus === 'ALREADY_SENT'
+      ? "You should have a previous text with our terms and privacy information. "
+      : "Our terms and privacy information are on the Relish website. I can't confirm a text was sent. ";
+  return `Hi, I'm Dorian. ${sms}We may record, transcribe and privately process our conversation. Are you happy to agree to the current terms so we can chat?`;
 }

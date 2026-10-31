@@ -3997,6 +3997,21 @@ model RelishCallPolicyAcceptance {
   @@index([userId, policyVersion, acceptedAt])
 }
 
+// Stage 8.22: one dispatch claim per provisional caller and current policy URL/version.
+// Sending a legal notice is not evidence of consent or handset delivery.
+model RelishPolicySmsDispatch {
+  id String @id @default(uuid())
+  userId String
+  policyVersion String @db.VarChar(60)
+  legalUrl String
+  state String @default("PENDING") @db.VarChar(16)
+  attemptedAt DateTime @default(now())
+  acceptedAt DateTime?
+  lastErrorCode String? @db.VarChar(80)
+  @@unique([userId, policyVersion, legalUrl])
+  @@index([attemptedAt])
+}
+
 // Stage 8.20: last verified, versioned Dorian config from the ONE external
 // Agent Management service. No participant data is stored in these rows.
 // The snapshot lets live calls use known-good instructions if the management

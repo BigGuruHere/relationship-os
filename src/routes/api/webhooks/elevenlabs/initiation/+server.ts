@@ -1,3 +1,4 @@
+import { dispatchCurrentPolicySms } from '$lib/server/core/relishPolicySms';
 import { policyInstructionForCaller, withConsentGate } from '$lib/server/core/relishCallPolicy';
 import { configureDorianCall, safeFirstMessage, fetchPublishedDorianConfig } from '$lib/server/integrations/elevenlabs/dorianControlPlane';
 import { isAuthorizedSharedDorianBindingId, resolveSharedNetworkSession } from '$lib/server/integrations/elevenlabs/networkSession';
@@ -165,7 +166,11 @@ export const POST: RequestHandler = async ({ request }) => {
       });
       // Stage 8.20.2: consent controls the mandatory first procedure, not delivery
       // of participant-scoped name, previous understanding or call context.
-      const callPolicy = await policyInstructionForCaller(prepared.userId);
+      const initialPolicy = await policyInstructionForCaller(prepared.userId);
+      // Submission precedes speaking. A failure cannot be misrepresented as delivery.
+      const smsStatus = await dispatchCurrentPolicySms({ userId: prepared.userId,
+        phone: body?.caller_id, accepted: initialPolicy.accepted });
+      const callPolicy = await policyInstructionForCaller(prepared.userId, smsStatus);
       response.dynamic_variables = withConsentGate(phoneProjection.dynamicVariables, callPolicy) as any;
       const firstMessage = safeFirstMessage(phoneProjection.firstMessage || response.conversation_config_override.agent.first_message, callPolicy);
       if (firstMessage) response.conversation_config_override.agent.first_message = firstMessage;

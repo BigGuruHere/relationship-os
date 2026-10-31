@@ -120,14 +120,29 @@ export async function releasePhoneContinuityWithoutUnderstanding(conversationId:
 }
 
 export async function beginPhoneUnderstanding(conversationId:string) {
-  // Invoked only AFTER the transcript and participant source are committed.
-  // This is the first point at which the independent worker may claim the call.
-  await setDorianCallUnderstanding(conversationId, 'PENDING');
-  await prisma.networkPhoneCaller.updateMany({
-    where:{understandingConversationId:conversationId,
-      understandingState:{ in: ['AWAITING_INGEST', 'IN_CALL'] }},
-    data:{understandingState:'PROCESSING',understandingStateAt:new Date()}
+  // Stage 8.22.4: enter the understanding gate ONLY after a signed completion
+  // and after participant transcript evidence is committed. An initiation
+  // request never reserves this state.
+  const session = await prisma.networkDorianSession.findUnique({
+    where: { conversationId }, select: { userId: true, pilotEntryId: true }
   });
+  const call = await prisma.dorianVoiceCallLifecycle.findUnique({
+    where: { conversationId }, select: { callState: true, endedAt: true, mode: true, understandingState: true }
+  });
+  if (!session || session.pilotEntryId || call?.callState !== 'ENDED' ||
+      call.mode !== 'PARTICIPANT' || !call.endedAt) {
+    throw new Error('Cannot queue phone understanding without verified completed participant evidence.');
+  }
+  // Duplicate post-call callbacks cannot requeue a terminal LU outcome.
+  if (call.understandingState !== 'PENDING') return false;
+  const claimed = await prisma.networkPhoneCaller.updateMany({
+    where: { userId: session.userId, understandingState: 'READY' },
+    data: { understandingState: 'PROCESSING', understandingConversationId: conversationId,
+      understandingCallEndedAt: call.endedAt, understandingStateAt: new Date() }
+  });
+  // Concurrent valid calls can finish in either order. The durable ledger
+  // retains PENDING and the worker claims the next call after the first job.
+  return claimed.count === 1;
 }
 
 export async function releaseExpiredPhoneContinuityLock(callerId: string) {

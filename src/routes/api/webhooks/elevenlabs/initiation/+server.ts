@@ -1,8 +1,8 @@
 import { finishPhoneUnderstanding } from '$lib/server/core/phoneUnderstandingAutomation';
 import { recordDorianCallInitiation } from '$lib/server/core/dorianVoiceCallLifecycle';
-import { dispatchCurrentPolicySms } from '$lib/server/core/relishPolicySms';
-import { policyInstructionForCaller, withConsentGate } from '$lib/server/core/relishCallPolicy';
-import { configureDorianCall, safeFirstMessage, fetchPublishedDorianConfig } from '$lib/server/integrations/elevenlabs/dorianControlPlane';
+import { enqueueCurrentPolicySms, kickQueuedPolicySms } from '$lib/server/core/relishPolicySms';
+import { policyInstructionForCaller, instructionForKnownPolicyStatus, withConsentGate } from '$lib/server/core/relishCallPolicy';
+import { configureDorianCall, safeFirstMessage, readPublishedDorianConfigSnapshot } from '$lib/server/integrations/elevenlabs/dorianControlPlane';
 import { isAuthorizedSharedDorianBindingId, resolveSharedNetworkSession } from '$lib/server/integrations/elevenlabs/networkSession';
 import { prepareNetworkDorianContext } from '$lib/server/integrations/elevenlabs/networkPreparation';
 import { recordPilotEvent } from '$lib/server/pilot';
@@ -15,9 +15,26 @@ import { runWithExternalWorkspaceCustody } from '$lib/server/core/contextSpace';
 import { buildElevenLabsInitiationData, verifyInitiationAuthorization } from '$lib/server/integrations/elevenlabs/initiation';
 import { resolveElevenLabsAgentDeployment } from '$lib/server/integrations/elevenlabs/deployment';
 import { elevenLabsErrorLog, elevenLabsLog, elevenLabsPayloadLog, elevenLabsTraceId } from '$lib/server/integrations/elevenlabs/debug';
+import { finishDorianInitiationData, initiationContractDiagnostics } from '$lib/server/integrations/elevenlabs/voiceInitiationContract.mjs';
 
 export const POST: RequestHandler = async ({ request }) => {
   const traceId = elevenLabsTraceId('el-init');
+  const initiationStarted = performance.now();
+  // An application response log is not proof ElevenLabs accepted it.
+  const phoneResponse = (payload: unknown, mode: 'PARTICIPANT' | 'BROWSER' | 'PROCESSING_ONLY' | 'UNRESOLVED') => {
+    const validated = finishDorianInitiationData(payload, mode);
+    const durationMs = Math.round(performance.now() - initiationStarted);
+    const contract = initiationContractDiagnostics(validated);
+    elevenLabsLog(traceId, 'CONTRACT', 'Validated initiation response prepared.', {
+      // Key presence only: never include the real session credential in logs.
+      hasRequiredToolCredential: contract.hasSessionVariable,
+      hasCallInstruction: contract.hasCallInstruction,
+      allVariablesScalar: contract.allVariablesScalar,
+      mode, elapsedMs: durationMs,
+      overThreeSeconds: durationMs > 3000
+    });
+    return json(validated);
+  };
   elevenLabsLog(traceId, 'REQUEST', 'Conversation initiation request received.', {
     method: request.method,
     path: new URL(request.url).pathname,
@@ -100,6 +117,7 @@ export const POST: RequestHandler = async ({ request }) => {
         }
         const pilotPrompt = entry ? `You are the participant's own AI networking partner. Talk naturally about what matters to them and what they enjoy contributing to others. The introduction came through a public profile, but do not center the inviter or imply that personal data is shared with them.` : '';
         const browserPolicy = await policyInstructionForCaller(shared.userId);
+        const browserPublished = await readPublishedDorianConfigSnapshot(String(body.agent_id || ''));
         const browserProjection = await configureDorianCall({
           dynamicVariables: {
             ...context, ...(pilotPrompt ? { call_instruction: pilotPrompt } : {}),
@@ -108,45 +126,48 @@ export const POST: RequestHandler = async ({ request }) => {
           domainKey: shared.domainKey,
           previousCalls: Number(context.previous_calls || 0),
           preferredName: String(context.user_name || ''),
-          providerAgentId: String(body.agent_id || '')
+          providerAgentId: String(body.agent_id || ''),
+          published: browserPublished
         });
         const browserFirstMessage = safeFirstMessage(browserProjection.firstMessage, browserPolicy);
-        return json({
+        return phoneResponse({
           type: 'conversation_initiation_client_data',
           dynamic_variables: withConsentGate(browserProjection.dynamicVariables, browserPolicy),
           ...(browserFirstMessage ? { conversation_config_override: { agent: { first_message: browserFirstMessage } } } : {})
-        });
+        }, 'BROWSER');
       }
       // Preflight before issuing a provisional phone session or claiming IN_CALL.
-      const publishedDorian = await fetchPublishedDorianConfig(String(body.agent_id || ''));
+      const publishedDorian = await readPublishedDorianConfigSnapshot(String(body.agent_id || ''));
+      elevenLabsLog(traceId, 'TIMING', 'Cached configuration resolved.', { elapsedMs: Math.round(performance.now() - initiationStarted) });
       const prepared = await startProvisionalPhoneCall({
         callerId: body?.caller_id, conversationId: body?.conversation_id, bindingId: deployment.bindingId!
       });
+      elevenLabsLog(traceId, 'TIMING', 'Provisional caller admission resolved.', { elapsedMs: Math.round(performance.now() - initiationStarted) });
       if (!prepared) {
         await recordDorianCallInitiation({ conversationId: body?.conversation_id,
           bindingId: deployment.bindingId, mode: 'UNRESOLVED' });
         elevenLabsLog(traceId, 'RESPONSE', 'Caller missing, duplicate or unsafe: generic response only.', { status: 200 });
-        return json({ type: 'conversation_initiation_client_data', dynamic_variables: {
+        return phoneResponse({ type: 'conversation_initiation_client_data', dynamic_variables: {
           // Unresolved callers must not receive a real session credential.
           relish_network_session: 'UNRESOLVED_NO_SESSION',
           relish_identity_status: 'UNRESOLVED',
           call_instruction: 'Do not use or disclose prior participant information.'
-        } });
+        } }, 'UNRESOLVED');
       }
       if (prepared.status === 'WAIT') {
         // Processing-only calls have a provider lifecycle record but no participant session.
         await recordDorianCallInitiation({ conversationId: body?.conversation_id,
           bindingId: deployment.bindingId, mode: 'PROCESSING_ONLY' });
         // Give a spoken processing notice, but never issue a session credential or private context.
-        // A preferred name is only a provisional phone preference and is safe for this pilot greeting.
+        // The WAIT result deliberately has no participant identity or preferred name.
+        // Use a generic greeting without attempting to read participant details.
         // Ending the call requires the ElevenLabs built-in end_call tool and a system-prompt rule.
-        const name = prepared.preferredName?.trim();
-        const waitingMessage = `${name ? `Hi ${name}. ` : 'Hi there. '}I'm just processing our last call. Could you call me back in a few minutes?`;
+        const waitingMessage = "Hi there. I'm just processing our last call. Could you call me back in a few minutes?";
         elevenLabsLog(traceId, 'RESPONSE', 'Previous call is not yet ready; processing-only greeting.', {
-          status: 200, hasPreferredName: Boolean(name), sessionIssued: false,
+          status: 200, hasPreferredName: false, sessionIssued: false,
           waitReason: prepared.reason
         });
-        return json({
+        return phoneResponse({
           type: 'conversation_initiation_client_data',
           dynamic_variables: {
             // ElevenLabs validates referenced dynamic variables before speaking.
@@ -154,20 +175,20 @@ export const POST: RequestHandler = async ({ request }) => {
             // signed/issued Relish credential; every session-protected tool must reject it.
             relish_network_session: 'PROCESSING_NO_SESSION',
             relish_identity_status: 'PROCESSING',
-            user_name: name || '',
+            user_name: '',
             // This status is authoritative for the agent: do not take more turns.
             call_instruction: 'PROCESSING ONLY: After the first message, immediately invoke the ElevenLabs built-in end_call tool. Do not ask questions, discuss any other topic, or attempt Relish tool calls. No participant session was issued.'
           },
           conversation_config_override: { agent: { first_message: waitingMessage } }
-        });
+        }, 'PROCESSING_ONLY');
       }
       try {
         await recordDorianCallInitiation({ conversationId: body?.conversation_id,
           callerId: prepared.callerRecordId,
           bindingId: deployment.bindingId, mode: 'PARTICIPANT' });
       } catch (error) {
-        // Do not strand an IN_CALL gate if lifecycle registration itself fails.
-        // The call was not yet issued a usable participant session token.
+        // No understanding gate was claimed during initiation. Mark the failed
+        // attempt without authorising any conversation processing.
         await finishPhoneUnderstanding(String(body?.conversation_id || ''), 'FAILED');
         throw error;
       }
@@ -186,20 +207,25 @@ export const POST: RequestHandler = async ({ request }) => {
         // Stage 8.20.2: consent controls the mandatory first procedure, not delivery
         // of participant-scoped name, previous understanding or call context.
         const initialPolicy = await policyInstructionForCaller(prepared.userId);
-        // Submission precedes speaking. A failure cannot be misrepresented as delivery.
-        const smsStatus = await dispatchCurrentPolicySms({ userId: prepared.userId,
+        // Queue a durable policy link without waiting for the Telnyx HTTP request.
+        const smsStatus = await enqueueCurrentPolicySms({ userId: prepared.userId,
           phone: body?.caller_id, accepted: initialPolicy.accepted });
-        const callPolicy = await policyInstructionForCaller(prepared.userId, smsStatus);
+        // No second acceptance query and no external HTTP request on initiation.
+        const callPolicy = instructionForKnownPolicyStatus(initialPolicy.accepted, smsStatus);
+        elevenLabsLog(traceId, 'TIMING', 'Consent and SMS outbox prepared.', { elapsedMs: Math.round(performance.now() - initiationStarted), smsStatus });
         response.dynamic_variables = withConsentGate(phoneProjection.dynamicVariables, callPolicy) as any;
         const firstMessage = safeFirstMessage(phoneProjection.firstMessage || response.conversation_config_override.agent.first_message, callPolicy);
         if (firstMessage) response.conversation_config_override.agent.first_message = firstMessage;
-        elevenLabsLog(traceId, 'RESPONSE', 'Provisional caller session issued.', {
+        elevenLabsLog(traceId, 'RESPONSE', 'Provisional caller session prepared.', {
           status: 200, identityStatus: 'PROVISIONAL_PHONE', previousCalls: prepared.previousCalls
         });
-        return json(response);
+        const result = phoneResponse(response, 'PARTICIPANT');
+        // Best-effort local kick. Durable worker retries if this process exits.
+        if (smsStatus === 'PENDING') kickQueuedPolicySms();
+        return result;
       } catch (error) {
-        // If initiation fails after claiming the caller, no useful provider session
-        // has been issued. Release only this conversation's continuity gate.
+        // Initiation failure cannot block subsequent calls. Any participant
+        // credential remains conversation-bound and expires independently.
         await finishPhoneUnderstanding(String(body?.conversation_id || ''), 'FAILED');
         throw error;
       }

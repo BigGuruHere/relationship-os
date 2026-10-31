@@ -5,6 +5,7 @@ import { createHash } from 'node:crypto';
 // a prompt. Changes to safety/security gates remain code-controlled in Relish.
 import { requiredEnv } from '$lib/server/config/requiredEnv';
 import { prisma } from '$lib/db';
+import { decrypt } from '$lib/crypto';
 
 type Scenario = 'new' | 'returningUnnamed' | 'returningNamed';
 type Domain = 'business' | 'general' | 'dating';
@@ -162,6 +163,32 @@ export async function fetchPublishedDorianConfig(providerAgentId?:string): Promi
   return { revision:payload.revision, config };
 }
 
+// Stage 8.22.4: inbound initiation is never permitted to wait for Agent
+// Management. Use only a previously authenticated published snapshot. Remote
+// synchronisation remains available through fetchPublishedDorianConfig outside
+// the connection-critical path.
+export async function readPublishedDorianConfigSnapshot(providerAgentId: string) {
+  if (process.env.RELISH_CONTROL_PLANE_ENABLED === 'NO') return null;
+  if (process.env.RELISH_CONTROL_PLANE_ENABLED !== 'YES') {
+    throw new Error('[Relish control plane] RELISH_CONTROL_PLANE_ENABLED must be YES or NO.');
+  }
+  const environment = runtimeEnvironment();
+  const cacheKey = providerAgentId
+    ? 'A' + createHash('sha256').update(providerAgentId).digest('hex').slice(0, 22)
+    : 'DORIAN';
+  const snapshot = await prisma.dorianAgentConfigSnapshot.findUnique({
+    where: { environment_agentKey: { environment, agentKey: cacheKey } }
+  });
+  if (!snapshot) {
+    throw new Error('[Relish control plane] A verified published snapshot is required before accepting inbound calls.');
+  }
+  const config = mandatoryConfig(snapshot.content);
+  if (providerAgentId && config.agentId !== providerAgentId) {
+    throw new Error('[Relish control plane] Cached configuration belongs to a different agent.');
+  }
+  return { revision: snapshot.revision, config };
+}
+
 // When enabled, missing or invalid configuration fails explicitly. The last
 // authenticated published snapshot is permitted during management outages.
 // Calls with a processing-only or unresolved identity never reach this function.
@@ -216,10 +243,34 @@ export async function configureDorianCall(input: {
 export function safeFirstMessage(firstMessage:string | null, policy:{accepted:boolean; smsStatus?:string}):string | null {
   if (policy.accepted) return firstMessage;
   // The initial voice turn must match the actual SMS submission state.
-  const sms = policy.smsStatus === 'SENT'
+  const sms = policy.smsStatus === 'PENDING'
+    ? "I'm arranging a text with our terms and privacy information. It may take a moment to arrive. "
+    : policy.smsStatus === 'SENT'
     ? "I've just sent a text with our terms and privacy information. "
     : policy.smsStatus === 'ALREADY_SENT'
       ? "You should have a previous text with our terms and privacy information. "
       : "Our terms and privacy information are on the Relish website. I can't confirm a text was sent. ";
   return `Hi, I'm Dorian. ${sms}We may record, transcribe and privately process our conversation. Are you happy to agree to the current terms so we can chat?`;
+}
+
+
+// Stage 8.22.4: run in an independent maintenance worker or explicit sync
+// command. Never call this from a voice initiation request.
+export async function syncActiveDorianConfigSnapshots(): Promise<number> {
+  if (process.env.RELISH_CONTROL_PLANE_ENABLED === 'NO') return 0;
+  const owner = process.env.RELISH_DORIAN_DEPLOYMENT_OWNER_USER_ID?.trim();
+  if (!owner) return 0; // Legacy single-agent deployments require explicit setup.
+  const bindings = await prisma.agentProviderBinding.findMany({ where: {
+    userId: owner, provider: 'ELEVENLABS', isActive: true,
+    validFrom: { lte: new Date() }, OR: [{ validTo: null }, { validTo: { gt: new Date() } }],
+    agentDefinition: { key: 'DORIAN', userId: owner, category: 'conversation', deploymentScope: 'external_voice' }
+  }, select: { providerAgentIdEnc: true } });
+  let synced = 0;
+  for (const item of bindings) {
+    if (!item.providerAgentIdEnc) continue;
+    const agentId = decrypt(item.providerAgentIdEnc, 'agentProviderBinding.providerAgentId');
+    await fetchPublishedDorianConfig(agentId);
+    synced++;
+  }
+  return synced;
 }

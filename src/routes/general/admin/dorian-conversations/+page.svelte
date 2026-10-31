@@ -69,11 +69,11 @@
   </section>
   <section>
     <h2>Provider call lifecycle (latest 40)</h2>
-    <p class="muted">These records show whether ElevenLabs calls ended, independently of the continuity gate or imported transcripts. Processing-only calls appear here without a participant session.</p>
+    <p class="muted">These records show call attempts and verified completion events, independently of the continuity gate or imported transcripts. STARTED means initiation was recorded, not that the phone connected. Processing-only attempts also appear here.</p>
     {#if !data.providerCalls.length}<p>No provider calls recorded for this deployment yet.</p>{/if}
     {#each data.providerCalls as call (call.conversationId)}
       <article class="recovery-item">
-        <strong>{call.mode} · {call.callState}</strong>
+        <strong>{call.mode} · {call.callState === 'STARTED' ? 'ATTEMPT (not confirmed connected)' : call.callState}</strong>
         <p class="muted">Started {new Date(call.startedAt).toLocaleString()} · {call.endedAt ? `Ended ${new Date(call.endedAt).toLocaleString()}` : 'End not confirmed'} · Understanding: {call.understandingState}</p>
         <details><summary>Conversation identifier</summary><code>{call.conversationId}</code></details>
       </article>

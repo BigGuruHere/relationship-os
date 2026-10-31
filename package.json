@@ -181,7 +181,11 @@
     "check:stage8.15.4.7f.2b": "node --test tests/core/stage8-15-4-7f-2-queue.test.mjs tests/core/stage8-15-4-7f-2b-worker-loop.test.mjs",
     "check:stage8.15.4.7g.1": "node --test tests/core/stage8-15-4-7g-1-worker-startup.test.mjs",
     "check:stage8.15.4.7g.3": "node --test tests/core/stage8-15-4-7g-3-processing-outcomes.test.mjs tests/core/stage8-15-4-7g-3a-no-change-exception.test.mjs",
-    "check:stage8.16": "node --test tests/core/stage8-16-three-context-pilot.test.mjs"
+    "check:stage8.16": "node --test tests/core/stage8-16-three-context-pilot.test.mjs",
+    "check:stage8.22.4": "node --test tests/core/stage8-22-3-voice-call-lifecycle.test.mjs tests/core/stage8-22-3a-verified-completion-gate.test.mjs tests/core/stage8-22-3b-failed-provider-call.test.mjs tests/core/stage8-22-3c-provider-independent-continuity.test.mjs tests/core/stage8-22-4-call-initiation-reliability.test.mjs",
+    "sync:dorian-config:dev": "node --env-file=.env --import tsx scripts/sync-stage8-22-4-dorian-config.ts",
+    "policy-sms:once:dev": "node --env-file=.env --import tsx scripts/process-stage8-22-4-policy-sms.ts",
+    "policy-sms:watch:dev": "node --env-file=.env --import tsx scripts/process-stage8-22-4-policy-sms.ts --watch"
   },
   "engines": {
     "node": ">=22.13.1 <23"

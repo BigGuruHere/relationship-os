@@ -55,7 +55,8 @@ test('worker cannot start until transcript ingestion has committed', () => {
   const webhook = read('src/routes/api/webhooks/elevenlabs/+server.ts');
   const worker = read('scripts/process-stage8-15-4-7f-2-phone-queue.ts');
   assert.match(gate, /understandingState: 'AWAITING_INGEST'/);
-  assert.match(gate, /understandingState:\s*\{\s*in:\s*\['AWAITING_INGEST', 'IN_CALL'\]\s*\}/);
+  // Stage 8.22.4: the gate is acquired after ended participant evidence, not at initiation.
+  assert.match(gate, /call\?\.callState !== 'ENDED'/);
   assert.match(worker, /where: \{ understandingState: 'PROCESSING'/);
   assert.ok(webhook.indexOf('const ingested = await') < webhook.indexOf('await beginPhoneUnderstanding('));
 });

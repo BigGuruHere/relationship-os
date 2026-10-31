@@ -5,8 +5,10 @@ import { createHash } from 'node:crypto';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { prisma } from '../src/lib/db';
 import { runWithWorkspaceCustody } from '../src/lib/server/core/contextSpace';
-import { processPhoneUnderstanding, finishPhoneUnderstanding, releaseExpiredPhoneContinuityLock, reconcilePhoneContinuityFromLocalLedger } from '../src/lib/server/core/phoneUnderstandingAutomation';
+import { processPhoneUnderstanding, finishPhoneUnderstanding, releaseExpiredPhoneContinuityLock, reconcilePhoneContinuityFromLocalLedger, beginPhoneUnderstanding } from '../src/lib/server/core/phoneUnderstandingAutomation';
 import { setDorianCallUnderstanding } from '../src/lib/server/core/dorianVoiceCallLifecycle';
+import { drainQueuedPolicySms } from '../src/lib/server/core/relishPolicySms';
+import { syncActiveDorianConfigSnapshots } from '../src/lib/server/integrations/elevenlabs/dorianControlPlane';
 import { CONVERSATION_TRANSCRIPT_CHANNEL, PERSON_CONVERSATION_SOURCE_CHANNEL } from '../src/lib/server/core/conversationIngestion';
 
 // The worker inherits the application environment and its DATABASE_URL unchanged.
@@ -39,6 +41,25 @@ async function runOne() {
     select: { id: true }, take: 50
   });
   for (const row of unconfirmed) await reconcilePhoneContinuityFromLocalLedger(row.id);
+  // Stage 8.22.4: an ended conversation can be queued while a different
+  // completed call is processing. Adopt the oldest unclaimed PENDING call once
+  // its provisional caller becomes READY, preserving LU ordering.
+  const queued = await prisma.dorianVoiceCallLifecycle.findMany({
+    where: { mode: 'PARTICIPANT', callState: 'ENDED', understandingState: 'PENDING', endedAt: { not: null } },
+    orderBy: { endedAt: 'asc' }, take: 30, select: { conversationId: true }
+  });
+  for (const item of queued) {
+    const session = await prisma.networkDorianSession.findUnique({
+      where: { conversationId: item.conversationId }, select: { userId: true, pilotEntryId: true }
+    });
+    if (!session || session.pilotEntryId) continue;
+    const caller = await prisma.networkPhoneCaller.findUnique({
+      where: { userId: session.userId }, select: { understandingConversationId: true, understandingState: true }
+    });
+    if (caller?.understandingState === 'READY') {
+      await beginPhoneUnderstanding(item.conversationId);
+    }
+  }
   const candidates = await prisma.networkPhoneCaller.findMany({
     where: { understandingState: 'PROCESSING', understandingConversationId: { not: null } },
     orderBy: { understandingStateAt: 'asc' }, take: 20
@@ -205,8 +226,25 @@ async function reportBlockedStates() {
   }
 }
 
+let nextControlSyncAt = 0;
+let smsDispatchInFlight = false;
 try {
   do {
+    // Refresh published persona/config outside the latency-sensitive call route.
+    // A slow Management service cannot delay the current call or LU job.
+    if (Date.now() >= nextControlSyncAt) {
+      nextControlSyncAt = Date.now() + 60_000;
+      void syncActiveDorianConfigSnapshots().catch(() =>
+        console.warn('[Relish control plane] Background snapshot sync failed; verified local revisions remain in use.'));
+    }
+    // SMS dispatch is independent of voice initiation; failed/stale sends retry here.
+    if (!smsDispatchInFlight) {
+      smsDispatchInFlight = true;
+      // A slow Telnyx request must never delay the automatic LU worker.
+      void drainQueuedPolicySms(10).catch(() =>
+        console.warn('[Relish policy SMS] Background outbox scan failed.'))
+        .finally(() => { smsDispatchInFlight = false; });
+    }
     // Drain outstanding queued records before sleeping to minimise callback delay.
     let processed = false;
     do {

@@ -16,6 +16,7 @@ import { runWithWorkspaceCustody } from '$lib/server/core/contextSpace';
 import { getCurrentLivingUnderstanding } from '$lib/server/datingPersistedLivingUnderstanding';
 import { decryptInteractionSummary } from '$lib/server/core/interactionEncryption';
 import { resolvePhoneDefaultContext } from './phoneDefaultContext';
+import { continuityHoldReason } from '$lib/server/core/phoneAdmissionPolicy.mjs';
 
 // Explicit pilot opt-in: a recognised phone number is a continuity signal, not verified identity.
 const phoneLivingContextEnabled = () => process.env.RELISH_PHONE_LU_CONTEXT === 'YES';
@@ -75,6 +76,30 @@ export async function startProvisionalPhoneCall(input: {
     await reconcilePhoneContinuityFromLocalLedger(caller.id);
     await releaseExpiredPhoneContinuityLock(caller.id);
   }
+  // Stage 8.22.4 migration-free compatibility: an old IN_CALL row is a
+  // pre-connection reservation, not evidence of outstanding LU. Do not let it
+  // strand the next call. Do not mark its provider record ENDED.
+  if (phoneAutomaticLearningEnabled()) {
+    await prisma.networkPhoneCaller.updateMany({
+      where: { id: caller.id, understandingState: 'IN_CALL', understandingCallEndedAt: null },
+      data: { understandingState: 'READY', understandingConversationId: null,
+        understandingCallEndedAt: null, understandingStateAt: new Date() }
+    });
+    const pendingLearning = await prisma.networkPhoneCaller.findUnique({
+      where: { id: caller.id }, select: { understandingState: true, understandingConversationId: true }
+    });
+    if (pendingLearning && pendingLearning.understandingState !== 'READY') {
+      const reason = continuityHoldReason(pendingLearning.understandingState);
+      if (reason) return { status: 'WAIT' as const, reason };
+      // FAILED/expired compatibility rows are not valid continuity blockers.
+      await prisma.networkPhoneCaller.updateMany({
+        where: { id: caller.id, understandingState: pendingLearning.understandingState,
+          understandingConversationId: pendingLearning.understandingConversationId },
+        data: { understandingState: 'READY', understandingConversationId: null,
+          understandingCallEndedAt: null, understandingStateAt: new Date() }
+      });
+    }
+  }
   // Stage 8.18b: select the verified participant-owned default, not the old fixed General row.
   // No owner workspace or unverified context can be substituted when validation fails.
   const selected = await resolvePhoneDefaultContext(caller);
@@ -88,8 +113,7 @@ export async function startProvisionalPhoneCall(input: {
     const pendingPilot = await prisma.networkDorianSession.findFirst({ where: {
       userId: selected.userId, contextSpaceId: selected.contextSpaceId,
       pilotEntryId: { not: null },
-      OR: [ { understandingOutcome: { in: ['QUEUED', 'WORKING'] } },
-        { understandingOutcome: null, expiresAt: { gt: new Date() } } ]
+      understandingOutcome: { in: ['QUEUED', 'WORKING'] }
     }, select: { id: true } });
     if (pendingPilot) return { status: 'WAIT' as const, reason: 'PILOT_UNDERSTANDING_PENDING' as const };
   }
@@ -142,7 +166,9 @@ export async function startProvisionalPhoneCall(input: {
       lastCallSummary = decryptInteractionSummary(latestSummarisedCall?.summaryEnc).trim().slice(0, 1600);
     } catch {
       // A custody/database read failure should not silently deliver untrusted context.
-      return { status: 'WAIT' as const, reason: 'PREVIOUS_SUMMARY_READ_FAILED' as const, preferredName };
+      // Degrade safely to no summary; this is not unfinished LU and must not
+      // hold the telephone caller. No untrusted memory is returned.
+      lastCallSummary = '';
     }
   }
   let livingContext = '';
@@ -165,50 +191,27 @@ export async function startProvisionalPhoneCall(input: {
     } catch {
       // Fail closed on an unexpected custody/decryption/database error.
       // The caller is not locked because no IN_CALL claim has been attempted yet.
-      return { status: 'WAIT' as const, reason: 'LIVING_CONTEXT_READ_FAILED' as const, preferredName };
+      // Do not treat a failed optional memory read as a processing queue.
+      // Dorian must confirm the caller before discussing previous context.
+      livingContext = '';
+      livingRevision = '';
     }
   }
+  // Stage 8.22.4: admission is NOT a connected call, and must not create an
+  // understanding lock. A failed/slow initiation must never prevent redialling.
+  // NetworkDorianSession is still unique per provider conversation and remains
+  // the only authority for participant-scoped tools and post-call ingestion.
   const token = randomBytes(32).toString('base64url');
   try {
-    // Row update is an atomic per-caller claim. Two simultaneous incoming calls cannot
-    // both move READY -> IN_CALL. Only the winning request receives a session token.
-    const claimed = phoneAutomaticLearningEnabled() ? await prisma.networkPhoneCaller.updateMany({
-      where: { id: caller.id, understandingState: 'READY' },
-      data: { understandingState: 'IN_CALL', understandingConversationId: input.conversationId,
-        understandingStateAt: new Date(), understandingCallEndedAt: null }
-    }) : { count: 1 };
-    if (claimed.count !== 1) {
-      // A waiting greeting must identify which Relish-owned lifecycle state held
-      // the call. Never poll the voice provider or log telephone numbers.
-      const blocking = await prisma.networkPhoneCaller.findUnique({ where: { id: caller.id },
-        select: { understandingState: true, understandingConversationId: true } });
-      const reason = blocking?.understandingState === 'IN_CALL' ? 'ACTIVE_CALL'
-        : blocking?.understandingState === 'AWAITING_INGEST' ? 'TRANSCRIPT_INGEST_PENDING'
-        : 'UNDERSTANDING_PENDING';
-      console.info('[phone-continuity] New call held by Relish continuity gate.', {
-        reason, previousConversationId: blocking?.understandingConversationId || null
-      });
-      return { status: 'WAIT' as const, reason, preferredName };
-    }
-    try {
-      await prisma.networkDorianSession.create({ data: {
-        tokenHash: networkSessionHash(token), userId: selected.userId,
-        contextSpaceId: selected.contextSpaceId, contactId: selected.contactId,
-        agentBindingId: input.bindingId, conversationId: input.conversationId,
-        expiresAt: new Date(Date.now() + SESSION_TTL_MS)
-      } });
-    } catch (error) {
-      // A failed session insert must never leave the participant locked unnecessarily.
-      if (phoneAutomaticLearningEnabled()) await prisma.networkPhoneCaller.updateMany({
-        where: { id: caller.id, understandingConversationId: input.conversationId, understandingState: 'IN_CALL' },
-        data: { understandingState: 'READY', understandingConversationId: null, understandingStateAt: new Date() }
-      });
-      throw error;
-    }
+    await prisma.networkDorianSession.create({ data: {
+      tokenHash: networkSessionHash(token), userId: selected.userId,
+      contextSpaceId: selected.contextSpaceId, contactId: selected.contactId,
+      agentBindingId: input.bindingId, conversationId: input.conversationId,
+      expiresAt: new Date(Date.now() + SESSION_TTL_MS)
+    } });
   } catch (error) {
-    // Concurrent initiation for the same provider conversation can race after the
-    // preceding findUnique. The database unique constraint is the final arbiter.
-    // Never return a fresh token for a losing request or cause an avoidable 500.
+    // The database uniqueness constraint prevents two credentials for the same
+    // provider conversation. Neither attempt acquires a continuity lock.
     if (error && typeof error === 'object' && 'code' in error && error.code === 'P2002') return null;
     throw error;
   }

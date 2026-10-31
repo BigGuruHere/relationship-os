@@ -3,6 +3,7 @@
   // SECURITY: Links are presentation only. Each workspace route verifies participant custody.
   import '../app.css';
   import { onMount } from 'svelte';
+  import { afterNavigate } from '$app/navigation';
   export let data: any;
 
   const nav = [
@@ -25,6 +26,12 @@
   $: activeBase = '/space/' + activeName;
   $: specialist = isBroker && data.capabilities?.includes('BROKER') ? 'broker' : isOperator && data.capabilities?.includes('OPERATOR') ? 'operator' : '';
   $: selectedName = activeName;
+  // IT: Keep the mobile account dropdown controlled, so it closes immediately
+  // after choosing a destination and after client-side navigation.
+  let moreMenuOpen = false;
+  function closeMoreMenu() { moreMenuOpen = false; }
+  afterNavigate(closeMoreMenu);
+
 
   function changeSpace(event: Event) {
     const value = (event.currentTarget as HTMLSelectElement).value;
@@ -60,14 +67,15 @@
           {/if}
         </div>
         <a class="relish-header-tools" href={activeBase + '/share'}>Share</a>
-        <details class="relish-more">
+        <details class="relish-more" bind:open={moreMenuOpen}>
           <summary aria-label="More account options">•••</summary>
           <div class="relish-more-menu">
-            <a href={activeBase}>Relish home</a>
-            {#if data.capabilities?.includes('BROKER')}<a href="/broker">Business broker</a>{/if}
-            {#if data.capabilities?.includes('OPERATOR')}<a href="/operator">Operator tools</a>{/if}
-            {#if data.accountRole === 'owner'}<a href="/settings/users">Manage users</a>{/if}
-            <form method="POST" action="/auth/logout"><button type="submit">Sign out</button></form>
+            <a href={activeBase} on:click={closeMoreMenu}>Relish home</a>
+            {#if data.capabilities?.includes('BROKER')}<a href="/broker" on:click={closeMoreMenu}>Business broker</a>{/if}
+            {#if data.capabilities?.includes('OPERATOR')}<a href="/operator" on:click={closeMoreMenu}>Operator tools</a>{/if}
+            {#if data.accountRole === 'owner'}<a href="/event-signups" on:click={closeMoreMenu}>Event testers</a>{/if}
+            {#if data.accountRole === 'owner'}<a href="/settings/users" on:click={closeMoreMenu}>Manage users</a>{/if}
+            <form method="POST" action="/auth/logout" on:submit={closeMoreMenu}><button type="submit">Sign out</button></form>
           </div>
         </details>
       {:else}

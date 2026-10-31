@@ -93,6 +93,22 @@ export const load: PageServerLoad = async ({ params, url, locals }) => {
 
   // An unpublished profile must never be visible to a public visitor or usable in onboarding.
   if (!profile?.isPublished && locals.user?.id !== ownerId) throw error(404, 'Profile unavailable');
+
+  // IT: Temporary Tech Walk QR switch. Only published BUSINESS guest profiles are
+  // redirected. Owner editing, other relationship contexts and the original route stay intact.
+  // IT: Only the specific configured QR slug is redirected. Other users' profiles
+  // must not accidentally inherit this founder-specific temporary screen.
+  // Set RELISH_EVENT_PROFILE_SLUG to the QR profile slug to enable; unset it to restore Dorian.
+  // ?original=1 is an explicit testing escape hatch for the retained original page.
+  const eventLandingOn = process.env.RELISH_EVENT_LANDING_ENABLED !== 'NO'
+    && process.env.RELISH_EVENT_PROFILE_SLUG === profile?.slug;
+  const ownerPreview = locals.user?.id === ownerId;
+  if (eventLandingOn && profile?.isPublished && profile.kind === 'business' &&
+      !ownerPreview && url.searchParams.get('original') !== '1') {
+    const eventUrl = new URL(`/u/${encodeURIComponent(profile.slug)}/event`, url);
+    if (url.searchParams.has('via')) eventUrl.searchParams.set('via', url.searchParams.get('via') || 'link');
+    throw redirect(307, eventUrl.pathname + eventUrl.search);
+  }
   // IT: generate invite token for guest flow
   const invite = await createInviteToken({ ownerId, ttlMinutes: 30 });
 

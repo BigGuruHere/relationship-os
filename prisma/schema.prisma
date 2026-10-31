@@ -804,6 +804,7 @@ model Profile {
   isPublished Boolean @default(true)
   pilotEntries PilotProfileEntry[]
   productEvents ProductEvent[]
+  eventPilotSignups RelishEventPilotSignup[]
 
   publicMeta Json?
 
@@ -3850,7 +3851,7 @@ model DorianVoiceCallLifecycle {
   understandingState String @default("NOT_REQUIRED") @db.VarChar(24)
   startedAt DateTime @default(now())
   endedAt DateTime?
-  updatedAt DateTime @updatedAt
+  updatedAt DateTime @default(now()) @updatedAt
   @@index([callerId, startedAt])
   @@index([callState, startedAt])
 }
@@ -4044,4 +4045,27 @@ model DorianAgentConfigSnapshot {
   fetchedAt   DateTime @default(now())
 
   @@unique([environment, agentKey])
+}
+
+
+// Stage 8.22.5 - Explicit event opt-in, intentionally separate from identity, Contacts,
+// connections and Living Understanding. No consent to unrelated uses is implied.
+model RelishEventPilotSignup {
+  id String @id @default(uuid())
+  ownerUserId String
+  profileId String
+  profile Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  // IT: Encrypted at rest, with a scoped HMAC token for duplicate submissions.
+  nameEnc String
+  emailEnc String?
+  phoneEnc String?
+  contactKey String @db.VarChar(64)
+  interestGroup String @default("TECH_NETWORKING_WALK_2026_11_01") @db.VarChar(64)
+  consentAt DateTime @default(now())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([profileId, contactKey])
+  @@index([ownerUserId, createdAt])
+  @@index([ownerUserId, interestGroup, createdAt])
 }

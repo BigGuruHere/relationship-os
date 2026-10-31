@@ -185,7 +185,8 @@
     "check:stage8.22.4": "node --test tests/core/stage8-22-3-voice-call-lifecycle.test.mjs tests/core/stage8-22-3a-verified-completion-gate.test.mjs tests/core/stage8-22-3b-failed-provider-call.test.mjs tests/core/stage8-22-3c-provider-independent-continuity.test.mjs tests/core/stage8-22-4-call-initiation-reliability.test.mjs",
     "sync:dorian-config:dev": "node --env-file=.env --import tsx scripts/sync-stage8-22-4-dorian-config.ts",
     "policy-sms:once:dev": "node --env-file=.env --import tsx scripts/process-stage8-22-4-policy-sms.ts",
-    "policy-sms:watch:dev": "node --env-file=.env --import tsx scripts/process-stage8-22-4-policy-sms.ts --watch"
+    "policy-sms:watch:dev": "node --env-file=.env --import tsx scripts/process-stage8-22-4-policy-sms.ts --watch",
+    "check:stage8.22.5": "node --test tests/core/stage8-22-5-event-landing-and-mobile-navigation.test.mjs"
   },
   "engines": {
     "node": ">=22.13.1 <23"

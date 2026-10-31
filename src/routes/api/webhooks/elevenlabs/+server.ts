@@ -1,3 +1,4 @@
+import { recordVerifiedVoiceCallEnded } from '$lib/server/core/voiceCallEvents';
 import { conversationalPolicyEnabled, callerHasAcceptedCurrentTerms } from '$lib/server/core/relishCallPolicy';
 // PURPOSE: Receive ElevenLabs post-call transcription webhooks into the ContextSpace selected by the stable Relish agent deployment.
 // SECURITY: HMAC verification occurs before parsing. Agent binding resolution occurs before workspace custody is entered. The endpoint never runs AI.
@@ -12,7 +13,7 @@ import { elevenLabsErrorLog, elevenLabsLog, elevenLabsPayloadLog, elevenLabsTrac
 import { describeLivingUnderstandingReviewHandoff } from '$lib/server/core/livingUnderstandingReviewHandoff';
 import { isAuthorizedSharedDorianBindingId, resolveSharedNetworkSession } from '$lib/server/integrations/elevenlabs/networkSession';
 import { automaticLivingUnderstandingPreparationEnabled, prepareAutomaticLivingUnderstandingImpact } from '$lib/server/core/automaticLivingUnderstanding';
-import { phoneAutomaticLearningEnabled, beginPhoneUnderstanding, finishPhoneUnderstanding } from '$lib/server/core/phoneUnderstandingAutomation';
+import { phoneAutomaticLearningEnabled, beginPhoneUnderstanding, finishPhoneUnderstanding, releasePhoneContinuityWithoutUnderstanding } from '$lib/server/core/phoneUnderstandingAutomation';
 import { prisma } from '$lib/db';
 import { recordPilotEvent } from '$lib/server/pilot';
 import { requiredEnv, requiredPositiveIntEnv } from '$lib/server/config/requiredEnv';
@@ -73,20 +74,57 @@ export const POST: RequestHandler = async ({ request }) => {
   });
   // SECURITY: Do not log raw webhook payloads: they may include participant session tokens and transcripts.
 
+  if (event?.type === 'call_initiation_failure') {
+    // ElevenLabs can report a failed phone connection without a transcript webhook.
+    // The event is HMAC authenticated above. No participant speech was established,
+    // so close only that specific provider conversation and its matching gate.
+    const failedConversationId = event?.data?.conversation_id;
+    if (typeof failedConversationId === 'string') {
+      const eventSeconds = Number(event?.event_timestamp);
+      const endedAt = Number.isFinite(eventSeconds) && eventSeconds > 1_500_000_000 &&
+        eventSeconds * 1000 <= Date.now() ? new Date(eventSeconds * 1000) : new Date();
+      await recordVerifiedVoiceCallEnded({ conversationId: failedConversationId,
+        endedAt, hasParticipantSpeech: false });
+      await releasePhoneContinuityWithoutUnderstanding(failedConversationId);
+    }
+    elevenLabsLog(traceId, 'RESPONSE', 'Signed call-initiation failure recorded without retaining a transcript.', {
+      conversationId: typeof failedConversationId === 'string' ? failedConversationId : null,
+      failureReason: typeof event?.data?.failure_reason === 'string'
+        ? event.data.failure_reason.slice(0, 32) : 'unknown'
+    });
+    return json({ status: 'call_initiation_failure_recorded' });
+  }
+
   if (event?.type !== 'post_call_transcription') {
     elevenLabsLog(traceId, 'RESPONSE', 'Webhook event ignored because it is not post_call_transcription.', { type: event?.type || null });
     return json({ status: 'ignored' });
   }
 
-  // Authenticated empty/abandoned calls are ordinary telephony outcomes, not ingestion failures.
-  // Do not create an Interaction or schedule retries for them.
-  const spokenRows = Array.isArray(event?.data?.transcript)
+  // Every signed completed call closes its own ledger record, even if no participant
+  // session was issued or there is no participant speech.
+  const hasParticipantSpeech = Array.isArray(event?.data?.transcript)
     ? event.data.transcript.some((row: any) => row?.role === 'user' && String(row?.message ?? '').trim())
     : false;
+  // Prefer the signed provider's actual hang-up time so a delayed webhook does
+  // not restart the ten-minute continuity window from the delivery time.
+  const rawEndTime = event?.data?.metadata?.end_time_unix_secs;
+  const endTimeSeconds = typeof rawEndTime === 'number' ? rawEndTime : Number(rawEndTime);
+  const endTimeIsValid = Number.isFinite(endTimeSeconds) && endTimeSeconds > 1_500_000_000 &&
+    endTimeSeconds * 1000 <= Date.now();
+  const endedAt = endTimeIsValid ? new Date(endTimeSeconds * 1000) : new Date();
+  // Stage 8.22.3c: signed provider completion -> one provider-neutral Relish event.
+  // Do not wait for transcript ingestion, LU computation or a provider-status GET.
+  await recordVerifiedVoiceCallEnded({
+    conversationId: event?.data?.conversation_id, endedAt, hasParticipantSpeech
+  });
+
+  // Authenticated empty/abandoned calls are ordinary telephony outcomes, not ingestion failures.
+  // Do not create an Interaction or schedule retries for them.
+  const spokenRows = hasParticipantSpeech;
   if (!spokenRows) {
     // Empty calls have no evidence to interpret. Release only their own processing gate.
-    if (phoneAutomaticLearningEnabled() && typeof event?.data?.conversation_id === 'string') {
-      await finishPhoneUnderstanding(event.data.conversation_id, 'READY');
+    if (typeof event?.data?.conversation_id === 'string') {
+      await releasePhoneContinuityWithoutUnderstanding(event.data.conversation_id);
     }
     elevenLabsLog(traceId, 'RESPONSE', 'Signed post-call event has no participant speech; no transcript stored.', {
       status: 'ignored_no_participant_speech',
@@ -120,11 +158,17 @@ export const POST: RequestHandler = async ({ request }) => {
     elevenLabsLog(traceId, 'AGENT', 'Agent deployment resolution completed.', deployment);
 
     if (deployment.status === 'CONFLICT') {
+      // Signed completion still ends the physical call; a deployment conflict
+      // must not hold an unrelated prior continuity lock indefinitely.
+      await finishPhoneUnderstanding(normalized.metadata.externalConversationId, 'FAILED');
       elevenLabsLog(traceId, 'RESPONSE', 'Rejecting post-call webhook because agent deployment identifiers conflict.', { status: 409 });
       return json({ error: 'Agent deployment identifiers conflict.' }, { status: 409 });
     }
     if (deployment.status !== 'RESOLVED' || !deployment.userId ||
         (deployment.agentKey !== 'DORIAN' && (!deployment.contextSpaceId || !deployment.domainKey))) {
+      // A completed call whose deployment is unresolved cannot be safely ingested.
+      // Release only the matching caller gate, retaining its provider lifecycle evidence.
+      await finishPhoneUnderstanding(normalized.metadata.externalConversationId, 'FAILED');
       elevenLabsLog(traceId, 'RESPONSE', 'Signed webhook accepted but agent deployment is unresolved.', {
         status: 202,
         agentId: normalized.agentId || null,
@@ -137,8 +181,11 @@ export const POST: RequestHandler = async ({ request }) => {
     // For Dorian, there is never a fallback to the deployment owner's workspace.
     // Only a server-issued participant session can authorize transcript custody.
     const sharedAllowed = deployment.agentKey === 'DORIAN' && await isAuthorizedSharedDorianBindingId(deployment.bindingId!, true);
-    if (deployment.agentKey === 'DORIAN' && !sharedAllowed)
+    if (deployment.agentKey === 'DORIAN' && !sharedAllowed) {
+      // Never keep a confirmed-ended call locked when its binding is no longer authorised.
+      await finishPhoneUnderstanding(normalized.metadata.externalConversationId, 'FAILED');
       return json({ status: 'unconfigured_shared_dorian' }, { status: 202 });
+    }
     const shared = deployment.agentKey === 'DORIAN' && sharedAllowed
       ? await resolveSharedNetworkSession({
           bindingId: deployment.bindingId!, conversationId: normalized.metadata.externalConversationId,
@@ -146,6 +193,9 @@ export const POST: RequestHandler = async ({ request }) => {
         })
       : null;
     if (deployment.agentKey === 'DORIAN' && !shared) {
+      // Signed completion proves hang-up, but missing custody proof forbids transcript
+      // ingestion. Mark learning failed and release this exact caller's lock, not another.
+      await finishPhoneUnderstanding(normalized.metadata.externalConversationId, 'FAILED');
       // A real inbound SIP call does not have a browser-issued Network session.
       // Treat it as unlinked, not as an authentication failure that could cause
       // webhook retries. Never fall back to the shared deployment owner's workspace.
@@ -168,12 +218,9 @@ export const POST: RequestHandler = async ({ request }) => {
       await prisma.networkDorianSession.updateMany({ where: { id: shared.sessionId }, data: {
         understandingOutcome: 'NO_CHANGE', understandingOutcomeAt: new Date()
       } });
-      // Release the provisional telephone readiness gate for an unaccepted conversation.
-      // No understanding work is enqueued, so leaving IN_CALL would strand future calls.
-      await prisma.networkPhoneCaller.updateMany({ where: {
-        userId: shared.userId, understandingConversationId: normalized.metadata.externalConversationId,
-        understandingState: 'IN_CALL'
-      }, data: { understandingState: 'READY', understandingConversationId: null, understandingStateAt: new Date() } });
+      // No learning may be queued without consent. Release only this ended conversation's
+      // continuity gate, regardless of whether it reached PROCESSING or remains IN_CALL.
+      await releasePhoneContinuityWithoutUnderstanding(normalized.metadata.externalConversationId);
       console.warn('[relish-policy] conversation skipped: no current voice consent');
       return json({ status: 'policy_not_accepted' }, { status: 202 });
     }
@@ -339,6 +386,12 @@ export const POST: RequestHandler = async ({ request }) => {
       }
     }
 
+    // Calls that did not enqueue LU work must not remain IN_CALL indefinitely.
+    // Every completed conversation with no durable LU job releases its gate, whether
+    // automatic learning is currently enabled or not. QUEUED calls retain the gate.
+    if (shared && !automaticLivingUnderstanding?.status?.match(/^(QUEUED|RELEASED_UNPROCESSED)$/)) {
+      await releasePhoneContinuityWithoutUnderstanding(normalized.metadata.externalConversationId);
+    }
     const response = { ...ingested.response, automaticLivingUnderstanding };
     elevenLabsLog(traceId, 'RESPONSE', 'Post-call processing complete. Sending acknowledgement to ElevenLabs.', response);
     elevenLabsPayloadLog(traceId, 'SENT', 'Full post-call response sent to ElevenLabs.', response);

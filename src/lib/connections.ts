@@ -14,7 +14,7 @@ import { encrypt, buildIndexToken } from '$lib/crypto';
 import { requireUserPersonId } from '$lib/server/core/identity';
 import {
   currentWorkspaceCustody,
-  requireSingleContextSpaceIdForOwner,
+  requireConfiguredDefaultContextSpaceIdForOwner,
   runWithCrossOwnerWorkspaceCustody
 } from '$lib/server/core/contextSpace';
 
@@ -142,7 +142,7 @@ export async function createMutualConnection(profileOwnerUserId: string, initiat
     getBestProfile(initiatingUserId),
     requireUserPersonId(profileOwnerUserId),
     requireUserPersonId(initiatingUserId),
-    requireSingleContextSpaceIdForOwner(prisma as any, profileOwnerUserId)
+    requireConfiguredDefaultContextSpaceIdForOwner(prisma as any, profileOwnerUserId)
   ]);
 
   // SECURITY: Once a profile owner has more than one ContextSpace this compatibility flow fails

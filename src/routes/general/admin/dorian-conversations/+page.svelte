@@ -13,7 +13,7 @@
   {#if form?.recoveryError}<p class="error" role="alert">{form.recoveryError}</p>{/if}
   <section class="recovery">
     <h2>Call recovery</h2>
-    <p class="muted">A stuck call is not automatically released. Confirm the call ended with ElevenLabs before releasing it. Never mark a WORKING job failed until the worker processing it has been stopped.</p>
+    <p class="muted">Completed provider calls normally release their continuity gate after learning finishes, or at most ten minutes after confirmed completion when the next call is initiated. This screen is for exceptional diagnostics and audited recovery. Never mark a WORKING job failed until its worker is stopped.</p>
     {#if !data.recovery.items.length}
       <p>No blocked or unfinished call gates found among the most recent sessions.</p>
     {:else}
@@ -22,6 +22,7 @@
           <div class="head"><strong>{item.kind === 'PHONE' ? 'Telephone call' : 'Pilot callback'} · {item.state}</strong>
             <span class:warning={item.stale} class="state">{item.stale ? 'Requires attention' : 'In progress / monitoring'}</span></div>
           <p class="muted">{new Date(item.createdAt).toLocaleString()} · State age {item.ageMinutes === null ? 'unknown' : `${item.ageMinutes} minutes`} · {item.hasEvidence ? 'Verified transcript/source available' : 'No verified participant transcript/source'}</p>
+          <p class="muted">Provider call: <strong>{item.providerCallState}</strong>{item.providerEndedAt ? ` (${new Date(item.providerEndedAt).toLocaleString()})` : ''} · Continuity gate: <strong>{item.state}</strong></p>
           <details><summary>Conversation identifier</summary><code>{item.conversationId}</code></details>
           {#if item.actions.length}
             <form method="POST" action="?/recover" class="recover-form">
@@ -65,6 +66,18 @@
         <p class="muted">{new Date(event.createdAt).toLocaleString()} · {event.operation} · {event.previousState || '—'} → {event.nextState || '—'} · {event.reasonCode}</p>
       {/each}
     </details>
+  </section>
+  <section>
+    <h2>Provider call lifecycle (latest 40)</h2>
+    <p class="muted">These records show whether ElevenLabs calls ended, independently of the continuity gate or imported transcripts. Processing-only calls appear here without a participant session.</p>
+    {#if !data.providerCalls.length}<p>No provider calls recorded for this deployment yet.</p>{/if}
+    {#each data.providerCalls as call (call.conversationId)}
+      <article class="recovery-item">
+        <strong>{call.mode} · {call.callState}</strong>
+        <p class="muted">Started {new Date(call.startedAt).toLocaleString()} · {call.endedAt ? `Ended ${new Date(call.endedAt).toLocaleString()}` : 'End not confirmed'} · Understanding: {call.understandingState}</p>
+        <details><summary>Conversation identifier</summary><code>{call.conversationId}</code></details>
+      </article>
+    {/each}
   </section>
   <section>
     <h2>Imported conversations</h2>

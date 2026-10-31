@@ -14,7 +14,7 @@ import { encrypt, buildIndexToken } from '$lib/crypto';
 import { verifyInviteToken } from '$lib/server/tokens';
 import { sendMagicLink } from '$lib/server/magic';
 import {
-  requireSingleContextSpaceIdForOwner,
+  requireConfiguredDefaultContextSpaceIdForOwner,
   runWithExternalWorkspaceCustody
 } from '$lib/server/core/contextSpace';
 
@@ -35,7 +35,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 
   // SECURITY: Invite-token lead capture is external ingress into the invite owner's custody.
   // Refuse to guess the destination once an owner has more than one ContextSpace.
-  const ownerContextSpaceId = await requireSingleContextSpaceIdForOwner(prisma as any, invite.ownerId);
+  const ownerContextSpaceId = await requireConfiguredDefaultContextSpaceIdForOwner(prisma as any, invite.ownerId);
 
   return runWithExternalWorkspaceCustody(
     {

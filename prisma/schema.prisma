@@ -3833,9 +3833,27 @@ model NetworkPhoneCaller {
   understandingState String @default("READY")
   understandingConversationId String?
   understandingStateAt DateTime?
+  // Provider-confirmed call completion, distinct from worker state transition times.
+  understandingCallEndedAt DateTime?
   @@index([createdAt])
 }
 
+
+// Stage 8.22.3: provider call lifecycle is independent of Relish participant sessions.
+// Never store telephone numbers, transcripts, session tokens or LU content here.
+model DorianVoiceCallLifecycle {
+  conversationId String @id @db.VarChar(120)
+  callerId String?
+  agentBindingId String? @db.VarChar(120)
+  mode String @default("UNRESOLVED") @db.VarChar(24)
+  callState String @default("STARTED") @db.VarChar(16)
+  understandingState String @default("NOT_REQUIRED") @db.VarChar(24)
+  startedAt DateTime @default(now())
+  endedAt DateTime?
+  updatedAt DateTime @updatedAt
+  @@index([callerId, startedAt])
+  @@index([callState, startedAt])
+}
 
 // Stage 8.20.1: append-only operator action trail for interrupted Dorian calls.
 // Intentionally contains no telephone number, transcript, prompts or private LU content.

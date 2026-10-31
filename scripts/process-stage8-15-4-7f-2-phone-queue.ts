@@ -5,7 +5,8 @@ import { createHash } from 'node:crypto';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { prisma } from '../src/lib/db';
 import { runWithWorkspaceCustody } from '../src/lib/server/core/contextSpace';
-import { processPhoneUnderstanding, finishPhoneUnderstanding } from '../src/lib/server/core/phoneUnderstandingAutomation';
+import { processPhoneUnderstanding, finishPhoneUnderstanding, releaseExpiredPhoneContinuityLock, reconcilePhoneContinuityFromLocalLedger } from '../src/lib/server/core/phoneUnderstandingAutomation';
+import { setDorianCallUnderstanding } from '../src/lib/server/core/dorianVoiceCallLifecycle';
 import { CONVERSATION_TRANSCRIPT_CHANNEL, PERSON_CONVERSATION_SOURCE_CHANNEL } from '../src/lib/server/core/conversationIngestion';
 
 // The worker inherits the application environment and its DATABASE_URL unchanged.
@@ -23,6 +24,21 @@ if (WATCH && ONCE) throw new Error('Choose either --watch or --once.');
 
 // Work on one caller at a time. Atomic claim is safe across independently running workers.
 async function runOne() {
+  // Release completion-confirmed gates that outlived the continuity window.
+  const expiryCutoff = new Date(Date.now() - 10 * 60 * 1000);
+  const expired = await prisma.networkPhoneCaller.findMany({
+    where: { understandingCallEndedAt: { lte: expiryCutoff }, understandingState: { not: 'READY' } },
+    select: { id: true }, take: 50
+  });
+  for (const row of expired) await releaseExpiredPhoneContinuityLock(row.id);
+  // A lost callback must not leave a caller permanently IN_CALL. Reconcile solely
+  // from the local call ledger, never by contacting the voice provider.
+  const unconfirmed = await prisma.networkPhoneCaller.findMany({
+    where: { understandingState: 'IN_CALL', understandingStateAt: {
+      lte: new Date(Date.now() - 2 * 60 * 60 * 1000) } },
+    select: { id: true }, take: 50
+  });
+  for (const row of unconfirmed) await reconcilePhoneContinuityFromLocalLedger(row.id);
   const candidates = await prisma.networkPhoneCaller.findMany({
     where: { understandingState: 'PROCESSING', understandingConversationId: { not: null } },
     orderBy: { understandingStateAt: 'asc' }, take: 20
@@ -34,6 +50,7 @@ async function runOne() {
       data: { understandingState: 'WORKING', understandingStateAt: new Date() }
     });
     if (claimed.count !== 1) continue;
+    await setDorianCallUnderstanding(conversationId, 'PROCESSING');
     try {
       // 8.18b: use the immutable context/contact on the issued conversation session.
       // The phone caller's original General contact is no longer always the active one.

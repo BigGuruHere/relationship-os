@@ -191,6 +191,33 @@ export async function requireSingleContextSpaceIdForOwner(
   return spaces[0].id;
 }
 
+/**
+ * IT: Resolve the account's explicitly selected default space for operations that truly
+ * create new default-scoped data. Never use this for existing contextual records.
+ * SECURITY: Do not silently choose the oldest or first of multiple ContextSpaces.
+ */
+export async function requireConfiguredDefaultContextSpaceIdForOwner(
+  client: {
+    user: { findUnique(args: any): Promise<{ defaultContextSpaceId: string | null } | null> };
+    contextSpace: { findFirst(args: any): Promise<{ id: string } | null> };
+  },
+  userId: string
+): Promise<string> {
+  const ownerUserId = String(userId ?? '').trim();
+  if (!ownerUserId) throw new Error('Missing user id for default ContextSpace resolution.');
+  const account = await client.user.findUnique({
+    where: { id: ownerUserId }, select: { defaultContextSpaceId: true }
+  });
+  if (!account?.defaultContextSpaceId) {
+    throw new Error(`Owner ${ownerUserId} must select a default ContextSpace before this operation.`);
+  }
+  const space = await client.contextSpace.findFirst({
+    where: { id: account.defaultContextSpaceId, ownerUserId }, select: { id: true }
+  });
+  if (!space) throw new Error('The configured default ContextSpace is not owned by this user.');
+  return space.id;
+}
+
 // IT: Resolve custody for ordinary same-owner code and non-request compatibility scripts.
 // SECURITY: An active workspace may never resolve another owner's ContextSpace implicitly.
 export function contextSpaceIdForOwner(userId: string, request = currentWorkspaceCustody()) {
@@ -263,7 +290,11 @@ const CROSS_CUSTODY_POLICIES: Record<CrossCustodyReason, { models: Record<string
   // administer a caller's workspace; the route must separately verify operator authority.
   PILOT_PHONE_REVIEW: {
     models: {
-      Interaction: new Set(['findMany']),
+      // SECURITY: The operator recovery monitor checks existence of a caller's
+      // transcript and person-source interaction using custody-scoped findFirst.
+      // This remains read-only and is restricted to the session's owner/space by
+      // scopeContextPrismaArgs; it does not authorise updates or cross-space reads.
+      Interaction: new Set(['findMany', 'findFirst']),
       Contact: new Set(['findMany', 'findFirst']),
       LivingUnderstandingRevision: new Set(['findFirst']),
       LivingUnderstandingRevisionSource: new Set(['findFirst']),

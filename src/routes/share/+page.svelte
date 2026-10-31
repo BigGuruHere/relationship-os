@@ -123,10 +123,4 @@
     cursor: pointer;
     height: 36px;
   }
-  .qr :global(svg) {
-    width: 220px;
-    height: 220px;
-    display: block;
-    border-radius: 10px;
-  }
 </style>

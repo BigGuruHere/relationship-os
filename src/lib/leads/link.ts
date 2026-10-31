@@ -12,7 +12,7 @@ import { buildIndexToken } from '$lib/crypto';
 import { createReciprocalContactIfMissing } from './reciprocal';
 import { requireUserPersonId } from '$lib/server/core/identity';
 import {
-  requireSingleContextSpaceIdForOwner,
+  requireConfiguredDefaultContextSpaceIdForOwner,
   runWithCrossOwnerWorkspaceCustody,
   runWithWorkspaceCustody
 } from '$lib/server/core/contextSpace';
@@ -45,7 +45,7 @@ export async function linkLeadsForUserFlexible(
 ): Promise<{ claimedLeadIds: string[]; touchedContactIds: string[]; owners: string[] }> {
   // SECURITY: Authentication callbacks can begin without request custody and only establish the
   // user during the request. Enter the claimant's current/default ContextSpace explicitly here.
-  const contextSpaceId = await requireSingleContextSpaceIdForOwner(prisma as any, userId);
+  const contextSpaceId = await requireConfiguredDefaultContextSpaceIdForOwner(prisma as any, userId);
   return runWithWorkspaceCustody({ userId, contextSpaceId }, () => linkLeadsForUserFlexibleInCustody(userId, opts));
 }
 
@@ -85,14 +85,22 @@ async function linkLeadsForUserFlexibleInCustody(
   // IT: Stage 8.1 links claimed Contacts to the canonical Person for this registered user as well as linkedUserId.
   const personId = await requireUserPersonId(userId);
 
-  // IT: Resolve every destination before changing claim state. Stage 8.7 refuses to guess if
-  // any prior lead owner has more than one ContextSpace.
+  // IT: Claim each existing Contact in its ORIGINAL custody. Lead is account-level
+  // bookkeeping and stores contactId; resolving a default space here would be wrong.
   const owners = Array.from(new Set(leads.map((l) => l.ownerId)));
-  const ownerContextEntries = await Promise.all(owners.map(async (ownerId) => [
-    ownerId,
-    await requireSingleContextSpaceIdForOwner(prisma as any, ownerId)
-  ] as const));
-  const ownerContextIds = new Map(ownerContextEntries);
+  const contactContexts = new Map<string, string>();
+  for (const lead of leads) {
+    if (!lead.contactId) continue;
+    // SECURITY: Read ONLY custody metadata using a parameterised query; the scoped Prisma
+    // Contact API deliberately rejects cross-owner reads from the claimant's request.
+    // No personal data or Contact fields are fetched or exposed.
+    const metadata = await prisma.$queryRaw<Array<{ contextSpaceId: string }>>`
+      SELECT "contextSpaceId" FROM "Contact"
+      WHERE "id" = ${lead.contactId} AND "userId" = ${lead.ownerId} LIMIT 1
+    `;
+    if (metadata.length !== 1) throw new Error('A lead references an unavailable owned Contact.');
+    contactContexts.set(lead.id, metadata[0].contextSpaceId);
+  }
 
   // SECURITY: Lead itself is account-level claim bookkeeping. Updating the prior owner's Contact is
   // contextual and therefore enters that owner's custody only through the LEAD_CLAIM boundary.
@@ -104,7 +112,7 @@ async function linkLeadsForUserFlexibleInCustody(
       });
 
       if (lead.contactId) {
-        const targetContextSpaceId = ownerContextIds.get(lead.ownerId);
+        const targetContextSpaceId = contactContexts.get(lead.id);
         if (!targetContextSpaceId) throw new Error(`Missing resolved ContextSpace for lead owner ${lead.ownerId}.`);
 
         await runWithCrossOwnerWorkspaceCustody(

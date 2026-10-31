@@ -4,6 +4,7 @@
 import { createHash } from 'node:crypto';
 import { error } from '@sveltejs/kit';
 import { prisma } from '$lib/db';
+import { runWithCrossOwnerWorkspaceCustody, runWithWorkspaceCustody } from '$lib/server/core/contextSpace';
 import { CONVERSATION_TRANSCRIPT_CHANNEL, PERSON_CONVERSATION_SOURCE_CHANNEL } from '$lib/server/core/conversationIngestion';
 import { recoveryEligibility, type RecoveryOperation } from './dorianRecoveryPolicy';
 
@@ -17,6 +18,17 @@ async function ownedBindings(viewer: Viewer) {
     where: { userId: viewer.userId, contextSpaceId: viewer.contextSpaceId, provider: 'ELEVENLABS' },
     select: { id: true }
   });
+}
+
+// SECURITY: Operator access to another participant's transcript evidence is narrowly
+// scoped to the actual session's owner and ContextSpace, under a read-only review reason.
+function inspectEvidenceInCustody<T>(viewer: Viewer, session: { userId: string; contextSpaceId: string }, fn: () => Promise<T>) {
+  return session.userId === viewer.userId
+    ? runWithWorkspaceCustody({ userId: session.userId, contextSpaceId: session.contextSpaceId }, fn)
+    : runWithCrossOwnerWorkspaceCustody({
+        sourceUserId: viewer.userId, targetUserId: session.userId,
+        targetContextSpaceId: session.contextSpaceId, reason: 'PILOT_PHONE_REVIEW'
+      }, fn);
 }
 
 // The worker uses these exact digest-based source indexes. Checking existence does
@@ -54,6 +66,13 @@ export async function listDorianRecovery(viewer: Viewer) {
     select: { userId: true, understandingState: true, understandingStateAt: true, understandingConversationId: true }
   });
   const callersByUser = new Map(callers.map(c => [c.userId, c]));
+  // Provider call state is independent of the legacy caller gate. Only query IDs
+  // from this operator's authorised sessions, never arbitrary participant calls.
+  const providerCalls = await prisma.dorianVoiceCallLifecycle.findMany({
+    where: { conversationId: { in: sessions.flatMap(s => s.conversationId ? [s.conversationId] : []) } },
+    select: { conversationId: true, callState: true, endedAt: true }
+  });
+  const providerByConversation = new Map(providerCalls.map(call => [call.conversationId, call]));
   const now = Date.now();
   const candidates = sessions.filter(s => {
     if (s.pilotEntryId) return ['QUEUED', 'WORKING', 'FAILED'].includes(s.understandingOutcome || '');
@@ -67,15 +86,18 @@ export async function listDorianRecovery(viewer: Viewer) {
     const state = session.pilotEntryId ? session.understandingOutcome! : caller!.understandingState;
     const changedAt = session.pilotEntryId ? session.understandingOutcomeAt : caller?.understandingStateAt ?? null;
     const ageMinutes = changedAt ? Math.max(0, Math.floor((now - changedAt.getTime()) / 60_000)) : null;
-    const hasEvidence = await evidenceExists(prisma, session);
+    const hasEvidence = await inspectEvidenceInCustody(viewer, session, () => evidenceExists(prisma, session));
     const { stale, actions } = recoveryEligibility(state, changedAt ?? null, hasEvidence, now);
     if (['APPLIED', 'NO_CHANGE'].includes(session.understandingOutcome || '')) {
       // Already-finalized understanding is never requeued from the monitor.
       const retryIndex = actions.indexOf('RETRY');
       if (retryIndex !== -1) actions.splice(retryIndex, 1);
     }
+    const provider = session.conversationId ? providerByConversation.get(session.conversationId) : null;
     items.push({ sessionId: session.id, conversationId: session.conversationId, createdAt: session.createdAt,
       kind: session.pilotEntryId ? 'PILOT' : 'PHONE', state, changedAt, ageMinutes,
+      // These fields prevent the UI from calling a completed provider conversation active.
+      providerCallState: provider?.callState ?? 'UNKNOWN', providerEndedAt: provider?.endedAt ?? null,
       hasEvidence, stale, actions, contextSpaceId: session.contextSpaceId });
   }
   const events = await prisma.dorianCallRecoveryEvent.findMany({
@@ -84,6 +106,19 @@ export async function listDorianRecovery(viewer: Viewer) {
       nextState: true, createdAt: true }
   });
   return { items, events };
+}
+
+// Read-only provider ledger for this operator's own bindings. This includes
+// processing-only calls, which intentionally have no NetworkDorianSession.
+export async function listRecentDorianProviderCalls(viewer: Viewer) {
+  const bindings = (await ownedBindings(viewer)).map(binding => binding.id);
+  if (!bindings.length) return [];
+  return prisma.dorianVoiceCallLifecycle.findMany({
+    where: { agentBindingId: { in: bindings } },
+    orderBy: { startedAt: 'desc' }, take: 40,
+    select: { conversationId: true, mode: true, callState: true, understandingState: true,
+      startedAt: true, endedAt: true }
+  });
 }
 
 // Every write uses the same exact session/deployment tuple as the authorised monitor.
@@ -113,7 +148,7 @@ export async function recoverDorianCall(viewer: Viewer, input: {
     if (!pilot && !caller) conflict();
     const state = pilot ? session.understandingOutcome : caller!.understandingState;
     const changedAt = pilot ? session.understandingOutcomeAt : caller!.understandingStateAt;
-    const evidence = await evidenceExists(tx, session);
+    const evidence = await inspectEvidenceInCustody(viewer, session, () => evidenceExists(tx, session));
     const operation = input.operation as RecoveryOperation;
     if (!recoveryEligibility(state, changedAt ?? null, evidence, now.getTime()).actions.includes(operation) ||
         (operation === 'RETRY' && ['APPLIED', 'NO_CHANGE'].includes(session.understandingOutcome || ''))) {

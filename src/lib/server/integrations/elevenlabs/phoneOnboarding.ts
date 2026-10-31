@@ -11,7 +11,7 @@ import { networkSessionHash } from './networkSession';
 import { normalizePhoneForIdentity } from './phone';
 import { ensureOwnedDomainContextSpace } from '$lib/server/core/contextSpaceDirectory';
 import { PERSON_CONVERSATION_SOURCE_CHANNEL } from '$lib/server/core/conversationIngestion';
-import { phoneAutomaticLearningEnabled } from '$lib/server/core/phoneUnderstandingAutomation';
+import { phoneAutomaticLearningEnabled, releaseExpiredPhoneContinuityLock, reconcilePhoneContinuityFromLocalLedger } from '$lib/server/core/phoneUnderstandingAutomation';
 import { runWithWorkspaceCustody } from '$lib/server/core/contextSpace';
 import { getCurrentLivingUnderstanding } from '$lib/server/datingPersistedLivingUnderstanding';
 import { decryptInteractionSummary } from '$lib/server/core/interactionEncryption';
@@ -70,6 +70,11 @@ export async function startProvisionalPhoneCall(input: {
   if (!phone || !acceptedConversation(input.conversationId)) return null;
   const caller = await ensureProvisionalPhoneCaller(phone);
   if (!caller) return null;
+  // Expire only completion-confirmed calls whose ten-minute processing window elapsed.
+  if (phoneAutomaticLearningEnabled()) {
+    await reconcilePhoneContinuityFromLocalLedger(caller.id);
+    await releaseExpiredPhoneContinuityLock(caller.id);
+  }
   // Stage 8.18b: select the verified participant-owned default, not the old fixed General row.
   // No owner workspace or unverified context can be substituted when validation fails.
   const selected = await resolvePhoneDefaultContext(caller);
@@ -86,7 +91,7 @@ export async function startProvisionalPhoneCall(input: {
       OR: [ { understandingOutcome: { in: ['QUEUED', 'WORKING'] } },
         { understandingOutcome: null, expiresAt: { gt: new Date() } } ]
     }, select: { id: true } });
-    if (pendingPilot) return { status: 'WAIT' as const };
+    if (pendingPilot) return { status: 'WAIT' as const, reason: 'PILOT_UNDERSTANDING_PENDING' as const };
   }
   const existingSession = await prisma.networkDorianSession.findUnique({ where: { conversationId: input.conversationId } });
   if (existingSession) return null; // duplicate initiation must never mint another credential
@@ -137,7 +142,7 @@ export async function startProvisionalPhoneCall(input: {
       lastCallSummary = decryptInteractionSummary(latestSummarisedCall?.summaryEnc).trim().slice(0, 1600);
     } catch {
       // A custody/database read failure should not silently deliver untrusted context.
-      return { status: 'WAIT' as const, preferredName };
+      return { status: 'WAIT' as const, reason: 'PREVIOUS_SUMMARY_READ_FAILED' as const, preferredName };
     }
   }
   let livingContext = '';
@@ -160,7 +165,7 @@ export async function startProvisionalPhoneCall(input: {
     } catch {
       // Fail closed on an unexpected custody/decryption/database error.
       // The caller is not locked because no IN_CALL claim has been attempted yet.
-      return { status: 'WAIT' as const, preferredName };
+      return { status: 'WAIT' as const, reason: 'LIVING_CONTEXT_READ_FAILED' as const, preferredName };
     }
   }
   const token = randomBytes(32).toString('base64url');
@@ -170,9 +175,21 @@ export async function startProvisionalPhoneCall(input: {
     const claimed = phoneAutomaticLearningEnabled() ? await prisma.networkPhoneCaller.updateMany({
       where: { id: caller.id, understandingState: 'READY' },
       data: { understandingState: 'IN_CALL', understandingConversationId: input.conversationId,
-        understandingStateAt: new Date() }
+        understandingStateAt: new Date(), understandingCallEndedAt: null }
     }) : { count: 1 };
-    if (claimed.count !== 1) return { status: 'WAIT' as const, preferredName };
+    if (claimed.count !== 1) {
+      // A waiting greeting must identify which Relish-owned lifecycle state held
+      // the call. Never poll the voice provider or log telephone numbers.
+      const blocking = await prisma.networkPhoneCaller.findUnique({ where: { id: caller.id },
+        select: { understandingState: true, understandingConversationId: true } });
+      const reason = blocking?.understandingState === 'IN_CALL' ? 'ACTIVE_CALL'
+        : blocking?.understandingState === 'AWAITING_INGEST' ? 'TRANSCRIPT_INGEST_PENDING'
+        : 'UNDERSTANDING_PENDING';
+      console.info('[phone-continuity] New call held by Relish continuity gate.', {
+        reason, previousConversationId: blocking?.understandingConversationId || null
+      });
+      return { status: 'WAIT' as const, reason, preferredName };
+    }
     try {
       await prisma.networkDorianSession.create({ data: {
         tokenHash: networkSessionHash(token), userId: selected.userId,
@@ -195,7 +212,7 @@ export async function startProvisionalPhoneCall(input: {
     if (error && typeof error === 'object' && 'code' in error && error.code === 'P2002') return null;
     throw error;
   }
-  return { status: 'READY' as const, userId: selected.userId, token, previousCalls, preferredName, livingContext,
+  return { status: 'READY' as const, callerRecordId: caller.id, userId: selected.userId, token, previousCalls, preferredName, livingContext,
     livingRevision, lastCallSummary, domainKey: selected.domainKey };
 }
 

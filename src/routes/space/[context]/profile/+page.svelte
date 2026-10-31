@@ -8,7 +8,7 @@
   <p class="workspace-intro">Only information you explicitly publish in your {data.workspace.label.toLowerCase()} profile is visible to visitors.</p>
   <section class="workspace-panel">
     {#if data.profile}
-      {#if data.profile.avatarUrl}<img class="workspace-profile-photo" src={data.profile.avatarUrl} alt="Your profile photo" />{/if}
+      {#if data.profile.avatarUrl}<img class="workspace-profile-photo" src={data.profile.avatarUrl} alt="Your profile" />{/if}
       <h2>{data.profile.displayName || 'My profile'}</h2>
       <p>{data.profile.headline || 'Add a short introduction to your profile.'}</p>
       <p><strong>Status:</strong> {data.profile.isPublished ? 'Published' : 'Not published'}</p>

@@ -1,6 +1,8 @@
+import { setDorianCallUnderstanding, expireDorianCallUnderstanding } from './dorianVoiceCallLifecycle';
 // Stage 8.15.4.7f - Reuse Relish's existing validated, source-attributed LU pipeline.
 // This is private learning only. It never changes matching, disclosure or sharing permissions.
 import { prisma } from '$lib/db';
+import { continuityAction, UNCONFIRMED_ACTIVE_CALL_LEASE_MS } from './phoneContinuityPolicy.mjs';
 import { LivingUnderstandingNoChangeError } from '$lib/server/datingLongitudinalLivingUnderstanding';
 import { getCurrentLivingUnderstanding, adoptLivingUnderstanding, createLivingUnderstandingAdoptionToken } from '$lib/server/datingPersistedLivingUnderstanding';
 import { identifySemanticAreasReadOnly, reviseSemanticAreaReadOnly, restructureLivingUnderstandingReadOnly } from '$lib/server/datingUnderstandingRevisionExperiment';
@@ -70,17 +72,153 @@ export async function processPhoneUnderstanding(scope:Scope, sourceInteractionId
   return {status:'COMPLETE' as const, detail:'INITIAL_APPLIED'};
 }
 
+// The ten-minute continuity window begins at call completion, not call initiation.
+export const PHONE_CONTINUITY_WINDOW_MS = 10 * 60 * 1000;
+
+export async function markPhoneCallEnded(conversationId: string, endedAt = new Date()) {
+  // The provider adapter already persisted completion in the independent ledger.
+  // This helper only closes the caller's compatibility state, not the provider call.
+  // A signed provider post-call event proves completion. Only update the matching call.
+  await prisma.networkPhoneCaller.updateMany({
+    where: { understandingConversationId: conversationId, understandingCallEndedAt: null },
+    data: { understandingCallEndedAt: endedAt }
+  });
+  // Completion does NOT mean LU is queued. Hold a short, distinct ingestion
+  // state until participant evidence is durably stored. The worker must only
+  // claim PROCESSING; otherwise it can race the webhook and fail on missing data.
+  await prisma.networkPhoneCaller.updateMany({
+    where: { understandingConversationId: conversationId, understandingState: 'IN_CALL' },
+    data: { understandingState: 'AWAITING_INGEST', understandingStateAt: new Date() }
+  });
+}
+
 export async function finishPhoneUnderstanding(conversationId:string, status:'READY'|'FAILED') {
-  // Guarded by the exact conversation, so a stale webhook cannot unlock a newer call.
+  // A completed or failed LU job cannot leave the caller's gate held.
+  await setDorianCallUnderstanding(conversationId, status === 'READY' ? 'COMPLETED' : 'FAILED');
+  // A failure remains recorded on NetworkDorianSession, never blocks future conversations.
+  // Conversation ID matching protects newer calls against delayed worker callbacks.
   await prisma.networkPhoneCaller.updateMany({
     where:{understandingConversationId:conversationId},
-    data:{understandingState:status,understandingStateAt:new Date()}
+    data:{understandingState:'READY',understandingConversationId:null,understandingCallEndedAt:null,understandingStateAt:new Date()}
+  });
+}
+
+export async function releasePhoneContinuityWithoutUnderstanding(conversationId: string) {
+  // A provider-confirmed empty call has no Living Understanding job to finish.
+  // Preserve the difference between NOT_REQUIRED and successfully COMPLETED LU.
+  await prisma.dorianVoiceCallLifecycle.updateMany({
+    where: { conversationId, mode: 'PARTICIPANT',
+      understandingState: { in: ['PENDING', 'PROCESSING'] } },
+    data: { understandingState: 'NOT_REQUIRED' }
+  });
+  // Never release a different/newer call that has since claimed this caller.
+  await prisma.networkPhoneCaller.updateMany({
+    where: { understandingConversationId: conversationId },
+    data: { understandingState: 'READY', understandingConversationId: null,
+      understandingCallEndedAt: null, understandingStateAt: new Date() }
   });
 }
 
 export async function beginPhoneUnderstanding(conversationId:string) {
+  // Invoked only AFTER the transcript and participant source are committed.
+  // This is the first point at which the independent worker may claim the call.
+  await setDorianCallUnderstanding(conversationId, 'PENDING');
   await prisma.networkPhoneCaller.updateMany({
-    where:{understandingConversationId:conversationId,understandingState:'IN_CALL'},
+    where:{understandingConversationId:conversationId,
+      understandingState:{ in: ['AWAITING_INGEST', 'IN_CALL'] }},
     data:{understandingState:'PROCESSING',understandingStateAt:new Date()}
   });
+}
+
+export async function releaseExpiredPhoneContinuityLock(callerId: string) {
+  const cutoff = new Date(Date.now() - PHONE_CONTINUITY_WINDOW_MS);
+  // Never release an IN_CALL row merely because its initiation is old.
+  // Only a provider-confirmed end time can start the ten-minute deadline.
+  const previous = await prisma.networkPhoneCaller.findUnique({
+    where: { id: callerId }, select: { understandingConversationId: true } });
+  const previousConversationId = previous?.understandingConversationId;
+  if (!previousConversationId) return false;
+  const released = await prisma.networkPhoneCaller.updateMany({
+    where: { id: callerId, understandingConversationId: previousConversationId,
+      understandingState: { in: ['IN_CALL','AWAITING_INGEST','PROCESSING','WORKING','FAILED'] },
+      understandingCallEndedAt: { lte: cutoff } },
+    data: { understandingState: 'READY', understandingConversationId: null,
+      understandingCallEndedAt: null, understandingStateAt: new Date() }
+  });
+  if (released.count) {
+    // An expired gate has no authority to stop the late worker. Preserve its work,
+    // but do not let it mark newer calls complete or re-lock the caller.
+    if (previousConversationId) await expireDorianCallUnderstanding(previousConversationId);
+    console.info('[phone-continuity] Released expired completion-based gate.');
+  }
+  return released.count > 0;
+}
+
+// Stage 8.22.3c: local-first recovery. No provider API calls are made during initiation.
+// A signed post-call webhook is the completion authority; understanding remains a
+// separate, Relish-owned process. This also repairs crashes between the two local
+// writes in the webhook's completion path.
+export async function reconcilePhoneContinuityFromLocalLedger(callerId: string) {
+  const caller = await prisma.networkPhoneCaller.findUnique({ where: { id: callerId },
+    select: { understandingState: true, understandingConversationId: true,
+      understandingCallEndedAt: true, understandingStateAt: true } });
+  if (!caller || caller.understandingState === 'READY' || !caller.understandingConversationId) return;
+  const conversationId = caller.understandingConversationId;
+  const call = await prisma.dorianVoiceCallLifecycle.findUnique({
+    where: { conversationId },
+    select: { callState: true, endedAt: true, startedAt: true, understandingState: true }
+  });
+
+  if (call?.callState === 'ENDED' && call.endedAt) {
+    // A crash between ledger closure and caller transition must never strand a gate.
+    if (!caller.understandingCallEndedAt || caller.understandingState === 'IN_CALL') {
+      await markPhoneCallEnded(conversationId, call.endedAt);
+    }
+    const action = continuityAction(call);
+    if (action === 'RELEASE') {
+      // A terminal or no-work outcome has no reason to block another conversation.
+      await prisma.networkPhoneCaller.updateMany({
+        where: { id: callerId, understandingConversationId: conversationId },
+        data: { understandingState: 'READY', understandingConversationId: null,
+          understandingCallEndedAt: null, understandingStateAt: new Date() }
+      });
+      console.info('[phone-continuity] Released terminal locally completed call.', { conversationId });
+    }
+    return;
+  }
+
+  if (call?.callState === 'UNCONFIRMED') {
+    // A previously recovered uncertain call never acquires the gate again.
+    await prisma.networkPhoneCaller.updateMany({
+      where: { id: callerId, understandingConversationId: conversationId },
+      data: { understandingState: 'READY', understandingConversationId: null,
+        understandingCallEndedAt: null, understandingStateAt: new Date() }
+    });
+    return;
+  }
+
+  // An absent completion event cannot establish the actual hang-up time.
+  // As a LAST RESORT, expire an unconfirmed active-call lease after two hours,
+  // retaining a distinct UNCONFIRMED ledger state, NOT fabricating an end time.
+  // This is deliberately independent of the 10 minutes counted from confirmed end.
+  const startedAt = call?.startedAt ?? caller.understandingStateAt;
+  if (caller.understandingState === 'IN_CALL' &&
+      continuityAction(call || { callState: 'STARTED', startedAt }) === 'ABANDON_UNCONFIRMED') {
+    const released = await prisma.networkPhoneCaller.updateMany({
+      where: { id: callerId, understandingConversationId: conversationId,
+        understandingState: 'IN_CALL', understandingCallEndedAt: null,
+        understandingStateAt: { lte: new Date(Date.now() - UNCONFIRMED_ACTIVE_CALL_LEASE_MS) } },
+      data: { understandingState: 'READY', understandingConversationId: null,
+        understandingCallEndedAt: null, understandingStateAt: new Date() }
+    });
+    if (released.count) {
+      await prisma.dorianVoiceCallLifecycle.updateMany({
+        where: { conversationId, callState: 'STARTED' },
+        data: { callState: 'UNCONFIRMED', understandingState: 'EXPIRED' }
+      });
+      console.warn('[phone-continuity] Unconfirmed call lease expired without completion event.', {
+        conversationId, reason: 'MISSING_COMPLETION_EVENT'
+      });
+    }
+  }
 }

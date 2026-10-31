@@ -15,7 +15,7 @@ export const load: PageServerLoad = async ({ params }) => {
   } });
   // Old links now land on the single-action public page.
   throw redirect(303, `/u/${encodeURIComponent(params.slug)}`);
-  return { profileName: profile.displayName || 'this person', contextLabel: pilotKindLabel(profile.kind),
+  return { profileName: profile!.displayName || 'this person', contextLabel: pilotKindLabel(profile!.kind),
     slug: params.slug, mode: pref?.dorianMode || 'SMS_CALLBACK', ...pilotTermsConfig() };
 };
 

@@ -108,7 +108,7 @@
 
       <div class="field span2">
         <label for="photoFile">Profile photo (specific to this profile)</label>
-        {#if avatarUrl}<img src={avatarUrl} alt="Current profile photo" class="profile-photo-preview" />{/if}
+        {#if avatarUrl}<img src={avatarUrl} alt="Current profile" class="profile-photo-preview" />{/if}
         <input id="photoFile" type="file" accept="image/jpeg,image/png,image/webp" on:change={uploadProfilePhoto} />
         <small>Choose a photo from your phone. It will be resized and displayed publicly on this profile only.</small>
         {#if photoBusy}<small>Preparing photo…</small>{/if}

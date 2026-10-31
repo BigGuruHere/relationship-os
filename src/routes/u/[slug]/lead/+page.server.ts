@@ -11,7 +11,7 @@ import { fail, redirect } from '@sveltejs/kit';
 import { createInviteToken } from '$lib/server/tokens';
 import { resolveOwnerFromSlug } from '$lib/server/owner';
 import {
-  requireSingleContextSpaceIdForOwner,
+  requireConfiguredDefaultContextSpaceIdForOwner,
   runWithExternalWorkspaceCustody
 } from '$lib/server/core/contextSpace';
 
@@ -68,7 +68,7 @@ export const actions: Actions = {
 
     // SECURITY: Public lead capture is unauthenticated ingress into another person's Workspace.
     // Resolve the only available destination first and enter it through the named external boundary.
-    const ownerContextSpaceId = await requireSingleContextSpaceIdForOwner(prisma as any, owner.id);
+    const ownerContextSpaceId = await requireConfiguredDefaultContextSpaceIdForOwner(prisma as any, owner.id);
 
     return runWithExternalWorkspaceCustody(
       {

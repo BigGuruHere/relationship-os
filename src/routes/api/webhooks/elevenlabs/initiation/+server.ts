@@ -1,3 +1,5 @@
+import { finishPhoneUnderstanding } from '$lib/server/core/phoneUnderstandingAutomation';
+import { recordDorianCallInitiation } from '$lib/server/core/dorianVoiceCallLifecycle';
 import { dispatchCurrentPolicySms } from '$lib/server/core/relishPolicySms';
 import { policyInstructionForCaller, withConsentGate } from '$lib/server/core/relishCallPolicy';
 import { configureDorianCall, safeFirstMessage, fetchPublishedDorianConfig } from '$lib/server/integrations/elevenlabs/dorianControlPlane';
@@ -75,7 +77,7 @@ export const POST: RequestHandler = async ({ request }) => {
       // Never derive a browser identity from user_id, contact_id or an arbitrary page URL.
       const browserToken = body?.dynamic_variables?.relish_network_session;
       if (!body?.caller_id && typeof browserToken === 'string') {
-        const shared = await resolveSharedNetworkSession({ bindingId: deployment.bindingId,
+        const shared = await resolveSharedNetworkSession({ bindingId: deployment.bindingId!,
           conversationId: body?.conversation_id, agentId: body?.agent_id, sessionToken: browserToken });
         if (!shared) return json({ error: 'Invalid browser session.' }, { status: 403 });
         const context = await runWithExternalWorkspaceCustody({ targetUserId: shared.userId,
@@ -118,9 +120,11 @@ export const POST: RequestHandler = async ({ request }) => {
       // Preflight before issuing a provisional phone session or claiming IN_CALL.
       const publishedDorian = await fetchPublishedDorianConfig(String(body.agent_id || ''));
       const prepared = await startProvisionalPhoneCall({
-        callerId: body?.caller_id, conversationId: body?.conversation_id, bindingId: deployment.bindingId
+        callerId: body?.caller_id, conversationId: body?.conversation_id, bindingId: deployment.bindingId!
       });
       if (!prepared) {
+        await recordDorianCallInitiation({ conversationId: body?.conversation_id,
+          bindingId: deployment.bindingId, mode: 'UNRESOLVED' });
         elevenLabsLog(traceId, 'RESPONSE', 'Caller missing, duplicate or unsafe: generic response only.', { status: 200 });
         return json({ type: 'conversation_initiation_client_data', dynamic_variables: {
           // Unresolved callers must not receive a real session credential.
@@ -130,13 +134,17 @@ export const POST: RequestHandler = async ({ request }) => {
         } });
       }
       if (prepared.status === 'WAIT') {
+        // Processing-only calls have a provider lifecycle record but no participant session.
+        await recordDorianCallInitiation({ conversationId: body?.conversation_id,
+          bindingId: deployment.bindingId, mode: 'PROCESSING_ONLY' });
         // Give a spoken processing notice, but never issue a session credential or private context.
         // A preferred name is only a provisional phone preference and is safe for this pilot greeting.
         // Ending the call requires the ElevenLabs built-in end_call tool and a system-prompt rule.
         const name = prepared.preferredName?.trim();
         const waitingMessage = `${name ? `Hi ${name}. ` : 'Hi there. '}I'm just processing our last call. Could you call me back in a few minutes?`;
         elevenLabsLog(traceId, 'RESPONSE', 'Previous call is not yet ready; processing-only greeting.', {
-          status: 200, hasPreferredName: Boolean(name), sessionIssued: false
+          status: 200, hasPreferredName: Boolean(name), sessionIssued: false,
+          waitReason: prepared.reason
         });
         return json({
           type: 'conversation_initiation_client_data',
@@ -153,43 +161,60 @@ export const POST: RequestHandler = async ({ request }) => {
           conversation_config_override: { agent: { first_message: waitingMessage } }
         });
       }
-      const response = provisionalPhoneInitiationResponse(prepared);
-      // Stage 8.20: the *one* external control plane selects a published greeting
-      // and ContextSpace guidance. It cannot change server-owned identity or consent.
-      const phoneProjection = await configureDorianCall({
-        dynamicVariables: response.dynamic_variables,
-        domainKey: prepared.domainKey,
-        previousCalls: prepared.previousCalls,
-        preferredName: prepared.preferredName,
-        providerAgentId: String(body.agent_id || ''),
-        published: publishedDorian
-      });
-      // Stage 8.20.2: consent controls the mandatory first procedure, not delivery
-      // of participant-scoped name, previous understanding or call context.
-      const initialPolicy = await policyInstructionForCaller(prepared.userId);
-      // Submission precedes speaking. A failure cannot be misrepresented as delivery.
-      const smsStatus = await dispatchCurrentPolicySms({ userId: prepared.userId,
-        phone: body?.caller_id, accepted: initialPolicy.accepted });
-      const callPolicy = await policyInstructionForCaller(prepared.userId, smsStatus);
-      response.dynamic_variables = withConsentGate(phoneProjection.dynamicVariables, callPolicy) as any;
-      const firstMessage = safeFirstMessage(phoneProjection.firstMessage || response.conversation_config_override.agent.first_message, callPolicy);
-      if (firstMessage) response.conversation_config_override.agent.first_message = firstMessage;
-      elevenLabsLog(traceId, 'RESPONSE', 'Provisional caller session issued.', {
-        status: 200, identityStatus: 'PROVISIONAL_PHONE', previousCalls: prepared.previousCalls
-      });
-      return json(response);
+      try {
+        await recordDorianCallInitiation({ conversationId: body?.conversation_id,
+          callerId: prepared.callerRecordId,
+          bindingId: deployment.bindingId, mode: 'PARTICIPANT' });
+      } catch (error) {
+        // Do not strand an IN_CALL gate if lifecycle registration itself fails.
+        // The call was not yet issued a usable participant session token.
+        await finishPhoneUnderstanding(String(body?.conversation_id || ''), 'FAILED');
+        throw error;
+      }
+      try {
+        const response = provisionalPhoneInitiationResponse(prepared);
+        // Stage 8.20: the *one* external control plane selects a published greeting
+        // and ContextSpace guidance. It cannot change server-owned identity or consent.
+        const phoneProjection = await configureDorianCall({
+          dynamicVariables: response.dynamic_variables,
+          domainKey: prepared.domainKey,
+          previousCalls: prepared.previousCalls,
+          preferredName: prepared.preferredName,
+          providerAgentId: String(body.agent_id || ''),
+          published: publishedDorian
+        });
+        // Stage 8.20.2: consent controls the mandatory first procedure, not delivery
+        // of participant-scoped name, previous understanding or call context.
+        const initialPolicy = await policyInstructionForCaller(prepared.userId);
+        // Submission precedes speaking. A failure cannot be misrepresented as delivery.
+        const smsStatus = await dispatchCurrentPolicySms({ userId: prepared.userId,
+          phone: body?.caller_id, accepted: initialPolicy.accepted });
+        const callPolicy = await policyInstructionForCaller(prepared.userId, smsStatus);
+        response.dynamic_variables = withConsentGate(phoneProjection.dynamicVariables, callPolicy) as any;
+        const firstMessage = safeFirstMessage(phoneProjection.firstMessage || response.conversation_config_override.agent.first_message, callPolicy);
+        if (firstMessage) response.conversation_config_override.agent.first_message = firstMessage;
+        elevenLabsLog(traceId, 'RESPONSE', 'Provisional caller session issued.', {
+          status: 200, identityStatus: 'PROVISIONAL_PHONE', previousCalls: prepared.previousCalls
+        });
+        return json(response);
+      } catch (error) {
+        // If initiation fails after claiming the caller, no useful provider session
+        // has been issued. Release only this conversation's continuity gate.
+        await finishPhoneUnderstanding(String(body?.conversation_id || ''), 'FAILED');
+        throw error;
+      }
     }
 
     return runWithExternalWorkspaceCustody({
       targetUserId: deployment.userId,
-      targetContextSpaceId: deployment.contextSpaceId,
+      targetContextSpaceId: deployment.contextSpaceId!,
       reason: 'ELEVENLABS_CONVERSATION_INITIATION'
     }, async () => {
       elevenLabsLog(traceId, 'CUSTODY', 'Entered external workspace custody.', {
         userId: deployment.userId,
         contextSpaceId: deployment.contextSpaceId,
         agentKey: deployment.agentKey,
-        bindingId: deployment.bindingId
+        bindingId: deployment.bindingId!
       });
 
       const built = await buildElevenLabsInitiationData({ userId: deployment.userId!, contextSpaceId: deployment.contextSpaceId! }, {

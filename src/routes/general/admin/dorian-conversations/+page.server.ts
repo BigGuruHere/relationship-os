@@ -2,12 +2,14 @@
 import { fail, redirect, error } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import { listDorianCalls, requirePilotOperator } from '$lib/server/pilotMonitor/conversations';
-import { listDorianRecovery, recoverDorianCall } from '$lib/server/pilotMonitor/dorianRecovery';
+import { listDorianRecovery, listRecentDorianProviderCalls, recoverDorianCall } from '$lib/server/pilotMonitor/dorianRecovery';
 
 export const load: PageServerLoad = async ({ locals, url }) => {
   const viewer = await requirePilotOperator(locals);
-  const [calls, recovery] = await Promise.all([listDorianCalls(viewer), listDorianRecovery(viewer)]);
-  return { calls, recovery, recovered: url.searchParams.get('recovered') === '1' };
+  const [calls, recovery, providerCalls] = await Promise.all([
+    listDorianCalls(viewer), listDorianRecovery(viewer), listRecentDorianProviderCalls(viewer)
+  ]);
+  return { calls, recovery, providerCalls, recovered: url.searchParams.get('recovered') === '1' };
 };
 
 export const actions: Actions = {

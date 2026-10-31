@@ -36,7 +36,7 @@ export const POST:RequestHandler=async({request})=>{
   const replacing=body.operation==='REPLACE';
   if(body.confirm!==(replacing?'REPLACE':'REGISTER'))
     return json({error:'EXPLICIT_CONFIRMATION_REQUIRED'},{status:400,headers:NO_STORE});
-  try{return json(await (replacing?replaceDorianDeployment(body):registerDorianDeployment(body)),{headers:NO_STORE});}
+  try{return json(await (replacing?replaceDorianDeployment({ environment: body.environment, agentId: body.agentId, previousBindingId: body.previousBindingId }):registerDorianDeployment({ environment: body.environment, agentId: body.agentId })),{headers:NO_STORE});}
   catch(error){
     const conflict=error instanceof DorianRegistrationConflict;
     if(!conflict) {

@@ -15,6 +15,7 @@
   ];
 
   $: path = data.routePathname || '/';
+  $: isPeople = path === '/people' || path.startsWith('/people/');
   $: isPublic = path.startsWith('/u/') || path.startsWith('/pilot/dorian/') || path.startsWith('/network/join/') || path === '/legal' || path.startsWith('/legal/');
   $: isBroker = ['/broker', '/leads', '/deals', '/companies', '/agents', '/workstreams', '/contacts', '/wants', '/offers', '/introductions', '/projects', '/tasks', '/actions', '/search'].some(prefix => path === prefix || path.startsWith(prefix + '/'));
   $: isOperator = path === '/operator' || path.startsWith('/operator/') || path === '/general' || path.startsWith('/general/');
@@ -49,12 +50,12 @@
 <div class:relish-visitor={isPublic} class="relish-shell" style={'--workspace-accent:' + activeSpace.color}>
   {#if !isPublic}
     <header class="relish-header">
-      <a class="relish-brand" href={data.user ? activeBase : '/auth/login'} aria-label="Relish home">
+      <a class="relish-brand" href={data.user ? (isPeople ? '/people' : activeBase) : '/auth/login'} aria-label="Relish home">
         <img src="/relish-logo.png" alt="" width="36" height="36" />
         <strong>Relish</strong>
       </a>
       {#if data.user}
-        <div class="relish-context-picker">
+        {#if !isPeople}<div class="relish-context-picker">
           {#if spaces.length > 1}
             <label for="context-select">Context</label>
             <select id="context-select" value={activeName} on:change={changeSpace}>
@@ -66,10 +67,12 @@
             <span class="relish-context-only">{activeSpace.label}</span>
           {/if}
         </div>
-        <a class="relish-header-tools" href={activeBase + '/share'}>Share</a>
+        {/if}
+        {#if isPeople}<a class="relish-header-tools" href="/people/new">Add Person</a>{:else}<a class="relish-header-tools" href={activeBase + '/share'}>Share</a>{/if}
         <details class="relish-more" bind:open={moreMenuOpen}>
           <summary aria-label="More account options">•••</summary>
           <div class="relish-more-menu">
+            <a href="/people" on:click={closeMoreMenu}>My People</a>
             <a href={activeBase} on:click={closeMoreMenu}>Relish home</a>
             {#if data.capabilities?.includes('BROKER')}<a href="/broker" on:click={closeMoreMenu}>Business broker</a>{/if}
             {#if data.capabilities?.includes('OPERATOR')}<a href="/operator" on:click={closeMoreMenu}>Operator tools</a>{/if}
@@ -85,8 +88,10 @@
 
     {#if data.user}
       <aside class="relish-sidebar" aria-label="Application navigation">
-        <div class="relish-sidebar-title">{specialist === 'broker' ? 'Business broker' : specialist === 'operator' ? 'Operator tools' : activeSpace.label}</div>
-        {#if specialist}
+        <a class="relish-nav-item" href="/people">My People</a>
+        <div class="relish-sidebar-title">{isPeople ? 'My People' : specialist === 'broker' ? 'Business broker' : specialist === 'operator' ? 'Operator tools' : activeSpace.label}</div>
+        {#if isPeople}<a class="relish-nav-item" href="/people/new">Add Person</a>
+        {:else if specialist}
           <a class="relish-nav-item" href={activeBase}>← Back to Relish</a>
           {#if specialist === 'broker'}<a class:current={path === '/broker'} class="relish-nav-item" href="/broker">Broker workspace</a>{/if}
           {#if specialist === 'operator'}<a class:current={path === '/operator'} class="relish-nav-item" href="/operator">Operator tools</a>{/if}
@@ -116,7 +121,7 @@
 
   <main class="relish-content"><slot /></main>
 
-  {#if !isPublic && data.user && !specialist}
+  {#if !isPublic && data.user && !specialist && !isPeople}
     <nav class="relish-bottom-nav" aria-label={activeSpace.label + ' navigation'}>
       {#each nav as item}
         <a class:current={path === activeBase + item.slug} href={activeBase + item.slug}>

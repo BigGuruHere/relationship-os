@@ -5,6 +5,8 @@
 import { fail, redirect } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import { prisma } from '$lib/db';
+import { persistCoreContact } from '$lib/server/core/contacts';
+import { createWorkspaceCoreAccess } from '$lib/server/core/accessPolicy';
 import { encrypt, decrypt, buildIndexToken } from '$lib/crypto';
 import {
   BUYER_QUALIFICATION_STATUSES,
@@ -194,7 +196,7 @@ export const actions: Actions = {
     // IT: create contact and capture the id
     let createdId: string;
     try {
-      const created = await prisma.contact.create({ data, select: { id: true } });
+      const created = await persistCoreContact(createWorkspaceCoreAccess(locals.user.id, 'crm:contact-create'), data);
       createdId = created.id;
     } catch (e: any) {
       if (e?.code === 'P2002') {

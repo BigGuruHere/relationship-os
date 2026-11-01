@@ -2,6 +2,8 @@
 // PURPOSE: Resolve the application domain and owned ContextSpace for each authenticated request.
 // SECURITY: Client-selected ContextSpace ids are hints only. Ownership and domain are always rechecked server-side.
 
+export const PRIVATE_DOMAIN_KEY = 'private';
+
 export const BUSINESS_DOMAIN_KEY = 'business';
 export const DATING_DOMAIN_KEY = 'dating';
 export const GENERAL_DOMAIN_KEY = 'general';
@@ -32,6 +34,7 @@ export function normalizeContextDomainKey(value: unknown) {
 
 export function contextDomainForPathname(pathname: string): ContextDomainKey {
 	const path = String(pathname || '/');
+	if (path === '/people' || path.startsWith('/people/')) return PRIVATE_DOMAIN_KEY;
 	// IT: Domain selection comes from a server-owned route boundary, not from an arbitrary query parameter.
 	// IT: Pilot UI paths select custody through a trusted route prefix, never a query or cookie.
 	if (path === '/space/dating' || path.startsWith('/space/dating/')) return DATING_DOMAIN_KEY;

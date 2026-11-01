@@ -9,7 +9,12 @@
 import OpenAI from 'openai';
 
 // IT: never hardcode secrets - read from env
-const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+// Resolve credentials only when an embedding is requested, never during route imports.
+let client: OpenAI | undefined;
+function embeddingClient() {
+  if (!process.env.OPENAI_API_KEY?.trim()) throw new Error('Embeddings require OPENAI_API_KEY');
+  return client ??= new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+}
 
 // IT: choose a stable model and keep DB column dim in sync
 // text-embedding-3-small produces 1536 dimensional vectors
@@ -21,7 +26,7 @@ export async function createEmbeddingForText(text: string): Promise<number[]> {
   if (!input) return [];
 
   // IT: call OpenAI Embeddings API
-  const resp = await client.embeddings.create({
+  const resp = await embeddingClient().embeddings.create({
     model: EMBEDDING_MODEL,
     input
   });

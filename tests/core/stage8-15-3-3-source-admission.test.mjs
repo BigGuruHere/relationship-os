@@ -9,7 +9,7 @@ test('schema and forward migration preserve an explicit admission decision', () 
 });
 test('CRM notes default to stored-only and offer opt-in', () => {
   const server = read('src/routes/contacts/[id]/interactions/new/+page.server.ts');
-  const page = read('src/routes/contacts/[id]/interactions/new/+page.svelte');
+  const page = read('src/lib/recording/ContactNoteForm.svelte');
   assert.match(server, /luAdmission: z\.enum\(\['STORED_ONLY', 'ELIGIBLE'\]\)\.default\('STORED_ONLY'\)/);
   assert.match(server, /luAdmission: parsed\.data\.luAdmission/);
   assert.match(page, /name="luAdmission" value="ELIGIBLE"/);

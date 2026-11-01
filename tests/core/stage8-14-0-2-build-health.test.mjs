@@ -29,7 +29,7 @@ test('public profile pages explicitly type dynamic page/form payloads', async ()
 });
 
 test('interaction recorder no longer treats beforeNavigate as unsubscribe and uses fetch BodyInit', async () => {
-  const page = await read('src/routes/contacts/[id]/interactions/new/+page.svelte');
+  const page = await read('src/lib/recording/ContactNoteForm.svelte');
   assert.doesNotMatch(page, /const unreg = beforeNavigate/);
   assert.doesNotMatch(page, /unreg\?\.\(\)/);
   assert.match(page, /body: bytes\.buffer\.slice\([\s\S]*?\) as ArrayBuffer/);

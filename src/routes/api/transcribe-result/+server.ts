@@ -2,7 +2,7 @@
 // SECURITY: Requires login. Does not expose any internal state on errors.
 // NOTES: Imports _getJob from upload-chunk - underscore export is allowed by SvelteKit.
 
-import type { RequestHandler } from './$types';
+import type { RequestHandler } from '@sveltejs/kit';
 import { json, redirect } from '@sveltejs/kit';
 // IMPORTANT - use the underscored export
 import { _getJob as getJob } from '../upload-chunk/+server';

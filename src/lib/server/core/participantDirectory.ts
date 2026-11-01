@@ -1,3 +1,5 @@
+import { createCoreContact } from './contacts';
+import { createWorkspaceCoreAccess } from './accessPolicy';
 // PURPOSE: Minimal ContextSpace-local participant identities for relationship applications.
 // SECURITY: Every operation is scoped by owner + ContextSpace, with the expected route domain rechecked server-side.
 
@@ -51,18 +53,7 @@ export async function createContextPerson(scope: Scope, domainKey: string, rawNa
     select: { id: true }
   });
   if (existing) throw new Error('A person with this name already exists in this ContextSpace.');
-  return prisma.contact.create({
-    data: {
-      userId: scope.userId,
-      contextSpaceId: scope.contextSpaceId,
-      fullNameEnc: encrypt(name, 'contact.full_name'),
-      fullNameIdx: buildIndexToken(name),
-      phoneEnc: phone ? encrypt(phone, 'contact.phone') : null,
-      phoneIdx: phone ? buildIndexToken(phone) : null,
-      source: 'MANUAL'
-    },
-    select: { id: true }
-  });
+  return createCoreContact(createWorkspaceCoreAccess(scope.userId, 'participant:create', scope.contextSpaceId), { name, phone: phone || '' });
 }
 
 export async function loadConversationParticipant(scope: Scope & { contactId: string }, domainKey: string) {

@@ -9,7 +9,7 @@
 // - All console logs are safe: only print lengths, IDs, and messages (never full objects)
 // - Set DEBUG_AUDIO to true to trace the full flow
 
-import type { RequestHandler } from './$types';
+import type { RequestHandler } from '@sveltejs/kit';
 import { json, redirect } from '@sveltejs/kit';
 import fs from 'fs/promises';
 import path from 'path';

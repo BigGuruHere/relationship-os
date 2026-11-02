@@ -1,5 +1,5 @@
 """Local mobile smoke test: fake microphone and mocked provider-facing transcription response."""
-import json,sys,time
+import json,sys,time,os
 from urllib.parse import urlparse,parse_qs
 from playwright.sync_api import sync_playwright
 fixture=json.load(open(sys.argv[1]))
@@ -10,10 +10,16 @@ with sync_playwright() as p:
     context.add_cookies([{'name':'rsid_dev','value':fixture['cookie'],'url':origin}])
     uploads=[]
     errors=[]
+    diagnostics=[]
     def route_request(route):
         url=route.request.url
         if not url.startswith(origin+'/'):
             errors.append('Unexpected nonlocal request');route.abort();return
+        if '/transcription-diagnostics' in url:
+            body=json.loads(route.request.post_data)
+            assert 'transcript' not in body and 'text' not in body
+            diagnostics.append(body)
+            route.fulfill(status=204);return
         if '/people/api/upload-chunk?' in url:
             query=parse_qs(urlparse(url).query)
             index=int(query['index'][0]);assert index==len(uploads), 'audio upload order'
@@ -49,6 +55,13 @@ with sync_playwright() as p:
     page.mouse.move(box['x']+box['width']/2,box['y']+box['height']/2)
     page.mouse.down();page.wait_for_timeout(750);page.mouse.up()
     page.wait_for_function("document.querySelector('textarea')?.value.includes('cybersecurity')")
+    if os.environ.get('TRANSCRIPTION_DIAGNOSTIC_TEST')=='YES':
+        page.wait_for_timeout(250)
+        stages={d['stage'] for d in diagnostics}
+        assert {'browser.microphone_requested','browser.record_start','browser.record_stop','browser.chunk_ready','browser.upload_complete','browser.result_received','browser.ui_applied'} <= stages, stages
+        assert len({d['correlationId'] for d in diagnostics})==1
+        assert all('Sarah' not in json.dumps(d) for d in diagnostics)
+        print('PASS browser diagnostic stages, single correlation ID and content redaction')
     page.get_by_label('Your note',exact=True).fill('Sarah is building a cybersecurity business. I offered an introduction.')
     page.get_by_role('button',name='Save note',exact=True).click()
     page.wait_for_url(detail)

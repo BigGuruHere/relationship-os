@@ -21,6 +21,7 @@
   import { browser } from '$app/environment';
   import { goto, beforeNavigate } from '$app/navigation';
   import RecordingGuard from '$lib/recording/RecordingGuard.svelte';
+  import type { TranscriptionStage } from '$lib/recording/transcriptionMetadata';
   import { closeDatePickerOnChange } from '$lib/closeDatePicker';
 
   // Form fields - bound to inputs
@@ -40,6 +41,14 @@
   let uploadQueue: Promise<void> = Promise.resolve();
   let disposed = false;
   let recordingMime = 'audio/webm';
+  let recordingStartedAt = 0;
+  let durationMs = 0;
+  function diagnose(stage: TranscriptionStage, metadata: Record<string, unknown> = {}) {
+    if (!data.transcriptionDebug || !uploadKey) return;
+    // Best effort only: telemetry must never delay or fail recording/upload/save.
+    void fetch(`${audioBase}/transcription-diagnostics`, { method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ stage, correlationId: uploadKey, clientTimestampMs: Date.now(), ...metadata }) }).catch(() => {});
+  }
 
   // Upload streaming state
   let uploadKey = '';   // server assembly key used to collect chunks
@@ -152,6 +161,7 @@
 
   async function uploadChunk(key: string, index: number, last: boolean, bytes: Uint8Array) {
     const qs = new URLSearchParams({ key, index: String(index), last: last ? '1' : '0', mime: recordingMime });
+    const uploadStarted = performance.now();
     const res = await fetch(`${audioBase}/upload-chunk?${qs.toString()}`, {
       method: 'POST',
       headers: { 'content-type': 'application/octet-stream' },
@@ -162,6 +172,7 @@
     try {
       data = await res.json();
     } catch {}
+    if (last || !res.ok) diagnose('browser.upload_complete', { httpStatus: res.status, chunkCount: index + 1, uploadComplete: res.status === 202, durationMs, elapsedMs: performance.now() - uploadStarted });
     return { status: res.status, data };
   }
 
@@ -169,13 +180,15 @@
     if (!jobId) throw new Error('No jobId to poll');
 
     for (let i = 0; i < 60; i++) {
-      const res = await fetch(`${audioBase}/transcribe-result?jobId=${encodeURIComponent(jobId)}`);
+      const res = await fetch(`${audioBase}/transcribe-result?jobId=${encodeURIComponent(jobId)}&correlationId=${encodeURIComponent(uploadKey)}`);
       let data: any = {};
       try {
         data = await res.json();
       } catch {}
       if (res.ok && data?.status === 'done') {
-        return String(data.transcript || '');
+        const result = String(data.transcript || '');
+        diagnose('browser.result_received', { httpStatus: res.status, characterCount: result.length, emptyContent: !result.length });
+        return result;
       }
       if (!res.ok || data?.status === 'error') {
         throw new Error(`Polling failed status=${res.status}`);
@@ -192,6 +205,9 @@
   async function startRecording() {
     if (starting || recording || transcribing || disposed) return;
     starting = true;
+    uploadKey = crypto.randomUUID();
+    durationMs = 0;
+    diagnose('browser.microphone_requested');
     try {
       const constraints: MediaStreamConstraints = {
         audio: {
@@ -216,11 +232,11 @@
       mediaRecorder = new MediaRecorder(currentStream, { mimeType });
 
       // Initialize streaming state
-      uploadKey = crypto.randomUUID();
       nextIndex = 0;
 
       mediaRecorder.ondataavailable = (e) => {
         if (!e.data || e.data.size === 0 || disposed) return;
+        diagnose('browser.chunk_ready', { chunkBytes: e.data.size, mimeType: e.data.type, durationMs: performance.now() - recordingStartedAt });
         // Serialize async Blob reads/uploads. The final flush must follow the final dataavailable event.
         uploadQueue = uploadQueue.then(async () => {
           const full = new Uint8Array(await e.data.arrayBuffer());
@@ -235,10 +251,16 @@
       };
 
       mediaRecorder.onstart = () => {
+        recordingStartedAt = performance.now();
+        let settings: MediaTrackSettings | undefined;
+        // Some older browsers do not expose track settings. Diagnostics must not affect recording.
+        if (data.transcriptionDebug) { try { settings = currentStream?.getAudioTracks()[0]?.getSettings?.(); } catch {} }
+        diagnose('browser.record_start', { mimeType: mediaRecorder?.mimeType, codec: mediaRecorder?.mimeType.includes('opus') ? 'opus' : mediaRecorder?.mimeType.includes('mp4a') ? 'aac' : 'unknown', sampleRate: settings?.sampleRate, channelCount: settings?.channelCount });
         recording = true;
       };
 
       mediaRecorder.onerror = () => {
+        diagnose('browser.error');
         recording = false;
         transcribing = false;
         recordingError = 'Recording failed. Your existing text is still here; please retry.';
@@ -249,6 +271,8 @@
       mediaRecorder.onstop = async () => {
         if (disposed) return;
         recording = false;
+        durationMs = performance.now() - recordingStartedAt;
+        diagnose('browser.record_stop', { durationMs });
         // Guard might still be visible on mobile - switch to transcribing state there
         transcribing = true;
         try {
@@ -264,7 +288,9 @@
           channel = 'voice note';
           transcript = t;
           text = text ? text + '\n' + t : t;
+          diagnose('browser.ui_applied', { characterCount: t.length, emptyContent: !t.length });
         } catch (err) {
+          diagnose('browser.error');
           recordingError = 'Transcription failed. Your existing text is still here; retry recording or type your note.';
         } finally {
           transcribing = false;    // closes the guard on mobile
@@ -280,6 +306,7 @@
       currentStream = null;
       mediaRecorder = null;
       recording = false;
+      diagnose('browser.error');
       recordingError = 'Microphone unavailable. Allow microphone access and use a secure connection, or type your note.';
     } finally { starting = false; }
   }
@@ -291,7 +318,8 @@
       mediaRecorder?.stop();
       currentStream?.getTracks().forEach(t => t.stop());
     } catch (err) {
-      console.error('stopRecording error', err);
+      diagnose('browser.error');
+      console.error('[transcription] recording stop failed');
     }
   }
 
@@ -326,6 +354,7 @@
     <div style="margin:0 0 12px 0; color:#666;">
       for <a href={contactBase + "/" + data.contact.id} class="link">{data.contact.name}</a>
     </div>
+    {#if data.transcriptionDebug && uploadKey}<p class="muted">Transcription diagnostic reference: {uploadKey}</p>{/if}
     <form method="post" on:submit={handleSubmit}>
       <input type="hidden" name="summary" value={summary} />
       <input type="hidden" name="tags" value={tags} />

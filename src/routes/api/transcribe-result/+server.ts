@@ -1,3 +1,4 @@
+import { transcriptionCorrelationId, transcriptionEvent } from '$lib/server/transcriptionDiagnostics';
 // PURPOSE: Poll the upload job and return transcription once ready.
 // SECURITY: Requires login. Does not expose any internal state on errors.
 // NOTES: Imports _getJob from upload-chunk - underscore export is allowed by SvelteKit.
@@ -21,6 +22,7 @@ export const GET: RequestHandler = async ({ locals, url }) => {
 	const job = getJob(jobId, locals.user.id, locals.contextSpaceId);
 	if (!job) {
 		// job not found - likely expired or never created
+		transcriptionEvent('poll.missing', transcriptionCorrelationId(url.searchParams.get('correlationId')), { httpStatus: 404 }, true);
 		return new Response('job not found', { status: 404 });
 	}
 
@@ -31,10 +33,12 @@ export const GET: RequestHandler = async ({ locals, url }) => {
 
 	// failed - return message
 	if (job.status === 'error') {
-		return json({ status: 'error', message: job.error ?? 'transcription failed' }, { status: 500 });
+		transcriptionEvent('poll.result', job.correlationId, { httpStatus: 500, errorCategory: 'processing' }, true);
+		return json({ status: 'error', message: job.error ?? 'transcription failed', correlationId: job.correlationId }, { status: 500 });
 	}
 
 	// done - return transcript payload
 	// shape: { status: 'done', transcript: string, meta?: any }
-	return json({ status: 'done', transcript: job.transcript ?? '' });
+	transcriptionEvent('poll.result', job.correlationId, { httpStatus: 200, characterCount: job.transcript?.length ?? 0, emptyContent: !job.transcript?.length });
+	return json({ status: 'done', transcript: job.transcript ?? '', correlationId: job.correlationId });
 };

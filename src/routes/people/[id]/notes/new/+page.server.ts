@@ -1,3 +1,4 @@
+import { transcriptionDebugEnabled } from '$lib/server/transcriptionDiagnostics';
 import type { Actions, PageServerLoad } from './$types';
 import { fail, redirect } from '@sveltejs/kit';
 import { requirePeopleContact } from '$lib/server/core/myPeople';
@@ -5,7 +6,7 @@ import { privateContactDetails } from '$lib/server/core/contacts';
 import { createCoreInteraction } from '$lib/server/core/interactions';
 export const load: PageServerLoad = async ({ locals, params }) => {
   const { contact } = await requirePeopleContact(locals, params.id);
-  return { contact: privateContactDetails(contact) };
+  return { contact: privateContactDetails(contact), transcriptionDebug: transcriptionDebugEnabled() };
 };
 export const actions: Actions = {
   save: async ({ locals, params, request }) => {

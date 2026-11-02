@@ -1,3 +1,7 @@
+import {
+	transcriptionCorrelationId,
+	transcriptionEvent
+} from '$lib/server/transcriptionDiagnostics';
 // src/routes/api/upload-chunk/+server.ts
 // PURPOSE:
 // - Accept audio chunks (Content-Type: application/octet-stream)
@@ -7,7 +11,7 @@
 //
 // LOGGING:
 // - All console logs are safe: only print lengths, IDs, and messages (never full objects)
-// - Set DEBUG_AUDIO to true to trace the full flow
+// - RELISH_TRANSCRIPTION_DEBUG=YES enables structured metadata diagnostics.
 
 import type { RequestHandler } from '@sveltejs/kit';
 import { json, redirect } from '@sveltejs/kit';
@@ -17,7 +21,7 @@ import os from 'os';
 import { randomUUID } from 'node:crypto';
 
 // Toggle detailed logs
-const DEBUG_AUDIO = process.env.DEBUG_AUDIO === 'true';
+// RELISH_TRANSCRIPTION_DEBUG controls detailed, structured metadata only.
 
 // Job store in memory (per instance only)
 type Job = {
@@ -26,11 +30,18 @@ type Job = {
 	contextSpaceId: string;
 	transcript?: string;
 	error?: string;
+	correlationId: string;
 };
 const jobs = new Map<string, Job>();
 const assemblies = new Map<
 	string,
-	{ userId: string; contextSpaceId: string; nextIndex: number; totalBytes: number; mime: 'audio/webm' | 'audio/mp4' }
+	{
+		userId: string;
+		contextSpaceId: string;
+		nextIndex: number;
+		totalBytes: number;
+		mime: 'audio/webm' | 'audio/mp4';
+	}
 >();
 const MAX_AUDIO_BYTES = 25 * 1024 * 1024;
 const STALE_AUDIO_MS = 60 * 60 * 1000;
@@ -67,11 +78,25 @@ async function cleanupStaleAudio() {
 }
 
 export const POST: RequestHandler = async ({ request, url, locals }) => {
+	const correlationId = transcriptionCorrelationId(url.searchParams.get('key'));
+	const reject = (status: number) =>
+		transcriptionEvent(
+			'upload.rejected',
+			correlationId,
+			{ httpStatus: status, errorCategory: 'upload' },
+			true
+		);
+	const receivedAt = performance.now();
+	transcriptionEvent('upload.received', correlationId);
 	// Require login for uploads
-	if (!locals.user) throw redirect(303, '/auth/login');
-	if (!locals.contextSpaceId) return json({ error: 'ContextSpace required' }, { status: 400 });
-
-	if (DEBUG_AUDIO) console.log('[upload-chunk] handler entered');
+	if (!locals.user) {
+		reject(401);
+		throw redirect(303, '/auth/login');
+	}
+	if (!locals.contextSpaceId) {
+		reject(400);
+		return json({ error: 'ContextSpace required' }, { status: 400 });
+	}
 
 	try {
 		const key = url.searchParams.get('key');
@@ -80,15 +105,17 @@ export const POST: RequestHandler = async ({ request, url, locals }) => {
 		// The upload format must be stable across chunks. Reject arbitrary MIME strings.
 		const mimeParam = url.searchParams.get('mime') || 'audio/webm';
 		if (mimeParam !== 'audio/webm' && mimeParam !== 'audio/mp4') {
+			reject(415);
 			return json({ error: 'Unsupported audio format' }, { status: 415 });
 		}
 
 		if (!key) {
-			console.error('[upload-chunk] missing key');
+			reject(400);
 			return json({ error: 'Missing key param' }, { status: 400 });
 		}
 		// SECURITY: Only browser-generated UUID upload keys are accepted as temporary filenames.
 		if (!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(key)) {
+			reject(400);
 			return json({ error: 'Invalid upload key' }, { status: 400 });
 		}
 
@@ -98,6 +125,7 @@ export const POST: RequestHandler = async ({ request, url, locals }) => {
 			(existingAssembly.userId !== locals.user.id ||
 				existingAssembly.contextSpaceId !== locals.contextSpaceId)
 		) {
+			reject(409);
 			return json({ error: 'Upload key is not available' }, { status: 409 });
 		}
 		if (!existingAssembly) {
@@ -112,29 +140,23 @@ export const POST: RequestHandler = async ({ request, url, locals }) => {
 
 		const index = Number.parseInt(indexStr, 10) || 0;
 		const assembly = assemblies.get(key)!;
-		if (assembly.mime !== mimeParam) return json({ error: 'Audio format changed during upload' }, { status: 409 });
+		if (assembly.mime !== mimeParam) {
+			reject(409);
+			return json({ error: 'Audio format changed during upload' }, { status: 409 });
+		}
 		if (index !== assembly.nextIndex) {
+			reject(409);
 			return json({ error: 'Audio chunks must arrive in order' }, { status: 409 });
 		}
 		const last = lastStr === '1' || lastStr === 'true';
-		const contentType = request.headers.get('content-type') || 'unknown';
 
 		// Read raw bytes
 		let ab: ArrayBuffer;
 		try {
 			ab = await request.arrayBuffer();
-			if (DEBUG_AUDIO) {
-				console.log('[upload-chunk] read body ok', {
-					key,
-					index,
-					last,
-					contentType,
-					byteLength: ab.byteLength
-				});
-			}
 		} catch (err: any) {
-			console.error('[upload-chunk] arrayBuffer failed:', err?.message);
-			return json({ error: 'Failed to read body', message: err?.message }, { status: 400 });
+			reject(400);
+			return json({ error: 'Failed to read body' }, { status: 400 });
 		}
 		const bytes = Buffer.from(ab);
 
@@ -144,6 +166,7 @@ export const POST: RequestHandler = async ({ request, url, locals }) => {
 		if (assembly.totalBytes + bytes.length > MAX_AUDIO_BYTES) {
 			assemblies.delete(key);
 			await fs.unlink(tmpFilePath).catch(() => {});
+			reject(413);
 			return json({ error: 'Audio too large' }, { status: 413 });
 		}
 
@@ -151,29 +174,35 @@ export const POST: RequestHandler = async ({ request, url, locals }) => {
 			await fs.appendFile(tmpFilePath, bytes);
 			assembly.nextIndex += 1;
 			assembly.totalBytes += bytes.length;
-			if (DEBUG_AUDIO) {
-				console.log('[upload-chunk] appended chunk', {
-					key,
-					index,
-					last,
-					appended: bytes.length,
-					file: tmpFilePath
-				});
-			}
+			transcriptionEvent('upload.accepted', correlationId, {
+				mimeType: assembly.mime,
+				chunkBytes: bytes.length,
+				audioBytes: assembly.totalBytes,
+				chunkIndex: index,
+				chunkCount: assembly.nextIndex,
+				uploadComplete: last,
+				elapsedMs: performance.now() - receivedAt
+			});
 		} catch (err: any) {
-			console.error('[upload-chunk] appendFile failed:', err?.message);
-			return json({ error: 'Failed to append chunk', message: err?.message }, { status: 500 });
+			reject(500);
+			return json({ error: 'Failed to append chunk' }, { status: 500 });
 		}
 
 		if (!last) {
-			if (DEBUG_AUDIO) console.log('[upload-chunk] not last chunk - returning ok', { key, index });
 			return json({ ok: true, appended: bytes.length });
 		}
 
-		if (DEBUG_AUDIO) console.log('[upload-chunk] last chunk received - enqueue job');
-
 		const jobId = randomUUID();
-		const jobOwner = { userId: locals.user.id, contextSpaceId: locals.contextSpaceId };
+		const jobOwner = {
+			userId: locals.user.id,
+			contextSpaceId: locals.contextSpaceId,
+			correlationId
+		};
+		transcriptionEvent('job.queued', correlationId, {
+			audioBytes: assembly.totalBytes,
+			chunkCount: assembly.nextIndex,
+			uploadComplete: true
+		});
 		jobs.set(jobId, { status: 'queued', ...jobOwner });
 
 		// Fire-and-forget background worker
@@ -182,39 +211,33 @@ export const POST: RequestHandler = async ({ request, url, locals }) => {
 				jobs.set(jobId, { status: 'processing', ...jobOwner });
 
 				const assembled = await fs.readFile(tmpFilePath);
-				if (DEBUG_AUDIO) {
-					console.log('[upload-chunk] worker assembled file', {
-						key,
-						jobId,
-						length: assembled.length
-					});
-				}
+				transcriptionEvent('assembly.complete', correlationId, {
+					audioBytes: assembled.length,
+					mimeType: assembly.mime,
+					chunkCount: assembly.nextIndex,
+					uploadComplete: true
+				});
 
 				// Import your speech to text helper
 				const { transcribeAudio } = await import('$lib/ai');
 
-				if (DEBUG_AUDIO) console.log('[upload-chunk] start transcribe', { jobId });
-
 				// Call the transcriber - it should accept a Buffer and return a string
-				const text = await transcribeAudio(assembled, assembly.mime);
+				const text = await transcribeAudio(assembled, assembly.mime, { correlationId });
 
-				if (DEBUG_AUDIO) {
-					console.log('[upload-chunk] transcribe ok', {
-						jobId,
-						chars: text?.length ?? 0
-					});
-				}
-
+				transcriptionEvent('job.complete', correlationId, {
+					characterCount: text.length,
+					emptyContent: !text.length
+				});
 				jobs.set(jobId, { status: 'done', transcript: text || '', ...jobOwner });
 
 				// Clean up the assembled temp file
 				await fs.unlink(tmpFilePath).catch(() => {});
 				assemblies.delete(key);
 			} catch (err: any) {
-				console.error('[upload-chunk] worker error:', err?.message || String(err));
+				transcriptionEvent('job.error', correlationId, { errorCategory: 'processing' }, true);
 				jobs.set(jobId, {
 					status: 'error',
-					error: err?.message || 'Transcription failed',
+					error: 'Transcription failed',
 					...jobOwner
 				});
 				// Attempt cleanup but do not fail on it
@@ -224,9 +247,9 @@ export const POST: RequestHandler = async ({ request, url, locals }) => {
 		})();
 
 		// Return the job id so the client can poll /api/transcribe-result?jobId=...
-		return json({ jobId }, { status: 202 });
+		return json({ jobId, correlationId }, { status: 202 });
 	} catch (err: any) {
-		console.error('[upload-chunk] unhandled error:', err?.message);
-		return json({ error: 'Internal error', message: err?.message || String(err) }, { status: 500 });
+		reject(500);
+		return json({ error: 'Internal error' }, { status: 500 });
 	}
 };

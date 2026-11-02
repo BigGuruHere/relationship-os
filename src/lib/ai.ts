@@ -1,3 +1,4 @@
+import { transcriptionCorrelationId, transcriptionEvent } from '$lib/server/transcriptionDiagnostics';
 import { requiredEnv } from '$lib/server/config/requiredEnv';
 // src/lib/ai.ts
 // PURPOSE:
@@ -24,76 +25,84 @@ const openAiKey = () => requiredEnv('OPENAI_API_KEY');
  *
  * Returns the raw transcription text on success, or throws an Error.
  */
-export async function transcribeAudio(input: File | Blob | Buffer | string, audioMime: 'audio/webm' | 'audio/mp4' = 'audio/webm'): Promise<string> {
+export async function transcribeAudio(input: File | Blob | Buffer | string, audioMime: 'audio/webm' | 'audio/mp4' = 'audio/webm', diagnostic: { correlationId?: string } = {}): Promise<string> {
   // Build a FormData body appropriate for the runtime:
   // - In browser: File/Blob can be appended directly.
   // - In Node: append a stream (fs.createReadStream) or a Buffer/Blob.
-  const fd = new FormData();
+  const correlationId = transcriptionCorrelationId(diagnostic.correlationId);
+  const started = performance.now();
+  let attempted = false;
+  let category = 'input';
+  let providerStatus: number | undefined;
+  const base = { provider: 'openai', endpointCategory: 'audio.transcriptions', model: 'whisper-1', credentialsConfigured: Boolean(process.env.OPENAI_API_KEY?.trim()) };
+  transcriptionEvent('provider.prepare', correlationId, { ...base, mimeType: input && typeof input === 'object' && 'type' in input ? input.type : audioMime, externalCallAttempted: false });
+  try {
+    const fd = new FormData();
 
-  // Determine how to append the file to FormData.
-  if (typeof input === "string") {
-    // treat as file path
-    const resolved = path.resolve(input);
-    // Node's built-in FormData accepts Blob/File, not fs.ReadStream. Read the file once
-    // and copy it into a plain Uint8Array so the BlobPart uses an ArrayBuffer-backed view.
-    const fileBuffer = await fs.promises.readFile(resolved);
-    const bytes = Uint8Array.from(fileBuffer);
-    const blob = new Blob([bytes], { type: audioMime });
-    fd.append("file", blob, path.basename(resolved));
-  } else if (Buffer.isBuffer(input)) {
-    // Node Buffer - wrap in a Blob (Node supports Blob) or pass Buffer directly
-    // Using Blob gives a filename and type information to FormData.
-    // Preserve the actual browser container type (Safari commonly records MP4).
-    const blob = new Blob([Uint8Array.from(input)], { type: audioMime });
-    // In Node, FormData.append accepts Blob
-    fd.append("file", blob, audioMime === 'audio/mp4' ? 'audio.mp4' : 'audio.webm');
-  } else {
-    // Browser File or Blob - append directly.
-    // If input is a File it should already have a name and type.
-    // If input is a Blob without a name, give it a default name.
-    try {
-      // Cast for TypeScript - runtime will be fine.
-      const fileLike = input as any;
-      const filename = fileLike?.name ?? "audio.webm";
-      fd.append("file", input as Blob, filename);
-    } catch (err) {
-      throw new Error("Unsupported input type for transcription");
+    // Determine how to append the file to FormData.
+    if (typeof input === "string") {
+      // treat as file path
+      const resolved = path.resolve(input);
+      // Node's built-in FormData accepts Blob/File, not fs.ReadStream. Read the file once
+      // and copy it into a plain Uint8Array so the BlobPart uses an ArrayBuffer-backed view.
+      const fileBuffer = await fs.promises.readFile(resolved);
+      const bytes = Uint8Array.from(fileBuffer);
+      const blob = new Blob([bytes], { type: audioMime });
+      fd.append("file", blob, path.basename(resolved));
+    } else if (Buffer.isBuffer(input)) {
+      // Node Buffer - wrap in a Blob (Node supports Blob) or pass Buffer directly
+      // Using Blob gives a filename and type information to FormData.
+      // Preserve the actual browser container type (Safari commonly records MP4).
+      const blob = new Blob([Uint8Array.from(input)], { type: audioMime });
+      // In Node, FormData.append accepts Blob
+      fd.append("file", blob, audioMime === 'audio/mp4' ? 'audio.mp4' : 'audio.webm');
+    } else {
+      // Browser File or Blob - append directly.
+      // If input is a File it should already have a name and type.
+      // If input is a Blob without a name, give it a default name.
+      try {
+        // Cast for TypeScript - runtime will be fine.
+        const fileLike = input as any;
+        const filename = fileLike?.name ?? "audio.webm";
+        fd.append("file", input as Blob, filename);
+      } catch (err) {
+        throw new Error("Unsupported input type for transcription");
+      }
     }
+
+    // Add required fields for Whisper
+    fd.append("model", "whisper-1");
+    // We prefer text output on the route side so we can parse it easily.
+    // You may switch to 'srt' or other formats if you need timecodes.
+    fd.append("response_format", "text");
+
+    category = 'missing_credentials';
+    const apiKey = openAiKey();
+    category = 'network';
+    attempted = true;
+    transcriptionEvent('provider.request_attempted', correlationId, { ...base, externalCallAttempted: true, audioBytes: (fd.get('file') as Blob).size, mimeType: (fd.get('file') as Blob).type });
+    const res = await fetch("https://api.openai.com/v1/audio/transcriptions", {
+      method: "POST", headers: { Authorization: `Bearer ${apiKey}` }, body: fd as any
+    });
+    providerStatus = res.status;
+    const responseMeta = { ...base, externalCallAttempted: true, httpStatus: res.status, requestId: res.headers.get('x-request-id'), elapsedMs: performance.now() - started };
+    transcriptionEvent('provider.response', correlationId, responseMeta);
+    if (!res.ok) {
+      category = res.status === 401 || res.status === 403 ? 'provider_auth' : res.status === 429 ? 'provider_rate_limit' : 'provider_http';
+      // Provider error bodies can echo private content. Never log or attach them to errors.
+      await res.text().catch(() => '');
+      transcriptionEvent('provider.error', correlationId, { ...responseMeta, errorCategory: category }, true);
+      throw new Error('Transcription provider request failed');
+    }
+    category = 'response_read';
+    const text = (await res.text()).trim();
+    transcriptionEvent('provider.result', correlationId, { ...responseMeta, elapsedMs: performance.now() - started, emptyContent: text.length === 0, characterCount: text.length });
+    return text;
+  } catch {
+    // No fallback transcript: failures propagate and cannot turn into a success string.
+    if (!category.startsWith('provider_')) transcriptionEvent('provider.error', correlationId, { ...base, externalCallAttempted: attempted, elapsedMs: performance.now() - started, errorCategory: category }, true);
+    throw new Error(category === 'missing_credentials' ? 'Transcription credentials are not configured' : category.startsWith('provider_') ? `OpenAI transcription failed: ${providerStatus}` : 'Transcription failed');
   }
-
-  // Add required fields for Whisper
-  fd.append("model", "whisper-1");
-  // We prefer text output on the route side so we can parse it easily.
-  // You may switch to 'srt' or other formats if you need timecodes.
-  fd.append("response_format", "text");
-
-  // Build fetch options - do not set Content-Type, let FormData set it
-  const res = await fetch("https://api.openai.com/v1/audio/transcriptions", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${openAiKey()}`
-      // NOTE: do not set Content-Type here; the runtime FormData sets the multipart boundary.
-    },
-    body: fd as any
-  });
-
-  // Non-2xx handling
-  if (!res.ok) {
-    // Attempt to extract a useful message from the body
-    let bodyText = "";
-    try {
-      bodyText = await res.text();
-    } catch {}
-    const err = new Error(`OpenAI transcription failed: ${res.status} ${res.statusText} - ${bodyText}`);
-    // Attach response text for server-side logs
-    (err as any).responseText = bodyText;
-    console.error("[transcribeAudio] error", res.status, res.statusText, { responseText: bodyText });
-    throw err;
-  }
-
-  // Whisper / transcriptions endpoint returns the raw text body when response_format=text
-  const text = await res.text();
-  return text.trim();
 }
 
 /**

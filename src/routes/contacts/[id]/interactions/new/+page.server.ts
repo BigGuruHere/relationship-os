@@ -1,3 +1,4 @@
+import { transcriptionDebugEnabled } from '$lib/server/transcriptionDiagnostics';
 // src/routes/contacts/[id]/interactions/new/+page.server.ts
 // PURPOSE: Create a new interaction for a contact with optional summary and a vector embedding.
 // MULTI TENANT: Requires login and scopes all DB access by userId.
@@ -43,7 +44,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
   try { name = decrypt(row.fullNameEnc, 'contact.full_name'); } catch {}
 
   // Keep it simple for the svelte page
-  return { contact: { id: row.id, name } };
+  return { contact: { id: row.id, name }, transcriptionDebug: transcriptionDebugEnabled() };
 };
 
 // Local type so we do not rely on App.Locals here.

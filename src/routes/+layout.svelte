@@ -10,11 +10,11 @@
     { slug: '', label: 'Home', icon: '⌂' },
     { slug: '/people', label: 'People', icon: '♧' },
     { slug: '/profile', label: 'Profile', icon: '◉' },
-    { slug: '/share', label: 'Share', icon: '▦' },
-    { slug: '/settings', label: 'Settings', icon: '⚙' }
+    { slug: '/share', label: 'Share', icon: '▦' }
   ];
 
   $: path = data.routePathname || '/';
+  $: isHome = path === '/';
   $: isPeople = path === '/people' || path.startsWith('/people/');
   $: isPublic = path.startsWith('/u/') || path.startsWith('/pilot/dorian/') || path.startsWith('/network/join/') || path === '/legal' || path.startsWith('/legal/');
   $: isBroker = ['/broker', '/leads', '/deals', '/companies', '/agents', '/workstreams', '/contacts', '/wants', '/offers', '/introductions', '/projects', '/tasks', '/actions', '/search'].some(prefix => path === prefix || path.startsWith(prefix + '/'));
@@ -34,6 +34,15 @@
   afterNavigate(closeMoreMenu);
 
 
+  // IT: Keep context-specific navigation available without forcing the Home screen into a context.
+  function navHref(slug: string, onHome: boolean, base: string) {
+    if (!slug) return '/';
+    if (onHome && slug === '/people') return '/people';
+    if (onHome && slug === '/profile') return '/profiles';
+    if (onHome && slug === '/share') return '/share';
+    return base + slug;
+  }
+
   function changeSpace(event: Event) {
     const value = (event.currentTarget as HTMLSelectElement).value;
     // IT: Client-side navigation is only for options the server exposed to this account.
@@ -50,12 +59,12 @@
 <div class:relish-visitor={isPublic} class="relish-shell" style={'--workspace-accent:' + activeSpace.color}>
   {#if !isPublic}
     <header class="relish-header">
-      <a class="relish-brand" href={data.user ? (isPeople ? '/people' : activeBase) : '/auth/login'} aria-label="Relish home">
+      <a class="relish-brand" href={data.user ? '/' : '/auth/login'} aria-label="Relish home">
         <img src="/relish-logo.png" alt="" width="36" height="36" />
         <strong>Relish</strong>
       </a>
       {#if data.user}
-        {#if !isPeople}<div class="relish-context-picker">
+        {#if !isPeople && !isHome}<div class="relish-context-picker">
           {#if spaces.length > 1}
             <label for="context-select">Context</label>
             <select id="context-select" value={activeName} on:change={changeSpace}>
@@ -68,12 +77,12 @@
           {/if}
         </div>
         {/if}
-        {#if isPeople}<a class="relish-header-tools" href="/people/new">Add Person</a>{:else}<a class="relish-header-tools" href={activeBase + '/share'}>Share</a>{/if}
+        {#if isPeople}<a class="relish-header-tools" href="/people/new">Add Person</a>{:else}<a class="relish-header-tools" href={isHome ? '/share' : activeBase + '/share'}>Share</a>{/if}
         <details class="relish-more" bind:open={moreMenuOpen}>
           <summary aria-label="More account options">•••</summary>
           <div class="relish-more-menu">
             <a href="/people" on:click={closeMoreMenu}>My People</a>
-            <a href={activeBase} on:click={closeMoreMenu}>Relish home</a>
+            <a href="/" on:click={closeMoreMenu}>Relish home</a>
             {#if data.capabilities?.includes('BROKER')}<a href="/broker" on:click={closeMoreMenu}>Business broker</a>{/if}
             {#if data.capabilities?.includes('OPERATOR')}<a href="/operator" on:click={closeMoreMenu}>Operator tools</a>{/if}
             {#if data.accountRole === 'owner'}<a href="/event-signups" on:click={closeMoreMenu}>Event testers</a>{/if}
@@ -89,7 +98,7 @@
     {#if data.user}
       <aside class="relish-sidebar" aria-label="Application navigation">
         <a class="relish-nav-item" href="/people">My People</a>
-        <div class="relish-sidebar-title">{isPeople ? 'My People' : specialist === 'broker' ? 'Business broker' : specialist === 'operator' ? 'Operator tools' : activeSpace.label}</div>
+        <div class="relish-sidebar-title">{isHome ? 'Relish' : isPeople ? 'My People' : specialist === 'broker' ? 'Business broker' : specialist === 'operator' ? 'Operator tools' : activeSpace.label}</div>
         {#if isPeople}<a class="relish-nav-item" href="/people/new">Add Person</a>
         {:else if specialist}
           <a class="relish-nav-item" href={activeBase}>← Back to Relish</a>
@@ -97,7 +106,7 @@
           {#if specialist === 'operator'}<a class:current={path === '/operator'} class="relish-nav-item" href="/operator">Operator tools</a>{/if}
         {:else}
           {#each nav as item}
-            <a class:current={path === activeBase + item.slug} class="relish-nav-item" href={activeBase + item.slug}>
+            <a class:current={path === navHref(item.slug, isHome, activeBase)} class="relish-nav-item" href={navHref(item.slug, isHome, activeBase)}>
               <span class="relish-nav-icon" aria-hidden="true">{item.icon}</span>{item.label}
             </a>
           {/each}
@@ -122,9 +131,9 @@
   <main class="relish-content"><slot /></main>
 
   {#if !isPublic && data.user && !specialist && !isPeople}
-    <nav class="relish-bottom-nav" aria-label={activeSpace.label + ' navigation'}>
+    <nav class="relish-bottom-nav" aria-label={isHome ? 'Relish navigation' : activeSpace.label + ' navigation'}>
       {#each nav as item}
-        <a class:current={path === activeBase + item.slug} href={activeBase + item.slug}>
+        <a class:current={path === navHref(item.slug, isHome, activeBase)} href={navHref(item.slug, isHome, activeBase)}>
           <span aria-hidden="true">{item.icon}</span><span>{item.label}</span>
         </a>
       {/each}

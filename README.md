@@ -1,58 +1,43 @@
 # Relish
 
-Current implementation baseline: Stage 8.10.1 Dating single-sided voice Outcome pilot with the participant audit-link correction.
+Relish is a person-first Relationship Operating System. It helps people remember, understand and develop valuable human relationships. Dorian is an AI conversational partner supporting those relationships.
 
-The canonical forward plan is `docs/stage8/STAGE8_9_MULTI_APP_RELATIONSHIP_INTELLIGENCE_ROADMAP.md`. It defines one domain-neutral Relish Core with isolated Business, Dating, Value Orchestration, Event Intelligence, and future app layers.
+## Current project reference
 
-Stage 8.9 makes the existing Business ContextSpace explicit and isolated. Stage 8.10 adds a controlled Dating app shell, private voice reflection capture, a Dating-only Outcome Extractor, encrypted versioned proposals, and mandatory human review before an Outcome is created. Stage 8.11 remains gated on evidence from the Stage 8.10 pilot.
+**Start with [docs/START_HERE.md](docs/START_HERE.md).** It links the living documents that replace outdated stage-specific bootstrap prompts:
 
-## Svelte project
+- [Product vision and principles](docs/PRODUCT_AND_PRINCIPLES.md)
+- [Architecture and trust boundaries](docs/ARCHITECTURE_AND_BOUNDARIES.md)
+- [Current implementation status](docs/CURRENT_STATE.md)
+- [Forward plan](docs/ROADMAP.md)
+- [Decision log](docs/DECISION_LOG.md)
+- [Engineering rules](AGENTS.md)
 
-Everything you need to build a Svelte project, powered by [`sv`](https://github.com/sveltejs/cli).
+These documents describe the current direction and verified repository state. The source, schema and tests on the selected branch establish actual implementation. A Git merge does not necessarily mean a Railway deployment has occurred.
 
-## Creating a project
+## Repositories
 
-If you're seeing this, you've probably already done this step. Congrats!
+- `BigGuruHere/relationship-os`: main Relish SvelteKit app and domain Core.
+- `BigGuruHere/relish-agent-management`: management of conversational agents.
+- `BigGuruHere/relish-proxy-server`: provider/session routing.
+
+## Development
+
+Use the configured local Development environment and its isolated database. Never use production connection credentials for development.
 
 ```sh
-# create a new project in the current directory
-npx sv create
-
-# create a new project in my-app
-npx sv create my-app
-```
-
-## Developing
-
-Once you've created a project and installed dependencies with `npm install` (or `pnpm install` or `yarn`), start a development server:
-
-```sh
+# Start the application for local testing.
 npm run dev
 
-# or start the server and open the app in a new browser tab
-npm run dev -- --open
+# Run SvelteKit and TypeScript checks.
+npm run check
+
+# Run the existing behavioral tests.
+npm test
 ```
 
-## Building
+When a change genuinely introduces a Prisma migration, follow the repository's current safe migration procedure and verify the target database before applying it. No migration is implied by documentation or UI-only work.
 
-To create a production version of your app:
+## Older stage notes
 
-```sh
-npm run build
-```
-
-You can preview the production build with `npm run preview`.
-
-> To deploy your app, you may need to install an [adapter](https://svelte.dev/docs/kit/adapters) for your target environment.
-
-## Stage 8.21 revised — Multi-agent provider bindings
-
-Multiple active ElevenLabs provider IDs may now be registered to the existing
-DORIAN conversational runtime in each Relish database. Inbound initiation and
-post-call handling use the exact authorized binding; Relish session tokens remain
-bound to their original `agentBindingId` and participant ContextSpace. Each
-provider's published config is cached separately. This requires **no Prisma
-migration**. If an environment has more than one registered Dorian provider,
-set `RELISH_DORIAN_DEFAULT_PROVIDER_AGENT_ID` explicitly for outbound SMS and
-browser-initiated calls; cold incoming telephone calls resolve their own agent ID.
-See `Stage_8_21_Revised_Agent_First_Multi_Agent_Management.md` for deployment.
+Release notes, earlier roadmaps, install reports and architecture experiments remain in this repository for history. Many are in [docs/stage-history](docs/stage-history/README.md), while some later `STAGE_*.md` files are still at the root. They are **not the current roadmap** merely because they say "canonical" or "latest". Do not delete them or migrations as part of routine cleanup.

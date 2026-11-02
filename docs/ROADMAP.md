@@ -13,7 +13,7 @@ Make it easy for someone to understand themselves and the people around them, pr
 Current implementation foundation: My People Stage 1 and Stage 2 are merged into Development.
 
 Work:
-- Verify the pending neutral Home / hidden Dorian invite / simplified navigation feature branch.
+- Verify the merged neutral Home / hidden Dorian invite / simplified navigation changes on Development before pilot deployment.
 - Confirm a new user lands on context-neutral Relish Home without destroying access to existing context-specific operations.
 - Complete a real-device DEV pass of existing public QR and event redirect -> Share your details -> owner-private Contact -> voice note -> save/retrieve.
 - Check that Brokerage, public profiles, event signup and authenticated participant flows still work.

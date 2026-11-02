@@ -2,6 +2,8 @@
 
 These are standing instructions for changes to Relish. Apply them across ChatGPT-assisted work, Codex, and other coding agents. Follow existing repository instructions too. If a rule conflicts with established implementation or security requirements, explain the conflict before changing anything.
 
+**Before nontrivial new work:** read [`docs/START_HERE.md`](docs/START_HERE.md) and the relevant living documents there. Historical stage notes, older README/CLAUDE descriptions, and previously named "canonical" roadmaps may be outdated. Inspect the latest actual code and tests. For small edits, consult only the relevant sections rather than performing a full audit.
+
 ## 1. Reuse before building (mandatory)
 
 Before implementing a feature or change:
@@ -50,3 +52,28 @@ A request to add a user-facing step is **not** automatically a request to build 
 - Comment non-obvious code and security-sensitive decisions.
 - When a material architecture or product decision is accepted, record it in versioned repository documentation and update these instructions only when the standing rule itself changes.
 - If a task is small, follow these rules without turning it into a lengthy engineering investigation.
+
+## 5. Living documentation maintenance (mandatory)
+
+The living documents referenced in [`docs/START_HERE.md`](docs/START_HERE.md) are the ongoing source of project context for ChatGPT, Codex and other development agents.
+
+For each completed development task:
+
+1. Determine whether the change affects product vision, architecture, implementation status, roadmap or established decisions.
+2. Update the relevant living documents as part of the **same feature branch and commit** as the associated work, where feasible. Do not leave important documentation to a separate future task.
+3. Update `docs/CURRENT_STATE.md` when a significant feature is implemented, verified, merged or deployed, or when its status materially changes. Describe the actual status at the time of writing: a feature-branch commit is **not** a merge or deployment.
+4. Update `docs/ROADMAP.md` when priorities, dependencies or planned functionality change.
+5. Update `docs/DECISION_LOG.md` when a significant product or architectural decision is accepted, revised or superseded. Preserve the history of earlier decisions.
+6. Update `docs/ARCHITECTURE_AND_BOUNDARIES.md` when architectural responsibilities, integrations, data models or security boundaries materially change.
+7. Update `docs/PRODUCT_AND_PRINCIPLES.md` when enduring vision, product principles or the conceptual model changes.
+8. Update `AGENTS.md` only when standing development rules change.
+
+Do not rewrite living documents unnecessarily for minor UI changes or straightforward bug fixes. Keep them concise, accurate and easy for a new contributor or assistant to read.
+
+Distinguish **planned**, **implemented on a feature branch**, **tested**, **merged into Development**, **deployed to DEV**, and **deployed to PROD**. Never claim that unverified behavior is working, or that a branch was merged or deployed when it was only committed.
+
+Include the relevant documentation changes in the same feature branch and push them with its implementation. If later merge or deployment changes the status, update `docs/CURRENT_STATE.md` as part of that subsequent integration or deployment workflow.
+
+Keep historical development notes available for reference. They must not override current living documentation or verified code behavior.
+
+**Goal:** a new ChatGPT or Codex session can understand Relish's current vision, architecture, implementation and forward plan without a lengthy bootstrap prompt.

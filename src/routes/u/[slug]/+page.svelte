@@ -18,6 +18,8 @@
   const prof: any = data?.profile || {};
   const contextLabel = prof.kind === 'personal' ? 'Friendship' : prof.kind === 'dating' ? 'Dating' : 'Business';
   const isPilotKind = ['business', 'personal', 'dating'].includes(prof.kind);
+  // IT: Reversible pilot switch - keep Dorian onboarding code but temporarily hide invitations.
+  const showDorianInvitation = false;
   // The visitor sees one Dorian-first experience regardless of ContextSpace.
   $: isFirstContact = isPilotKind && prof.isPublished && !data?.isOwner && !editing;
   // Visibility is counted after browser render, not on server prefetch. No identity tracking on landing.
@@ -110,7 +112,7 @@
 
 <!-- Svelte special head elements must be at component root, never inside {#if}. -->
 <svelte:head>
-  <title>{isFirstContact ? 'Meet Dorian | Relish' : `${ownerName} | Relish`}</title>
+  <title>{ownerName} | Relish</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
 </svelte:head>
 
@@ -123,6 +125,7 @@
     <p>Share your details privately. No Relish account or Dorian conversation required.</p>
     <a class="fc-primary" href={'/u/' + encodeURIComponent(profileSlug) + '/share-details?via=' + (data.captureVia === 'qr' ? 'qr' : 'profile_link')}>Share your details</a>
   </section>
+  {#if showDorianInvitation}
   <section class="fc-dorian" aria-labelledby="dorian-title">
     <div class="fc-title-row">
       <div class="fc-symbol" aria-hidden="true">D</div>
@@ -157,11 +160,12 @@
       <p>Requesting a call uses your phone number to arrange the callback and support provisional future-call recognition. Your conversation is private to you, not shared with the person below. Relish provides the <a href="/legal" target="_blank" rel="noopener noreferrer">Terms and Privacy information</a> at one link, which is also sent by SMS. Dorian will ask for your agreement before substantive processing. Calls may involve recording and transcription if you agree. Carrier charges may apply.</p>
     </details>
   </section>
-  <section class="fc-person" aria-label="Person who shared this invitation">
+  {/if}
+  <section class="fc-person" aria-label="Person who shared this profile">
     <div class="fc-person-top">
       {#if avatarUrl}<img class="fc-photo" src={avatarUrl} alt="Photo of {ownerName}" />
       {:else}<div class="fc-photo fc-placeholder" aria-hidden="true">{ownerName.charAt(0).toUpperCase()}</div>{/if}
-      <div class="fc-person-name"><strong>{ownerName}</strong><small>The person who introduced you to Dorian</small></div>
+      <div class="fc-person-name"><strong>{ownerName}</strong><small>Shared their profile with you</small></div>
     </div>
     <details class="fc-details"><summary>View {ownerName}'s profile</summary>
       {#if headline}<p>{headline}</p>{/if}
@@ -201,7 +205,7 @@
 
   <div class="card page" style="padding:16px; max-width:720px; margin:0 auto; position:relative;">
     {#if isPilotKind}<p style="margin:0 0 12px"><strong>{contextLabel} profile</strong>{#if !prof.isPublished} - Unpublished (owner preview){/if}</p>{/if}
-    {#if !data?.isOwner && isPilotKind && prof.isPublished}
+    {#if showDorianInvitation && !data?.isOwner && isPilotKind && prof.isPublished}
       <section class="card" style="padding:16px;margin:12px 0;border:1px solid #ddd">
         <h2>Talk with Dorian</h2>
         {#if prof.kind === 'business'}
@@ -329,7 +333,7 @@
         <div class="btnrow" style="margin-top:16px;">
           <a class="btn primary" href={vcardUrl} download>Save contact to phone</a>
         </div>
-        {#if prof.kind !== 'personal'}
+        {#if showDorianInvitation && prof.kind !== 'personal'}
           <form method="post" action="?/startDorian" style="margin-top:12px">
             <button class="btn" type="submit">Connect with {ownerName}</button>
           </form>

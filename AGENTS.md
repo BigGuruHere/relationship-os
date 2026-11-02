@@ -2,6 +2,8 @@
 
 These are standing instructions for changes to Relish. Apply them across ChatGPT-assisted work, Codex, and other coding agents. Follow existing repository instructions too. If a rule conflicts with established implementation or security requirements, explain the conflict before changing anything.
 
+**Before nontrivial new work:** read [`docs/START_HERE.md`](docs/START_HERE.md) and the relevant living documents there. Historical stage notes, older README/CLAUDE descriptions, and previously named "canonical" roadmaps may be outdated. Inspect the latest actual code and tests. For small edits, consult only the relevant sections rather than performing a full audit.
+
 ## 1. Reuse before building (mandatory)
 
 Before implementing a feature or change:

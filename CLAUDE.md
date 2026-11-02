@@ -1,3 +1,5 @@
+> **Current-documentation notice (2026-11-02):** This file contains historical engineering context and may describe older product/stage assumptions. First read [`AGENTS.md`](AGENTS.md) and [`docs/START_HERE.md`](docs/START_HERE.md), then verify the actual selected branch and source. Their current product/development guidance supersedes conflicting older statements here. Preserve useful technical notes below, but do not use this file alone as a roadmap or deployment authority.
+
 # CLAUDE.md
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.

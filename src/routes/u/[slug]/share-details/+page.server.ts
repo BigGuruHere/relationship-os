@@ -36,7 +36,8 @@ export const actions: Actions = {
     } catch (e) {
       if (isHttpError(e)) return fail(e.status, { error: e.body.message, values });
       // Do not log the visitor payload or database error objects.
-      return fail(503, { error: 'Could not save your details. Please retry this form.', values });
+      const reference = (e as { captureReference?: string })?.captureReference;
+      return fail(503, { error: 'Could not save your details. Please retry this form.', values, reference: typeof reference === 'string' && /^[0-9a-f-]{36}$/.test(reference) ? reference : undefined });
     }
     // Never expose a Contact ID, duplicate match, private data or account-linking hint to the visitor.
     return { shared: true };

@@ -87,3 +87,7 @@ A second DEV account must not be able to open the captured Contact or its note/s
 - Notes: shared `ContactNoteForm.svelte`; new private Contact-scoped summary endpoint; existing People save/detail/history adapters persist and render summaries and capture origin.
 - `ai.ts`: summary error logging redacted; transcription code unchanged.
 - Tests: `tests/core/contact-capture.test.ts`, `scripts/check-contact-capture.mjs`, `scripts/check-contact-capture-browser.py`.
+
+## Diagnosing a capture 503
+
+A storage failure now emits one structured `relish.contact_capture` error event containing a random support reference, processing stage, allowlisted Prisma code and coarse category. No error message, SQL metadata, submitted details or credentials are logged. The public form displays the same support reference. In local development, this event appears in the terminal running Vite, not just browser DevTools. Retry once and use that event to distinguish `private_home`, transaction/lock, publication/receipt/rate, Contact creation and provenance/commit failures. A `P2028` category identifies a closed/expired transaction but does not itself prove why it closed. Diagnostics do not change transaction timing or database permissions.

@@ -28,3 +28,11 @@ test('public Contact capture boundary allows new flat Contact and provenance onl
     assert.throws(()=>scopeContextPrismaArgs('Contact','create',{data:{...data,userId:'different-owner'}}),/Cross-owner/);
   });
 });
+
+
+ test('capture diagnostics classify storage failures without returning private messages or SQL metadata', async () => {
+  const { captureFailureMetadata } = await import('../../src/lib/server/core/contactCaptureDiagnostics');
+  assert.deepEqual(captureFailureMetadata({code:'P2028',message:'private@example.test',meta:{query:'private'}}),{code:'P2028',category:'transaction_timeout_or_closed'});
+  assert.deepEqual(captureFailureMetadata({code:'secret-key',message:'private@example.test'}),{code:'unclassified',category:'unknown'});
+  assert.deepEqual(captureFailureMetadata(new Error('Explicit ContextSpace does not match the active custody context.')),{code:'unclassified',category:'custody_guard'});
+});

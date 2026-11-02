@@ -1,6 +1,6 @@
 # Relish: Current State and Open Work
 
-Status: living snapshot as of **2026-11-02**. Based on GitHub `BigGuruHere/relationship-os` **development** at `54a11ef66616d8386e96f600a69e362b0cdeb6fa`, plus the identified UI cleanup branch. This document is a baseline, not a live deployment monitor.
+Status: living snapshot as of **2026-11-02**. Based on GitHub `BigGuruHere/relationship-os` **development** at `54a11ef66616d8386e96f600a69e362b0cdeb6fa`, plus the UI cleanup merged into Development on 2026-11-02. This document is a baseline, not a live deployment monitor.
 
 ## What is implemented in Development
 
@@ -15,15 +15,15 @@ Status: living snapshot as of **2026-11-02**. Based on GitHub `BigGuruHere/relat
 
 Stage 2's checked-in test report records `npm run check` with zero errors/warnings, 820 passes and 50 existing assertion failures out of 870 tests, and focused integration tests including 11 QR capture checks and 14 Stage 1 checks. These are **reported Codex test results**, not tests independently rerun for this documentation update. No new Prisma migration was needed for Stage 1 or Stage 2.
 
-## Pending feature branch
+## UI cleanup integrated into Development
 
-`feature/context-neutral-home-ui-cleanup` was created for three requested UI improvements:
+Pull request [#2](https://github.com/BigGuruHere/relationship-os/pull/2) merged `feature/context-neutral-home-ui-cleanup` into `development` at `bb8c4d0030f22e355d78ed216bc84c6060ece35a` on 2026-11-02, covering three requested improvements:
 
 1. Make `/` a context-neutral authenticated Home instead of redirecting to the first `/space/[context]`.
 2. Hide the public invitation to speak to Dorian while retaining its implementation for later.
 3. Remove the Settings destination from primary desktop and mobile navigation without removing routes or operator controls.
 
-As of this snapshot, that branch has not been merged into `development`. Type-check, browser testing, branch reconciliation and deployment remain to be confirmed. Do not mark the UI work shipped until verified and merged/deployed deliberately.
+The code is merged into `development`, but type-check, browser testing and Railway deployment remain unverified here. Do not mark the UI work deployed or pilot-validated until those steps are confirmed.
 
 ## Problems and limits worth tracking
 
@@ -36,7 +36,7 @@ As of this snapshot, that branch has not been merged into `development`. Type-ch
 
 ## Next verification sequence
 
-1. Validate the neutral Home UI branch and ensure it does not hide the public QR capture or useful existing navigation; reconcile with latest `development`.
+1. Run type and browser checks against merged Development for the neutral Home UI; confirm it does not hide public QR capture or useful navigation.
 2. On Railway DEV, manually test sign-in -> Home -> Share -> visitor QR -> details submission -> My People -> voice note -> refresh/retrieve.
 3. Test both existing Brokerage Contacts and other public profile/event pages for regressions.
 4. Confirm actual DEV/PROD branch mappings and deployments before promotion; no implicit production change.

@@ -118,6 +118,11 @@
 {#if isFirstContact}
 <main class="first-contact">
   <div class="fc-brand">Relish</div>
+  <section class="fc-person" aria-label="Share contact details">
+    <h2>Stay in touch with {ownerName}</h2>
+    <p>Share your details privately. No Relish account or Dorian conversation required.</p>
+    <a class="fc-primary" href={'/u/' + encodeURIComponent(profileSlug) + '/share-details?via=' + (data.captureVia === 'qr' ? 'qr' : 'profile_link')}>Share your details</a>
+  </section>
   <section class="fc-dorian" aria-labelledby="dorian-title">
     <div class="fc-title-row">
       <div class="fc-symbol" aria-hidden="true">D</div>
@@ -170,6 +175,7 @@
 </main>
 {:else}
 <div class="container public-profile">
+  {#if prof.isPublished}<p style="text-align:center"><a class="btn primary" href={'/u/' + encodeURIComponent(profileSlug) + '/share-details?via=' + (data.captureVia === 'qr' ? 'qr' : 'profile_link')}>Share your details with {ownerName}</a></p>{/if}
   <!-- IT: owner-facing context bar with return to Share on the right -->
   <div class="topbar" style="padding:10px 12px; max-width:720px; margin:0 auto 10px auto; position:relative; display:flex; align-items:center; gap:8px;">
     <!-- IT: helper text on the left -->

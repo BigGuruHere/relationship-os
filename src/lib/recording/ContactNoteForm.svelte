@@ -57,6 +57,7 @@
   // UI flags
   let transcribing = false;
   let summarizing = false;
+  let summaryError = '';
   let saving = false;
 
   // Device heuristic so desktop keeps inline controls
@@ -114,6 +115,7 @@
   async function summarize() {
     try {
       summarizing = true;
+      summaryError = '';
 
       const input = String(text || '').trim();
       if (!input) {
@@ -121,35 +123,36 @@
         return;
       }
 
-      const resp = await fetch('/api/summarize', {
+      const resp = await fetch(privateMode ? `${contactBase}/${data.contact.id}/notes/summarize` : '/api/summarize', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text: input })
       });
 
-      let data: any = {};
+      let responseData: any = {};
       try {
-        data = await resp.json();
+        responseData = await resp.json();
       } catch {
-        console.error('[summarize] non json response');
+        summaryError = 'Summary unavailable. Your note is unchanged.';
         return;
       }
 
       if (!resp.ok) {
-        console.error('[summarize] server error', data?.error || 'Unknown error');
+        summaryError = 'Summary unavailable. You can still save your note without it.';
         return;
       }
 
-      summary = typeof data.summary === 'string' ? data.summary : '';
+      if (privateMode && input !== String(text || '').trim()) { summaryError = 'Your note changed. Summarise again to use the updated text.'; return; }
+      summary = typeof responseData.summary === 'string' ? responseData.summary : '';
 
-      if (Array.isArray(data.tags) && data.tags.length > 0) {
-        tags = data.tags.map((t: any) => String(t || '')).filter(Boolean).join(', ');
-      } else if (Array.isArray(data.suggestedTags)) {
-        const names = data.suggestedTags.map((t: any) => String(t?.name || '')).filter(Boolean);
+      if (Array.isArray(responseData.tags) && responseData.tags.length > 0) {
+        tags = responseData.tags.map((t: any) => String(t || '')).filter(Boolean).join(', ');
+      } else if (Array.isArray(responseData.suggestedTags)) {
+        const names = responseData.suggestedTags.map((t: any) => String(t?.name || '')).filter(Boolean);
         if (names.length > 0) tags = names.join(', ');
       }
     } catch (err) {
-      console.error('Summarize failed', err);
+      summaryError = 'Summary unavailable. Your note is unchanged.';
     } finally {
       summarizing = false;
     }
@@ -418,8 +421,8 @@
       {#if summary}
         <div class="card" style="padding:12px; margin-top:12px;">
           <h3>AI Summary</h3>
-          <pre style="white-space:pre-wrap;">{summary}</pre>
-          <p style="margin-top:6px;">Tags: {tags}</p>
+          {#if privateMode}<label for="note-summary">Summary (editable)</label><textarea id="note-summary" rows="5" bind:value={summary}></textarea>
+          {:else}<pre style="white-space:pre-wrap;">{summary}</pre><p style="margin-top:6px;">Tags: {tags}</p>{/if}
         </div>
       {/if}
 
@@ -434,9 +437,11 @@
       </div>
       {/if}
       {#if privateMode}<p class="muted">Your private observation. Review and edit the text, then save. Audio is sent for transcription; no account, connection or Living Understanding is created.</p>{/if}
+      {#if privateMode}<p class="muted">Optional: Summarize sends this note to the AI provider. Review the summary before saving; it is not shared or added to Living Understanding.</p>{/if}
+      {#if summaryError}<p role="alert">{summaryError}</p>{/if}
       {#if recordingError}<p role="alert">{recordingError}</p>{/if}
       <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:12px;">
-        {#if !privateMode}<button type="button" class="btn" on:click={summarize} disabled={summarizing || recording || saving}>
+        <button type="button" class="btn" on:click={summarize} disabled={summarizing || recording || transcribing || saving || !text.trim()}>
           {#if summarizing}
             <span class="spinner" aria-hidden="true"></span>
             <span>Summarizing...</span>
@@ -445,12 +450,11 @@
           {/if}
         </button>
 
-        {/if}
         <button
           class="btn primary"
           formaction="?/save"
           formmethod="post"
-          disabled={saving || transcribing || recording}
+          disabled={saving || transcribing || recording || summarizing}
         >
           {#if saving}
             <span class="spinner" aria-hidden="true"></span>

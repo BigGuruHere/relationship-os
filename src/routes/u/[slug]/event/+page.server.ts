@@ -42,6 +42,7 @@ export const load: PageServerLoad = async ({ params, url }) => {
       phonePublic: profile.phonePublic,
       websiteUrl: profile.websiteUrl
     },
+    shareDetailsUrl: `/u/${encodeURIComponent(profile.slug)}/share-details?via=event`,
     vcardUrl: buildVcardUrl(profile, `${url.origin}/u/${encodeURIComponent(profile.slug)}`),
     originalUrl: `/u/${encodeURIComponent(profile.slug)}?original=1`
   };

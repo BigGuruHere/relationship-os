@@ -3,6 +3,7 @@ import type { Prisma } from '@prisma/client';
 import { prisma } from '$lib/db';
 import { encrypt, decrypt, buildIndexToken } from '$lib/crypto';
 import type { CoreAccessContext } from './accessPolicy';
+type ContactWriter = Pick<typeof prisma, 'contact'>;
 
 export function validateContactDetails(input: { name: unknown; email?: unknown; phone?: unknown }) {
   const name = String(input.name ?? '').trim();
@@ -16,19 +17,20 @@ export function validateContactDetails(input: { name: unknown; email?: unknown; 
 }
 
 // Shared persistence for basic and commercial adapters. Applications cannot override custody.
-export async function persistCoreContact(context: CoreAccessContext, data: Omit<Prisma.ContactUncheckedCreateInput, 'userId' | 'contextSpaceId'>) {
-  return prisma.contact.create({ data: { ...data, userId: context.workspaceUserId, contextSpaceId: context.contextSpaceId }, select: { id: true } });
+export async function persistCoreContact(context: CoreAccessContext, data: Omit<Prisma.ContactUncheckedCreateInput, 'userId' | 'contextSpaceId'>, db: ContactWriter = prisma) {
+  return db.contact.create({ data: { ...data, userId: context.workspaceUserId, contextSpaceId: context.contextSpaceId }, select: { id: true } });
 }
 
-export async function createCoreContact(context: CoreAccessContext, input: { name: unknown; email?: unknown; phone?: unknown }) {
+export async function createCoreContact(context: CoreAccessContext, input: { name: unknown; email?: unknown; phone?: unknown; sourceProfileId?: string }, db: ContactWriter = prisma) {
   const { name, email, phone } = validateContactDetails(input);
   // Same names are allowed. No account, canonical Person, reciprocal relationship or automatic matching.
   return persistCoreContact(context, {
     fullNameEnc: encrypt(name, 'contact.full_name'), fullNameIdx: buildIndexToken(name),
     emailEnc: email ? encrypt(email, 'contact.email') : null, emailIdx: email ? buildIndexToken(email.toLowerCase()) : null,
     phoneEnc: phone ? encrypt(phone, 'contact.phone') : null, phoneIdx: phone ? buildIndexToken(phone) : null,
-    source: 'MANUAL'
-  });
+    source: input.sourceProfileId ? 'INBOUND' : 'MANUAL',
+    sourceProfileId: input.sourceProfileId || null
+  }, db);
 }
 
 export function privateContactDetails(row: { id: string; fullNameEnc: string; emailEnc: string | null; phoneEnc: string | null }) {

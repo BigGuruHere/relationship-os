@@ -12,6 +12,7 @@ export type WorkspaceCustodyContext = {
 export type CrossCustodyReason =
   | 'PUBLIC_PROFILE_CONNECTION'
   | 'LEAD_CLAIM'
+  | 'PUBLIC_CONTACT_CAPTURE'
   | 'PUBLIC_LEAD_CAPTURE'
   | 'ELEVENLABS_CONVERSATION_INGEST'
   | 'ELEVENLABS_CONVERSATION_INITIATION'
@@ -149,7 +150,7 @@ export async function runWithExternalWorkspaceCustody<T>(
   params: {
     targetUserId: string;
     targetContextSpaceId: string;
-    reason: Extract<CrossCustodyReason, 'PUBLIC_LEAD_CAPTURE' | 'ELEVENLABS_CONVERSATION_INGEST' | 'ELEVENLABS_CONVERSATION_INITIATION'>;
+    reason: Extract<CrossCustodyReason, 'PUBLIC_CONTACT_CAPTURE' | 'PUBLIC_LEAD_CAPTURE' | 'ELEVENLABS_CONVERSATION_INGEST' | 'ELEVENLABS_CONVERSATION_INITIATION'>;
   },
   fn: () => T | PromiseLike<T>
 ): Promise<Awaited<T>> {
@@ -263,6 +264,10 @@ const CROSS_CUSTODY_POLICIES: Record<CrossCustodyReason, { models: Record<string
   },
   LEAD_CLAIM: {
     models: { Contact: new Set(['update']) }
+  },
+  // Public detail sharing can only create a Contact and its source receipt; no identity/connection updates.
+  PUBLIC_CONTACT_CAPTURE: {
+    models: { Contact: new Set(['create']), Interaction: new Set(['findFirst', 'create', 'count']) }
   },
   PUBLIC_LEAD_CAPTURE: {
     models: { Contact: new Set(['findFirst', 'create']) }

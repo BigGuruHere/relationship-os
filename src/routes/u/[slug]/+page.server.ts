@@ -181,6 +181,7 @@ export const load: PageServerLoad = async ({ params, url, locals }) => {
     firstVisit,
     origin,
     slugParam,
+    captureVia: url.searchParams.get('via') === 'qr' ? 'qr' : 'profile_link',
     // IT: NEW - pass visitor login state to page
     isVisitorLoggedIn,
     isAlreadyConnected,

@@ -36,6 +36,7 @@
     {#if person.headline}<p class="profile-line">{person.headline}</p>{/if}
   </div>
 
+  <section class="signup-card"><h2>Simply stay in touch</h2><p>Share your details privately, without joining the pilot or creating an account.</p><a class="save-button" href={data.shareDetailsUrl}>Share your details</a></section>
   <section class="signup-card" aria-labelledby="signup-title">
     {#if form?.joined}
       <div class="success" role="status">

@@ -151,7 +151,8 @@ export async function summarizeText(text: string): Promise<{ summary: string; ta
     try {
       bodyText = await resp.text();
     } catch {}
-    console.error("[summarizeText] OpenAI chat failed", resp.status, resp.statusText, { bodyText });
+    // Provider bodies can echo private note text. Preserve status without logging content.
+    console.error("[summarizeText] OpenAI chat failed", { status: resp.status });
     throw new Error(`OpenAI chat failed: ${resp.status} ${resp.statusText}`);
   }
 

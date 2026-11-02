@@ -13,14 +13,15 @@ export const actions: Actions = {
     const { context, contact } = await requirePeopleContact(locals, params.id);
     const fd = await request.formData();
     const text = String(fd.get('text') || '').trim();
+    const summary = String(fd.get('summary') || '').trim();
     const channel = fd.get('channel') === 'voice note' ? 'OWNER_VOICE_NOTE' : 'OWNER_NOTE';
-    if (!text || text.length > 100000) return fail(400, { error: 'Enter a note of up to 100,000 characters.', draft: { text, channel: channel === 'OWNER_VOICE_NOTE' ? 'voice note' : 'note' } });
+    if (!text || text.length > 100000 || summary.length > 20000) return fail(400, { error: 'Enter a note of up to 100,000 characters.', draft: { text, summary, channel: channel === 'OWNER_VOICE_NOTE' ? 'voice note' : 'note' } });
     // Authenticated owner authors an observation. Storage never implies LU, matching or disclosure permission.
     try {
-      await createCoreInteraction(context, { contactId: contact.id, channel, rawText: text, sourceType: 'WORKSPACE', luAdmission: 'STORED_ONLY', createEmbedding: false });
+      await createCoreInteraction(context, { contactId: contact.id, channel, rawText: text, summary, sourceType: 'WORKSPACE', luAdmission: 'STORED_ONLY', createEmbedding: false });
     } catch {
       // Return the draft on storage failure; never log private observations.
-      return fail(500, { error: 'Could not save your note. Your text is below; please retry.', draft: { text, channel: channel === 'OWNER_VOICE_NOTE' ? 'voice note' : 'note' } });
+      return fail(500, { error: 'Could not save your note. Your text is below; please retry.', draft: { text, summary, channel: channel === 'OWNER_VOICE_NOTE' ? 'voice note' : 'note' } });
     }
     // A private observation does not imply a new conversation: leave lastContactedAt unchanged.
     throw redirect(303, '/people/' + contact.id);

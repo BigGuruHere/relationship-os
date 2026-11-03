@@ -52,9 +52,9 @@ Profile `kind` remains a compatibility input for the existing Business/Friendshi
 
 Use code and tests to confirm exact paths or semantics before editing. This is a map, not an exhaustive inventory.
 
-## Optional profile creation after contact exchange (feature branch)
+## Optional profile creation after contact exchange
 
-On `feature/three-step-profile-onboarding-20261103`, the existing public profile is screen one; the existing share-details route renders screens two and three. Its explicit `create-profile` POST stores only a 30-minute encrypted HttpOnly draft using the shared encryption helper and a dedicated authenticated-data purpose. This is independent of capture writes. No new endpoint, database model or migration is introduced.
+Merged into `development` on 2026-11-03 via PR #10 (`841e59c`), with deployment unverified. The existing public profile is screen one; the existing share-details route renders screens two and three. Its explicit `create-profile` POST stores only a 30-minute encrypted HttpOnly draft using the shared encryption helper and a dedicated authenticated-data purpose. This is independent of capture writes. No new endpoint, database model or migration is introduced.
 
 Auth accepts the existing strict Network invite paths plus exactly `/settings/profile?onboarding=1`; Google retains the allowlisted return through its existing OAuth state/cookie flow. The draft proves neither email/phone ownership nor a relationship. Password signup and newly provisioned Google profiles in this flow start unpublished; existing profiles remain unchanged. The owner-scoped editor shows optional prefills and requires a save/publication choice before making entered contact fields public. Drafts expire and are cleared after successful save. Existing credential verification and Network consent boundaries remain in place; this does not introduce a new email-verification mechanism.
 

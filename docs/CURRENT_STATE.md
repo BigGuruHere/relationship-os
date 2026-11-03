@@ -2,9 +2,9 @@
 
 Status: living snapshot updated **2026-11-03**. Based on GitHub `BigGuruHere/relationship-os` **development** through UI merge `bb8c4d0030f22e355d78ed216bc84c6060ece35a`, plus the UI cleanup merged into Development on 2026-11-02. This document is a baseline, not a live deployment monitor.
 
-## Three-screen contact exchange and optional signup (feature branch)
+## Three-screen contact exchange and optional signup (merged into Development)
 
-Implemented 2026-11-03 on `feature/three-step-profile-onboarding-20261103`, based on Development `4bb88fe7d84559ac1531653790518efc789f9fd8`. Not merged or deployed.
+Implemented on `feature/three-step-profile-onboarding-20261103`, based on Development `4bb88fe7d84559ac1531653790518efc789f9fd8`. Merged into `development` on 2026-11-03 via [PR #10](https://github.com/BigGuruHere/relationship-os/pull/10), merge commit `841e59cc1d68a2f41d2404474bfa0576b265debb`. Deployment and real-device validation remain unverified.
 
 1. Published visitor profile shows public details and **Save contact**. With JavaScript, the existing vCard download starts and navigation follows to the existing share-details route. Browser/OS completion of saving a contact is not detectable; the direct share link remains available without JavaScript.
 2. Optional **Share your details** form retains name, optional email/telephone, explicit consent, capture token, custody, provenance and abuse protections. **Skip** writes no Contact.

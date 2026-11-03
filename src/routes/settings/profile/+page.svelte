@@ -159,7 +159,7 @@
       </div>
 
       <div class="field span2">
-        <label><input type="checkbox" name="isPublished" checked={p?.id ? p.isPublished !== false : false} /> Published publicly</label>
+        <label><input type="checkbox" name="isPublished" checked={p?.id ? p.isPublished !== false : !data?.creatingNew} /> Published publicly</label>
         <small>Uncheck to hide this profile and disable its public QR destination.</small>
       </div>
       <div class="field">

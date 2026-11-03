@@ -40,6 +40,12 @@ test('owner-facing label remains separate from public name and kind', () => {
   assert.match(form, /p\?\.id \? p\.isPublished !== false : false/);
 });
 
+test('legacy contextual profile views keep the established profile on same-kind creation', () => {
+  const contextual = read('src/lib/server/core/relishWorkspaceData.ts');
+  assert.match(contextual, /orderBy: \[\{ isDefault: 'desc' \}, \{ createdAt: 'asc' \}\]/);
+  assert.match(editor, /orderBy: \[\{ isDefault: 'desc' \}, \{ createdAt: 'asc' \}\]/);
+});
+
 test('QR contact capture retains exact source profile identity', () => {
   assert.match(capture, /sourceProfileId: profile\.id/);
   assert.match(capture, /profileId: profile\.id/);

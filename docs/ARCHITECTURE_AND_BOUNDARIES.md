@@ -33,6 +33,12 @@ Do not copy credentials, export private data or reconfigure live services as a s
 
 The initial `private` WORKSPACE for My People is neutral storage. Existing Brokerage ContextSpaces and Contacts remain intact, even though current My People does not display the older Brokerage Contacts in one unified list.
 
+## Public profile identity and classification
+
+The Profile model belongs to a User, not directly to a ContextSpace. Each profile has its own `id`, unique `slug`, owner-facing `label`, public `displayName`, publication state and `kind`. Multiple profiles of the same kind are supported by the data model and are exposed by the feature-branch My Profiles manager. The legacy contextual editor may still select an existing profile by kind.
+
+Profile `kind` remains a compatibility input for the existing Business/Friendship/Dating workflows. The private Contact capture adapter stores the exact `sourceProfileId` and an Interaction provenance receipt with profile ID/kind/entry hint. A profile choice does not give Contacts permanent context membership, cross-context visibility or new disclosure rights.
+
 ## Current reusable flows
 
 - `/people`, `/people/new`, `/people/[id]`: owner-private new Contacts, retrieval and note history.

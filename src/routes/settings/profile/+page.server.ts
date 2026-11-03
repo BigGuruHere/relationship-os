@@ -90,7 +90,8 @@ export const load: PageServerLoad = async ({ locals, url }) => {
   const requestedReturn = url.searchParams.get('returnContext');
   const returnKinds: Record<string, string> = { business: 'business', friendship: 'personal', dating: 'dating' };
   const returnContext = requestedReturn && returnKinds[requestedReturn] === (profile?.kind || safeRequestedKind) ? requestedReturn : null;
-  return { profile: profile || null, requestedProfileKind, networkEntry, creatingNew, mode, first, next, returnContext };
+  return { profile: profile || null, requestedProfileKind, networkEntry, creatingNew,
+    fromProfiles: url.searchParams.get('from') === 'profiles', mode, first, next, returnContext };
 };
 
 export const actions: Actions = {

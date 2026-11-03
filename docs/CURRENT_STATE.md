@@ -49,6 +49,14 @@ Existing Business/Friendship/Dating ContextSpace selection remains unchanged. Le
 
 Status: code committed to feature branch only, not merged or deployed. Added focused source regression tests. Runtime Svelte checks, database tests, browser testing and QR verification are still required before pilot rollout.
 
+## Context-neutral profile navigation and label-based Share selector (feature branch)
+
+On 2026-11-03, `fix/profile-share-context-neutral-selector-20261103` removes the Business/Friendship/Dating ContextSpace selector from neutral `/profiles`, `/settings/profile` and `/share` routes. Those routes now use the same global navigation as Home and My People; selectors on genuinely contextual workspace pages remain unchanged.
+
+The Share page now provides a dropdown of **all profiles owned by the signed-in user** with the owner's label (falling back to the public name for legacy default labels), plus type as secondary context. Selecting a profile navigates to its exact `/share?profile=<slug>`, keeping QR and share actions consistent. Unknown explicit profile slugs return 404 rather than silently choosing another profile. This uses existing Profile fields with no migration.
+
+Status: feature branch committed, not merged or deployed. Focused source regression coverage added; full application checks and real mobile/browser tests still outstanding.
+
 ## Problems and limits worth tracking
 
 - The user observed transcription returning "You" on one Windows laptop while voice transcription worked on other machines. This appears device-specific, but the browser/microphone root cause is **not verified**. Do not rewrite the common transcription service solely on this evidence.

@@ -35,6 +35,12 @@ On 2026-11-03 the owner elected to abandon the temporary Personal-tag bridge bet
 - Any Contact separately created in the private My People storage remains there; it is not a copy created by the Personal checkbox and must be reviewed individually before deletion.
 - Reversal is committed only to the feature branch. Integration and deployment are separate steps; production/DEV state has not been verified.
 
+## Navigation and mobile header corrections (feature branch only)
+
+On 2026-11-03, `fix/people-navigation-mobile-header-20261103` restores the common Home, People, Profile and Share navigation on desktop and mobile for My People routes. It also restores mobile right alignment of the header action and three-dot menu on pages without a ContextSpace selector. Focused source regression checks were added. This is not merged or deployed; type-check and real browser validation remain outstanding.
+
+The Business/Friendship/Dating selector still navigates ContextSpaces, not profiles. Multiple independently labelled profiles per kind are not yet supported by the existing editor workflow, despite the Profile model already having a label field. This is a separate product decision.
+
 ## Problems and limits worth tracking
 
 - The user observed transcription returning "You" on one Windows laptop while voice transcription worked on other machines. This appears device-specific, but the browser/microphone root cause is **not verified**. Do not rewrite the common transcription service solely on this evidence.

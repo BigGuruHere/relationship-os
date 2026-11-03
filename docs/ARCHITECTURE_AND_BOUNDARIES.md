@@ -10,7 +10,15 @@ Status: living technical overview. Checked against the RelationshipOS `developme
 | `BigGuruHere/relish-agent-management` | Manage provider-facing agents, configuration, versions and environment assignments |
 | `BigGuruHere/relish-proxy-server` | Route telephone/provider requests to the appropriate Relish environment and session based on managed routing |
 
-Relish is fundamentally a shared Core with application experiences, not three independent copies of relationships or knowledge.
+The current implementation shares Core primitives across application experiences. The accepted target now separates the new Relish domain from legacy Brokerage persistence where semantics conflict, while retaining useful infrastructure. This is a planned transition, not an implemented split.
+
+## Accepted target and transition
+
+The [foundation architecture](foundation/ARCHITECTURE.md), [policy contract](foundation/POLICY_AND_PROVENANCE.md) and [decisions D-019 through D-023](foundation/DECISIONS.md) define the new direction. People, relationships and groups are understanding subjects; perspective is independent. Contextual meaning, custody and permissions are separate. New persistence may replace Contact-bound understanding through additive migrations and one authoritative writer per enrolled cohort/capability.
+
+Keep Brokerage on its current model. Preserve its data and current security boundaries; do not reinterpret ContextSpace labels as grants. Reuse credential/session primitives but isolate legacy Lead-linking side effects. Restricted profile sharing must be distinct from public publication. None of these new capabilities is implemented by the documentation package.
+
+See the [stage-2/3 backlog and migration gates](foundation/IMPLEMENTATION_PLAN.md). Physical schema choices are settled in F-201 before schema implementation. The sections below describe current implementation, not the target schema.
 
 ## Stack and environments
 
@@ -71,8 +79,8 @@ Auth accepts the existing strict Network invite paths plus exactly `/settings/pr
 
 ## Known architectural seams / future consolidation
 
-- Legacy Brokerage and participant context UI coexist with My People and QR capture. Reuse shared services rather than generating a third Contact system. An experimental owner-only Personal-tagged Brokerage directory bridge was superseded on 2026-11-03 and is being removed. My People returns to its private-only directory pending a deliberate unified-directory design.
-- A unified People directory and cross-context associations are directional goals, **not** permission to lift custody barriers or migrate  existing records automatically.
+- Legacy Brokerage and participant context UI coexist with My People and QR capture. Reuse suitable services; a replacement new-domain model is permitted only through the documented foundation transition, without competing active writers. An experimental owner-only Personal-tagged Brokerage directory bridge was superseded on 2026-11-03 and is being removed. My People returns to its private-only directory pending a deliberate unified-directory design.
+- A coherent new Relish People directory and relationship associations are directional goals. Brokerage aggregation is not required; no custody barrier or legacy record may be migrated automatically.
 - User, Contact, Person, Connection and profile concepts should be reconciled explicitly and gradually.
 - Some transcription job state is process-local in the present pilot; assess reliability before relying on multi-instance delivery.
 - Agent routing and context-specific session handling are deliberate infrastructure boundaries, not reasons to duplicate person data in each agent.

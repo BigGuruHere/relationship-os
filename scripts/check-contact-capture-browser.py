@@ -38,6 +38,13 @@ with sync_playwright() as p:
     visitor.get_by_role('heading',name='Your next introduction starts here.',exact=True).wait_for()
     visitor.get_by_role('status').get_by_text('Your details have been shared',exact=False).wait_for()
     assert visitor.locator('body').evaluate('(e)=>e.scrollWidth<=window.innerWidth')
+    # A successful share survives Maybe later and the next contact download.
+    visitor.get_by_role('link',name='Maybe later',exact=True).click()
+    with visitor.expect_download():
+        visitor.get_by_role('link',name='Save contact',exact=True).click()
+    visitor.wait_for_url('**/share-details?via=*')
+    visitor.get_by_role('heading',name='Your next introduction starts here.',exact=True).wait_for()
+    assert visitor.locator('input[name=contactConsent]').count()==0
     page=owner.new_page();page.on('pageerror',lambda e:errors.append(str(e)))
     page.goto(origin+'/people?q=Mobile%20Jordan');page.get_by_role('link',name='Mobile Jordan',exact=False).click()
     page.wait_for_url('**/people/*');page.get_by_role('heading',name='Mobile Jordan',exact=True).wait_for()

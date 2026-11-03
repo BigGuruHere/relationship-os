@@ -4,7 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { publishedCaptureProfile, capturePrivateContact } from '$lib/server/core/contactCapture';
 import { CAPTURE_COOKIE, issueContactCaptureToken, verifyContactCaptureToken } from '$lib/server/core/contactCaptureToken';
 import { validateContactDetails } from '$lib/server/core/contacts';
-import { profileDraft, saveProfileDraft, PROFILE_ONBOARDING_RETURN } from '$lib/server/profileOnboarding';
+import { profileDraft, saveProfileDraft, PROFILE_ONBOARDING_RETURN, hasSharedContact, rememberContactShare } from '$lib/server/profileOnboarding';
 export const load: PageServerLoad = async ({ params, url, cookies, setHeaders, locals }) => {
   const profile = await publishedCaptureProfile(params.slug);
   let browser = cookies.get(CAPTURE_COOKIE);
@@ -14,7 +14,8 @@ export const load: PageServerLoad = async ({ params, url, cookies, setHeaders, l
   }
   setHeaders({ 'cache-control': 'private, no-store', 'referrer-policy': 'same-origin' });
   return { profile: { slug: profile.slug, name: profile.displayName || 'Your new contact', headline: profile.headline, avatarUrl: profile.avatarUrl },
-    createStep: url.searchParams.get('step') === 'create', isSignedIn: Boolean(locals.user),
+    // IT: Save contact always arrives here; a successful prior share skips the form.
+    createStep: url.searchParams.get('step') === 'create' || hasSharedContact(cookies, profile.id), isSignedIn: Boolean(locals.user),
     captureToken: issueContactCaptureToken(profile.id, browser, url.searchParams.get('via')) };
 };
 export const actions: Actions = {
@@ -48,6 +49,8 @@ export const actions: Actions = {
       const reference = (e as { captureReference?: string })?.captureReference;
       return fail(503, { error: 'Could not save your details. Please retry this form.', values, reference: typeof reference === 'string' && /^[0-9a-f-]{36}$/.test(reference) ? reference : undefined });
     }
+    // IT: Set only after storage succeeds. Skip, failed submissions and honeypots never count.
+    rememberContactShare(cookies, url, profile.id);
     // Never expose a Contact ID, duplicate match, private data or account-linking hint to the visitor.
     return { shared: true, values: profileDraft(values) };
   }

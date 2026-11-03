@@ -23,8 +23,8 @@ const server = await createServer({ configFile: false, server: { middlewareMode:
       if (id === '\0mock:$lib/auth') return `export async function hashPassword(){return 'test-hash';} export async function createSession(){return {cookie:'session',expiresAt:new Date()};} export function setSessionCookie(){}`;
       if (id === '\0mock:$lib/leads/link') return `export async function linkLeadsForUser(){}`;
       if (id === '\0mock:$lib/server/userEmail') return `export async function findUserByEmail(){return null;} export function encryptedUserEmailFields(){return {email_Enc:'encrypted',email_Idx:'index'};}`;
-      if (id === '\0mock:contactCapture') return `export async function publishedCaptureProfile(slug) { return {id:'profile',slug,userId:'owner',displayName:'Terence'}; }
-        export async function capturePrivateContact(profile,input) { globalThis.__onboardingCaptures.push({profile,input}); }`;
+      if (id === '\0mock:contactCapture') return `export async function publishedCaptureProfile(slug) { return {id:slug==='other'?'other-profile':'profile',slug,userId:'owner',displayName:'Terence'}; }
+        export async function capturePrivateContact(profile,input) { if(globalThis.__onboardingCaptureFailure) throw Error('storage unavailable'); globalThis.__onboardingCaptures.push({profile,input}); }`;
       if (id === '\0mock:contactCaptureToken') return `export const CAPTURE_COOKIE='capture'; export const issueContactCaptureToken=()=> 'token';
         export function verifyContactCaptureToken(token) { if(token!=='token') throw Error('invalid'); return {nonce:'nonce',via:'qr'}; }`;
       if (id === '\0mock:contacts') return `export function validateContactDetails(v) { if (!v.name.trim()) throw Error('Name required'); return v; }`;
@@ -89,6 +89,48 @@ try {
     const badToken=await route.actions.default(event({name:'Guest',contactConsent:'yes',captureToken:'bad'}));
     assert.equal(badToken.status,403);
     assert.equal(globalThis.__onboardingCaptures.length,1);
+  });
+  await test('successful share followed by Maybe later and another download skips the sharing form', async () => {
+    globalThis.__onboardingCaptures=[];
+    const e=event({name:'Guest',email:'guest@example.test',contactConsent:'yes',captureToken:'token'});
+    await route.actions.default(e);
+    const receipt=e.cookies.get(draft.CONTACT_SHARED_COOKIE);
+    assert.ok(receipt); assert.ok(!receipt.includes('guest@example.test'));
+    const repeat=event({});repeat.cookies=e.cookies;
+    assert.equal((await route.load(repeat)).createStep,true);
+    assert.equal((await route.load(repeat)).createStep,true);
+    assert.equal(globalThis.__onboardingCaptures.length,1);
+    repeat.params.slug='other';
+    assert.equal((await route.load(repeat)).createStep,false);
+  });
+  await test('Skip, honeypot and failed storage do not mark details as shared', async () => {
+    const skipped=event({});skipped.url.search='?step=create';
+    await route.load(skipped);skipped.url.search='';
+    assert.equal((await route.load(skipped)).createStep,false);
+    const trap=event({website_check:'bot'});await route.actions.default(trap);
+    assert.equal(draft.hasSharedContact(trap.cookies,'profile'),false);
+    const failed=event({name:'Guest',contactConsent:'yes',captureToken:'token'});
+    globalThis.__onboardingCaptureFailure=true;
+    try { assert.equal((await route.actions.default(failed)).status,503); }
+    finally { delete globalThis.__onboardingCaptureFailure; }
+    assert.equal(draft.hasSharedContact(failed.cookies,'profile'),false);
+    assert.equal((await route.load(failed)).createStep,false);
+  });
+  await test('shared-profile receipts expire, reject tampering and remain bounded and profile-specific', () => {
+    const e=event({}),now=Date.now();
+    draft.rememberContactShare(e.cookies,e.url,'first',now);
+    assert.equal(draft.hasSharedContact(e.cookies,'first',now),true);
+    assert.equal(draft.hasSharedContact(e.cookies,'other',now),false);
+    assert.equal(draft.hasSharedContact(e.cookies,'first',now-1),false);
+    assert.equal(draft.hasSharedContact(e.cookies,'first',now+30*24*60*60*1000),false);
+    const value=e.cookies.get(draft.CONTACT_SHARED_COOKIE);
+    e.cookies.set(draft.CONTACT_SHARED_COOKIE,value+'x',{});
+    assert.equal(draft.hasSharedContact(e.cookies,'first',now),false);
+    for(let i=0;i<20;i++) draft.rememberContactShare(e.cookies,e.url,'profile-'+i,now);
+    assert.equal(draft.hasSharedContact(e.cookies,'profile-0',now),false);
+    assert.equal(draft.hasSharedContact(e.cookies,'profile-4',now),true);
+    assert.equal(draft.hasSharedContact(e.cookies,'profile-19',now),true);
+    assert.deepEqual(e.writes.at(-1).options,{path:'/u',httpOnly:true,sameSite:'lax',secure:true,maxAge:2592000});
   });
   await test('cross-origin signup/capture requests cannot store drafts or Contacts', async () => {
     for (const intent of ['', 'create-profile']) {

@@ -16,7 +16,7 @@ Validation: Node 22 Svelte/TypeScript check passed with zero errors/warnings. Al
 
 ### Contact exchange layout fix (2026-11-03)
 
-`fix/profile-exchange-layout-20261103`, based on Development `adaf26a`, removes the secondary Share your details action from the guest profile. Save contact retains its vCard download and continuation to screen two. The consent checkbox now overrides global full-width input styling with a fixed 18px width; the adjacent text can fill and wrap within the remaining row. No server behavior or Prisma migration changes. Validation: 12 onboarding tests and the focused profile action regression check passed; Node 22 Svelte/TypeScript check passed with zero errors/warnings. Feature-branch implementation; integration status will be recorded after merge.
+`fix/profile-exchange-layout-20261103`, based on Development `adaf26a`, removes the secondary Share your details action from the guest profile. Save contact retains its vCard download and continuation to screen two. The consent checkbox now overrides global full-width input styling with a fixed 18px width; the adjacent text can fill and wrap within the remaining row. No server behavior or Prisma migration changes. Validation: 12 onboarding tests and the focused profile action regression check passed; Node 22 Svelte/TypeScript check passed with zero errors/warnings. Merged into `development` on 2026-11-03 via [PR #11](https://github.com/BigGuruHere/relationship-os/pull/11), merge commit `c4c643d6ab2d38bf7e5e5e9f57c6b6785f3a9daa`. Deployment and real-device verification remain unconfirmed.
 
 ### Corrections to older branch-status notes below
 

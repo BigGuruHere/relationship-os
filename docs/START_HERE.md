@@ -24,6 +24,8 @@ For architecture and new-domain implementation, read these linked documents afte
 - [Permission and provenance contract](foundation/POLICY_AND_PROVENANCE.md): authority, evidence, correction and withdrawal.
 - [Implementation and rollout plan](foundation/IMPLEMENTATION_PLAN.md): stage gates, stage-2/3 source-level backlog, migration strategy and status register.
 - [Developer guide](foundation/DEVELOPER_GUIDE.md): worked patterns, PR evidence and ongoing documentation duties.
+- [F-201 physical model](foundation/PHYSICAL_MODEL.md): concrete tables, constraints, transaction/routing contracts and F-202 migration slices.
+- [F-201 dependency inventory](foundation/DEPENDENCY_INVENTORY.md): source consumers, ownership matrix and outstanding target-database evidence.
 
 These specifications guide future work; they do not replace source code as evidence of implementation. Update the relevant backlog item and stage register with each implementation PR.
 

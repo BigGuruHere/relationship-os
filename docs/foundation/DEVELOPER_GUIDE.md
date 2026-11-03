@@ -2,6 +2,8 @@
 
 Date: 2026-11-03. Status: guidance for implementing the target design. Proposed module names are not existing APIs. Read [architecture](ARCHITECTURE.md), [policy](POLICY_AND_PROVENANCE.md) and the relevant [backlog item](IMPLEMENTATION_PLAN.md) before new-domain work.
 
+Use the [physical model](PHYSICAL_MODEL.md) for exact F-202 table/constraint contracts and the [dependency inventory](DEPENDENCY_INVENTORY.md) before changing auth, database guards or cohort routing. The aggregate inventory script is read-only and is not a migration.
+
 ## Before a change
 
 1. Fetch latest development, read AGENTS and living docs, inspect actual affected source. Find existing functionality and state the precise gap.

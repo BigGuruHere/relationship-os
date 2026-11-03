@@ -25,6 +25,17 @@ Pull request [#2](https://github.com/BigGuruHere/relationship-os/pull/2) merged 
 
 The code is merged into `development`, but type-check, browser testing and Railway deployment remain unverified here. Do not mark the UI work deployed or pilot-validated until those steps are confirmed.
 
+## Owner-only legacy Contact organiser (feature branch, not merged)
+
+Branch: `feature/owner-personal-contact-organiser`, created from Development `23e32a8473dc` on 2026-11-03.
+
+- Adds `/people/organise` with server-side `User.role === 'owner'` checks for both viewing and toggling.
+- Reuses each existing Business ContextSpace's `Tag` and `ContactTag` to mark selected old Contacts as Personal.
+- Owner's My People lists existing private Contacts plus selected Business Contacts, without new Contact copies, identity matching or history moves.
+- Ordinary member/guest My People remains private-only. The Personal tag controls **owner directory visibility**, not ContextSpace access, knowledge admission, permission to disclose, or association with a Person.
+- This is feature-branch code only, not merged or deployed. No schema migration is required. Source-level safety regressions are included; DB-backed multi-space, access-control and browser testing remain outstanding.
+- Business Contacts open through their existing Brokerage detail route; when an owner has multiple Business ContextSpaces, verify correct business selection when following those links.
+
 ## Problems and limits worth tracking
 
 - The user observed transcription returning "You" on one Windows laptop while voice transcription worked on other machines. This appears device-specific, but the browser/microphone root cause is **not verified**. Do not rewrite the common transcription service solely on this evidence.

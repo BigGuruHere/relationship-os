@@ -76,7 +76,8 @@ export const load: PageServerLoad = async ({ locals, url }) => {
       isPublished: true,
       updatedAt: true
     },
-    orderBy: [{ isDefault: 'desc' }, { updatedAt: 'desc' }]
+    // IT: Pick the established same-kind profile rather than a newly created profile.
+    orderBy: [{ isDefault: 'desc' }, { createdAt: 'asc' }]
   });
 
   // SECURITY: An invalid explicit profile URL must never fall back to another existing profile.
@@ -158,7 +159,8 @@ export const actions: Actions = {
       : creatingNew ? null : await prisma.profile.findFirst({
           where: { userId: locals.user.id, kind },
           select: { id: true, slug: true, isDefault: true, publicMeta: true, kind: true },
-          orderBy: [{ isDefault: 'desc' }, { updatedAt: 'desc' }]
+          // IT: Pick the established same-kind profile rather than a newly created profile.
+    orderBy: [{ isDefault: 'desc' }, { createdAt: 'asc' }]
         });
 
     // SECURITY: A Network request cannot overwrite a Business or Dating profile by supplying its id.

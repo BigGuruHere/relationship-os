@@ -47,11 +47,13 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 
   // IT: pick most relevant profile - default first, then most recently updated
   const requestedProfileSlug = url.searchParams.get('profile');
+  // IT: An explicit new-profile intent must not silently load and overwrite the first profile of the same kind.
+  const creatingNew = url.searchParams.get('mode') === 'new' && !requestedProfileSlug;
   const networkEntry = url.searchParams.get('entry') === 'network';
   const requestedProfileKind = networkEntry ? 'personal' : url.searchParams.get('kind');
   const safeRequestedKind = ['business', 'personal', 'dating', 'custom'].includes(requestedProfileKind || '') ? requestedProfileKind : null;
   // IT: Do not load an unrelated default Business profile when creating a Network profile.
-  const profile = await prisma.profile.findFirst({
+  const profile = creatingNew ? null : await prisma.profile.findFirst({
     where: { userId: locals.user.id, ...(requestedProfileSlug ? { slug: requestedProfileSlug, ...(safeRequestedKind ? { kind: safeRequestedKind as any } : {}) } : safeRequestedKind ? { kind: safeRequestedKind as any } : {}) },
     select: {
       id: true,
@@ -59,6 +61,7 @@ export const load: PageServerLoad = async ({ locals, url }) => {
       slug: true,
       isDefault: true,
       displayName: true,
+      label: true,
       headline: true,
       bio: true,
       avatarUrl: true,
@@ -84,7 +87,7 @@ export const load: PageServerLoad = async ({ locals, url }) => {
   const requestedReturn = url.searchParams.get('returnContext');
   const returnKinds: Record<string, string> = { business: 'business', friendship: 'personal', dating: 'dating' };
   const returnContext = requestedReturn && returnKinds[requestedReturn] === (profile?.kind || safeRequestedKind) ? requestedReturn : null;
-  return { profile: profile || null, requestedProfileKind, networkEntry, mode, first, next, returnContext };
+  return { profile: profile || null, requestedProfileKind, networkEntry, creatingNew, mode, first, next, returnContext };
 };
 
 export const actions: Actions = {
@@ -98,6 +101,9 @@ export const actions: Actions = {
 
     // IT: core fields
     const profileId   = String(fd.get('profileId') || '').trim();
+    const creatingNew = fd.get('createNewProfile') === '1';
+    // IT: This owner-private label identifies a profile in the manager; public display name is separate.
+    const label = String(fd.get('label') || '').trim();
     const displayName = String(fd.get('displayName') || '').trim();
     const headline    = String(fd.get('headline') || '').trim();
     const bio         = String(fd.get('bio') || '').trim();
@@ -123,6 +129,8 @@ export const actions: Actions = {
       (/^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(avatarUrl) && avatarUrl.length <= 320000);
     if (!avatarAllowed) return fail(400, { error: 'Use a HTTPS image URL or upload a supported photo.' });
     if (!displayName) return fail(400, { error: 'Display name is required' });
+    if (label.length > 120 || (creatingNew && !label)) return fail(400, { error: 'Enter a profile label up to 120 characters.' });
+    if (creatingNew && profileId) return fail(400, { error: 'A new profile cannot also update an existing profile.' });
 
     // IT: collect extras from inputs named extra_<key>
     const extras: Record<string, string> = {};
@@ -141,7 +149,7 @@ export const actions: Actions = {
           where: { id: profileId, userId: locals.user.id },
           select: { id: true, slug: true, isDefault: true, publicMeta: true, kind: true }
         })
-      : await prisma.profile.findFirst({
+      : creatingNew ? null : await prisma.profile.findFirst({
           where: { userId: locals.user.id, kind },
           select: { id: true, slug: true, isDefault: true, publicMeta: true, kind: true },
           orderBy: [{ isDefault: 'desc' }, { updatedAt: 'desc' }]
@@ -165,6 +173,8 @@ export const actions: Actions = {
           where: { id: existing.id },
           data: {
             slug: nextSlug,
+            // IT: Preserve legacy label when an old edit form doesn't supply one.
+            ...(label ? { label } : {}),
             kind,
             isPublished,
             displayName: displayName || null,
@@ -197,6 +207,7 @@ export const actions: Actions = {
           data: {
             userId: locals.user.id,
             slug: uniqueSlug,
+            label: label || displayName,
             isDefault: hasDefault ? false : true,
             kind,
             isPublished,
@@ -257,6 +268,9 @@ export const actions: Actions = {
 
       throw redirect(303, absoluteUrlFromOrigin(locals.appOrigin, `/u/${encodeURIComponent(slug)}`));
     }
+
+    // IT: Return independently created profiles to their manager; preserve old editor destinations.
+    if (fd.get('returnToProfiles') === '1') throw redirect(303, '/profiles');
 
     // Normal flow - go back to Share focused on this profile
     const slug = targetSlug || 'profile';

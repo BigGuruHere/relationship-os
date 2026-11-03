@@ -18,7 +18,7 @@ The [foundation architecture](foundation/ARCHITECTURE.md), [policy contract](fou
 
 Keep Brokerage on its current model. Preserve its data and current security boundaries; do not reinterpret ContextSpace labels as grants. Reuse credential/session primitives but isolate legacy Lead-linking side effects. Restricted profile sharing must be distinct from public publication. None of these new capabilities is implemented by the documentation package.
 
-See the [stage-2/3 backlog and migration gates](foundation/IMPLEMENTATION_PLAN.md). Physical schema choices are settled in F-201 before schema implementation. The sections below describe current implementation, not the target schema.
+See the [stage-2/3 backlog and migration gates](foundation/IMPLEMENTATION_PLAN.md). F-201 now specifies the [physical schema and transaction contracts](foundation/PHYSICAL_MODEL.md), with [source dependency and data inventory](foundation/DEPENDENCY_INVENTORY.md). The new custody root and typed subjects are design only; target DB inventory and runtime implementation remain pending. The sections below describe current implementation, not the target schema.
 
 ## Stack and environments
 

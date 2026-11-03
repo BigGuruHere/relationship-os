@@ -1,6 +1,6 @@
 # Foundation implementation and user rollout
 
-Date: 2026-11-03. Status: stage 1 documentation delivered on a feature branch; stages 2-7 planned. No new schema, migrations or runtime changes in this deliverable. Work items below are repository backlog identifiers, not GitHub issue numbers or claims of implementation.
+Updated: 2026-11-04. Stage 1 documentation merged via PR #13 (`d789464`). Stage 2 F-201 physical design and source inventory are delivered on `docs/f201-physical-foundation-20261104`; target database inventory remains unverified. Stages 2 runtime and 3-7 remain planned. No new schema, migrations or runtime changes in this deliverable. Work items below are repository backlog identifiers, not GitHub issue numbers or claims of implementation.
 
 ## Release sequence and evidence gates
 
@@ -27,7 +27,15 @@ Stages are dependency gates, not dates. Invite a small, explicitly selected coho
 | F-205 Evidence and understanding subject slice | F-204 | Adapt concepts from `core/interactions.ts`, `noteRevisions.ts`, `datingTranscriptImport.ts`, `knowledgeSuggestionQuality.ts`; do not repoint legacy LU tables without migration design. | One source can concern a person and a relationship; perspective distinct from subject; correction preserves anchors; segment cannot reveal parent source |
 | F-206 Internal integration and transition rehearsal | F-203, F-205 | Thin route/service integration using representative accounts; pin an authoritative storage path per cohort. | Create person -> source -> supported statement -> read/correct; unauthorised second account denied; legacy Brokerage/capture regression evidence; documented rollback |
 
-F-201 must settle physical naming, whether existing Person is reused, subject-reference constraints, encryption/index strategy, account/record deletion, and how new-domain account membership is persisted. These are bounded implementation decisions, not gaps to fill through ad hoc route code. Bring changes to accepted product semantics back for a decision. Development database migration execution and any live deployment still require the authorisation specified in AGENTS.md.
+F-201 now specifies physical naming, existing Person compatibility, subject-reference constraints, encryption/index strategy, account/record deletion, and persisted new-domain enrolment in the linked physical design. These are bounded implementation decisions, not gaps to fill through ad hoc route code. Bring changes to accepted product semantics back for a decision. Development database migration execution and any live deployment still require the authorisation specified in AGENTS.md.
+
+## F-201 result and next implementation
+
+Physical decisions are now specified in [PHYSICAL_MODEL.md](PHYSICAL_MODEL.md): retain shared User and legacy Person, use a new private vault and typed subject registry, separate perspectives and evidence versions, enforce compound custody FKs and explicit SQL invariants, and isolate routing through server-side enrolment. The [dependency inventory](DEPENDENCY_INVENTORY.md) identifies auth side effects, default-space triggers, ORM guard coverage, UI adapters, legacy jobs and data ownership.
+
+F-201 physical design/source inventory: documentation delivered, pending merge. Actual database counts, migration parity and backup evidence: unavailable, not completed. The read-only aggregate query is prepared for an authorised target. No target database was queried or changed. This does not block isolated additive implementation, but blocks target migration/cutover until the inventory and anomalies are assessed.
+
+Next: **F-202 additive schema and isolated migration rehearsal**. Implement the 15 foundation tables and SQL invariants in the physical model, without grants, account-claim tables, embeddings, backfill or route activation. F-203 auth isolation and F-204 access guards remain mandatory before any user-facing writer. Keep stage 2 open until F-206 acceptance passes.
 
 ## Stage 3 backlog: simplest usable release
 
@@ -61,7 +69,7 @@ Use the [developer guide](DEVELOPER_GUIDE.md) for PR evidence. Stages 4-7 get a 
 
 | Stage | Designed | Implemented | Validated | Merged | DEV / PROD |
 | --- | --- | --- | --- | --- | --- |
-| 1 | This documentation package | Documentation only | Documentation checks recorded in PR | Pending | No deployment applicable |
-| 2 | Logical design; F-201 physical design pending | No | No | No | Not deployed |
+| 1 | Documentation package | Documentation only | 37 relative links and diff checks passed in PR #13 | PR #13, `d789464` | No deployment applicable |
+| 2 | F-201 physical design/source inventory delivered; target DB inventory pending | No runtime/schema changes | 56 documentation links, PostgreSQL parse and diff checks; no DB execution | F-201 branch pending | Not deployed |
 | 3 | Backlog and gates | New-domain path not implemented; legacy UI exists | No new-domain validation | No | Not deployed |
 | 4-7 | Direction and gates only | No | No | No | Not deployed |

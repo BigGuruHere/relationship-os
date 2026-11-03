@@ -2,11 +2,17 @@
 
 Status: living snapshot updated **2026-11-03**. Based on GitHub `BigGuruHere/relationship-os` **development** through UI merge `bb8c4d0030f22e355d78ed216bc84c6060ece35a`, plus the UI cleanup merged into Development on 2026-11-02. This document is a baseline, not a live deployment monitor.
 
-## Relationship foundation programme (documentation branch, 2026-11-03)
+## F-201 physical design and dependency inventory (feature branch, 2026-11-04)
+
+Branch `docs/f201-physical-foundation-20261104` is based on latest development `d789464b67dd36524e637e8c35f3610f5ffce278`. It adds [physical schema/constraints/service contracts](foundation/PHYSICAL_MODEL.md), [source dependency and data inventory](foundation/DEPENDENCY_INVENTORY.md), and a commented [read-only aggregate inventory query](../scripts/foundation/inventory-readonly.sql). D-024 records why new private custody/typed subjects are separate from legacy ContextSpace and Contact.
+
+Status: design/source inventory delivered, pending merge. No Prisma schema change, migration execution, runtime change, cohort activation or deployment. Actual DB counts/applied migration parity are unverified because no database connection is configured. The query is prepared, not run on DEV/PROD. F-202 can implement/rehearse on isolated fixtures; target inventory and backup evidence remain gates before target migration/cutover. Stage 2 itself is not complete. Validation: all 56 relative links across 14 living/foundation documents resolve; the inventory SQL parses as 10 PostgreSQL statements limited to read-only transaction setup, SELECT and rollback; referenced tables were checked against Prisma. `git diff --check` passed. No SQL execution or application tests were performed for this design change.
+
+## Relationship foundation programme (merged, 2026-11-04)
 
 Source baseline for this review: development `77a8b2b58232b9413d57b86e853bf478bbee0492`. Branch `docs/relationship-foundation-plan-20261103` adds the [architecture and glossary](foundation/ARCHITECTURE.md), [decisions](foundation/DECISIONS.md), [policy/provenance contract](foundation/POLICY_AND_PROVENANCE.md), [stage-2/3 backlog and rollout plan](foundation/IMPLEMENTATION_PLAN.md), and [developer guide](foundation/DEVELOPER_GUIDE.md). Living product, architecture, roadmap and standing documentation rules are updated together.
 
-Status: documentation only, pending merge. No runtime implementation, Prisma migration, data movement or deployment. Stage 2 starts with F-201 physical design/inventory, then additive schema and an internal proof. Stage 3 adapts existing QR, People and note interfaces for an invited cohort. Later relationship understanding and discovery remain planned. Documentation validation belongs to this PR; previous application test results below are historical and were not rerun for this change.
+Status: documentation merged through [PR #13](https://github.com/BigGuruHere/relationship-os/pull/13), development commit `d789464b67dd36524e637e8c35f3610f5ffce278`, confirmed 2026-11-04. No runtime implementation, Prisma migration, data movement or deployment. F-201 design/source inventory is now delivered as described above; F-202 additive schema and an internal proof follow. Stage 3 adapts existing QR, People and note interfaces for an invited cohort. Later relationship understanding and discovery remain planned. Documentation validation belongs to this PR; previous application test results below are historical and were not rerun for this change.
 
 ## Three-screen contact exchange and optional signup (merged into Development)
 

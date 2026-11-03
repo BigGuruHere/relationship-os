@@ -51,3 +51,15 @@ Decision: establish the base architecture, then onboard an invited cohort throug
 Reason: validate actual user value while avoiding irreversible privacy and identity assumptions. A complete future intelligence platform is not required before the first useful release.
 
 Consequences: every stage has acceptance evidence, migration/rollback scope, operational ownership and explicit implementation/deployment status. Architectural approval is not authorisation for production changes. Extends D-013/D-014 and supersedes the old roadmap priority order, not existing security requirements.
+
+## D-024: Explicit private custody and typed subjects for the first physical schema
+
+Date: 2026-11-04. Status: F-201 implementation design, pending merge; not implemented schema.
+
+Decision: retain User and legacy Person unchanged, introduce FoundationEnrollment and a private FoundationVault, and represent person/relationship/group records in a typed FoundationSubject registry. Use composite custody/type foreign keys, versioned source/statement evidence and independent perspectives. Do not attach new understanding to Contact or make global identity resolution a prerequisite. Keep continuing sharing/claim and joint acknowledgement tables for later stages.
+
+Reason: existing ContextSpace guards, triggers and Contact-bound LU cannot be safely reinterpreted as the new domain. A registry with enforced type references avoids unconstrained polymorphic IDs without multiplying subtype tables. Reusing User retains credential/session continuity while persisted enrolment makes the writer choice explicit.
+
+Alternatives rejected: renaming ContextSpace without changing semantics; making every private person a global Person; unchecked entityId references; converting existing LU contactId to nullable; permanent dual writes. The chosen design adds schema surface but keeps legacy compatibility and new security responsibilities explicit.
+
+Consequences: new database guards do not arrive automatically from the existing Prisma extension. F-204 must implement and test them before routes activate. F-202 has no backfill. Target inventory is required before deployment/cutover and unavailable in this session. See [physical model](PHYSICAL_MODEL.md) and [inventory](DEPENDENCY_INVENTORY.md). Refines D-019 through D-022; no trust invariant is relaxed.

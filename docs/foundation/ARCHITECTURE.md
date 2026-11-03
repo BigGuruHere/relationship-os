@@ -1,6 +1,6 @@
 # Relish relationship foundation design
 
-Date: 2026-11-03. Status: target design for staged implementation, not implemented schema or a deployment claim. Direction approved through the product discussion; physical schema, migration SQL and service contracts require the stage-2 review described in [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md). Source baseline: development `77a8b2b58232b9413d57b86e853bf478bbee0492`.
+Date: 2026-11-03. Status: target design for staged implementation, not implemented schema or a deployment claim. Direction approved through the product discussion; the stage-2 [physical model](PHYSICAL_MODEL.md) now specifies concrete tables and service boundaries. Migration SQL and runtime implementation remain pending. Source baseline: development `77a8b2b58232b9413d57b86e853bf478bbee0492`.
 
 ## Purpose and scope
 
@@ -10,7 +10,7 @@ Build the new domain inside the existing SvelteKit application initially. Preser
 
 ## Domain model and glossary
 
-Names below describe responsibilities, not final Prisma model names.
+Names below describe conceptual responsibilities. Concrete F-202 names and constraints are specified in [PHYSICAL_MODEL.md](PHYSICAL_MODEL.md); neither document is an implemented Prisma schema.
 
 | Concept | Meaning and invariant |
 | --- | --- |
@@ -39,7 +39,7 @@ Mark, Betty and their relationship are three distinct understanding subjects. Ma
 
 Start with custodian-scoped relationship references. Do not impose global uniqueness on a pair of people: the same people may share a family relationship and a project arrangement, and groups may change membership. Associations between independently held relationship references require evidence and explicit workflow; they never merge perspectives or grant access. Unverified participation must not notify another person or reveal the private relationship record.
 
-Understanding subjects should not be implemented as unchecked polymorphic IDs. At schema review choose a subject registry with constrained typed references, or equivalent database-enforced joins. Subject associations and derivations must enforce custody/authorised reference constraints as well as foreign-key existence. A relationship label, member list or source pointer can itself disclose sensitive information.
+Understanding subjects should not be implemented as unchecked polymorphic IDs. F-201 selects a typed FoundationSubject registry with discriminator CHECKs and composite custody foreign keys. Subject associations and derivations must enforce custody/authorised reference constraints as well as foreign-key existence. A relationship label, member list or source pointer can itself disclose sensitive information.
 
 ## Information flow
 

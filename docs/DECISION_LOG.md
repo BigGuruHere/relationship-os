@@ -40,6 +40,8 @@ Detailed rationale, alternatives, consequences and supersession are in [foundati
 | D-022 | Reusable understanding retains evidence, versioned derivation and operation-specific permissions. | Refines D-005/D-006/D-011. Public profiles differ from restricted recipient sharing. |
 | D-023 | Build the foundation, then onboard through gated useful releases and update documentation in every material change. | Extends D-013/D-014; replaces the earlier roadmap priority order. No implicit production approval. |
 
+D-024 (2026-11-04) fixes the first physical schema design: explicit foundation vault/enrolment, typed subjects, separate perspectives and versioned evidence, while retaining shared User and legacy Person. See [the decision](foundation/DECISIONS.md) and [physical specification](foundation/PHYSICAL_MODEL.md). Status: implementation design on F-201 branch, not implemented schema.
+
 Earlier entries above preserve the historical decisions; D-019 controls their explicitly superseded portions.
 
 ## Deferred questions

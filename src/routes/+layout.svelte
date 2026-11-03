@@ -16,6 +16,8 @@
   $: path = data.routePathname || '/';
   $: isHome = path === '/';
   $: isPeople = path === '/people' || path.startsWith('/people/');
+  // IT: My People is part of the context-neutral application navigation, not a separate shell.
+  $: isNeutralNavigation = isHome || isPeople;
   $: isPublic = path.startsWith('/u/') || path.startsWith('/pilot/dorian/') || path.startsWith('/network/join/') || path === '/legal' || path.startsWith('/legal/');
   $: isBroker = ['/broker', '/leads', '/deals', '/companies', '/agents', '/workstreams', '/contacts', '/wants', '/offers', '/introductions', '/projects', '/tasks', '/actions', '/search'].some(prefix => path === prefix || path.startsWith(prefix + '/'));
   $: isOperator = path === '/operator' || path.startsWith('/operator/') || path === '/general' || path.startsWith('/general/');
@@ -35,11 +37,12 @@
 
 
   // IT: Keep context-specific navigation available without forcing the Home screen into a context.
-  function navHref(slug: string, onHome: boolean, base: string) {
+  function navHref(slug: string, neutralNavigation: boolean, base: string) {
     if (!slug) return '/';
-    if (onHome && slug === '/people') return '/people';
-    if (onHome && slug === '/profile') return '/profiles';
-    if (onHome && slug === '/share') return '/share';
+    // IT: Home and People use the same global destinations on desktop and mobile.
+    if (neutralNavigation && slug === '/people') return '/people';
+    if (neutralNavigation && slug === '/profile') return '/profiles';
+    if (neutralNavigation && slug === '/share') return '/share';
     return base + slug;
   }
 
@@ -97,19 +100,19 @@
 
     {#if data.user}
       <aside class="relish-sidebar" aria-label="Application navigation">
-        <a class="relish-nav-item" href="/people">My People</a>
+        {#if specialist}<a class="relish-nav-item" href="/people">My People</a>{/if}
         <div class="relish-sidebar-title">{isHome ? 'Relish' : isPeople ? 'My People' : specialist === 'broker' ? 'Business broker' : specialist === 'operator' ? 'Operator tools' : activeSpace.label}</div>
-        {#if isPeople}<a class="relish-nav-item" href="/people/new">Add Person</a>
-        {:else if specialist}
+        {#if specialist}
           <a class="relish-nav-item" href={activeBase}>← Back to Relish</a>
           {#if specialist === 'broker'}<a class:current={path === '/broker'} class="relish-nav-item" href="/broker">Broker workspace</a>{/if}
           {#if specialist === 'operator'}<a class:current={path === '/operator'} class="relish-nav-item" href="/operator">Operator tools</a>{/if}
         {:else}
           {#each nav as item}
-            <a class:current={path === navHref(item.slug, isHome, activeBase)} class="relish-nav-item" href={navHref(item.slug, isHome, activeBase)}>
+            <a class:current={path === navHref(item.slug, isNeutralNavigation, activeBase)} class="relish-nav-item" href={navHref(item.slug, isNeutralNavigation, activeBase)}>
               <span class="relish-nav-icon" aria-hidden="true">{item.icon}</span>{item.label}
             </a>
           {/each}
+          {#if isPeople}<a class="relish-nav-item" href="/people/new">Add Person</a>{/if}
         {/if}
         <div class="relish-sidebar-bottom">
           {#if data.capabilities?.includes('BROKER')}
@@ -130,10 +133,10 @@
 
   <main class="relish-content"><slot /></main>
 
-  {#if !isPublic && data.user && !specialist && !isPeople}
+  {#if !isPublic && data.user && !specialist}
     <nav class="relish-bottom-nav" aria-label={isHome ? 'Relish navigation' : activeSpace.label + ' navigation'}>
       {#each nav as item}
-        <a class:current={path === navHref(item.slug, isHome, activeBase)} href={navHref(item.slug, isHome, activeBase)}>
+        <a class:current={path === navHref(item.slug, isNeutralNavigation, activeBase)} href={navHref(item.slug, isNeutralNavigation, activeBase)}>
           <span aria-hidden="true">{item.icon}</span><span>{item.label}</span>
         </a>
       {/each}

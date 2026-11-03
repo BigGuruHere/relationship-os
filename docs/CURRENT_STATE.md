@@ -25,16 +25,15 @@ Pull request [#2](https://github.com/BigGuruHere/relationship-os/pull/2) merged 
 
 The code is merged into `development`, but type-check, browser testing and Railway deployment remain unverified here. Do not mark the UI work deployed or pilot-validated until those steps are confirmed.
 
-## Owner-only legacy Contact organiser (feature branch, not merged)
+## Legacy Personal-tag organiser reversal (not yet merged)
 
-Branch: `feature/owner-personal-contact-organiser`, created from Development `23e32a8473dc` on 2026-11-03.
+On 2026-11-03 the owner elected to abandon the temporary Personal-tag bridge between Brokerage and My People in favour of adding a small number of personal Contacts afresh.
 
-- Adds `/people/organise` with server-side `User.role === 'owner'` checks for both viewing and toggling.
-- Reuses each existing Business ContextSpace's `Tag` and `ContactTag` to mark selected old Contacts as Personal.
-- Owner's My People lists existing private Contacts plus selected Business Contacts, without new Contact copies, identity matching or history moves.
-- Ordinary member/guest My People remains private-only. The Personal tag controls **owner directory visibility**, not ContextSpace access, knowledge admission, permission to disclose, or association with a Person.
-- This is feature-branch code only, not merged or deployed. No schema migration is required. Source-level safety regressions are included; DB-backed multi-space, access-control and browser testing remain outstanding.
-- Business Contacts open through their existing Brokerage detail route; when an owner has multiple Business ContextSpaces, verify correct business selection when following those links.
+- The organiser originally landed on `development` (commit `b36d8a4d460ce6d51477a7896af04b19b7a1a163`), despite its earlier feature-branch-only documentation.
+- `revert/owner-personal-contact-organiser-20261103` restores the original private-only My People directory and removes the organiser page, tag helper and corresponding tests.
+- Existing Brokerage Contact records, IDs, notes and historical relationships are not deleted or moved. Previously applied Personal classification tags are not used by the restored directory. No database writes are part of this reversal.
+- Any Contact separately created in the private My People storage remains there; it is not a copy created by the Personal checkbox and must be reviewed individually before deletion.
+- Reversal is committed only to the feature branch. Integration and deployment are separate steps; production/DEV state has not been verified.
 
 ## Problems and limits worth tracking
 

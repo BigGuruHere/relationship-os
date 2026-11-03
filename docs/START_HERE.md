@@ -1,6 +1,6 @@
 # Relish: Start Here
 
-Status: living documentation index. Reviewed against the `development` branch on 2026-11-02.
+Status: living documentation index. Updated 2026-11-03; foundation design is planned, not implemented runtime.
 
 Relish is a person-first Relationship Operating System. Dorian is a conversational AI partner that helps people understand themselves and develop valuable relationships with other people. The architecture and the immediate product experience evolve together, but an old release note is not a current product requirement.
 
@@ -14,6 +14,18 @@ Relish is a person-first Relationship Operating System. Dorian is a conversation
 6. [`DECISION_LOG.md`](DECISION_LOG.md) - major accepted decisions and links to deeper historical reasoning.
 
 For a quick visual or text change, read only the relevant sections and inspect the affected source files. For a cross-cutting change, read all six and inspect the current code. Avoid an unnecessarily lengthy audit of an obvious fix.
+
+## Relationship foundation programme
+
+For architecture and new-domain implementation, read these linked documents after the living overview:
+
+- [Architecture and domain glossary](foundation/ARCHITECTURE.md): target model, existing-source assessment and required scenarios.
+- [Architecture decisions](foundation/DECISIONS.md): rationale and precise supersession of legacy assumptions.
+- [Permission and provenance contract](foundation/POLICY_AND_PROVENANCE.md): authority, evidence, correction and withdrawal.
+- [Implementation and rollout plan](foundation/IMPLEMENTATION_PLAN.md): stage gates, stage-2/3 source-level backlog, migration strategy and status register.
+- [Developer guide](foundation/DEVELOPER_GUIDE.md): worked patterns, PR evidence and ongoing documentation duties.
+
+These specifications guide future work; they do not replace source code as evidence of implementation. Update the relevant backlog item and stage register with each implementation PR.
 
 ## Source-of-truth rules
 

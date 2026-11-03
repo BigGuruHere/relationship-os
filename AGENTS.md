@@ -22,10 +22,11 @@ A request to add a user-facing step is **not** automatically a request to build 
 - **People do not belong exclusively to contexts. Information and interactions have contexts.** Aim for one owner-private People experience, with appropriately scoped relationship information.
 - A private Contact, a Person identity reference, a Relish User account, and a mutually acknowledged Connection are distinct. Do not equate or automatically create them.
 - Contacts may exist without a specialised relationship classification or Relish account. Preserve capture origin separately from relationship context.
-- Brokerage is a specialised application using shared Contact and Interaction capabilities, not the owner of the underlying CRM.
+- Legacy Brokerage remains on its current model. The new Relish foundation may replace incompatible persistence through the explicit design in `docs/foundation/ARCHITECTURE.md`; do not force Brokerage migration or duplicate active writers. Reuse infrastructure and interfaces where their semantics fit.
 - Manual Contact capture, QR detail sharing, voice notes, and Dorian are interfaces to reusable relationship capabilities, not competing data systems.
 - Each participant controls their self-understanding, observations about others, and views of relationships. Linking identities or connections must not automatically merge or share private information.
 - Dorian's permission to reason over relevant information is distinct from permission to disclose that information to another person.
+- People, relationships and groups can be subjects of understanding. Keep subject, perspective, custody and permission distinct; a relationship reference or participation does not imply mutual acknowledgement or shared access.
 
 ## 3. Security, data and compatibility
 
@@ -81,6 +82,8 @@ Do not rewrite living documents unnecessarily for minor UI changes or straightfo
 Distinguish **planned**, **implemented on a feature branch**, **tested**, **merged into Development**, **deployed to DEV**, and **deployed to PROD**. Never claim that unverified behavior is working, or that a branch was merged or deployed when it was only committed.
 
 Include the relevant documentation changes in the same feature branch and push them with its implementation. If later merge or deployment changes the status, update `docs/CURRENT_STATE.md` as part of that subsequent integration or deployment workflow.
+
+For foundation work, update the relevant backlog item and stage register in `docs/foundation/IMPLEMENTATION_PLAN.md` in the same PR. Include acceptance evidence, migration/rollback implications and actual cohort/environment status. Update the integration status on merge and the deployed commit and verification evidence on deployment. A stage is not complete merely because its code is committed.
 
 Keep historical development notes available for reference. They must not override current living documentation or verified code behavior.
 

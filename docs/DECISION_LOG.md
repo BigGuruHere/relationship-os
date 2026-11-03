@@ -1,6 +1,6 @@
 # Relish: Decision Log
 
-Status: living record of product and architecture choices. Updated 2026-11-02. Links point to detailed earlier rationale where available.
+Status: living record of product and architecture choices. Updated 2026-11-03. Links point to detailed earlier rationale where available.
 
 These entries preserve **why**, not every implementation detail. If a decision is reconsidered, add a dated supersession note instead of deleting the earlier record. An implemented feature can lag an agreed direction.
 
@@ -28,9 +28,23 @@ These entries preserve **why**, not every implementation detail. If a decision i
 
 | D-018 | Use three visitor-facing screens: public profile/Save contact, optional private detail sharing, then optional creation of the visitor's own Relish profile. | Accepted 2026-11-03; merged into `development` via PR #10 (`841e59c`) on 2026-11-03. Deployment unverified. Reuses existing public profiles, vCard, capture, auth and editor. Replaces the capture-first visitor presentation in D-012, while Dorian invitations remain hidden. Saving a contact and sharing details require no account. Signup drafts are temporary and unverified; no identity linking or private-data sharing is implied. New signup profiles stay unpublished until owner review. |
 
+## Foundation direction accepted 2026-11-03
+
+Detailed rationale, alternatives, consequences and supersession are in [foundation decisions](foundation/DECISIONS.md). These are accepted design choices; runtime implementation is pending.
+
+| ID | Decision | Status and rationale |
+| --- | --- | --- |
+| D-019 | Separate new Relish domain semantics from legacy Brokerage; selectively reuse infrastructure and interfaces. | Supersedes the shared-persistence requirement in D-002, blanket replacement-model restriction in D-007 and consolidation expectation in D-008. Legacy preservation and reuse-before-build remain mandatory. |
+| D-020 | Contextual meaning, custody and authorisation are independent. | Refines D-003/D-005. Existing ContextSpace enforcement remains until deliberately replaced. |
+| D-021 | Relationships are durable understanding subjects; perspectives and acknowledgement remain distinct. | Refines D-004/D-006. No global shared narrative or access follows from participation. |
+| D-022 | Reusable understanding retains evidence, versioned derivation and operation-specific permissions. | Refines D-005/D-006/D-011. Public profiles differ from restricted recipient sharing. |
+| D-023 | Build the foundation, then onboard through gated useful releases and update documentation in every material change. | Extends D-013/D-014; replaces the earlier roadmap priority order. No implicit production approval. |
+
+Earlier entries above preserve the historical decisions; D-019 controls their explicitly superseded portions.
+
 ## Deferred questions
 
-- How to present a genuinely unified owner People list across current private and legacy business custody without accidental sharing or migration.
+- Whether future user evidence justifies optional legacy Brokerage directory integration; it is not a foundation requirement.
 - When and how to link a Contact to verified Person/User identity, including consent and assurance level.
 - How Dorian should select contextual procedures/instructions while preserving one relationship memory and permissioned disclosure.
 - Which relationship opportunities should be surfaced first, and what approval/withdrawal flow makes introductions safe and useful.

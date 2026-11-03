@@ -14,19 +14,23 @@ import { linkLeadsForUser } from '$lib/leads/link';
 // IT: encrypted email helpers - equality lookup and write
 import { findUserByEmail, encryptedUserEmailFields } from '$lib/server/userEmail';
 import { randomUUID } from 'node:crypto';
-import { safeNetworkJoinReturn } from '$lib/server/networkJoinReturn';
+import { safeAuthReturn } from '$lib/server/networkJoinReturn';
+import { readProfileDraft, PROFILE_ONBOARDING_RETURN } from '$lib/server/profileOnboarding';
 
 
-export const load: PageServerLoad = async ({ locals, url }) => {
-  const next = safeNetworkJoinReturn(url.searchParams.get('next'));
+export const load: PageServerLoad = async ({ locals, url, cookies, setHeaders }) => {
+  const next = safeAuthReturn(url.searchParams.get('next'));
   // If already signed in, redirect home
   if (locals.user) throw redirect(303, next || '/');
-  return { next };
+  // SECURITY: Draft data stays out of URLs and shared caches; it proves no identity.
+  setHeaders({ 'cache-control': 'private, no-store', 'referrer-policy': 'same-origin' });
+  return { next, draft: next === PROFILE_ONBOARDING_RETURN ? readProfileDraft(cookies) : null };
 };
 
 export const actions: Actions = {
   default: async ({ request, cookies, locals, url }) => {
-    const next = safeNetworkJoinReturn(url.searchParams.get('next'));
+    const next = safeAuthReturn(url.searchParams.get('next'));
+    const draft = next === PROFILE_ONBOARDING_RETURN ? readProfileDraft(cookies) : null;
     // Parse form
     const form = await request.formData();
     const emailInput = String(form.get('email') || '');
@@ -59,7 +63,9 @@ export const actions: Actions = {
               label: 'My profile',
               // Keep the initial public URL unguessable and independent of the email.
               slug: `p-${randomUUID()}`,
-              displayName: email.split('@')[0]
+              displayName: draft?.name || email.split('@')[0],
+              // IT: The visitor reviews and explicitly publishes their own profile in the editor.
+              ...(next === PROFILE_ONBOARDING_RETURN ? { isPublished: false } : {})
             }
           }
         },

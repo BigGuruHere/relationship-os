@@ -1,10 +1,11 @@
 import type { Actions, PageServerLoad } from './$types';
-import { fail, isHttpError } from '@sveltejs/kit';
+import { fail, isHttpError, redirect } from '@sveltejs/kit';
 import { randomUUID } from 'node:crypto';
 import { publishedCaptureProfile, capturePrivateContact } from '$lib/server/core/contactCapture';
 import { CAPTURE_COOKIE, issueContactCaptureToken, verifyContactCaptureToken } from '$lib/server/core/contactCaptureToken';
 import { validateContactDetails } from '$lib/server/core/contacts';
-export const load: PageServerLoad = async ({ params, url, cookies, setHeaders }) => {
+import { profileDraft, saveProfileDraft, PROFILE_ONBOARDING_RETURN } from '$lib/server/profileOnboarding';
+export const load: PageServerLoad = async ({ params, url, cookies, setHeaders, locals }) => {
   const profile = await publishedCaptureProfile(params.slug);
   let browser = cookies.get(CAPTURE_COOKIE);
   if (!browser || !/^[0-9a-f-]{36}$/.test(browser)) {
@@ -13,15 +14,23 @@ export const load: PageServerLoad = async ({ params, url, cookies, setHeaders })
   }
   setHeaders({ 'cache-control': 'private, no-store', 'referrer-policy': 'same-origin' });
   return { profile: { slug: profile.slug, name: profile.displayName || 'Your new contact', headline: profile.headline, avatarUrl: profile.avatarUrl },
+    createStep: url.searchParams.get('step') === 'create', isSignedIn: Boolean(locals.user),
     captureToken: issueContactCaptureToken(profile.id, browser, url.searchParams.get('via')) };
 };
 export const actions: Actions = {
-  default: async ({ params, request, url, cookies }) => {
+  default: async ({ params, request, url, cookies, locals }) => {
     if (request.headers.get('origin') !== url.origin) return fail(403, { error: 'Please submit from this profile page.' });
     if (!request.headers.get('content-type')?.startsWith('application/x-www-form-urlencoded')) return fail(415, { error: 'Use the profile form to share your details.' });
     const body = await request.text();
     if (body.length > 8192) return fail(413, { error: 'Submission is too large.' });
     const form = new URLSearchParams(body);
+    // IT: Only the explicit third-screen button starts signup. It never creates another Contact.
+    if (form.get('intent') === 'create-profile') {
+      await publishedCaptureProfile(params.slug);
+      if (locals.user) throw redirect(303, '/profiles');
+      saveProfileDraft(cookies, url, profileDraft({ name: form.get('name') || '', email: form.get('email') || '', phone: form.get('phone') || '' }));
+      throw redirect(303, '/auth/register?next=' + encodeURIComponent(PROFILE_ONBOARDING_RETURN));
+    }
     // Honeypot returns the same generic receipt without storing anything.
     if (form.get('website_check')) return { shared: true };
     const profile = await publishedCaptureProfile(params.slug);
@@ -40,6 +49,6 @@ export const actions: Actions = {
       return fail(503, { error: 'Could not save your details. Please retry this form.', values, reference: typeof reference === 'string' && /^[0-9a-f-]{36}$/.test(reference) ? reference : undefined });
     }
     // Never expose a Contact ID, duplicate match, private data or account-linking hint to the visitor.
-    return { shared: true };
+    return { shared: true, values: profileDraft(values) };
   }
 };

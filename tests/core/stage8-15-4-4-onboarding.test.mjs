@@ -15,10 +15,10 @@ test('Join uses authenticated server identity and creates own General ContextSpa
  assert.match(server, /runWithWorkspaceCustody/);
  assert.match(server, /personal\.userId === locals\.user\.id/);
 });
-test('Register and login retain only allowlisted invitation return route', () => {
+test('Register and login retain only allowlisted auth return routes', () => {
  for(const dir of ['login','register']) {
   const server = read(`src/routes/auth/${dir}/+page.server.ts`);
-  assert.match(server, /safeNetworkJoinReturn/);
+  assert.match(server, /safeAuthReturn/);
   assert.match(server, /next \|\| '\/'/);
  }
  const helper = read('src/lib/server/networkJoinReturn.ts');

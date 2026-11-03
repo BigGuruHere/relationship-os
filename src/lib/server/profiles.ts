@@ -8,6 +8,7 @@ import { randomUUID } from 'node:crypto';
 type Seed = {
   displayName?: string | null;
   avatarUrl?: string | null;
+  isPublished?: boolean;
 };
 
 export async function ensureDefaultProfile(userId: string, seed: Seed = {}): Promise<string> {
@@ -26,7 +27,8 @@ export async function ensureDefaultProfile(userId: string, seed: Seed = {}): Pro
       // Use a non-identifying, globally unique public profile URL slug.
       slug: `p-${randomUUID()}`,
       displayName: seed.displayName || 'New Relish user',
-      avatarUrl: seed.avatarUrl || null
+      avatarUrl: seed.avatarUrl || null,
+      ...(seed.isPublished === false ? { isPublished: false } : {})
       // emailPublic and phonePublic remain null by default
     },
     select: { id: true }

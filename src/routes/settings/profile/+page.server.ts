@@ -13,6 +13,7 @@ import type { Actions, PageServerLoad } from './$types';
 import { prisma } from '$lib/db';
 import { absoluteUrlFromOrigin } from '$lib/url';
 import { mergeExtras } from '$lib/publicProfile'; // IT: merges extra_* into existing publicMeta
+import { readProfileDraft, PROFILE_DRAFT_COOKIE } from '$lib/server/profileOnboarding';
 
 // IT: simple slugify helper
 function slugify(input: string): string {
@@ -39,7 +40,7 @@ async function ensureUniqueSlugGlobal(wanted: string): Promise<string> {
   return `${wanted}-${crypto.randomUUID().slice(0, 8)}`;
 }
 
-export const load: PageServerLoad = async ({ locals, url }) => {
+export const load: PageServerLoad = async ({ locals, url, cookies, setHeaders }) => {
   // IT: require auth
   if (!locals.user) {
     throw redirect(303, absoluteUrlFromOrigin(locals.appOrigin, '/auth/login'));
@@ -91,12 +92,18 @@ export const load: PageServerLoad = async ({ locals, url }) => {
   const requestedReturn = url.searchParams.get('returnContext');
   const returnKinds: Record<string, string> = { business: 'business', friendship: 'personal', dating: 'dating' };
   const returnContext = requestedReturn && returnKinds[requestedReturn] === (profile?.kind || safeRequestedKind) ? requestedReturn : null;
+  // IT: Prefill is shown only to the signed-in browser that explicitly chose onboarding.
+  // Nothing is persisted publicly until the owner reviews and saves the existing editor.
+  const onboarding = url.searchParams.get('onboarding') === '1';
+  const draft = onboarding ? readProfileDraft(cookies) : null;
+  if (onboarding) setHeaders({ 'cache-control': 'private, no-store', 'referrer-policy': 'same-origin' });
   return { profile: profile || null, requestedProfileKind, networkEntry, creatingNew,
+    onboarding, draft,
     fromProfiles: url.searchParams.get('from') === 'profiles', mode, first, next, returnContext };
 };
 
 export const actions: Actions = {
-  save: async ({ request, locals, url }) => {
+  save: async ({ request, locals, url, cookies }) => {
     // IT: require auth
     if (!locals.user) {
       throw redirect(303, absoluteUrlFromOrigin(locals.appOrigin, '/auth/login'));
@@ -249,6 +256,8 @@ export const actions: Actions = {
     }
 
     // IT: after DB work - perform redirects OUTSIDE the try/catch
+    // IT: Retain the draft on validation failure, clear it only after a successful save.
+    if (fd.get('profileOnboarding') === '1') cookies.delete(PROFILE_DRAFT_COOKIE, { path: '/' });
 
     // IT: stay in the Network experience after create and edit.
     if (networkEntry) throw redirect(303, '/network');

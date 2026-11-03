@@ -13,7 +13,8 @@ import { requiredEnv } from '$lib/server/config/requiredEnv';
 
 import type { RequestHandler } from './$types';
 import { redirect, error } from '@sveltejs/kit';
-import { safeNetworkJoinReturn } from '$lib/server/networkJoinReturn';
+import { safeAuthReturn } from '$lib/server/networkJoinReturn';
+import { readProfileDraft, PROFILE_ONBOARDING_RETURN } from '$lib/server/profileOnboarding';
 import { prisma } from '$lib/db';
 import { createSession, setSessionCookie } from '$lib/auth';
 import * as jose from 'jose';
@@ -62,7 +63,7 @@ export const GET: RequestHandler = async ({ url, cookies, locals, getClientAddre
 
   // 2 - required query params
   // IT: Read before clearing temporary OAuth cookies; never trust an arbitrary redirect.
-  const next = safeNetworkJoinReturn(cookies.get('oauth_network_next'));
+  const next = safeAuthReturn(cookies.get('oauth_network_next'));
   const code = url.searchParams.get('code') || '';
   const state = url.searchParams.get('state') || '';
 
@@ -211,10 +212,14 @@ export const GET: RequestHandler = async ({ url, cookies, locals, getClientAddre
       typeof payload.picture === 'string' && payload.picture.trim()
         ? payload.picture.trim()
         : null;
-    await ensureDefaultProfile(user.id, { displayName: seedName, avatarUrl: seedAvatar });
+    // IT: Only newly provisioned profiles in this opt-in flow start unpublished.
+    // Existing profiles are returned by the shared helper without being changed.
+    const draft = next === PROFILE_ONBOARDING_RETURN ? readProfileDraft(cookies) : null;
+    await ensureDefaultProfile(user.id, { displayName: draft?.name || seedName, avatarUrl: seedAvatar,
+      ...(next === PROFILE_ONBOARDING_RETURN ? { isPublished: false } : {}) });
   } catch (e) {
     // IT: do not block login if profile creation fails
-    console.warn('ensureDefaultProfile failed after Google OAuth:', e);
+    console.warn('ensureDefaultProfile failed after Google OAuth.');
   }
 
   // 12 - upsert the OAuth account record for this user

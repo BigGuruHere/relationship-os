@@ -10,7 +10,7 @@
 import type { RequestHandler } from './$types';
 import { redirect, error } from '@sveltejs/kit';
 import { randomBytes, createHash } from 'crypto';
-import { safeNetworkJoinReturn } from '$lib/server/networkJoinReturn';
+import { safeAuthReturn } from '$lib/server/networkJoinReturn';
 import { requiredEnv } from '$lib/server/config/requiredEnv';
 
 // Google endpoints
@@ -55,8 +55,8 @@ export const GET: RequestHandler = async ({ locals, cookies, url }) => {
   cookies.set('oauth_state', state, baseCookie);
   cookies.set('oauth_nonce', nonce, baseCookie);
   cookies.set('oauth_pkce', codeVerifier, baseCookie);
-  // IT: Persist only a validated Network invitation path through Google's redirect.
-  const next = safeNetworkJoinReturn(url.searchParams.get('next'));
+  // IT: Persist only an allowlisted Network invite or exact profile-onboarding destination.
+  const next = safeAuthReturn(url.searchParams.get('next'));
   if (next) cookies.set('oauth_network_next', next, baseCookie);
   else cookies.delete('oauth_network_next', { path: '/' });
 

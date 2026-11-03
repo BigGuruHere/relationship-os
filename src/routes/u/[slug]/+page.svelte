@@ -20,8 +20,8 @@
   const isPilotKind = ['business', 'personal', 'dating'].includes(prof.kind);
   // IT: Reversible pilot switch - keep Dorian onboarding code but temporarily hide invitations.
   const showDorianInvitation = false;
-  // The visitor sees one Dorian-first experience regardless of ContextSpace.
-  $: isFirstContact = isPilotKind && prof.isPublished && !data?.isOwner && !editing;
+  // IT: Published guest profiles use the same profile-first contact exchange across kinds.
+  $: isFirstContact = prof.isPublished && !data?.isOwner && !editing;
   // Visibility is counted after browser render, not on server prefetch. No identity tracking on landing.
   onMount(() => {
     if (!data?.profile?.isPublished || !isPilotKind || data?.isOwner) return;
@@ -87,27 +87,19 @@
     };
   }
 
-  // IT: save vCard then submit hidden form to /api/guest/start which redirects to /u/<slug>/lead
-  async function saveThenShare() {
-    try {
-      // IT: trigger a client-side vCard download for the owner
-      const a = document.createElement('a');
-      a.href = vcardUrl; // IT: reuse the computed vCard url
-      a.download = '';
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-
-      // IT: small delay so the download starts, then submit hidden form with inviteToken
-      setTimeout(() => {
-        const f = document.getElementById('start-share-form') as HTMLFormElement | null;
-        if (f) f.submit();
-      }, 400);
-    } catch {
-      // IT: if anything fails, fall back to direct navigation to lead page
-      window.location.href = `/u/${encodeURIComponent(data?.profile?.slug || data?.slugParam || '')}/lead`;
-    }
+  // IT: Start the existing vCard download, then offer optional reciprocal detail sharing.
+  // Browser contact-save completion cannot be detected, so never claim it was saved.
+  function saveThenShare() {
+    const a = document.createElement('a');
+    a.href = vcardUrl;
+    a.download = '';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.setTimeout(() => window.location.assign(captureUrl), 500);
   }
+  $: captureUrl = '/u/' + encodeURIComponent(profileSlug) + '/share-details?via=' + data.captureVia;
+
 </script>
 
 <!-- Svelte special head elements must be at component root, never inside {#if}. -->
@@ -116,15 +108,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
 </svelte:head>
 
-<!-- Stage 8.19: guests meet Dorian on one screen. Owner/legacy UI remains in the alternate branch. -->
+<!-- IT: Step one shows the public profile. Owner editing and retained Dorian UI stay available. -->
 {#if isFirstContact}
 <main class="first-contact">
   <div class="fc-brand">Relish</div>
-  <section class="fc-person" aria-label="Share contact details">
-    <h2>Stay in touch with {ownerName}</h2>
-    <p>Share your details privately. No Relish account or Dorian conversation required.</p>
-    <a class="fc-primary" href={'/u/' + encodeURIComponent(profileSlug) + '/share-details?via=' + (data.captureVia === 'qr' ? 'qr' : 'profile_link')}>Share your details</a>
-  </section>
   {#if showDorianInvitation}
   <section class="fc-dorian" aria-labelledby="dorian-title">
     <div class="fc-title-row">
@@ -162,18 +149,19 @@
   </section>
   {/if}
   <section class="fc-person" aria-label="Person who shared this profile">
-    <div class="fc-person-top">
-      {#if avatarUrl}<img class="fc-photo" src={avatarUrl} alt="Photo of {ownerName}" />
-      {:else}<div class="fc-photo fc-placeholder" aria-hidden="true">{ownerName.charAt(0).toUpperCase()}</div>{/if}
-      <div class="fc-person-name"><strong>{ownerName}</strong><small>Shared their profile with you</small></div>
-    </div>
-    <details class="fc-details"><summary>View {ownerName}'s profile</summary>
+    <div class="profile-hero">
+      {#if avatarUrl}<img class="profile-photo" src={avatarUrl} alt="Photo of {ownerName}" />{/if}
+      <h1>{ownerName}</h1>
       {#if headline}<p>{headline}</p>{/if}
-      {#if bio}<p class="fc-bio">{bio}</p>{/if}
       {#if title || company}<p>{[title, company].filter(Boolean).join(' · ')}</p>{/if}
-      {#each rows as r}<p class="fc-contact-row"><strong>{r.label}:</strong> {#if r.href}<a href={r.href} rel="noopener noreferrer">{r.value}</a>{:else}{r.value}{/if}</p>{/each}
-    </details>
-    <a class="fc-secondary" href={vcardUrl} download>Save {ownerName}'s contact</a>
+    </div>
+    {#if bio}<p class="fc-bio">{bio}</p>{/if}
+    {#each rows as r}
+      <p class="fc-contact-row"><strong>{r.label}</strong><br />{#if r.href}<a href={r.href} rel="noopener noreferrer">{r.value}</a>{:else}{r.value}{/if}</p>
+    {/each}
+    <!-- IT: Without JavaScript the vCard link still works and sharing remains available below. -->
+    <a class="fc-primary" href={vcardUrl} download on:click|preventDefault={saveThenShare}>Save contact</a>
+    <a class="fc-secondary" href={captureUrl}>Share your details</a>
   </section>
   <p class="fc-footer">Relish helps people develop and enrich their relationships. A scan or call does not share your private understanding with someone else.</p>
 </main>
@@ -407,11 +395,7 @@
   .fc-details summary { cursor:pointer; font-weight:600; list-style-position:inside; }
   .fc-details p { margin:10px 0; }
   .fc-person { margin-top:14px; background:var(--surface, #fff); border:1px solid #dce3e0; border-radius:18px; padding:17px; min-width:0; }
-  .fc-person-top { display:flex; align-items:center; gap:12px; min-width:0; }
-  .fc-photo { height:53px; width:53px; flex:0 0 53px; object-fit:cover; border-radius:50%; }
-  .fc-placeholder { background:#e5eae8; display:grid; place-items:center; font-size:19px; font-weight:700; }
-  .fc-person-name { min-width:0; } .fc-person-name strong { display:block; overflow-wrap:anywhere; }
-  .fc-person-name small { display:block; font-size:12px; color:var(--muted, #536864); margin-top:4px; }
+  .profile-hero h1{font-size:2rem;line-height:1.2;letter-spacing:-.035em;margin:22px 0 10px}.profile-hero p{font-size:1.1rem;margin:8px 0}.profile-photo{width:100%;max-height:320px;object-fit:cover;border-radius:14px}.fc-contact-row{margin:24px 0}.fc-contact-row strong{font-size:.85rem;color:var(--muted,#536864)}
   .fc-bio { white-space:pre-wrap; } .fc-contact-row { overflow-wrap:anywhere; }
   .fc-footer { text-align:center; font-size:11px; line-height:1.55; color:var(--muted, #536864); margin:20px 8px; }
   @media(max-width:400px) { .first-contact { padding:14px 10px 25px; } .fc-dorian { padding:16px; } }

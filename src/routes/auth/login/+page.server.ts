@@ -17,10 +17,10 @@ import { consumePasswordLoginAttempt, clearSuccessfulLoginAccountBucket } from '
 // IT - encrypted email helpers
 import { findUserByEmail, decryptUserEmail } from '$lib/server/userEmail';
 import { ensureDefaultProfile } from '$lib/server/profiles';
-import { safeNetworkJoinReturn } from '$lib/server/networkJoinReturn';
+import { safeAuthReturn } from '$lib/server/networkJoinReturn';
 
 export const load: PageServerLoad = async ({ locals, url }) => {
-  const next = safeNetworkJoinReturn(url.searchParams.get('next'));
+  const next = safeAuthReturn(url.searchParams.get('next'));
   // If already signed in, redirect home
   if (locals.user) throw redirect(303, next || '/');
   return { next };
@@ -28,7 +28,7 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 
 export const actions: Actions = {
   default: async ({ request, cookies, locals, getClientAddress, url }) => {
-    const next = safeNetworkJoinReturn(url.searchParams.get('next'));
+    const next = safeAuthReturn(url.searchParams.get('next'));
     // 1 - parse form
     const form = await request.formData();
     const emailInput = String(form.get('email') || '').trim();

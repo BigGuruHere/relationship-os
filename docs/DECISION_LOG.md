@@ -21,7 +21,8 @@ These entries preserve **why**, not every implementation detail. If a decision i
 | D-013 | Codex normally branches from latest `development`, then commits and pushes on its own branch without automatic merges or production deployment. | Accepted standing Git practice. See `AGENTS.md` for precise constraints. |
 | D-014 | Living documents replace large bootstrap prompts as the current project reference; keep old stage files as history, not competing active specifications. | Working documentation decision proposed on 2026-11-02; subject to review before merging documentation branch. |
 
-| D-015 | For the present owner-only pilot, classify legacy Business Contacts as Personal using existing context-local tags and display selected Contacts in My People without moving or duplicating them. | Accepted provisional UI approach, feature branch only as of 2026-11-03. Other users retain private-only My People, and data custody/disclosure stay unchanged. This does not settle the longer-term Person, open ContextSpace, interaction-context or Core relationship-perspective architecture. |
+| D-015 | For the present owner-only pilot, classify legacy Business Contacts as Personal using existing context-local tags and display selected Contacts in My People without moving or duplicating them. | Superseded by D-016 on 2026-11-03. This temporary solution reached Development but is being reversed; it never moved Contacts or changed custody. |
+| D-016 | Do not maintain the temporary Personal-tag bridge from legacy Brokerage to My People. For the current small pilot, add desired personal Contacts afresh while retaining old Brokerage records. | Accepted 2026-11-03. Restore My People private-only listing, remove the owner organiser feature, and leave historical Brokerage data and tags untouched. The long-term cross-context relationship architecture remains open. |
 
 ## Deferred questions
 

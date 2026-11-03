@@ -18,7 +18,7 @@ The [foundation architecture](foundation/ARCHITECTURE.md), [policy contract](fou
 
 Keep Brokerage on its current model. Preserve its data and current security boundaries; do not reinterpret ContextSpace labels as grants. Reuse credential/session primitives but isolate legacy Lead-linking side effects. Restricted profile sharing must be distinct from public publication. None of these new capabilities is implemented by the documentation package.
 
-See the [stage-2/3 backlog and migration gates](foundation/IMPLEMENTATION_PLAN.md). F-201 now specifies the [physical schema and transaction contracts](foundation/PHYSICAL_MODEL.md), with [source dependency and data inventory](foundation/DEPENDENCY_INVENTORY.md). The new custody root and typed subjects are design only; target DB inventory and runtime implementation remain pending. The sections below describe current implementation, not the target schema.
+See the [stage-2/3 backlog and migration gates](foundation/IMPLEMENTATION_PLAN.md). F-201 now specifies the [physical schema and transaction contracts](foundation/PHYSICAL_MODEL.md), with [source dependency and data inventory](foundation/DEPENDENCY_INVENTORY.md). F-202 adds the custody root and typed subjects to Prisma and an additive migration on its feature branch; [invariants and rehearsal](foundation/F202_INVARIANTS.md) document coverage. Target migration, auth isolation, access services and user-facing activation remain pending. The sections below describe current implementation, not the target schema.
 
 ## Stack and environments
 

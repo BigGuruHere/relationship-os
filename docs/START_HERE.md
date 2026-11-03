@@ -26,6 +26,7 @@ For architecture and new-domain implementation, read these linked documents afte
 - [Developer guide](foundation/DEVELOPER_GUIDE.md): worked patterns, PR evidence and ongoing documentation duties.
 - [F-201 physical model](foundation/PHYSICAL_MODEL.md): concrete tables, constraints, transaction/routing contracts and F-202 migration slices.
 - [F-201 dependency inventory](foundation/DEPENDENCY_INVENTORY.md): source consumers, ownership matrix and outstanding target-database evidence.
+- [F-202 invariants and rehearsal](foundation/F202_INVARIANTS.md): implemented SQL guarantees, repeatable isolated checks and deployment gates.
 
 These specifications guide future work; they do not replace source code as evidence of implementation. Update the relevant backlog item and stage register with each implementation PR.
 

@@ -9,7 +9,7 @@ The source inventory below covers foundation-relevant models, authority enforcem
 | Evidence | Result |
 | --- | --- |
 | Development source and migration history | Inspected at the baseline above |
-| New-domain schema | Does not exist yet; specified in [PHYSICAL_MODEL.md](PHYSICAL_MODEL.md) |
+| New-domain schema | F-202 implements the specification on a feature branch; see [rehearsal](F202_INVARIANTS.md). Target applied state unverified. |
 | DEV/PROD schema and migration parity | Unverified |
 | User/Profile/Contact/Interaction counts | Unverified |
 | Private vs Brokerage custody volumes | Unverified |

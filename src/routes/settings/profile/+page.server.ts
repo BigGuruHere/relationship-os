@@ -8,7 +8,7 @@
 //   - if next=preview, redirect to /u/<slug>
 //   - else redirect to /share?profile=<slug>
 
-import { fail, redirect } from '@sveltejs/kit';
+import { error, fail, redirect } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import { prisma } from '$lib/db';
 import { absoluteUrlFromOrigin } from '$lib/url';
@@ -79,6 +79,9 @@ export const load: PageServerLoad = async ({ locals, url }) => {
     orderBy: [{ isDefault: 'desc' }, { updatedAt: 'desc' }]
   });
 
+  // SECURITY: An invalid explicit profile URL must never fall back to another existing profile.
+  if (requestedProfileSlug && !profile) throw error(404, 'Profile not found.');
+
   const mode = url.searchParams.get('mode') || 'edit';
   const first = url.searchParams.get('first') === '1';
   const next = url.searchParams.get('next') || null;
@@ -131,6 +134,7 @@ export const actions: Actions = {
     if (!displayName) return fail(400, { error: 'Display name is required' });
     if (label.length > 120 || (creatingNew && !label)) return fail(400, { error: 'Enter a profile label up to 120 characters.' });
     if (creatingNew && profileId) return fail(400, { error: 'A new profile cannot also update an existing profile.' });
+    if (creatingNew && networkEntry) return fail(400, { error: 'Network onboarding cannot create unrelated profiles.' });
 
     // IT: collect extras from inputs named extra_<key>
     const extras: Record<string, string> = {};
@@ -142,7 +146,8 @@ export const actions: Actions = {
       }
     }
 
-    // IT: A profile-specific create must not overwrite a default profile of another kind.
+    // IT: An explicitly new profile skips kind-based lookup; legacy contextual routes still
+    // update their previously selected profile until those flows are intentionally redesigned.
     // IT: read existing profile if any
     const existing = profileId
       ? await prisma.profile.findFirst({

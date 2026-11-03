@@ -37,7 +37,7 @@ test('owner-facing label remains separate from public name and kind', () => {
   assert.match(page, /profile\.label/);
   assert.match(page, /profile\.kind/);
   assert.match(page, /share\?profile=/);
-  assert.match(form, /p\?\.id \? p\.isPublished !== false : false/);
+  assert.match(form, /p\?\.id \? p\.isPublished !== false : !data\?\.creatingNew/);
 });
 
 test('legacy contextual profile views keep the established profile on same-kind creation', () => {

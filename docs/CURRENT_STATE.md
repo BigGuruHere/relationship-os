@@ -1,6 +1,6 @@
 # Relish: Current State and Open Work
 
-Status: living snapshot as of **2026-11-02**. Based on GitHub `BigGuruHere/relationship-os` **development** through UI merge `bb8c4d0030f22e355d78ed216bc84c6060ece35a`, plus the UI cleanup merged into Development on 2026-11-02. This document is a baseline, not a live deployment monitor.
+Status: living snapshot updated **2026-11-03**. Based on GitHub `BigGuruHere/relationship-os` **development** through UI merge `bb8c4d0030f22e355d78ed216bc84c6060ece35a`, plus the UI cleanup merged into Development on 2026-11-02. This document is a baseline, not a live deployment monitor.
 
 ## What is implemented in Development
 

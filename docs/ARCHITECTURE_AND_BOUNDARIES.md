@@ -35,7 +35,7 @@ The initial `private` WORKSPACE for My People is neutral storage. Existing Broke
 
 ## Public profile identity and classification
 
-The Profile model belongs to a User, not directly to a ContextSpace. Each profile has its own `id`, unique `slug`, owner-facing `label`, public `displayName`, publication state and `kind`. Multiple profiles of the same kind are supported by the data model and are exposed by the feature-branch My Profiles manager. The legacy contextual editor may still select an existing profile by kind.
+The Profile model belongs to a User, not directly to a ContextSpace. Each profile has its own `id`, unique `slug`, owner-facing `label`, public `displayName`, publication state and `kind`. Multiple profiles of the same kind are supported by the data model and are exposed by the feature-branch My Profiles manager. The legacy contextual editor still selects an existing profile by kind; its default/oldest-first ordering is intended to keep that contextual profile stable when more profiles are created.
 
 Profile `kind` remains a compatibility input for the existing Business/Friendship/Dating workflows. The private Contact capture adapter stores the exact `sourceProfileId` and an Interaction provenance receipt with profile ID/kind/entry hint. A profile choice does not give Contacts permanent context membership, cross-context visibility or new disclosure rights.
 

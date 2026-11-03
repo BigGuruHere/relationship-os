@@ -159,9 +159,8 @@
     {#each rows as r}
       <p class="fc-contact-row"><strong>{r.label}</strong><br />{#if r.href}<a href={r.href} rel="noopener noreferrer">{r.value}</a>{:else}{r.value}{/if}</p>
     {/each}
-    <!-- IT: Without JavaScript the vCard link still works and sharing remains available below. -->
+    <!-- IT: One action starts the vCard download and continues to optional detail sharing. -->
     <a class="fc-primary" href={vcardUrl} download on:click|preventDefault={saveThenShare}>Save contact</a>
-    <a class="fc-secondary" href={captureUrl}>Share your details</a>
   </section>
   <p class="fc-footer">Relish helps people develop and enrich their relationships. A scan or call does not share your private understanding with someone else.</p>
 </main>
@@ -385,10 +384,9 @@
   .fc-title-row h1 { font-size:24px; letter-spacing:-.03em; line-height:1.2; margin:0 0 3px; }
   .fc-title-row p { margin:0; color:var(--muted, #536864); font-size:13px; }
   .fc-lead { font-size:15px; line-height:1.6; margin:20px 0; }
-  .fc-primary,.fc-secondary { display:flex; align-items:center; justify-content:center; width:100%; box-sizing:border-box; min-height:49px; border-radius:12px; font-weight:650; font-size:15px; text-align:center; text-decoration:none; cursor:pointer; padding:10px 12px; }
+  .fc-primary { display:flex; align-items:center; justify-content:center; width:100%; box-sizing:border-box; min-height:49px; border-radius:12px; font-weight:650; font-size:15px; text-align:center; text-decoration:none; cursor:pointer; padding:10px 12px; }
   .fc-primary { border:1px solid #183e39; background:#183e39; color:#fff; }
   .fc-primary:disabled { opacity:.65; }
-  .fc-secondary { background:transparent; border:1px solid #9fafac; color:inherit; margin-top:14px; }
   .fc-hint { color:var(--muted, #536864); font-size:12px; line-height:1.5; margin:10px 0 4px; }
   .fc-error { color:#b42318; font-size:14px; }
   .fc-details { margin-top:14px; padding-top:13px; border-top:1px solid #e2e8e6; font-size:13px; line-height:1.55; }

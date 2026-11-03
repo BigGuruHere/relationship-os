@@ -13,7 +13,7 @@ test('guest sees public profile and Save contact; Dorian invitation remains hidd
   assert.match(firstContact, /\{#if showDorianInvitation\}/);
   assert.match(firstContact, /<h1>\{ownerName\}<\/h1>/);
   assert.match(firstContact, /href=\{vcardUrl\} download on:click\|preventDefault=\{saveThenShare\}>Save contact/);
-  assert.match(firstContact, /href=\{captureUrl\}>Share your details/);
+  assert.doesNotMatch(firstContact, /href=\{captureUrl\}>Share your details/);
   assert.doesNotMatch(firstContact, /Connect on Relish|agreeTerms|shareContact/);
   assert.match(page, /window.location.assign\(captureUrl\)/);
 });

@@ -78,7 +78,11 @@
   nav{display:flex;align-items:center;justify-content:space-between;min-height:44px;gap:20px}nav span{font-weight:750}nav a{min-height:44px;display:flex;align-items:center}
   .capture-card{margin-top:30px}h1{font-size:clamp(1.7rem,6vw,2.2rem);line-height:1.2;letter-spacing:-.035em}p{line-height:1.6}
   .avatar{border-radius:50%;object-fit:cover}form{display:grid;gap:10px}input:not([type=checkbox]){width:100%;padding:14px;min-height:50px;box-sizing:border-box;border:1px solid var(--border,#cdd6d2);border-radius:12px;font:inherit}
-  .capture-consent{display:flex;gap:10px;align-items:flex-start;margin:14px 0}.capture-consent input{margin-top:5px;flex-shrink:0}.hint{font-size:.9rem;color:var(--muted,#52615b)}
+  .capture-consent{display:flex;gap:10px;align-items:flex-start;margin:14px 0}
+  /* IT: Override global input width/padding so the checkbox cannot squeeze its text. */
+  .capture-consent input[type=checkbox]{width:18px;height:18px;min-width:18px;flex:0 0 18px;padding:0;margin:3px 0 0;box-sizing:border-box}
+  .capture-consent span{flex:1;min-width:0;line-height:1.5}
+  .hint{font-size:.9rem;color:var(--muted,#52615b)}
   .capture-trap{position:absolute;left:-10000px;width:1px;height:1px;overflow:hidden}.primary{display:flex;align-items:center;justify-content:center;min-height:54px;padding:12px 18px;width:100%;box-sizing:border-box;border:0;border-radius:14px;background:#183e39;color:#fff;font:inherit;font-weight:650;text-decoration:none;cursor:pointer}
   .eyebrow{font-size:.8rem;font-weight:650;letter-spacing:.03em}.profile-preview{margin:26px 0;border:1px solid var(--border,#dce3e0);border-radius:22px;overflow:hidden;background:var(--surface,#fff);box-shadow:0 10px 30px #183e3910}.preview-cover{height:130px;background:#dcebe5;display:grid;place-items:center;font-size:3rem;color:#183e39}.preview-body{padding:24px}.preview-body h2{margin:12px 0}.preview-body p{margin:8px 0}.later{display:block;text-align:center;padding:14px}.receipt{padding:14px;border-radius:12px;background:#e5f1ea;color:#183e39}
 </style>

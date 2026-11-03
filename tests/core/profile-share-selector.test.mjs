@@ -1,0 +1,35 @@
+// Regression coverage for context-neutral profile management and Share profile selection.
+// IT: Static checks are a fast guard; real mobile navigation and QR capture still need testing.
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+
+const read = (path) => readFileSync(new URL('../../' + path, import.meta.url), 'utf8');
+const layout = read('src/routes/+layout.svelte');
+const shareServer = read('src/routes/share/+page.server.ts');
+const sharePage = read('src/routes/share/+page.svelte');
+
+test('profile management, editing, and Share are neutral destinations, not ContextSpace selectors', () => {
+  assert.match(layout, /isProfileManagement = path === '\/profiles' \|\| path === '\/share' \|\| path === '\/settings\/profile'/);
+  assert.match(layout, /isNeutralNavigation = isHome \|\| isPeople \|\| isProfileManagement/);
+  assert.match(layout, /\{#if !isNeutralNavigation\}<div class="relish-context-picker">/);
+  assert.match(layout, /href=\{isNeutralNavigation \? '\/share' : activeBase \+ '\/share'\}/);
+  assert.match(layout, /if \(neutralNavigation && slug === '\/profile'\) return '\/profiles'/);
+});
+
+test('Share selects only signed-in users own profiles by exact slug', () => {
+  assert.match(shareServer, /where: \{ userId: locals\.user\.id \}/);
+  assert.match(shareServer, /select: \{ id: true, slug: true, label: true, displayName: true, kind: true, isPublished: true \}/);
+  assert.match(shareServer, /targetSlug \? \{ slug: targetSlug \}/);
+  assert.match(shareServer, /if \(targetSlug && !profile\) throw error\(404/);
+  assert.match(shareServer, /return \{ profile, profileOptions, origin: locals\.appOrigin \}/);
+});
+
+test('Share dropdown displays owner labels and refreshes all profile-specific links', () => {
+  assert.match(sharePage, /label for="share-profile-select">Profile to share/);
+  assert.match(sharePage, /option\.label && option\.label !== 'My profile'/);
+  assert.match(sharePage, /<option value=\{option\.slug\}>\{optionLabel\(option\)\}<\/option>/);
+  assert.match(sharePage, /window\.location\.assign\('\/share\?profile=' \+ encodeURIComponent\(slug\)\)/);
+  assert.match(sharePage, /'\/api\/qr\?slug=' \+ encodeURIComponent\(profile\.slug\)/);
+  assert.match(sharePage, /const relPath = '\/u\/' \+ profile\.slug/);
+});

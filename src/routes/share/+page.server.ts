@@ -6,7 +6,7 @@
 // - If profile exists and qrSvg is missing - generate, save, and return it
 // - Otherwise just return the stored svg for instant render
 
-import { redirect } from '@sveltejs/kit';
+import { error, redirect } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
 import { prisma } from '$lib/db';
 import { absoluteUrlFromOrigin } from '$lib/url';
@@ -18,7 +18,14 @@ export const load: PageServerLoad = async ({ locals, url }) => {
     throw redirect(303, absoluteUrlFromOrigin(locals.appOrigin, '/auth/login'));
   }
 
-  // IT: optional explicit profile slug
+  // IT: The dropdown contains only profiles belonging to the signed-in user.
+  const profileOptions = await prisma.profile.findMany({
+    where: { userId: locals.user.id },
+    select: { id: true, slug: true, label: true, displayName: true, kind: true, isPublished: true },
+    orderBy: [{ isDefault: 'desc' }, { updatedAt: 'desc' }]
+  });
+
+  // IT: Respect an explicitly requested profile, even when another profile is the default.
   const targetSlug = url.searchParams.get('profile') || undefined;
 
   // IT: choose a profile - prefer explicit slug, else default, else most recent
@@ -39,6 +46,9 @@ export const load: PageServerLoad = async ({ locals, url }) => {
     },
     orderBy: targetSlug ? undefined : [{ isDefault: 'desc' }, { updatedAt: 'desc' }]
   });
+
+  // SECURITY: Do not silently show another profile when a requested slug is invalid.
+  if (targetSlug && !profile) throw error(404, 'Profile not found.');
 
   // IT: no profile yet - send to editor in create mode
   if (!profile || !profile.slug) {
@@ -79,5 +89,5 @@ export const load: PageServerLoad = async ({ locals, url }) => {
   }
 
   // IT: return the profile - the client will prefer displayName over slug
-  return { profile, origin: locals.appOrigin };
+  return { profile, profileOptions, origin: locals.appOrigin };
 };

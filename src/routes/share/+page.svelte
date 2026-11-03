@@ -5,6 +5,24 @@
 
   export let data: any;
 
+  // IT: Only the signed-in user's profiles are returned by the server.
+  const profileOptions: Array<{ id: string; slug: string; label: string; displayName: string | null; kind: string; isPublished: boolean }> = data.profileOptions || [];
+  const profileKindLabels: Record<string, string> = { business: 'Business', personal: 'Friendship', dating: 'Dating', custom: 'Custom' };
+  function optionLabel(option: (typeof profileOptions)[number]) {
+    // IT: Older profiles may have only the generic default label.
+    const label = option.label && option.label !== 'My profile' ? option.label : option.displayName || 'My profile';
+    return label + ' (' + (profileKindLabels[option.kind] || option.kind) + ')';
+  }
+
+  function selectProfile(event: Event) {
+    const slug = (event.currentTarget as HTMLSelectElement).value;
+    // IT: Full navigation guarantees the QR/link/title all update together, even when
+    // SvelteKit reuses a page component for a new query string.
+    if (profileOptions.some((option) => option.slug === slug)) {
+      window.location.assign('/share?profile=' + encodeURIComponent(slug));
+    }
+  }
+
   // IT: The server redirects when no usable profile exists. Keep a local typed alias so the page
   // can express that invariant without weakening the server-side guard.
   const profile: any = data.profile;
@@ -65,6 +83,15 @@
 <div class="container">
   <div class="card" style="padding:20px; max-width:720px; margin:0 auto;">
     <h1 style="margin-top:0;">{heading}</h1>
+    <div class="profile-selection">
+      <label for="share-profile-select">Profile to share</label>
+      <select id="share-profile-select" value={profile.slug} on:change={selectProfile}>
+        {#each profileOptions as option (option.id)}
+          <option value={option.slug}>{optionLabel(option)}</option>
+        {/each}
+      </select>
+      <a href="/profiles">Manage profiles</a>
+    </div>
     {#if !profile.isPublished}<p role="status">This profile is unpublished. Publish it before sharing.</p>{/if}
 
     <div style="display:flex; gap:20px; align-items:flex-start; flex-wrap:wrap;">
@@ -108,6 +135,11 @@
 </div>
 
 <style lang="postcss">
+  /* IT: Profiles are chosen by private owner label, not by ContextSpace. */
+  .profile-selection { display:grid; gap:8px; margin:0 0 20px; max-width:440px; }
+  .profile-selection label { font-weight:650; }
+  .profile-selection select { width:100%; min-height:44px; border:1px solid #c4d0ce; border-radius:10px; background:white; padding:10px; font:inherit; }
+  .profile-selection a { font-size:.9rem; }
   /* IT: compact button and QR styling */
   .btn {
     padding: 8px 12px;

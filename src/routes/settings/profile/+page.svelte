@@ -8,6 +8,8 @@
 
   // IT: working profile from loader or defaults
   const p: any = data?.profile || {};
+  // IT: Label is an owner-facing name, separate from the profile's public display name.
+  let profileLabel = p.label && p.label !== 'My profile' ? p.label : (p.displayName || '');
 
   // IT: core public fields
   let displayName = p.displayName || '';
@@ -86,13 +88,24 @@
         <!-- IT: explicit Network workflow flag, checked by the server. -->
         <input type="hidden" name="entry" value="network" />
       {/if}
+      {#if data?.creatingNew}
+        <!-- IT: Explicitly create another profile even if this account has one of the same type. -->
+        <input type="hidden" name="createNewProfile" value="1" />
+        <input type="hidden" name="returnToProfiles" value="1" />
+      {/if}
       {#if p?.id}
         <!-- IT: include for update path -->
         <input type="hidden" name="profileId" value={p.id} />
       {/if}
 
       <div class="field">
-        <label for="displayName">Name</label>
+        <label for="profileLabel">Profile label (only you see this)</label>
+        <input id="profileLabel" name="label" bind:value={profileLabel} maxlength="120" required={data?.creatingNew} placeholder="e.g. Thursday Networking" />
+        <small>Use this name to choose which profile to share. Visitors see your public name below.</small>
+      </div>
+
+      <div class="field">
+        <label for="displayName">Public name</label>
         <input id="displayName" name="displayName" bind:value={displayName} required />
       </div>
 
@@ -142,7 +155,7 @@
       </div>
 
       <div class="field span2">
-        <label><input type="checkbox" name="isPublished" checked={p.isPublished !== false} /> Published publicly</label>
+        <label><input type="checkbox" name="isPublished" checked={p?.id ? p.isPublished !== false : false} /> Published publicly</label>
         <small>Uncheck to hide this profile and disable its public QR destination.</small>
       </div>
       <div class="field">
@@ -165,8 +178,9 @@
         </div>
       {/each}
 
-      <div style="grid-column: 1 / span 2; display:flex; gap:8px; margin-top:8px;">
+      <div style="grid-column: 1 / span 2; display:flex; gap:8px; margin-top:8px; flex-wrap:wrap; align-items:center;">
         <button class="btn primary" type="submit">Save</button>
+        <a class="btn" href="/profiles">Back to My Profiles</a>
       </div>
 
       {#if form?.error}

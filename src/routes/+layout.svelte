@@ -100,7 +100,7 @@
 
     {#if data.user}
       <aside class="relish-sidebar" aria-label="Application navigation">
-        <a class="relish-nav-item" href="/people">My People</a>
+        {#if specialist}<a class="relish-nav-item" href="/people">My People</a>{/if}
         <div class="relish-sidebar-title">{isHome ? 'Relish' : isPeople ? 'My People' : specialist === 'broker' ? 'Business broker' : specialist === 'operator' ? 'Operator tools' : activeSpace.label}</div>
         {#if specialist}
           <a class="relish-nav-item" href={activeBase}>← Back to Relish</a>

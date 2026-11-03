@@ -17,6 +17,7 @@ Work:
 - Confirm a new user lands on context-neutral Relish Home without destroying access to existing context-specific operations.
 - Complete a real-device DEV pass of existing public QR and event redirect -> Share your details -> owner-private Contact -> voice note -> save/retrieve.
 - Check that Brokerage, public profiles, event signup and authenticated participant flows still work.
+- Verify a user can independently label, publish and share several profiles of the same type; the multi-profile manager is on `feature/multi-labelled-profiles-20261103`, not yet merged or deployed.
 - Refine interaction points only from observed pilot friction. Do not invent another QR form, Contact model or note recorder.
 - Track the Windows-specific recording issue separately; do not hold all mobile-first work hostage to one device without evidence of a shared defect.
 

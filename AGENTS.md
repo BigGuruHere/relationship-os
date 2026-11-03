@@ -47,6 +47,14 @@ A request to add a user-facing step is **not** automatically a request to build 
   5. **Do not automatically merge** the feature branch into Development or Production, open a production deployment, or change live databases/services. Those steps require separate approval.
   6. Never force-push, discard another person's work, or commit secrets, `.env` files, database exports, or generated local environment artifacts. If branch identity, push access, or a working-tree conflict prevents safe completion, stop the unsafe action and report the blocker.
   7. Read-only investigations and planning tasks must remain read-only: do not create branches, commits, or pushes unless the user specifically requests a persistent artifact or code change.
+### Protect concurrent and recent changes
+
+- Before modifying an existing file, inspect its latest version on the branch being edited. Never rely solely on code retained from an earlier conversation, task or cached copy.
+- Before committing or pushing, verify that the target branch has not advanced unexpectedly and reconcile any new changes.
+- Never silently overwrite, revert or discard changes made by the user or another agent.
+- If current code differs materially from earlier assumptions, reassess the proposed change. If the difference creates a conflict or uncertainty, report it rather than making an arbitrary choice.
+- Inspect only the files and dependencies relevant to the task. A full repository audit is not required for minor changes.
+
 - Add focused tests, and distinguish previously known failures from new regressions. Do not weaken security tests to make test totals green.
 - Explain whether a Prisma migration is required. For local development instructions, include `npx prisma migrate dev` only if that stage introduces a migration; do not prescribe `npm run build` as the user's normal local step.
 - Comment non-obvious code and security-sensitive decisions.

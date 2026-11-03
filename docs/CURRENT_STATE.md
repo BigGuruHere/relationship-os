@@ -41,6 +41,14 @@ On 2026-11-03, `fix/people-navigation-mobile-header-20261103` restores the commo
 
 The Business/Friendship/Dating selector still navigates ContextSpaces, not profiles. Multiple independently labelled profiles per kind are not yet supported by the existing editor workflow, despite the Profile model already having a label field. This is a separate product decision.
 
+## Multiple independently labelled shareable profiles (feature branch)
+
+On 2026-11-03, `feature/multi-labelled-profiles-20261103` adds a profile manager that lists **all** owner-created Profile records, including multiple profiles with the same `kind`. The existing editor supports an explicit `mode=new` creation path and stores an owner-facing `Profile.label` separately from public `displayName`. Each profile keeps its independent slug, published status, QR destination and source-profile provenance for new Contacts. New profiles begin unpublished unless explicitly published.
+
+Existing Business/Friendship/Dating ContextSpace selection and contextual profile editing remain unchanged. This does **not** introduce a new ContextSpace, permission or custody relationship. No Prisma migration is needed because `Profile.label` and one-to-many User profiles already exist.
+
+Status: code committed to feature branch only, not merged or deployed. Added focused source regression tests. Runtime Svelte checks, database tests, browser testing and QR verification are still required before pilot rollout.
+
 ## Problems and limits worth tracking
 
 - The user observed transcription returning "You" on one Windows laptop while voice transcription worked on other machines. This appears device-specific, but the browser/microphone root cause is **not verified**. Do not rewrite the common transcription service solely on this evidence.

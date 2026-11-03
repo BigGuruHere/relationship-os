@@ -24,6 +24,8 @@ These entries preserve **why**, not every implementation detail. If a decision i
 | D-015 | For the present owner-only pilot, classify legacy Business Contacts as Personal using existing context-local tags and display selected Contacts in My People without moving or duplicating them. | Superseded by D-016 on 2026-11-03. This temporary solution reached Development but is being reversed; it never moved Contacts or changed custody. |
 | D-016 | Do not maintain the temporary Personal-tag bridge from legacy Brokerage to My People. For the current small pilot, add desired personal Contacts afresh while retaining old Brokerage records. | Accepted 2026-11-03. Restore My People private-only listing, remove the owner organiser feature, and leave historical Brokerage data and tags untouched. The long-term cross-context relationship architecture remains open. |
 
+| D-017 | A Relish User may create multiple independently labelled public profiles, including more than one Business, Friendship or Dating profile. Type is a secondary classification, and origin profile remains provenance rather than a permanent relationship category. | Accepted for pilot 2026-11-03. Reuses `Profile.label`, slug, kind and existing capture provenance. Context-specific legacy workflows remain compatible. Implementation on `feature/multi-labelled-profiles-20261103` pending tests and merge. |
+
 ## Deferred questions
 
 - How to present a genuinely unified owner People list across current private and legacy business custody without accidental sharing or migration.

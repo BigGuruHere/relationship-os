@@ -1,21 +1,84 @@
-<script lang="ts">export let data; export let form: any;</script>
-<svelte:head><title>Share your details - Relish</title><meta name="robots" content="noindex"/></svelte:head>
+<script lang="ts">
+  // IT: Reuse the protected capture route for steps two and three, with no account required.
+  export let data;
+  export let form: any;
+  $: createStep = Boolean(form?.shared || data.createStep);
+  $: draft = form?.values || { name: '', email: '', phone: '' };
+  $: profileUrl = '/u/' + encodeURIComponent(data.profile.slug) + '?original=1';
+</script>
+
+<svelte:head>
+  <title>{createStep ? 'Your own Relish profile' : 'Share your details'} - Relish</title>
+  <meta name="robots" content="noindex" />
+</svelte:head>
+
 <main class="capture-page">
-<a href={'/u/' + encodeURIComponent(data.profile.slug) + '?original=1'}>← View profile</a>
-<section class="capture-card">
-{#if data.profile.avatarUrl}<img src={data.profile.avatarUrl} alt="" width="64" height="64"/>{/if}
-<h1>Share your details with {data.profile.name}</h1>{#if data.profile.headline}<p>{data.profile.headline}</p>{/if}
-{#if form?.shared}<div role="status"><h2>Thank you</h2><p>Your details have been shared for a private contact record. You do not need to create an account or take any other action.</p></div>
-{:else}
-<p>Let {data.profile.name} save your details privately and follow up after meeting you.</p>
-<form method="POST">
-<input type="hidden" name="captureToken" value={data.captureToken}/>
-<label for="capture-name">Your name</label><input id="capture-name" name="name" autocomplete="name" maxlength="200" required value={form?.values?.name || ''}/>
-<label for="capture-email">Email (optional)</label><input id="capture-email" name="email" type="email" autocomplete="email" maxlength="254" value={form?.values?.email || ''}/>
-<label for="capture-phone">Telephone (optional)</label><input id="capture-phone" name="phone" type="tel" autocomplete="tel" maxlength="40" value={form?.values?.phone || ''}/>
-<div class="capture-trap" aria-hidden="true"><label for="capture-website">Leave blank</label><input id="capture-website" name="website_check" tabindex="-1" autocomplete="off"/></div>
-<label class="capture-consent"><input name="contactConsent" type="checkbox" value="yes" required/><span>I agree to share these details with {data.profile.name} for their private contact record and personal follow-up.</span></label>
-<p class="capture-privacy">This does not create a Relish account, mutual connection or pilot signup. It does not give either of you access to the other's private notes. <a href="/legal/privacy">Privacy notice</a>.</p>
-{#if form?.error}<p role="alert">{form.error}</p>{/if}{#if form?.reference}<p>Support reference: {form.reference}</p>{/if}<button class="btn primary">Share my details</button>
-</form>{/if}</section></main>
-<style>.capture-page{max-width:540px;margin:0 auto;padding:24px 16px}.capture-card{margin-top:20px;padding:24px;border:1px solid var(--border);border-radius:16px;background:var(--surface)}h1{font-size:1.6rem;line-height:1.3;overflow-wrap:anywhere}img{border-radius:50%;object-fit:cover}form{display:grid;gap:10px}input:not([type=checkbox]){width:100%;padding:12px;min-height:46px}.capture-consent{display:flex;gap:10px;align-items:flex-start;margin:14px 0}.capture-consent input{margin-top:5px}.capture-privacy{font-size:.9rem}.capture-trap{position:absolute;left:-10000px;width:1px;height:1px;overflow:hidden}button{min-height:48px;width:100%}</style>
+  <nav aria-label="Contact exchange">
+    <a href={profileUrl}>{createStep ? 'Close' : 'Back'}</a>
+    <span>Relish</span>
+    {#if !createStep}<a href={'/u/' + encodeURIComponent(data.profile.slug) + '/share-details?step=create'}>Skip</a>{/if}
+  </nav>
+  {#if createStep}
+    <!-- IT: Successful sharing and skipping both finish here. Signup is an independent choice. -->
+    {#if form?.shared}<p class="receipt" role="status">Your details have been shared with {data.profile.name}.</p>{/if}
+    <section class="capture-card" aria-labelledby="create-heading">
+      <p class="eyebrow">Stay in touch</p>
+      <h1 id="create-heading">Your next introduction starts here.</h1>
+      <p>Create your own Relish profile to share your details and remember the people you meet.</p>
+      <article class="profile-preview" aria-label="Your profile preview">
+        <div class="preview-cover" aria-hidden="true">{draft.name ? draft.name.charAt(0).toUpperCase() : 'R'}</div>
+        <div class="preview-body">
+          <span class="eyebrow">Preview - only you can see this</span>
+          <h2>{draft.name || 'Your name'}</h2>
+          <p>{draft.email || 'Add your email'}</p>
+          <p>{draft.phone || 'Add your phone number'}</p>
+        </div>
+      </article>
+      {#if data.isSignedIn}
+        <a class="primary" href="/profiles">Go to My Profiles</a>
+      {:else}
+        <!-- SECURITY: Draft details travel in a POST, then an encrypted HttpOnly cookie, never a URL. -->
+        <form method="POST">
+          <input type="hidden" name="intent" value="create-profile" />
+          <input type="hidden" name="name" value={draft.name} />
+          <input type="hidden" name="email" value={draft.email} />
+          <input type="hidden" name="phone" value={draft.phone} />
+          <button class="primary" type="submit">Create my Relish profile</button>
+        </form>
+      {/if}
+      <p class="hint">You'll review your details before publishing. Creating an account is optional.</p>
+      <a class="later" href={profileUrl}>Maybe later</a>
+    </section>
+  {:else}
+    <section class="capture-card" aria-labelledby="capture-heading">
+      {#if data.profile.avatarUrl}<img class="avatar" src={data.profile.avatarUrl} alt="" width="64" height="64" />{/if}
+      <h1 id="capture-heading">Share your details with {data.profile.name}</h1>
+      <p>Let {data.profile.name} save your details privately and follow up after meeting you.</p>
+      <form method="POST">
+        <input type="hidden" name="captureToken" value={data.captureToken} />
+        <label for="capture-name">Your name</label>
+        <input id="capture-name" name="name" autocomplete="name" maxlength="200" required value={form?.values?.name || ''} />
+        <label for="capture-email">Email (optional)</label>
+        <input id="capture-email" name="email" type="email" autocomplete="email" maxlength="254" value={form?.values?.email || ''} />
+        <label for="capture-phone">Telephone (optional)</label>
+        <input id="capture-phone" name="phone" type="tel" autocomplete="tel" maxlength="40" value={form?.values?.phone || ''} />
+        <div class="capture-trap" aria-hidden="true"><label for="capture-website">Leave blank</label><input id="capture-website" name="website_check" tabindex="-1" autocomplete="off" /></div>
+        <label class="capture-consent"><input name="contactConsent" type="checkbox" value="yes" required /><span>I agree to share these details with {data.profile.name} for their private contact record and personal follow-up.</span></label>
+        <p class="hint">This does not create a Relish account or mutual connection, or share private notes. <a href="/legal/privacy">Privacy notice</a>.</p>
+        {#if form?.error}<p role="alert">{form.error}</p>{/if}
+        {#if form?.reference}<p>Support reference: {form.reference}</p>{/if}
+        <button class="primary" type="submit">Send</button>
+      </form>
+    </section>
+  {/if}
+</main>
+
+<style>
+  .capture-page{max-width:500px;margin:0 auto;padding:24px 20px 48px;box-sizing:border-box;overflow-wrap:anywhere}
+  nav{display:flex;align-items:center;justify-content:space-between;min-height:44px;gap:20px}nav span{font-weight:750}nav a{min-height:44px;display:flex;align-items:center}
+  .capture-card{margin-top:30px}h1{font-size:clamp(1.7rem,6vw,2.2rem);line-height:1.2;letter-spacing:-.035em}p{line-height:1.6}
+  .avatar{border-radius:50%;object-fit:cover}form{display:grid;gap:10px}input:not([type=checkbox]){width:100%;padding:14px;min-height:50px;box-sizing:border-box;border:1px solid var(--border,#cdd6d2);border-radius:12px;font:inherit}
+  .capture-consent{display:flex;gap:10px;align-items:flex-start;margin:14px 0}.capture-consent input{margin-top:5px;flex-shrink:0}.hint{font-size:.9rem;color:var(--muted,#52615b)}
+  .capture-trap{position:absolute;left:-10000px;width:1px;height:1px;overflow:hidden}.primary{display:flex;align-items:center;justify-content:center;min-height:54px;padding:12px 18px;width:100%;box-sizing:border-box;border:0;border-radius:14px;background:#183e39;color:#fff;font:inherit;font-weight:650;text-decoration:none;cursor:pointer}
+  .eyebrow{font-size:.8rem;font-weight:650;letter-spacing:.03em}.profile-preview{margin:26px 0;border:1px solid var(--border,#dce3e0);border-radius:22px;overflow:hidden;background:var(--surface,#fff);box-shadow:0 10px 30px #183e3910}.preview-cover{height:130px;background:#dcebe5;display:grid;place-items:center;font-size:3rem;color:#183e39}.preview-body{padding:24px}.preview-body h2{margin:12px 0}.preview-body p{margin:8px 0}.later{display:block;text-align:center;padding:14px}.receipt{padding:14px;border-radius:12px;background:#e5f1ea;color:#183e39}
+</style>

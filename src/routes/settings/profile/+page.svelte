@@ -12,15 +12,15 @@
   let profileLabel = p.label && p.label !== 'My profile' ? p.label : (p.displayName || '');
 
   // IT: core public fields
-  let displayName = p.displayName || '';
+  let displayName = p.displayName || data?.draft?.name || '';
   let headline    = p.headline || '';
   let bio         = p.bio || '';
   let avatarUrl   = p.avatarUrl || '';
   let company     = p.company || '';
   let title       = p.title || '';
   let websiteUrl  = p.websiteUrl || '';
-  let emailPublic = p.emailPublic || '';
-  let phonePublic = p.phonePublic || '';
+  let emailPublic = p.emailPublic || data?.draft?.email || '';
+  let phonePublic = p.phonePublic || data?.draft?.phone || '';
   let kind        = p.kind || data?.requestedProfileKind || 'business';
 
   // IT: extra inputs - one per EXTRA_KEYS entry
@@ -71,6 +71,9 @@
 <div class="container">
   <div class="card" style="padding:16px; max-width:720px; margin:0 auto;">
     <h1 style="margin:0 0 12px 0;">{p?.id ? 'Edit profile' : 'Create profile'}</h1>
+    {#if data?.onboarding}
+      <p>Review your details, choose what to publish, then save to see your own QR code.</p>
+    {/if}
 
     {#if isFirstTime}
       <div style="margin:0 0 12px 0; padding:8px 10px; border:1px solid #e6e6e6; border-radius:10px; background:#fafafa;">
@@ -80,6 +83,7 @@
 
     <!-- IT: main editor form - named action `save` -->
     <form method="post" action="?/save" style="display:grid; grid-template-columns: 1fr 1fr; gap:12px;">
+      {#if data?.onboarding}<input type="hidden" name="profileOnboarding" value="1" />{/if}
       {#if data?.returnContext}
         <!-- IT: Return to the same context after editing, never to a mismatched profile. -->
         <input type="hidden" name="returnContext" value={data.returnContext} />

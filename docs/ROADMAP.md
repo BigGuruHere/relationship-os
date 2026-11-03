@@ -13,6 +13,7 @@ Make it easy for someone to understand themselves and the people around them, pr
 Current implementation foundation: My People Stage 1 and Stage 2 are merged into Development.
 
 Work:
+- Validate the new three-screen contact exchange on `feature/three-step-profile-onboarding-20261103`: Save contact on iOS/Android, Send and Skip, optional signup, draft prefill through password/Google auth, owner review/publication, then working Share/QR. It is implemented on the feature branch, not merged or deployed. Test the configured event redirect separately.
 - Verify the merged neutral Home / hidden Dorian invite / simplified navigation changes on Development before pilot deployment.
 - Confirm a new user lands on context-neutral Relish Home without destroying access to existing context-specific operations.
 - Complete a real-device DEV pass of existing public QR and event redirect -> Share your details -> owner-private Contact -> voice note -> save/retrieve.

@@ -6,3 +6,10 @@ export function safeNetworkJoinReturn(raw: string | null | undefined): string | 
   const slug = raw.slice('/network/join/'.length);
   return /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,180}$/.test(slug) ? raw : null;
 }
+
+// IT: Add exactly one profile-onboarding destination without broadening Network redirects.
+// SECURITY: No arbitrary paths, query parameters, external origins or encoded URLs are accepted.
+export function safeAuthReturn(raw: string | null | undefined): string | null {
+  if (raw === '/settings/profile?onboarding=1') return raw;
+  return safeNetworkJoinReturn(raw);
+}

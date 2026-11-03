@@ -2,6 +2,22 @@
 
 Status: living snapshot updated **2026-11-03**. Based on GitHub `BigGuruHere/relationship-os` **development** through UI merge `bb8c4d0030f22e355d78ed216bc84c6060ece35a`, plus the UI cleanup merged into Development on 2026-11-02. This document is a baseline, not a live deployment monitor.
 
+## Three-screen contact exchange and optional signup (feature branch)
+
+Implemented 2026-11-03 on `feature/three-step-profile-onboarding-20261103`, based on Development `4bb88fe7d84559ac1531653790518efc789f9fd8`. Not merged or deployed.
+
+1. Published visitor profile shows public details and **Save contact**. With JavaScript, the existing vCard download starts and navigation follows to the existing share-details route. Browser/OS completion of saving a contact is not detectable; the direct share link remains available without JavaScript.
+2. Optional **Share your details** form retains name, optional email/telephone, explicit consent, capture token, custody, provenance and abuse protections. **Skip** writes no Contact.
+3. Send or Skip shows an optional **Create my Relish profile** invitation. A successful Send displays a receipt and a private preview using only the visitor's entered details. Skip shows an empty preview, without a false sharing confirmation. Close/Maybe later returns to the original profile. Signed-in visitors go to My Profiles.
+
+Only the explicit profile-creation button stores a bounded, authenticated encrypted HttpOnly draft cookie for 30 minutes. It is form convenience, not identity evidence. Existing registration, login and Google OAuth allow one exact new return destination (`/settings/profile?onboarding=1`) alongside existing Network invitation returns. New profiles created by this flow begin unpublished; regular registration defaults are preserved. The existing owner-scoped editor prefills blank email/phone fields for review and clears the cookie after successful save, then returns to Share/QR. Existing profiles are not overwritten by signup. No Contact/Person/User matching, mutual Connection, Dorian call or private-note disclosure is inferred. No Prisma migration.
+
+Validation: Node 22 Svelte/TypeScript check passed with zero errors/warnings. All 28 focused tests passed, covering real route handlers with an in-memory persistence boundary, draft encryption/expiry, redirect restrictions, rendered screens and compatibility. The full suite recorded 839 passes and 52 failures out of 891 tests; unchanged Development at `4bb88fe` recorded 827 passes and the same 52 failure names out of 879 tests in a separate prepared worktree. No new full-suite failures were introduced. These are local checks, not live database/provider tests. Browser/device vCard handoff, actual database capture and real Google OAuth remain unverified; Chromium was unavailable and its download failed in this environment. The configuration-specific event landing redirect remains intact and can still supersede the normal profile landing.
+
+### Corrections to older branch-status notes below
+
+Source inspected at Development `4bb88fe` already contains the private-only My People reversal, repaired People navigation, and the multi-profile manager. The older feature-branch-only paragraphs below are historical status descriptions, not current evidence that these changes remain unmerged. Their live DEV/PROD deployment remains unverified. Type-check results above apply to this new feature branch.
+
 ## What is implemented in Development
 
 | Capability | Source status | Verification caveat |

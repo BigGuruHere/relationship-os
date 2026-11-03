@@ -4,16 +4,18 @@ import assert from 'node:assert/strict';
 import { readFileSync, existsSync } from 'node:fs';
 const src = file => readFileSync(new URL('../../' + file, import.meta.url), 'utf8');
 
-test('guest sees Dorian first, only one primary SMS action, and separate collapsed inviter profile', () => {
+// IT: The approved profile-first exchange supersedes the old visible Dorian-first layout.
+// Retained call handlers and the security/consent tests below remain unchanged.
+test('guest sees public profile and Save contact; Dorian invitation remains hidden', () => {
   const page = src('src/routes/u/[slug]/+page.svelte');
   const firstContact = page.split('{#if isFirstContact}')[1].split('{:else}\n<div class="container public-profile">')[0];
-  assert.match(firstContact, /Meet Dorian/);
-  assert.match(firstContact, /Your AI networking partner/);
-  assert.match(firstContact, /Send Dorian a 'Call me' message/);
-  assert.match(firstContact, /View \{ownerName\}'s profile/);
-  assert.match(firstContact, /href=\{vcardUrl\} download/);
-  assert.doesNotMatch(firstContact, /Connect on Relish|Stay connected on Relish|agreeTerms|shareContact/);
-  assert.ok(firstContact.indexOf('Meet Dorian') < firstContact.indexOf("View {ownerName}'s profile"));
+  assert.match(page, /const showDorianInvitation = false/);
+  assert.match(firstContact, /\{#if showDorianInvitation\}/);
+  assert.match(firstContact, /<h1>\{ownerName\}<\/h1>/);
+  assert.match(firstContact, /href=\{vcardUrl\} download on:click\|preventDefault=\{saveThenShare\}>Save contact/);
+  assert.match(firstContact, /href=\{captureUrl\}>Share your details/);
+  assert.doesNotMatch(firstContact, /Connect on Relish|agreeTerms|shareContact/);
+  assert.match(page, /window.location.assign\(captureUrl\)/);
 });
 
 test('SMS is issued server-side only on button POST, signed incoming SMS still required', () => {

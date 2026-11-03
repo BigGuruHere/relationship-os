@@ -43,7 +43,7 @@ The Business/Friendship/Dating selector still navigates ContextSpaces, not profi
 
 ## Multiple independently labelled shareable profiles (feature branch)
 
-On 2026-11-03, `feature/multi-labelled-profiles-20261103` adds a profile manager that lists **all** owner-created Profile records, including multiple profiles with the same `kind`. The existing editor supports an explicit `mode=new` creation path and stores an owner-facing `Profile.label` separately from public `displayName`. Each profile keeps its independent slug, published status, QR destination and source-profile provenance for new Contacts. New profiles begin unpublished unless explicitly published.
+On 2026-11-03, `feature/multi-labelled-profiles-20261103` adds a profile manager that lists **all** owner-created Profile records, including multiple profiles with the same `kind`. The existing editor supports an explicit `mode=new` creation path and stores an owner-facing `Profile.label` separately from public `displayName`. Each profile keeps its independent slug, published status, QR destination and source-profile provenance for new Contacts. New profiles created from My Profiles begin unpublished unless explicitly published; established first-time onboarding keeps its prior publication default.
 
 Existing Business/Friendship/Dating ContextSpace selection remains unchanged. Legacy contextual profile selection now prefers the established oldest profile of a kind (or the account's default), so adding a new same-kind profile does not automatically replace it in the existing context UI. This does **not** introduce a new ContextSpace, permission or custody relationship. No Prisma migration is needed because `Profile.label` and one-to-many User profiles already exist.
 

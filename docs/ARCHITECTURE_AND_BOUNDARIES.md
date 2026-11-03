@@ -59,7 +59,7 @@ Use code and tests to confirm exact paths or semantics before editing. This is a
 
 ## Known architectural seams / future consolidation
 
-- Legacy Brokerage and participant context UI coexist with My People and QR capture. Reuse shared services rather than generating a third Contact system. The owner-only Personal-tagged directory addition under development is a deliberately narrow same-owner, per-business-ContextSpace read with server role checks; it does not grant cross-context access to underlying notes or change the contact custody model.
+- Legacy Brokerage and participant context UI coexist with My People and QR capture. Reuse shared services rather than generating a third Contact system. An experimental owner-only Personal-tagged Brokerage directory bridge was superseded on 2026-11-03 and is being removed. My People returns to its private-only directory pending a deliberate unified-directory design.
 - A unified People directory and cross-context associations are directional goals, **not** permission to lift custody barriers or migrate  existing records automatically.
 - User, Contact, Person, Connection and profile concepts should be reconciled explicitly and gradually.
 - Some transcription job state is process-local in the present pilot; assess reliability before relying on multi-instance delivery.

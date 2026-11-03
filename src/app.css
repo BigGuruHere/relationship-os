@@ -660,7 +660,8 @@ label { display: block; color: var(--muted); font-size: 0.95rem; margin-bottom: 
   .relish-context-picker { margin-left:auto; }
   .relish-context-picker label { display:none; }
   .relish-context-picker select { min-width:120px; max-width:155px; }
-  .relish-header-tools { margin-left:0; font-size:.88rem; }
+  /* IT: Keep actions at the far right when a page has no context picker. */
+  .relish-header-tools { margin-left:auto; font-size:.88rem; }
   .relish-sidebar { display:none; }
   .relish-content { padding:20px 14px 96px; }
   .relish-bottom-nav { position:fixed; left:0; right:0; bottom:0; padding:6px 6px max(9px,env(safe-area-inset-bottom)); display:flex; justify-content:space-around; gap:3px; background:#fff; border-top:1px solid #e1e8e6; z-index:30; box-shadow:0 -4px 18px rgba(15,30,30,.035); }

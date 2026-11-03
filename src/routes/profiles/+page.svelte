@@ -34,7 +34,7 @@
           {#if profile.headline}<p>{profile.headline}</p>{/if}
           <p class:published={profile.isPublished} class="status">{profile.isPublished ? 'Published' : 'Unpublished'}</p>
           <div class="profile-actions">
-            <a href={'/settings/profile?profile=' + encodeURIComponent(profile.slug) + '&kind=' + profile.kind}>Edit</a>
+            <a href={'/settings/profile?profile=' + encodeURIComponent(profile.slug) + '&kind=' + profile.kind + '&from=profiles'}>Edit</a>
             <a href={'/u/' + encodeURIComponent(profile.slug)}>Preview</a>
             {#if profile.isPublished}
               <a href={'/share?profile=' + encodeURIComponent(profile.slug)}>Share QR</a>

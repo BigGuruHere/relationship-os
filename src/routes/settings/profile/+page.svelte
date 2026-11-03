@@ -88,6 +88,10 @@
         <!-- IT: explicit Network workflow flag, checked by the server. -->
         <input type="hidden" name="entry" value="network" />
       {/if}
+      {#if data?.fromProfiles}
+        <!-- IT: Editing from the manager returns to the manager, not an unrelated context. -->
+        <input type="hidden" name="returnToProfiles" value="1" />
+      {/if}
       {#if data?.creatingNew}
         <!-- IT: Explicitly create another profile even if this account has one of the same type. -->
         <input type="hidden" name="createNewProfile" value="1" />

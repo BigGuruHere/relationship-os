@@ -27,7 +27,7 @@ Work:
 **Outcome:** People experience one coherent relationship system rather than a collection of context-specific CRMs.
 
 Potential work, subject to product decisions and pilot evidence:
-- Review how legacy Brokerage Contacts can be presented from a unified owner perspective **without moving their underlying storage or sharing their private information**.
+- Review how legacy Brokerage Contacts can be presented from a unified owner perspective **without moving their underlying storage or sharing their private information**. An owner-only, Personal-tagged directory organiser is implemented on `feature/owner-personal-contact-organiser` for initial testing; this is a provisional convenience, not the final Person/Context model.
 - Clarify how one real person may have multiple contact perspectives and multiple context associations; keep provenance and permissions distinct.
 - Simplify redundant profile/context UI only after mapping current functionality and users.
 - Decide if and when unverified Contact -> Person -> User linking is necessary, with robust identity and disclosure boundaries.

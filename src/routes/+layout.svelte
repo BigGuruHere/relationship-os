@@ -16,8 +16,9 @@
   $: path = data.routePathname || '/';
   $: isHome = path === '/';
   $: isPeople = path === '/people' || path.startsWith('/people/');
-  // IT: My People is part of the context-neutral application navigation, not a separate shell.
-  $: isNeutralNavigation = isHome || isPeople;
+  // IT: Profiles and Share operate on user-owned profiles, not ContextSpace selection.
+  $: isProfileManagement = path === '/profiles' || path === '/share' || path === '/settings/profile';
+  $: isNeutralNavigation = isHome || isPeople || isProfileManagement;
   $: isPublic = path.startsWith('/u/') || path.startsWith('/pilot/dorian/') || path.startsWith('/network/join/') || path === '/legal' || path.startsWith('/legal/');
   $: isBroker = ['/broker', '/leads', '/deals', '/companies', '/agents', '/workstreams', '/contacts', '/wants', '/offers', '/introductions', '/projects', '/tasks', '/actions', '/search'].some(prefix => path === prefix || path.startsWith(prefix + '/'));
   $: isOperator = path === '/operator' || path.startsWith('/operator/') || path === '/general' || path.startsWith('/general/');
@@ -67,7 +68,7 @@
         <strong>Relish</strong>
       </a>
       {#if data.user}
-        {#if !isPeople && !isHome}<div class="relish-context-picker">
+        {#if !isNeutralNavigation}<div class="relish-context-picker">
           {#if spaces.length > 1}
             <label for="context-select">Context</label>
             <select id="context-select" value={activeName} on:change={changeSpace}>
@@ -80,7 +81,7 @@
           {/if}
         </div>
         {/if}
-        {#if isPeople}<a class="relish-header-tools" href="/people/new">Add Person</a>{:else}<a class="relish-header-tools" href={isHome ? '/share' : activeBase + '/share'}>Share</a>{/if}
+        {#if isPeople}<a class="relish-header-tools" href="/people/new">Add Person</a>{:else}<a class="relish-header-tools" href={isNeutralNavigation ? '/share' : activeBase + '/share'}>Share</a>{/if}
         <details class="relish-more" bind:open={moreMenuOpen}>
           <summary aria-label="More account options">•••</summary>
           <div class="relish-more-menu">

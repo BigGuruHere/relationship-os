@@ -2,11 +2,19 @@
 
 Status: living snapshot updated **2026-11-03**. Based on GitHub `BigGuruHere/relationship-os` **development** through UI merge `bb8c4d0030f22e355d78ed216bc84c6060ece35a`, plus the UI cleanup merged into Development on 2026-11-02. This document is a baseline, not a live deployment monitor.
 
-## F-201 physical design and dependency inventory (feature branch, 2026-11-04)
+## F-202 additive foundation schema (feature branch, 2026-11-04)
+
+Branch `feature/f202-foundation-schema-20261104`, based on development `c3eb501dfaf9eb83339b127cfff570ab0b365646`, adds 15 Foundation models, compound custody/type foreign keys and SQL-only immutability, lineage, completeness and acyclicity constraints. [Migration manifest and rehearsal results](foundation/F202_INVARIANTS.md) describe exact guarantees and limits. No route, auth workflow, Brokerage record or enrolment is changed.
+
+Validation: Prisma validate/generate passed; 23 isolated embedded-PostgreSQL tests passed, including generated Prisma smoke, legacy fixture preservation, snapshot restore/replay and atomic failure injection. 28 focused capture/People/access/onboarding regressions passed with synthetic test secrets; Node 22 Svelte check has zero errors/warnings. True simultaneous-session races and actual target inventory/backups remain unverified. Historical empty-database replay encounters a pre-existing missing-index failure in a 2025 migration; old migrations were not changed. No full historical replay or live database compatibility is claimed.
+
+Status: committed feature work pending merge, not deployed or user-activated. Includes migration `20261104010000_f202_foundation_schema`, executed only in an isolated test engine. Normal application startup can run migrations, so promotion needs the separate target inventory/deployment workflow. Next: F-203 auth/enrolment isolation, then F-204 access guards before any new-domain route uses these tables.
+
+## F-201 physical design and dependency inventory (merged, 2026-11-04)
 
 Branch `docs/f201-physical-foundation-20261104` is based on latest development `d789464b67dd36524e637e8c35f3610f5ffce278`. It adds [physical schema/constraints/service contracts](foundation/PHYSICAL_MODEL.md), [source dependency and data inventory](foundation/DEPENDENCY_INVENTORY.md), and a commented [read-only aggregate inventory query](../scripts/foundation/inventory-readonly.sql). D-024 records why new private custody/typed subjects are separate from legacy ContextSpace and Contact.
 
-Status: design/source inventory delivered, pending merge. No Prisma schema change, migration execution, runtime change, cohort activation or deployment. Actual DB counts/applied migration parity are unverified because no database connection is configured. The query is prepared, not run on DEV/PROD. F-202 can implement/rehearse on isolated fixtures; target inventory and backup evidence remain gates before target migration/cutover. Stage 2 itself is not complete. Validation: all 56 relative links across 14 living/foundation documents resolve; the inventory SQL parses as 10 PostgreSQL statements limited to read-only transaction setup, SELECT and rollback; referenced tables were checked against Prisma. `git diff --check` passed. No SQL execution or application tests were performed for this design change.
+Status: design/source inventory merged via PR #14 at `c3eb501dfaf9eb83339b127cfff570ab0b365646`. That documentation change made no Prisma schema, runtime or database changes; F-202 schema work is tracked above. Actual DB counts/applied migration parity are unverified because no database connection is configured. The query is prepared, not run on DEV/PROD. F-202 can implement/rehearse on isolated fixtures; target inventory and backup evidence remain gates before target migration/cutover. Stage 2 itself is not complete. Validation: all 56 relative links across 14 living/foundation documents resolve; the inventory SQL parses as 10 PostgreSQL statements limited to read-only transaction setup, SELECT and rollback; referenced tables were checked against Prisma. `git diff --check` passed. No SQL execution or application tests were performed for this design change.
 
 ## Relationship foundation programme (merged, 2026-11-04)
 
@@ -113,3 +121,16 @@ Status: feature branch committed, not merged or deployed. Focused source regress
 ## Status maintenance
 
 When a branch is merged, tested or deployed, update the corresponding status and date here. Do not leave "in development", "not merged" or test counts frozen forever. Keep this file concise and move historical detail to stage notes or the Git history.
+
+## F-202 rollout readiness, 2026-11-05
+
+PR #15 remains open against development. Ready for review and controlled Railway development rollout using committed migrations, subject to confirming the service's Git branch and database target. No development/production parent migration or deployment is confirmed.
+
+- PostgreSQL 18.6 CI: 23 embedded schema tests and 25 concurrent-session tests passed ([run](https://github.com/BigGuruHere/relationship-os/actions/runs/41753717094)).
+- Operator-reported development inventory: 106 completed migrations, no unfinished/rolled-back attempts; only F-202 pending. 105 checksums match bytes exactly, one matches CRLF line endings. Three legacy Contact links reference missing accounts; no custody mismatches. No automatic repair or reuse of these links.
+- SQL rehearsal on the development child branch: 15 Foundation tables, zero enrollments/vaults, 9 Users / 28 Contacts / 127 Interactions matching the earlier development counts.
+- Development snapshot created and restored to a separate branch. Restored checks: zero Foundation tables, 106 applied migrations, zero unfinished; 9 Users / 28 Contacts / 127 Interactions.
+- Prisma `migrate deploy` on that restored branch applied only F-202; `migrate status` reported up to date. Subsequent operator checks: 15 tables, zero enrollments/vaults and the same three legacy counts.
+- Operator chose `npm run start:with-migrations` for Railway development and reports adding it. This existing script runs `prisma migrate deploy && node scripts/start-relish.mjs`. The historical shadow-database replay issue remains unresolved, but does not block the rehearsed deploy workflow. Do not require `migrate dev` for this rollout.
+
+These are operator-reported Neon results, not direct agent database access or a full data-equivalence/schema-drift audit. Confirm Railway development tracks Git development and targets the intended Neon development database before merging. Retain the snapshot through verification; after deployment check migration logs, database counts and existing application flows. See [validation details](foundation/F202_INVARIANTS.md).

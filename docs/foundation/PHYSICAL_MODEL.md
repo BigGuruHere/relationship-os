@@ -1,6 +1,6 @@
 # F-201: physical foundation model
 
-Date: 2026-11-04 (Australia/Melbourne). Review baseline: development `d789464b67dd36524e637e8c35f3610f5ffce278`, which merged PR #13. Status: implementation specification on a documentation branch. The models below do not exist in Prisma yet. This completes the physical-design portion of F-201; target-database inventory remains unverified as described in [DEPENDENCY_INVENTORY.md](DEPENDENCY_INVENTORY.md).
+Date: 2026-11-04 (Australia/Melbourne). Review baseline: development `d789464b67dd36524e637e8c35f3610f5ffce278`, which merged PR #13. Status: physical specification implemented by F-202 on a feature branch, with isolated rehearsal evidence in [F202_INVARIANTS.md](F202_INVARIANTS.md). The models now exist in Prisma on that branch; no target deployment or user activation is implied. This completes the physical-design portion of F-201; target-database inventory remains unverified as described in [DEPENDENCY_INVENTORY.md](DEPENDENCY_INVENTORY.md).
 
 ## Decisions fixed for F-202
 
@@ -74,7 +74,7 @@ Diagram omits custody columns and optional draft/empty states. Membership has tw
 | Append-only versions, immutable custody/kind/perspective and lineage | SQL update-rejection triggers plus repository API; state changes live on roots, not historic content |
 | Subject/support required for a published usable statement version | Deferred constraint triggers at commit: >=1 StatementSubject and >=1 SUPPORTS edge. Block deletion of final association/support while output remains ACTIVE; allow explicit DELETING workflow. All inserted statement versions must be complete at commit. |
 | Relationship membership | Service creates relationship with >=2 PERSON members in one transaction; group can start with one. Historical members can leave without deleting relationship. Database checks type/episode uniqueness, not real-world relationship truth. |
-| Acyclic statement derivation | Lock the vault row for all support-graph mutation transactions; recursive ancestor check before insert. F-202 SQL trigger enforces the check/lock, including raw writes. Service also rejects cycles with a safe message. |
+| Acyclic statement derivation | Update/lock the vault row for all support-graph and statement-completeness mutation transactions; recursive ancestor check before insert. F-202 SQL trigger enforces the check/lock, including raw writes. Service also rejects cycles with a safe message. |
 | Concurrent correction | Lock source/statement root, compare expected latest version, append next version and dependencies atomically. Unique lineage rejects competing version numbers; return conflict for explicit rebase. |
 | Replay/idempotency | Scoped ingest key on source, transactional create+version+segment; an identical retry returns original result, changed payload with same key returns conflict |
 | Invalid/stale dependencies | Traversal checks root state and current eligible input version. Source/statement correction conservatively makes old dependent outputs ineligible until reassessed; no asynchronous derived store in stage 2. |

@@ -13,7 +13,7 @@ The authoritative detailed backlog and stage register are in [foundation impleme
 | Stage | Outcome | Current status |
 | --- | --- | --- |
 | 1 | Architecture, decisions, policy, developer guide and implementation backlog | Merged via PR #13, `d789464` |
-| 2 | New-domain primitives, auth isolation, custody and evidence proof | F-201 design/source inventory delivered on branch; target inventory pending. Next implementation: F-202 additive schema and isolated rehearsal |
+| 2 | New-domain primitives, auth isolation, custody and evidence proof | F-201 merged; F-202 schema/rehearsal on branch, with target inventory/concurrency gates outstanding. Next implementation: F-203 auth and enrolment isolation |
 | 3 | Invited users share details, keep people and retrieve notes | Existing UX reused; new-domain implementation planned |
 | 4 | Secure exchange claiming and directional continuing sharing | Planned after pilot foundation |
 | 5 | Private understanding across people and relationships | Planned after evidence/correction readiness |

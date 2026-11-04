@@ -1,6 +1,6 @@
 # Foundation implementation and user rollout
 
-Updated: 2026-11-04. Stage 1 documentation merged via PR #13 (`d789464`). Stage 2 F-201 physical design and source inventory are delivered on `docs/f201-physical-foundation-20261104`; target database inventory remains unverified. Stages 2 runtime and 3-7 remain planned. No new schema, migrations or runtime changes in this deliverable. Work items below are repository backlog identifiers, not GitHub issue numbers or claims of implementation.
+Updated: 2026-11-04. Stage 1 documentation merged via PR #13 (`d789464`). F-201 design/source inventory merged via PR #14 (`c3eb501`); target inventory remains unverified. F-202 additive schema and isolated rehearsal are implemented on `feature/f202-foundation-schema-20261104`, pending merge. Auth isolation, domain services and stages 3-7 remain planned. Work items below are repository backlog identifiers, not GitHub issue numbers or claims of implementation.
 
 ## Release sequence and evidence gates
 
@@ -33,9 +33,11 @@ F-201 now specifies physical naming, existing Person compatibility, subject-refe
 
 Physical decisions are now specified in [PHYSICAL_MODEL.md](PHYSICAL_MODEL.md): retain shared User and legacy Person, use a new private vault and typed subject registry, separate perspectives and evidence versions, enforce compound custody FKs and explicit SQL invariants, and isolate routing through server-side enrolment. The [dependency inventory](DEPENDENCY_INVENTORY.md) identifies auth side effects, default-space triggers, ORM guard coverage, UI adapters, legacy jobs and data ownership.
 
-F-201 physical design/source inventory: documentation delivered, pending merge. Actual database counts, migration parity and backup evidence: unavailable, not completed. The read-only aggregate query is prepared for an authorised target. No target database was queried or changed. This does not block isolated additive implementation, but blocks target migration/cutover until the inventory and anomalies are assessed.
+F-201 physical design/source inventory: merged via PR #14, `c3eb501`. Actual database counts, migration parity and backup evidence: unavailable, not completed. The read-only aggregate query is prepared for an authorised target. No target database was queried or changed. This does not block isolated additive implementation, but blocks target migration/cutover until the inventory and anomalies are assessed.
 
-Next: **F-202 additive schema and isolated migration rehearsal**. Implement the 15 foundation tables and SQL invariants in the physical model, without grants, account-claim tables, embeddings, backfill or route activation. F-203 auth isolation and F-204 access guards remain mandatory before any user-facing writer. Keep stage 2 open until F-206 acceptance passes.
+F-202 now implements the 15 tables and SQL invariants, without grants, account-claim tables, embeddings, backfill or route activation. See [the invariant manifest and rehearsal](F202_INVARIANTS.md): 23 foundation tests and 28 focused regressions pass, with zero Svelte errors/warnings. Real multi-session concurrency and target DB evidence remain release gates.
+
+Next implementation: **F-203 isolate account provisioning**. F-203 auth isolation and F-204 access guards remain mandatory before any user-facing writer. Keep stage 2 open until F-206 acceptance passes.
 
 ## Stage 3 backlog: simplest usable release
 
@@ -70,6 +72,6 @@ Use the [developer guide](DEVELOPER_GUIDE.md) for PR evidence. Stages 4-7 get a 
 | Stage | Designed | Implemented | Validated | Merged | DEV / PROD |
 | --- | --- | --- | --- | --- | --- |
 | 1 | Documentation package | Documentation only | 37 relative links and diff checks passed in PR #13 | PR #13, `d789464` | No deployment applicable |
-| 2 | F-201 physical design/source inventory delivered; target DB inventory pending | No runtime/schema changes | 56 documentation links, PostgreSQL parse and diff checks; no DB execution | F-201 branch pending | Not deployed |
+| 2 | F-201 merged; target DB inventory pending | F-202 additive schema on branch; no route activation | 23 isolated foundation tests, 28 regressions, Svelte check; standard-server concurrency pending | F-202 pending | Not deployed |
 | 3 | Backlog and gates | New-domain path not implemented; legacy UI exists | No new-domain validation | No | Not deployed |
 | 4-7 | Direction and gates only | No | No | No | Not deployed |

@@ -4,6 +4,8 @@ Date: 2026-11-03. Status: guidance for implementing the target design. Proposed 
 
 Use the [physical model](PHYSICAL_MODEL.md) for exact F-202 table/constraint contracts and the [dependency inventory](DEPENDENCY_INVENTORY.md) before changing auth, database guards or cohort routing. The aggregate inventory script is read-only and is not a migration.
 
+Read [F-202 invariants and rehearsal](F202_INVARIANTS.md) before changing Prisma or foundation migrations. Prisma cannot represent all CHECKs, partial indexes and deferred triggers; preserve and test the SQL contract. `npm run check:foundation:schema` always uses synthetic embedded PostgreSQL and never DATABASE_URL.
+
 ## Before a change
 
 1. Fetch latest development, read AGENTS and living docs, inspect actual affected source. Find existing functionality and state the precise gap.

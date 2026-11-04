@@ -122,16 +122,15 @@ Status: feature branch committed, not merged or deployed. Focused source regress
 
 When a branch is merged, tested or deployed, update the corresponding status and date here. Do not leave "in development", "not merged" or test counts frozen forever. Keep this file concise and move historical detail to stage notes or the Git history.
 
-## F-202 readiness follow-up
+## F-202 rollout readiness, 2026-11-05
 
-PR #15 remains open and unmerged. A disposable PostgreSQL 17 CI workflow now covers real concurrent database sessions; [CI run 41750250776](https://github.com/BigGuruHere/relationship-os/actions/runs/41750250776) passed on commit `bae36c2`: 23 embedded schema tests and 25 concurrent-session tests on PostgreSQL 17.11, zero failures. Target inventory, migration-history parity, target-version confirmation and backup/restore remain outstanding before migration. No DEV/PROD connection, migration or deployment has occurred. See [F-202 validation](foundation/F202_INVARIANTS.md).
+PR #15 remains open against development. Ready for review and controlled Railway development rollout using committed migrations, subject to confirming the service's Git branch and database target. No development/production parent migration or deployment is confirmed.
 
-## Development database readiness, 2026-11-04
+- PostgreSQL 18.6 CI: 23 embedded schema tests and 25 concurrent-session tests passed ([run](https://github.com/BigGuruHere/relationship-os/actions/runs/41753717094)).
+- Operator-reported development inventory: 106 completed migrations, no unfinished/rolled-back attempts; only F-202 pending. 105 checksums match bytes exactly, one matches CRLF line endings. Three legacy Contact links reference missing accounts; no custody mismatches. No automatic repair or reuse of these links.
+- SQL rehearsal on the development child branch: 15 Foundation tables, zero enrollments/vaults, 9 Users / 28 Contacts / 127 Interactions matching the earlier development counts.
+- Development snapshot created and restored to a separate branch. Restored checks: zero Foundation tables, 106 applied migrations, zero unfinished; 9 Users / 28 Contacts / 127 Interactions.
+- Prisma `migrate deploy` on that restored branch applied only F-202; `migrate status` reported up to date. Subsequent operator checks: 15 tables, zero enrollments/vaults and the same three legacy counts.
+- Operator chose `npm run start:with-migrations` for Railway development and reports adding it. This existing script runs `prisma migrate deploy && node scripts/start-relish.mjs`. The historical shadow-database replay issue remains unresolved, but does not block the rehearsed deploy workflow. Do not require `migrate dev` for this rollout.
 
-Operator-provided read-only metadata reports PostgreSQL 18.6 and no Foundation tables. All 106 recorded migrations finished successfully, with no rolled-back or unfinished attempts. All migration names exist in the PR and the only pending migration is F-202. Of 106 checksums, 105 match repository bytes exactly; `20261031110000_stage8_22_unified_policy_sms` matches the repository SQL with CRLF line endings exactly (database checksum `244a9c36d550297e9a7095667b6fdcd0d82a57ef3d903c3527777d81be61e23a`). This is an identified line-ending difference, not evidence of a SQL content change. No migration file or database history has been rewritten.
-
-The CI service now targets PostgreSQL 18.6. [CI run 41753717094](https://github.com/BigGuruHere/relationship-os/actions/runs/41753717094) passed on code commit `eeac8e44e268b8e7ac94da325dd58477d279e754`: 23 embedded schema tests and 25 concurrent-session tests, zero failures. The job confirmed PostgreSQL 18.6. This tests standard PostgreSQL, not Neon-specific configuration. Target aggregate inventory, schema drift/custom object review and backup/restore remain unverified. PR #15 remains unmerged; no target database mutation has occurred.
-
-## F-202 target inventory update, 2026-11-04
-
-Development aggregate inventory received: 9 Users, 28 Contacts, 127 Interactions; 106 migrations applied with none unfinished/rolled back. Ownership checks returned zero mismatches. Three Contacts reference missing linked accounts; cause unverified, tracked as legacy data quality, no repair performed. F-202 does not use or change these links. Recovery checkpoint/rehearsal and target schema verification remain outstanding. See [full findings](foundation/F202_INVARIANTS.md). PR #15 remains unmerged; no target migration occurred.
+These are operator-reported Neon results, not direct agent database access or a full data-equivalence/schema-drift audit. Confirm Railway development tracks Git development and targets the intended Neon development database before merging. Retain the snapshot through verification; after deployment check migration logs, database counts and existing application flows. See [validation details](foundation/F202_INVARIANTS.md).

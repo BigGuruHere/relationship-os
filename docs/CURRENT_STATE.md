@@ -1,10 +1,14 @@
 # Relish: Current State and Open Work
 
-Status: living snapshot updated **2026-11-03**. Based on GitHub `BigGuruHere/relationship-os` **development** through UI merge `bb8c4d0030f22e355d78ed216bc84c6060ece35a`, plus the UI cleanup merged into Development on 2026-11-02. This document is a baseline, not a live deployment monitor.
+Status: living snapshot updated **2026-11-05**. Foundation baseline is development `bdd5ef8` (PR #16). Environment observations are explicitly attributed below; this is not a live deployment monitor.
 
-## F-203 account provisioning isolation (feature branch, 2026-11-05)
+## F-204 owner-private access and repositories (feature branch, 2026-11-05)
 
-Implemented on `feature/f203-provisioning-isolation-20261105` from development `2d6d1a3`, pending review/merge/deployment. Shared authentication now checks server-managed enrollment before issuing sessions. Internal idempotent preparation creates a private vault/self subject; no shipped signup or route invokes enrollment. Enrolled accounts skip legacy automatic claims; ACTIVE/SUSPENDED private People/capture paths fail closed pending their new adapters. Brokerage and voice remain on their existing model. No new migration or cohort activation. PR #16 is open. PostgreSQL 18.6 CI run 41898613496 passed all 21 F-203 tests, including concurrency, on `6fe087e`; Svelte check has zero errors/warnings. Six older audit failures reproduce on unchanged development and are documented. See [implementation and acceptance](foundation/F203_PROVISIONING.md).
+Implemented on `feature/f204-foundation-access-20261105` from development `bdd5ef8`, pending review/merge/deployment. Adds runtime-issued owner access handles, transactional state/epoch checks, guarded Prisma operations and private person/relationship/perspective services. No new migration, public route activation or cohort enrollment. PR #17 is open. [CI run 41911636542](https://github.com/BigGuruHere/relationship-os/actions/runs/41911636542) passed all ten F-204 tests plus 69 F-202/F-203 checks on code commit `77c0d0b`; the subsequent commit updates documentation only. Svelte check: zero errors/warnings. Six pre-existing audit failures reproduce on unchanged development. [Acceptance and usage](foundation/F204_ACCESS.md) records tests, limitations and rollback obligations. Next: F-205 evidence/versioned understanding slice; stage 2 remains open.
+
+## F-203 account provisioning isolation (merged, DEV confirmed, 2026-11-05)
+
+Merged via PR #16 at `bdd5ef874cd63a64450950861702d46ecde5a2fd`. Operator confirmed the requested DEV login, My People and share checks all work. Exact running Railway SHA was not independently inspected. Shared authentication now checks server-managed enrollment before issuing sessions. Internal idempotent preparation creates a private vault/self subject; no shipped signup or route invokes enrollment. Enrolled accounts skip legacy automatic claims; ACTIVE/SUSPENDED private People/capture paths fail closed pending their new adapters. Brokerage and voice remain on their existing model. No new migration or cohort activation. PostgreSQL 18.6 CI run 41898613496 passed all 21 F-203 tests, including concurrency, on `6fe087e`; Svelte check has zero errors/warnings. Six older audit failures reproduce on unchanged development and are documented. See [implementation and acceptance](foundation/F203_PROVISIONING.md).
 
 ## F-202 additive foundation schema (merged, DEV confirmed)
 

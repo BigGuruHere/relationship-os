@@ -57,3 +57,11 @@ jobs:
       - run: npm run check:foundation:provisioning
         env:
           F203_TEST_DATABASE_URL: postgresql://postgres:f202-disposable-test-only@127.0.0.1:5432/relish_f203_ci
+
+      # F-204 uses the actual guarded application client on another empty fixture database.
+      - run: node --input-type=module -e 'import {Client} from "pg"; const c=new Client({connectionString:process.env.F202_TEST_DATABASE_URL}); await c.connect(); await c.query("CREATE DATABASE relish_f204_ci"); await c.end();'
+        env:
+          F202_TEST_DATABASE_URL: postgresql://postgres:f202-disposable-test-only@127.0.0.1:5432/relish_f202_ci
+      - run: npm run check:foundation:access
+        env:
+          F204_TEST_DATABASE_URL: postgresql://postgres:f202-disposable-test-only@127.0.0.1:5432/relish_f204_ci

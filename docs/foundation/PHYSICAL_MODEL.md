@@ -1,6 +1,6 @@
 # F-201: physical foundation model
 
-Date: 2026-11-04 (Australia/Melbourne). Review baseline: development `d789464b67dd36524e637e8c35f3610f5ffce278`, which merged PR #13. Status: physical specification implemented by F-202 on a feature branch, with isolated rehearsal evidence in [F202_INVARIANTS.md](F202_INVARIANTS.md). The models now exist in Prisma on that branch; no target deployment or user activation is implied. This completes the physical-design portion of F-201; target-database inventory remains unverified as described in [DEPENDENCY_INVENTORY.md](DEPENDENCY_INVENTORY.md).
+Date: 2026-11-04 (Australia/Melbourne). Review baseline: development `d789464b67dd36524e637e8c35f3610f5ffce278`, which merged PR #13. Status: physical specification implemented by F-202, merged through PR #15 with operator-confirmed DEV deployment, with isolated rehearsal evidence in [F202_INVARIANTS.md](F202_INVARIANTS.md). The models exist in development; no user activation is implied. This completes the physical-design portion of F-201; operator-reported DEV inventory and restoration evidence are recorded in [CURRENT_STATE](../CURRENT_STATE.md).
 
 ## Decisions fixed for F-202
 
@@ -105,7 +105,7 @@ Account deletion suspends enrolment and locks the vault first, cancels relevant 
 
 ## Routing and service contracts for F-203/F-204
 
-No enrolment row: existing legacy path. PREPARED: internal proof only, public routes still legacy. ACTIVE: new People/capture/notes path. SUSPENDED: reject new-domain writes and allow only separately authorised recovery reads; never fall back to stale legacy storage. Transition increments epoch under lock; in-flight writes recheck state/epoch in their transaction. Brokerage and existing voice sessions remain legacy by route/workflow, even for an ACTIVE owner. Persist each future foundation job's domain, vault and epoch; existing Network callbacks must not guess from the user's current UI route.
+No enrolment row: existing legacy path. PREPARED: internal proof only, public routes still legacy; automatic legacy identity claims are suppressed from preparation onward (F-203). ACTIVE: new People/capture/notes path. SUSPENDED: reject new-domain writes and allow only separately authorised recovery reads; never fall back to stale legacy storage. Transition increments epoch under lock; in-flight writes recheck state/epoch in their transaction. Brokerage and existing voice sessions remain legacy by route/workflow, even for an ACTIVE owner. Persist each future foundation job's domain, vault and epoch; existing Network callbacks must not guess from the user's current UI route.
 
 New-account enrolment is created from an explicit server rollout policy or server-validated invitation before any legacy claim side effect. Existing accounts require controlled cutover if private records exist. Resolve public capture destination from published Profile.userId plus persisted enrolment, never visitor-supplied cohort data. Capture into a foundation vault is a narrowly scoped intake operation, not general owner impersonation. Suspended destination returns a recoverable unavailable response.
 

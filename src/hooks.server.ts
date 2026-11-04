@@ -18,6 +18,7 @@ import { sessionCookieConfig } from '$lib/cookies';
 import { readSessionToken, getSessionFromCookie } from '$lib/auth';
 import { runWithWorkspaceCustody } from '$lib/server/core/contextSpace';
 import { prisma } from '$lib/db';
+import { requireLegacyPeopleDomain } from '$lib/server/foundation/provisioning';
 import {
   contextDomainForPathname,
   contextSelectionCookieName,
@@ -63,6 +64,8 @@ export const handle: Handle = async ({ event, resolve }) => {
       if (!account) throw error(401, 'Account no longer exists.');
       event.locals.user = { id: result.user.id, role: account.role };
       event.locals.capabilities = effectiveCapabilities(account.role, account.capabilityGrants.map(g => g.capability));
+      // F-203: block legacy private routing before resolving custody; Brokerage/voice stay legacy.
+      if (event.locals.contextDomainKey === 'private') await requireLegacyPeopleDomain(result.user.id);
       // SECURITY: The cookie is only a preference. The resolver rechecks owner and route domain.
       const preferredContextSpaceId = event.cookies.get(contextSelectionCookieName(event.locals.contextDomainKey));
       const resolvedContext = await resolveContextSpaceForDomain(prisma, {

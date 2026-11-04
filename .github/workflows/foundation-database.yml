@@ -5,6 +5,11 @@ on:
     branches: [development]
     paths:
       - 'prisma/**'
+      - 'src/lib/**'
+      - 'src/routes/auth/**'
+      - 'src/routes/api/auth/**'
+      - 'src/routes/api/guest/claim-linkedin/**'
+      - 'src/hooks.server.ts'
       - 'tests/foundation/**'
       - 'package*.json'
       - '.github/workflows/foundation-database.yml'
@@ -44,3 +49,11 @@ jobs:
       - run: node --test tests/foundation/f202-concurrency.test.mjs
         env:
           F202_TEST_DATABASE_URL: postgresql://postgres:f202-disposable-test-only@127.0.0.1:5432/relish_f202_ci
+
+      # Use a separate empty database so F-202 fixtures cannot mask provisioning errors.
+      - run: node --input-type=module -e 'import {Client} from "pg"; const c=new Client({connectionString:process.env.F202_TEST_DATABASE_URL}); await c.connect(); await c.query("CREATE DATABASE relish_f203_ci"); await c.end();'
+        env:
+          F202_TEST_DATABASE_URL: postgresql://postgres:f202-disposable-test-only@127.0.0.1:5432/relish_f202_ci
+      - run: npm run check:foundation:provisioning
+        env:
+          F203_TEST_DATABASE_URL: postgresql://postgres:f202-disposable-test-only@127.0.0.1:5432/relish_f203_ci

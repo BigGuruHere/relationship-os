@@ -1,6 +1,6 @@
 # Foundation implementation and user rollout
 
-Updated: 2026-11-04. Stage 1 documentation merged via PR #13 (`d789464`). F-201 design/source inventory merged via PR #14 (`c3eb501`); target inventory remains unverified. F-202 additive schema and isolated rehearsal are implemented on `feature/f202-foundation-schema-20261104`, pending merge. Auth isolation, domain services and stages 3-7 remain planned. Work items below are repository backlog identifiers, not GitHub issue numbers or claims of implementation.
+Updated: 2026-11-05. F-201 merged via PR #14; DEV inventory/restore evidence is recorded in CURRENT_STATE. F-202 merged via PR #15 (`2d6d1a3`) with operator-confirmed DEV deployment and smoke checks. F-203 is implemented on `feature/f203-provisioning-isolation-20261105`, pending review/merge/deployment. Domain repositories and stages 3-7 remain planned. Backlog identifiers are not GitHub issue numbers.
 
 ## Release sequence and evidence gates
 
@@ -33,11 +33,13 @@ F-201 now specifies physical naming, existing Person compatibility, subject-refe
 
 Physical decisions are now specified in [PHYSICAL_MODEL.md](PHYSICAL_MODEL.md): retain shared User and legacy Person, use a new private vault and typed subject registry, separate perspectives and evidence versions, enforce compound custody FKs and explicit SQL invariants, and isolate routing through server-side enrolment. The [dependency inventory](DEPENDENCY_INVENTORY.md) identifies auth side effects, default-space triggers, ORM guard coverage, UI adapters, legacy jobs and data ownership.
 
-F-201 physical design/source inventory: merged via PR #14, `c3eb501`. Actual database counts, migration parity and backup evidence: unavailable, not completed. The read-only aggregate query is prepared for an authorised target. No target database was queried or changed. This does not block isolated additive implementation, but blocks target migration/cutover until the inventory and anomalies are assessed.
+F-201 design/source inventory merged via PR #14. Operator supplied DEV inventory, migration parity and snapshot/restore rehearsal; see [CURRENT_STATE](../CURRENT_STATE.md). Three legacy Contact links reference missing accounts; no automatic repair or reuse is authorized.
 
-F-202 now implements the 15 tables and SQL invariants, without grants, account-claim tables, embeddings, backfill or route activation. See [the invariant manifest and rehearsal](F202_INVARIANTS.md): 23 foundation tests and 28 focused regressions pass, with zero Svelte errors/warnings. Real multi-session concurrency and target DB evidence remain release gates.
+F-202 merged via PR #15 at `2d6d1a3`. Its 15 additive tables passed 23 embedded schema and 25 PostgreSQL 18.6 concurrency tests. Operator confirmed DEV migration/deployment and existing login/People/share flows. Exact running SHA is not independently attested. No PROD rollout or foundation cohort activation.
 
-Next implementation: **F-203 isolate account provisioning**. F-203 auth isolation and F-204 access guards remain mandatory before any user-facing writer. Keep stage 2 open until F-206 acceptance passes.
+F-203 implementation and acceptance evidence: [F203_PROVISIONING.md](F203_PROVISIONING.md). Shared authentication checks and internal idempotent preparation are implemented on the feature branch. All enrollment states suppress legacy automatic claims; private routing fails closed for ACTIVE/SUSPENDED pending new adapters. No new migration, public enrollment entry point or activated users. PostgreSQL 18.6 CI run 41898613496 passed all 21 F-203 tests, including real overlapping transactions, on `6fe087e`. PR #16 is open; integration/deployment remain pending.
+
+Next implementation: **F-204 domain policy and repositories** after F-203 acceptance. Keep stage 2 open until F-206 passes; no user-facing foundation writer before custody/epoch guards.
 
 ## Stage 3 backlog: simplest usable release
 
@@ -72,6 +74,6 @@ Use the [developer guide](DEVELOPER_GUIDE.md) for PR evidence. Stages 4-7 get a 
 | Stage | Designed | Implemented | Validated | Merged | DEV / PROD |
 | --- | --- | --- | --- | --- | --- |
 | 1 | Documentation package | Documentation only | 37 relative links and diff checks passed in PR #13 | PR #13, `d789464` | No deployment applicable |
-| 2 | F-201 merged; target DB inventory pending | F-202 additive schema on branch; no route activation | 23 isolated foundation tests, 28 regressions, Svelte check; standard-server concurrency pending | F-202 pending | Not deployed |
+| 2 | F-201 merged; DEV operator inventory recorded | F-202 schema; F-203 provisioning on feature branch | F-202: 23 schema + 25 concurrency; F-203: 21 tests including concurrency; baseline audit exceptions linked above | F-202 PR #15; F-203 PR #16 pending | F-202 DEV operator-confirmed; F-203 not deployed; PROD unverified |
 | 3 | Backlog and gates | New-domain path not implemented; legacy UI exists | No new-domain validation | No | Not deployed |
 | 4-7 | Direction and gates only | No | No | No | Not deployed |

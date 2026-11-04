@@ -125,3 +125,9 @@ When a branch is merged, tested or deployed, update the corresponding status and
 ## F-202 readiness follow-up
 
 PR #15 remains open and unmerged. A disposable PostgreSQL 17 CI workflow now covers real concurrent database sessions; [CI run 41750250776](https://github.com/BigGuruHere/relationship-os/actions/runs/41750250776) passed on commit `bae36c2`: 23 embedded schema tests and 25 concurrent-session tests on PostgreSQL 17.11, zero failures. Target inventory, migration-history parity, target-version confirmation and backup/restore remain outstanding before migration. No DEV/PROD connection, migration or deployment has occurred. See [F-202 validation](foundation/F202_INVARIANTS.md).
+
+## Development database readiness, 2026-11-04
+
+Operator-provided read-only metadata reports PostgreSQL 18.6 and no Foundation tables. All 106 recorded migrations finished successfully, with no rolled-back or unfinished attempts. All migration names exist in the PR and the only pending migration is F-202. Of 106 checksums, 105 match repository bytes exactly; `20261031110000_stage8_22_unified_policy_sms` matches the repository SQL with CRLF line endings exactly (database checksum `244a9c36d550297e9a7095667b6fdcd0d82a57ef3d903c3527777d81be61e23a`). This is an identified line-ending difference, not evidence of a SQL content change. No migration file or database history has been rewritten.
+
+The CI service now targets PostgreSQL 18.6; execution pending. This tests standard PostgreSQL, not Neon-specific configuration. Target aggregate inventory, schema drift/custom object review and backup/restore remain unverified. PR #15 remains unmerged; no target database mutation has occurred.

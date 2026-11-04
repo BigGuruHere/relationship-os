@@ -59,7 +59,7 @@ Use Node 22 and the repository's current check/test commands. Target behaviour a
 
 Leave unknown fields explicitly unverified. No automatic deployment, migration execution, external messaging or participant invitation follows from completing this checklist.
 
-## F-203 provisioning boundary (feature branch)
+## F-203 provisioning boundary (merged, DEV operator-confirmed)
 
 See [account provisioning isolation](F203_PROVISIONING.md) for transaction locks, enrollment-state behavior and acceptance evidence. All auth paths reuse `createSession`; no automatic enrollment is enabled. Future enrollment transitions must use the same account advisory lock. PREPARED suppresses automatic legacy claims while retaining legacy public routing. ACTIVE/SUSPENDED private routes fail closed until the foundation adapters are available. F-204 must add repository authorization and transactional state/epoch checks before activation.
 

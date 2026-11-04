@@ -124,4 +124,4 @@ When a branch is merged, tested or deployed, update the corresponding status and
 
 ## F-202 readiness follow-up
 
-PR #15 remains open and unmerged. A disposable PostgreSQL 17 CI workflow now covers real concurrent database sessions; execution results are pending. Target inventory, migration-history parity, target-version confirmation and backup/restore remain outstanding before migration. No DEV/PROD connection, migration or deployment has occurred. See [F-202 validation](foundation/F202_INVARIANTS.md).
+PR #15 remains open and unmerged. A disposable PostgreSQL 17 CI workflow now covers real concurrent database sessions; [CI run 41750250776](https://github.com/BigGuruHere/relationship-os/actions/runs/41750250776) passed on commit `bae36c2`: 23 embedded schema tests and 25 concurrent-session tests on PostgreSQL 17.11, zero failures. Target inventory, migration-history parity, target-version confirmation and backup/restore remain outstanding before migration. No DEV/PROD connection, migration or deployment has occurred. See [F-202 validation](foundation/F202_INVARIANTS.md).

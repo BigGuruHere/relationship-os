@@ -23,7 +23,7 @@ The generated Prisma client exposes these models, but it is NOT an application a
 | Enrolment staleness | `f202_enrollment_epoch`, `f202_enrollment_epoch_guard` | State changes require higher epoch; epoch cannot decrease |
 | Replay uniqueness | Source ingest key and segment anchor UNIQUE keys | Duplicate source/segment key rejected; API payload equality handling remains F-204/F-205 work |
 | Support target and uniqueness | `f202_support_shape`, partial `f202_support_segment` / `f202_support_input` | Missing/both inputs, self-input and duplicate edges rejected |
-| Derivation acyclicity | `f202_graph_lock`, `f202_no_cycle`, ordered triggers | Direct SQL cycles rejected; genuine simultaneous-session stress remains a standard PostgreSQL gate |
+| Derivation acyclicity | `f202_graph_lock`, `f202_no_cycle`, ordered triggers | Direct SQL cycles rejected; 24 overlapping-session race cases passed on PostgreSQL 17.11; target-version parity remains required |
 | Complete statement versions | Deferred `f202_complete` triggers and `f202_assert_complete` | Missing aboutness/support fails at COMMIT; valid transactional construction succeeds; final-edge removal and unsupported reactivation rejected |
 | Context associations | `f202_context_target`, partial `f202_context_segment` / `f202_context_version` | Missing target/duplicate association rejected; no grants inferred |
 | Restrictive erasure | ON DELETE RESTRICT references | User deletion blocked while foundation records exist; ordered removal of a DELETING statement retains independent evidence |
@@ -60,7 +60,7 @@ The fixture includes two owners, private and business custody, public profile, c
 
 An additional empty-database replay of historical migrations applied six old migrations then stopped at `20251008141349_make_password_hash_nullable_for_oauth` with missing index `interaction_vec_hnsw` (SQLSTATE 42704). This predates F-202. No old migration was edited. Therefore the rehearsal uses the current schema plus the actual default-space trigger, not a claim that all 106 historical migrations or custom triggers replay cleanly from scratch. A target database's actual applied history and custom constraints still require inspection.
 
-PGlite has one underlying connection. Its socket multiplexer is adequate for the sequential Prisma smoke test, but does not validate true multi-session locking or concurrent transaction races. Before a target migration/cutover, run the following on an authorised isolated standard PostgreSQL instance matching the target version:
+PGlite has one underlying connection. Its socket multiplexer is adequate for the sequential Prisma smoke test, but does not validate true multi-session locking or concurrent transaction races. The CI follow-up below now covers cases 1-4 on PostgreSQL 17.11. Confirm the target version and repeat on that version if different; case 5 remains outstanding before target migration/cutover:
 
 1. Two writers add opposite derivation edges. At most one commits; the other rejects a cycle or retries serialization before reevaluation.
 2. Two writers remove different supporting edges. At least one support remains for every ACTIVE version; one writer must fail if both removals would orphan it.
@@ -68,7 +68,7 @@ PGlite has one underlying connection. Its socket multiplexer is adequate for the
 4. Repeat those cases at READ COMMITTED and REPEATABLE READ, and retry 40001/deadlocks through the future service contract.
 5. Run target aggregate inventory, migration-history parity, backup/restore and no-new-legacy-side-effects checks before activating routes.
 
-These are explicit remaining release gates. They do not require user activation or live private data to test. F-202 has shipped schema and isolated sequential integrity evidence; stage 2 remains open through F-203 to F-206.
+Target readiness and target-version parity remain explicit release gates. They do not require user activation or live private data to test. F-202 has shipped schema and isolated sequential integrity evidence; stage 2 remains open through F-203 to F-206.
 
 ## Migration and rollback instructions
 
@@ -87,4 +87,4 @@ The migration wraps DDL and invariants in one transaction, so failed application
 
 PR #15 remains unmerged. The [PostgreSQL CI workflow](../../.github/workflows/foundation-database.yml) runs the embedded rehearsal and [concurrent-session tests](../../tests/foundation/f202-concurrency.test.mjs) on a disposable PostgreSQL 17 service. Four race cases repeat three times at READ COMMITTED and REPEATABLE READ. Each case verifies that the second writer actually blocks on the first; serialization failures are retried to verify graph invariants against a fresh snapshot. The driver pg 8.16.3 is installed only in CI without changing the application lockfile.
 
-Status: execution pending. This is not target-version parity, target inventory, migration-history review or backup/restore evidence. No target credentials are used and no DEV/PROD migration is authorized by this workflow. The target readiness runner remains unpublished pending validation.
+Status: passed on 2026-11-04. [CI run 41750250776](https://github.com/BigGuruHere/relationship-os/actions/runs/41750250776) tested commit `bae36c2c0838e9f9f67bd2d754e0b9bb7c61fa46`: 23 embedded rehearsal tests and 25 concurrent-session tests (24 subtests plus parent), zero failures, PostgreSQL 17.11. Opposite edges and final-support removals rejected with 23514 at READ COMMITTED; REPEATABLE READ rejected with 40001 and fresh-transaction retries rejected with 23514. Competing versions and ingestion keys rejected with 23505. This is not target-version parity, target inventory, migration-history review or backup/restore evidence. No target credentials are used and no DEV/PROD migration is authorized by this workflow. The target readiness runner remains unpublished pending validation.

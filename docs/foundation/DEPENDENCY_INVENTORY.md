@@ -9,7 +9,7 @@ The source inventory below covers foundation-relevant models, authority enforcem
 | Evidence | Result |
 | --- | --- |
 | Development source and migration history | Inspected at the baseline above |
-| New-domain schema | F-202 implements the specification on a feature branch; see [rehearsal](F202_INVARIANTS.md). Target applied state unverified. |
+| New-domain schema | F-202 merged via PR #15; operator-confirmed DEV deployment/migration and rehearsal are recorded in [the evidence](F202_INVARIANTS.md). PROD remains unverified. |
 | DEV/PROD schema and migration parity | Unverified |
 | User/Profile/Contact/Interaction counts | Unverified |
 | Private vs Brokerage custody volumes | Unverified |

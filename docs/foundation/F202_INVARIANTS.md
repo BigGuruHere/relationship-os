@@ -1,6 +1,6 @@
 # F-202 database invariants and rehearsal
 
-Date: 2026-11-04. Branch: `feature/f202-foundation-schema-20261104`, based on development `c3eb501dfaf9eb83339b127cfff570ab0b365646` (PR #14 merge). Status: implemented and validated in an isolated embedded PostgreSQL rehearsal; not merged, not deployed to DEV/PROD, and not activated for users.
+Date: 2026-11-04. Branch: `feature/f202-foundation-schema-20261104`, based on development `c3eb501dfaf9eb83339b127cfff570ab0b365646` (PR #14 merge). Status: merged via PR #15 at `2d6d1a3`; operator confirmed DEV migration/deployment and login, My People and sharing smoke checks on 2026-11-05. Exact running Railway SHA is not independently attested. No PROD deployment or foundation user activation is claimed.
 
 ## Implementation boundary
 
@@ -105,7 +105,7 @@ Inventory is aggregate evidence, not a complete schema-drift/security audit. Rec
 
 ## F-202 rollout readiness, 2026-11-05
 
-PR #15 remains open against development. Ready for review and controlled Railway development rollout using committed migrations, subject to confirming the service's Git branch and database target. No development/production parent migration or deployment is confirmed.
+PR #15 merged into development at `2d6d1a3`. Operator confirmed Railway DEV deployment/migration and existing application smoke checks succeeded; PROD remains unverified.
 
 - PostgreSQL 18.6 CI: 23 embedded schema tests and 25 concurrent-session tests passed ([run](https://github.com/BigGuruHere/relationship-os/actions/runs/41753717094)).
 - Operator-reported development inventory: 106 completed migrations, no unfinished/rolled-back attempts; only F-202 pending. 105 checksums match bytes exactly, one matches CRLF line endings. Three legacy Contact links reference missing accounts; no custody mismatches. No automatic repair or reuse of these links.
@@ -114,6 +114,6 @@ PR #15 remains open against development. Ready for review and controlled Railway
 - Prisma `migrate deploy` on that restored branch applied only F-202; `migrate status` reported up to date. Subsequent operator checks: 15 tables, zero enrollments/vaults and the same three legacy counts.
 - Operator chose `npm run start:with-migrations` for Railway development and reports adding it. This existing script runs `prisma migrate deploy && node scripts/start-relish.mjs`. The historical shadow-database replay issue remains unresolved, but does not block the rehearsed deploy workflow. Do not require `migrate dev` for this rollout.
 
-These are operator-reported Neon results, not direct agent database access or a full data-equivalence/schema-drift audit. Confirm Railway development tracks Git development and targets the intended Neon development database before merging. Retain the snapshot through verification; after deployment check migration logs, database counts and existing application flows. See [current state](../CURRENT_STATE.md).
+These are operator-reported Neon results, not direct agent database access or a full data-equivalence/schema-drift audit. DEV migration/deployment and smoke success are operator-reported. Exact running SHA and post-deployment parent counts have not been independently inspected. Retain the snapshot under the agreed retention policy. See [current state](../CURRENT_STATE.md).
 
 The initial SQL rehearsal branch was accidentally created from production and returned 8 Users / 223 Contacts / 181 Interactions. It was not accepted as development evidence. The operator then created the development child and reported the matching counts above. Neither child SQL rehearsal registered F-202 in Prisma history; the separately restored snapshot branch was used for the successful Prisma rehearsal. No application endpoint switch was requested. The observed development history window was six hours; snapshot creation and separate-branch restoration were reported, not restoration over the active development database.

@@ -4,7 +4,7 @@ Status: living snapshot updated **2026-11-03**. Based on GitHub `BigGuruHere/rel
 
 ## F-203 account provisioning isolation (feature branch, 2026-11-05)
 
-Implemented on `feature/f203-provisioning-isolation-20261105` from development `2d6d1a3`, pending review/merge/deployment. Shared authentication now checks server-managed enrollment before issuing sessions. Internal idempotent preparation creates a private vault/self subject; no shipped signup or route invokes enrollment. Enrolled accounts skip legacy automatic claims; ACTIVE/SUSPENDED private People/capture paths fail closed pending their new adapters. Brokerage and voice remain on their existing model. No new migration or cohort activation. See [implementation and acceptance](foundation/F203_PROVISIONING.md).
+Implemented on `feature/f203-provisioning-isolation-20261105` from development `2d6d1a3`, pending review/merge/deployment. Shared authentication now checks server-managed enrollment before issuing sessions. Internal idempotent preparation creates a private vault/self subject; no shipped signup or route invokes enrollment. Enrolled accounts skip legacy automatic claims; ACTIVE/SUSPENDED private People/capture paths fail closed pending their new adapters. Brokerage and voice remain on their existing model. No new migration or cohort activation. PR #16 is open. PostgreSQL 18.6 CI run 41898613496 passed all 21 F-203 tests, including concurrency, on `6fe087e`; Svelte check has zero errors/warnings. Six older audit failures reproduce on unchanged development and are documented. See [implementation and acceptance](foundation/F203_PROVISIONING.md).
 
 ## F-202 additive foundation schema (merged, DEV confirmed)
 

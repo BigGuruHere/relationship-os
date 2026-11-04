@@ -25,6 +25,8 @@ function createPrismaClient() {
 }
 
 type AppPrismaClient = ReturnType<typeof createPrismaClient>;
+// Preserve the custody extension's types inside shared interactive transactions.
+export type AppTransactionClient = Omit<AppPrismaClient, '$connect' | '$disconnect' | '$on' | '$transaction' | '$use' | '$extends'>;
 
 const globalForPrisma = globalThis as unknown as {
   prisma?: AppPrismaClient;

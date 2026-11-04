@@ -7,7 +7,8 @@
 // - Uses deterministic HMAC indexes - never handles plaintext PII in WHERE clauses
 // - Never trusts client provided owner ids - only acts on leads found by secure indexes
 
-import { prisma } from '$lib/db';
+import type { AppTransactionClient } from '$lib/db';
+import { withLegacyAccountClaims } from '$lib/server/foundation/provisioning';
 import { buildIndexToken } from '$lib/crypto';
 import { createReciprocalContactIfMissing } from './reciprocal';
 import { requireUserPersonId } from '$lib/server/core/identity';
@@ -45,11 +46,14 @@ export async function linkLeadsForUserFlexible(
 ): Promise<{ claimedLeadIds: string[]; touchedContactIds: string[]; owners: string[] }> {
   // SECURITY: Authentication callbacks can begin without request custody and only establish the
   // user during the request. Enter the claimant's current/default ContextSpace explicitly here.
-  const contextSpaceId = await requireConfiguredDefaultContextSpaceIdForOwner(prisma as any, userId);
-  return runWithWorkspaceCustody({ userId, contextSpaceId }, () => linkLeadsForUserFlexibleInCustody(userId, opts));
+  return withLegacyAccountClaims(userId, async tx => {
+    const contextSpaceId = await requireConfiguredDefaultContextSpaceIdForOwner(tx, userId);
+    return runWithWorkspaceCustody({ userId, contextSpaceId }, () => linkLeadsForUserFlexibleInCustody(tx, userId, opts));
+  }, { claimedLeadIds: [], touchedContactIds: [], owners: [] });
 }
 
 async function linkLeadsForUserFlexibleInCustody(
+  tx: AppTransactionClient,
   userId: string,
   opts: { email?: string; phone?: string; linkedinUrl?: string }
 ): Promise<{ claimedLeadIds: string[]; touchedContactIds: string[]; owners: string[] }> {
@@ -66,7 +70,7 @@ async function linkLeadsForUserFlexibleInCustody(
   }
 
   // IT: find pending leads that match any of the provided indexes
-  const leads = await prisma.lead.findMany({
+  const leads = await tx.lead.findMany({
     where: {
       status: 'PENDING',
       OR: [
@@ -83,7 +87,7 @@ async function linkLeadsForUserFlexibleInCustody(
   }
 
   // IT: Stage 8.1 links claimed Contacts to the canonical Person for this registered user as well as linkedUserId.
-  const personId = await requireUserPersonId(userId);
+  const personId = await requireUserPersonId(userId, tx);
 
   // IT: Claim each existing Contact in its ORIGINAL custody. Lead is account-level
   // bookkeeping and stores contactId; resolving a default space here would be wrong.
@@ -94,7 +98,7 @@ async function linkLeadsForUserFlexibleInCustody(
     // SECURITY: Read ONLY custody metadata using a parameterised query; the scoped Prisma
     // Contact API deliberately rejects cross-owner reads from the claimant's request.
     // No personal data or Contact fields are fetched or exposed.
-    const metadata = await prisma.$queryRaw<Array<{ contextSpaceId: string }>>`
+    const metadata = await tx.$queryRaw<Array<{ contextSpaceId: string }>>`
       SELECT "contextSpaceId" FROM "Contact"
       WHERE "id" = ${lead.contactId} AND "userId" = ${lead.ownerId} LIMIT 1
     `;
@@ -104,42 +108,44 @@ async function linkLeadsForUserFlexibleInCustody(
 
   // SECURITY: Lead itself is account-level claim bookkeeping. Updating the prior owner's Contact is
   // contextual and therefore enters that owner's custody only through the LEAD_CLAIM boundary.
-  await prisma.$transaction(async (tx) => {
-    for (const lead of leads) {
-      await tx.lead.update({
-        where: { id: lead.id },
-        data: { status: 'CLAIMED', claimedByUserId: userId }
-      });
+  for (const lead of leads) {
+    await tx.lead.update({
+      where: { id: lead.id },
+      data: { status: 'CLAIMED', claimedByUserId: userId }
+    });
 
-      if (lead.contactId) {
-        const targetContextSpaceId = contactContexts.get(lead.id);
-        if (!targetContextSpaceId) throw new Error(`Missing resolved ContextSpace for lead owner ${lead.ownerId}.`);
+    if (lead.contactId) {
+      const targetContextSpaceId = contactContexts.get(lead.id);
+      if (!targetContextSpaceId) throw new Error(`Missing resolved ContextSpace for lead owner ${lead.ownerId}.`);
 
-        await runWithCrossOwnerWorkspaceCustody(
-          {
-            sourceUserId: userId,
-            targetUserId: lead.ownerId,
-            targetContextSpaceId,
-            reason: 'LEAD_CLAIM'
-          },
-          () => tx.contact.update({
-            where: { id: lead.contactId, userId: lead.ownerId, contextSpaceId: targetContextSpaceId },
-            data: { linkedUserId: userId, personId }
-          })
-        );
-      }
+      await runWithCrossOwnerWorkspaceCustody(
+        {
+          sourceUserId: userId,
+          targetUserId: lead.ownerId,
+          targetContextSpaceId,
+          reason: 'LEAD_CLAIM'
+        },
+        () => tx.contact.update({
+          where: { id: lead.contactId, userId: lead.ownerId, contextSpaceId: targetContextSpaceId },
+          data: { linkedUserId: userId, personId }
+        })
+      );
     }
-  });
+  }
 
   const claimedLeadIds = leads.map((l) => l.id);
   const touchedContactIds = leads.map((l) => l.contactId).filter(Boolean) as string[];
 
   // IT: create a reciprocal Contact once per owner in the claimant's active custody.
   for (const ownerId of owners) {
+    // Preserve best-effort reciprocal writes without poisoning the enclosing transaction.
+    await tx.$executeRawUnsafe('SAVEPOINT f203_reciprocal');
     try {
-      await createReciprocalContactIfMissing(userId, ownerId);
+      await createReciprocalContactIfMissing(userId, ownerId, tx);
     } catch {
-      // IT: never block login on reciprocal failures
+      await tx.$executeRawUnsafe('ROLLBACK TO SAVEPOINT f203_reciprocal');
+    } finally {
+      await tx.$executeRawUnsafe('RELEASE SAVEPOINT f203_reciprocal');
     }
   }
 

@@ -11,6 +11,7 @@
 
 import type { Cookies } from '@sveltejs/kit';
 import { prisma } from '$lib/db';
+import { provisionAccountForSession } from '$lib/server/foundation/provisioning';
 import * as argon2 from 'argon2'; // Argon2id by default from this lib
 import { randomBytes, createHmac, timingSafeEqual } from 'crypto';
 import { dev } from '$app/environment'; // kept for legacy helpers
@@ -70,6 +71,8 @@ export async function verifyPassword(hash: string, password: string): Promise<bo
 
 // Create a new session for a user and return the cookie payload and expiry
 export async function createSession(userId: string) {
+  // F-203: credential verification precedes this shared boundary; no automatic enrollment.
+  await provisionAccountForSession(userId);
   // Token is random 32 bytes, we store a hash of it in DB so a leaked DB cannot impersonate
   const rawToken = randomBytes(32).toString('base64url');
   const tokenHash = createHmac('sha256', SESSION_COOKIE_SECRET).update(rawToken).digest('base64url');

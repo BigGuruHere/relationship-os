@@ -2,6 +2,7 @@
 import { createHash } from 'node:crypto';
 import { error, redirect } from '@sveltejs/kit';
 import { prisma } from '$lib/db';
+import { requireLegacyPeopleDomain } from '$lib/server/foundation/provisioning';
 import { encryptContextSpaceDisplayName } from './contextSpaceDirectory';
 import { createWorkspaceCoreAccess } from './accessPolicy';
 import { PRIVATE_DOMAIN_KEY } from './contextDomain';
@@ -9,6 +10,8 @@ import { runWithWorkspaceCustody } from './contextSpace';
 import { findCoreContact } from './relationshipRepository';
 
 export async function privatePeopleSpace(userId: string) {
+  // Includes anonymous capture: the caller supplies the server-resolved profile owner.
+  await requireLegacyPeopleDomain(userId);
   const rows = await prisma.contextSpace.findMany({ where: { ownerUserId: userId, domainKey: PRIVATE_DOMAIN_KEY, kind: 'WORKSPACE' }, select: { id: true }, take: 2 });
   if (rows.length > 1) throw error(409, 'Multiple private storage homes require review.');
   return rows[0] ?? null;

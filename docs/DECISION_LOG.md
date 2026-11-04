@@ -55,3 +55,7 @@ Earlier entries above preserve the historical decisions; D-019 controls their ex
 ## How to add a decision
 
 Record the date, choice, reason, what it supersedes, affected code/interfaces, security/data implications, and whether it is merely approved or also implemented and validated. For a major schema or custody choice, use an additional focused architecture-decision document and link it here.
+
+## 2026-11-05: Foundation preparation isolates automatic legacy claims
+
+F-203 implements the accepted separation of account identity from private-domain enrollment. PREPARED is already an internal foundation cohort for automatic identity-claim side effects: it suppresses legacy lead/reciprocal-contact claims even though its public People/capture routing remains legacy until activation. This avoids acquiring legacy identity links while testing the new domain. No signup automatically prepares or activates an account. See [F-203](foundation/F203_PROVISIONING.md) for implementation status and transaction/rollback obligations.

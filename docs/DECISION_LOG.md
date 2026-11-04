@@ -59,3 +59,7 @@ Record the date, choice, reason, what it supersedes, affected code/interfaces, s
 ## 2026-11-05: Foundation preparation isolates automatic legacy claims
 
 F-203 implements the accepted separation of account identity from private-domain enrollment. PREPARED is already an internal foundation cohort for automatic identity-claim side effects: it suppresses legacy lead/reciprocal-contact claims even though its public People/capture routing remains legacy until activation. This avoids acquiring legacy identity links while testing the new domain. No signup automatically prepares or activates an account. See [F-203](foundation/F203_PROVISIONING.md) for implementation status and transaction/rollback obligations.
+
+## 2026-11-05: Foundation access is an expiring server capability
+
+F-204 implements the accepted owner-private boundary with runtime-issued handles and transaction-time state/epoch checks. Relationship membership, attributed perspectives, semantic contexts and serialized job data cannot grant access. All new-domain services use the shared guarded Prisma client; legacy custody remains separate. Prepared rehearsal has no route caller. Evidence/AI/disclosure capabilities stay denied until implemented and tested in their own stages. See [F-204](foundation/F204_ACCESS.md).

@@ -1,6 +1,6 @@
 # F-203: Account provisioning isolation
 
-Updated: 2026-11-05. Implemented on `feature/f203-provisioning-isolation-20261105`, based on development `2d6d1a3`. Pending review, merge and DEV deployment. No cohort activation.
+Updated: 2026-11-05. Implemented on `feature/f203-provisioning-isolation-20261105`, based on development `2d6d1a3`. Merged via PR #16 at `bdd5ef8`. Operator confirmed DEV login, My People and share checks passed on 2026-11-05; exact running Railway SHA is not independently attested. No cohort activation.
 
 ## Existing capability and change
 

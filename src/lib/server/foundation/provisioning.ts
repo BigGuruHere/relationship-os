@@ -4,20 +4,23 @@ import { randomUUID } from 'node:crypto';
 import type { AppTransactionClient } from '$lib/db';
 import { prisma } from '$lib/db';
 import { encrypt } from '$lib/crypto';
+import { runFoundationBoundary } from './internal';
 
 export type AccountDomain = 'LEGACY' | 'PREPARED' | 'ACTIVE' | 'SUSPENDED';
 
 export async function accountDomain(userId: string): Promise<AccountDomain> {
-	const row = await prisma.foundationEnrollment.findUnique({
-		where: { userId },
-		select: { state: true }
-	});
+	const row = await runFoundationBoundary({ ownerUserId: userId, mode: 'RESOLVE' }, () =>
+		prisma.foundationEnrollment.findUnique({
+			where: { userId },
+			select: { state: true }
+		})
+	);
 	return row?.state ?? 'LEGACY';
 }
 
 // Serialize preparation and automatic claims, including the first enrollment insert.
 // Future activation/suspension services must take this same lock before transitioning.
-async function lockAccount(tx: AppTransactionClient, userId: string) {
+export async function lockFoundationAccount(tx: AppTransactionClient, userId: string) {
 	if (!userId) throw new Error('Missing authenticated account.');
 	await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`foundation:account:${userId}`}, 0))`;
 }
@@ -64,46 +67,50 @@ async function provisionPrepared(tx: AppTransactionClient, userId: string) {
 // Internal preparation primitive, not a general API or an enrollment authorizer.
 // Call only from a separately approved server rollout/invitation workflow. No callers ship in F-203.
 export async function prepareFoundationAccount(userId: string) {
-	return prisma.$transaction(async (tx) => {
-		await lockAccount(tx, userId);
-		const account = await tx.user.findUnique({ where: { id: userId }, select: { id: true } });
-		if (!account) throw new Error('Account unavailable.');
-		let enrollment = await tx.foundationEnrollment.findUnique({ where: { userId } });
-		if (!enrollment)
-			enrollment = await tx.foundationEnrollment.create({ data: { userId, state: 'PREPARED' } });
-		if (enrollment.state !== 'PREPARED') throw new Error('Account is not prepared.');
-		return provisionPrepared(tx, userId);
-	});
+	return runFoundationBoundary({ ownerUserId: userId, mode: 'PROVISION' }, () =>
+		prisma.$transaction(async (tx) => {
+			await lockFoundationAccount(tx, userId);
+			const account = await tx.user.findUnique({ where: { id: userId }, select: { id: true } });
+			if (!account) throw new Error('Account unavailable.');
+			let enrollment = await tx.foundationEnrollment.findUnique({ where: { userId } });
+			if (!enrollment)
+				enrollment = await tx.foundationEnrollment.create({ data: { userId, state: 'PREPARED' } });
+			if (enrollment.state !== 'PREPARED') throw new Error('Account is not prepared.');
+			return provisionPrepared(tx, userId);
+		})
+	);
 }
 
 // All supported credential paths call createSession only after verifying identity.
 // Preparation failures block session issuance; they cannot fall through to legacy claims.
 export async function provisionAccountForSession(userId: string) {
-	return prisma.$transaction(async (tx) => {
-		await lockAccount(tx, userId);
-		const enrollment = await tx.foundationEnrollment.findUnique({ where: { userId } });
-		if (!enrollment || enrollment.state === 'SUSPENDED') return;
-		if (enrollment.state === 'PREPARED') {
-			await provisionPrepared(tx, userId);
-			return;
-		}
-		// ACTIVE accounts must already have a complete provisioned root. Never repair by switching storage.
-		const vault = await tx.foundationVault.findUnique({
-			where: { ownerUserId_kind: { ownerUserId: userId, kind: 'PRIVATE_HOME' } }
-		});
-		const self = await tx.foundationSubject.findUnique({ where: { selfUserId: userId } });
-		if (
-			!vault ||
-			vault.state !== 'ACTIVE' ||
-			!self ||
-			self.vaultId !== vault.id ||
-			self.ownerUserId !== userId ||
-			self.kind !== 'PERSON' ||
-			self.state !== 'ACTIVE'
-		) {
-			throw new Error('Foundation provisioning unavailable.');
-		}
-	});
+	return runFoundationBoundary({ ownerUserId: userId, mode: 'PROVISION' }, () =>
+		prisma.$transaction(async (tx) => {
+			await lockFoundationAccount(tx, userId);
+			const enrollment = await tx.foundationEnrollment.findUnique({ where: { userId } });
+			if (!enrollment || enrollment.state === 'SUSPENDED') return;
+			if (enrollment.state === 'PREPARED') {
+				await provisionPrepared(tx, userId);
+				return;
+			}
+			// ACTIVE accounts must already have a complete provisioned root. Never repair by switching storage.
+			const vault = await tx.foundationVault.findUnique({
+				where: { ownerUserId_kind: { ownerUserId: userId, kind: 'PRIVATE_HOME' } }
+			});
+			const self = await tx.foundationSubject.findUnique({ where: { selfUserId: userId } });
+			if (
+				!vault ||
+				vault.state !== 'ACTIVE' ||
+				!self ||
+				self.vaultId !== vault.id ||
+				self.ownerUserId !== userId ||
+				self.kind !== 'PERSON' ||
+				self.state !== 'ACTIVE'
+			) {
+				throw new Error('Foundation provisioning unavailable.');
+			}
+		})
+	);
 }
 
 // Claims are optional legacy side effects. Even PREPARED accounts must not acquire
@@ -113,15 +120,19 @@ export async function withLegacyAccountClaims<T>(
 	legacy: (tx: AppTransactionClient) => Promise<T>,
 	skipped: T
 ): Promise<T> {
-	return prisma.$transaction(
-		async (tx) => {
-			await lockAccount(tx, userId);
-			if (await tx.foundationEnrollment.findUnique({ where: { userId }, select: { userId: true } }))
-				return skipped;
-			// Use the same connection for claims and their enrollment lock, including small pools.
-			return legacy(tx);
-		},
-		{ timeout: 20000 }
+	return runFoundationBoundary({ ownerUserId: userId, mode: 'RESOLVE' }, () =>
+		prisma.$transaction(
+			async (tx) => {
+				await lockFoundationAccount(tx, userId);
+				if (
+					await tx.foundationEnrollment.findUnique({ where: { userId }, select: { userId: true } })
+				)
+					return skipped;
+				// Use the same connection for claims and their enrollment lock, including small pools.
+				return legacy(tx);
+			},
+			{ timeout: 20000 }
+		)
 	);
 }
 

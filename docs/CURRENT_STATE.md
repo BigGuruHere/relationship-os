@@ -121,3 +121,7 @@ Status: feature branch committed, not merged or deployed. Focused source regress
 ## Status maintenance
 
 When a branch is merged, tested or deployed, update the corresponding status and date here. Do not leave "in development", "not merged" or test counts frozen forever. Keep this file concise and move historical detail to stage notes or the Git history.
+
+## F-202 readiness follow-up
+
+PR #15 remains open and unmerged. A disposable PostgreSQL 17 CI workflow now covers real concurrent database sessions; execution results are pending. Target inventory, migration-history parity, target-version confirmation and backup/restore remain outstanding before migration. No DEV/PROD connection, migration or deployment has occurred. See [F-202 validation](foundation/F202_INVARIANTS.md).

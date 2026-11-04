@@ -82,3 +82,9 @@ npx prisma migrate dev
 DEV/PROD migration execution remains a separate authorised step. The application's existing `start:with-migrations` runs `prisma migrate deploy`; account for that before promoting this branch to an automatically deployed environment. Do not equate Git merge with a completed migration or verified deployment.
 
 The migration wraps DDL and invariants in one transaction, so failed application rolls back. Once applied, leave dormant additive tables in place when rolling application code back. If later stages have written foundation data, lock the new path and roll forward or execute a separately rehearsed recovery; never drop tables or fall back to stale legacy records as routine rollback.
+
+## Concurrent-session CI follow-up
+
+PR #15 remains unmerged. The [PostgreSQL CI workflow](../../.github/workflows/foundation-database.yml) runs the embedded rehearsal and [concurrent-session tests](../../tests/foundation/f202-concurrency.test.mjs) on a disposable PostgreSQL 17 service. Four race cases repeat three times at READ COMMITTED and REPEATABLE READ. Each case verifies that the second writer actually blocks on the first; serialization failures are retried to verify graph invariants against a fresh snapshot. The driver pg 8.16.3 is installed only in CI without changing the application lockfile.
+
+Status: execution pending. This is not target-version parity, target inventory, migration-history review or backup/restore evidence. No target credentials are used and no DEV/PROD migration is authorized by this workflow. The target readiness runner remains unpublished pending validation.

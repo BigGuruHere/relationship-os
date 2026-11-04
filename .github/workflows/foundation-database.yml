@@ -1,0 +1,45 @@
+# No application secrets or target database connection are used by this workflow.
+name: Foundation database checks
+on:
+  pull_request:
+    branches: [development]
+    paths:
+      - 'prisma/**'
+      - 'tests/foundation/**'
+      - 'package*.json'
+      - '.github/workflows/foundation-database.yml'
+permissions:
+  contents: read
+concurrency:
+  group: foundation-db-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+jobs:
+  postgres:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: f202-disposable-test-only
+          POSTGRES_DB: relish_f202_ci
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres -d relish_f202_ci"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npm run check:foundation:schema
+      # CI-only driver installation leaves the application dependency lock unchanged.
+      - run: npm install --no-save --package-lock=false pg@8.16.3
+      - run: node --test tests/foundation/f202-concurrency.test.mjs
+        env:
+          F202_TEST_DATABASE_URL: postgresql://postgres:f202-disposable-test-only@127.0.0.1:5432/relish_f202_ci

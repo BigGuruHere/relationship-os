@@ -72,6 +72,7 @@ test('P-303 private notes and transient draft processing', { timeout: 120000 }, 
 		const upload = await load('routes/people/api/upload-chunk/+server');
 		const poll = await load('routes/people/api/transcribe-result/+server');
 		const rawPoll = await load('routes/api/transcribe-result/+server');
+		const rawUpload = await load('routes/api/upload-chunk/+server');
 		const drafts = await load('lib/server/foundation/drafts');
 		await provision.prepareFoundationAccount('pilot');
 		await provision.prepareFoundationAccount('second');
@@ -153,6 +154,7 @@ test('P-303 private notes and transient draft processing', { timeout: 120000 }, 
 		await t.test(
 			'typed save, encrypted storage and refresh preserve full text without legacy writes',
 			async () => {
+				assert.deepEqual((await history()).notes, []);
 				assert.match(page.saveKey, /^[0-9a-f-]{36}$/);
 				assert.equal(page.foundation, true);
 				await saved(save({ allowPrivateAnalysis: 'true', ownerUserId: 'second' }));
@@ -351,6 +353,47 @@ test('P-303 private notes and transient draft processing', { timeout: 120000 }, 
 				assert.equal((await result(randomUUID())).status, 404);
 			}
 		);
+		await t.test(
+			'legacy audio remains user/context bound and consumes the completed result once',
+			async () => {
+				const who = { user: { id: 'legacy' }, contextSpaceId: 'legacy-home' };
+				const url = new URL(
+					'https://fixture.invalid/api/upload-chunk?key=' + randomUUID() + '&last=1'
+				);
+				const response = await rawUpload.POST({
+					locals: who,
+					url,
+					request: new Request(url, { method: 'POST', body: new Uint8Array([1, 2, 3]) })
+				});
+				assert.equal(response.status, 202);
+				const { jobId } = await response.json();
+				const pollUrl = new URL('https://fixture.invalid/api/transcribe-result?jobId=' + jobId);
+				assert.equal(
+					(await rawPoll.GET({ locals: { ...who, contextSpaceId: 'wrong-context' }, url: pollUrl }))
+						.status,
+					404
+				);
+				assert.equal(
+					(await rawPoll.GET({ locals: { ...who, user: { id: 'second' } }, url: pollUrl })).status,
+					404
+				);
+				let completed = false;
+				for (let i = 0; i < 100; i++) {
+					const output = await rawPoll.GET({ locals: who, url: pollUrl });
+					assert.equal(output.status, 200);
+					const body = await output.json();
+					if (body.status === 'done') {
+						assert.equal(body.transcript, 'Voice draft');
+						completed = true;
+						break;
+					}
+					await new Promise((resolve) => setTimeout(resolve, 20));
+				}
+				assert.ok(completed);
+				assert.equal((await rawPoll.GET({ locals: who, url: pollUrl })).status, 404);
+			}
+		);
+
 		await t.test(
 			'queued audio rejects later chunks and revoked work cannot expose transcript',
 			async () => {

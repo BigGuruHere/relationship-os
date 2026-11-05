@@ -466,14 +466,16 @@ export function listPersonNotes(access: FoundationAccess, personId: string, afte
 		});
 		// Preserve lifecycle checks for every subject/speaker, not only the person whose page is open.
 		if (associations.length > 1600) throw new FoundationDenied();
-		await activeSubjects(tx, [
-			...new Set([
-				...associations.map((link) => link.subjectId),
-				...current.flatMap((segment) =>
-					segment.speakerSubjectId ? [segment.speakerSubjectId] : []
-				)
-			])
-		]);
+		// An empty history has no evidence subjects to validate; the page person was checked above.
+		if (current.length)
+			await activeSubjects(tx, [
+				...new Set([
+					...associations.map((link) => link.subjectId),
+					...current.flatMap((segment) =>
+						segment.speakerSubjectId ? [segment.speakerSubjectId] : []
+					)
+				])
+			]);
 		const notes = [];
 		const seen = new Set<string>();
 		for (const link of links.slice(0, 50)) {

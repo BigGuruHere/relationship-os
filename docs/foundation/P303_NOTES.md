@@ -28,7 +28,7 @@ The inherited transport remains process-local, with temporary disk audio and in-
 
 ## Acceptance and rollout
 
-Local Node 22 validation passes 14 P-303 reported checks, 20 existing P-301/P-302/boundary checks, and 25 focused legacy regressions. CI and final Svelte validation are pending.
+Local Node 22 validation passes 15 P-303 reported checks, 20 existing P-301/P-302/boundary checks, and 25 focused legacy regressions. Svelte validation passes with zero errors/warnings. Twelve additional shared audio/Dating regression checks pass. GitHub CI is being rerun after fixing empty history retrieval.
 
 Acceptance uses actual route handlers, guarded Prisma and an isolated PGlite fixture. Provider functions are mocked. Tests cover full-text save/retrieval, encrypted stored-only admission, exact/conflicting retries, rollback/draft recovery, owner isolation, bounded pagination, corrected and disabled sources, denied stored reads under draft authority, summary failures and revocation, job isolation, retry polling, finalized uploads, empty/failed transcription and suspended/changed-epoch jobs. Existing foundation PostgreSQL concurrency checks remain in CI; browser rendering alone is not device acceptance.
 

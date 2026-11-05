@@ -6,6 +6,7 @@ import { FoundationDenied } from './internal';
 import { validateContactDetails } from '$lib/server/core/contacts';
 import type { AppTransactionClient } from '$lib/db';
 
+type Custody = Pick<FoundationAccess, 'ownerUserId' | 'vaultId'>;
 type Kind = 'PERSON' | 'RELATIONSHIP' | 'GROUP';
 const select = {
 	id: true,
@@ -19,7 +20,7 @@ function label(value: string) {
 		throw new Error('A name of 1 to 200 characters is required.');
 	return value.trim();
 }
-function aad(access: FoundationAccess, id: string) {
+function aad(access: Custody, id: string) {
 	return `foundation:v1:FoundationSubject:displayNameEnc:${access.ownerUserId}:${access.vaultId}:${id}`;
 }
 function view(
@@ -36,10 +37,14 @@ function view(
 }
 async function insert(
 	tx: AppTransactionClient,
-	access: FoundationAccess,
+	access: Custody,
 	kind: Kind,
 	name: string,
-	details?: { email: string; phone: string }
+	details?: {
+		email: string;
+		phone: string;
+		origin?: { submittedAt: string; profileId: string; sourceId: string };
+	}
 ) {
 	const id = randomUUID();
 	return tx.foundationSubject.create({
@@ -62,7 +67,7 @@ async function insert(
 	});
 }
 // Optional directory details reuse the existing encrypted column. They assert no verified identity.
-function detailsAad(access: FoundationAccess, id: string) {
+function detailsAad(access: Custody, id: string) {
 	return `foundation:v1:FoundationSubject:detailsEnc:${access.ownerUserId}:${access.vaultId}:${id}`;
 }
 const personSelect = { ...select, detailsEnc: true } as const;
@@ -85,8 +90,25 @@ function personView(
 	return {
 		...view(access, row),
 		email: typeof details.email === 'string' ? details.email : '',
-		phone: typeof details.phone === 'string' ? details.phone : ''
+		phone: typeof details.phone === 'string' ? details.phone : '',
+		origin:
+			details.origin && typeof details.origin.submittedAt === 'string'
+				? { submittedAt: details.origin.submittedAt, channel: 'Profile detail sharing' }
+				: null
 	};
+}
+// This helper cannot establish authority. The guarded transaction must already authorize creation.
+export function insertPrivatePerson(
+	tx: AppTransactionClient,
+	custody: Custody,
+	input: { name: string; email: string; phone: string },
+	origin?: { submittedAt: string; profileId: string; sourceId: string }
+) {
+	return insert(tx, custody, 'PERSON', input.name, {
+		email: input.email,
+		phone: input.phone,
+		...(origin ? { origin } : {})
+	});
 }
 export function createPerson(
 	access: FoundationAccess,
@@ -96,10 +118,7 @@ export function createPerson(
 	const input = validateContactDetails({ name, email: details.email, phone: details.phone });
 	return withFoundationAccess(access, 'WRITE', async (tx) => {
 		// Name and contact details are inserted together. No identity matching or merging.
-		const row = await insert(tx, access, 'PERSON', input.name, {
-			email: input.email,
-			phone: input.phone
-		});
+		const row = await insertPrivatePerson(tx, access, input);
 		return view(access, row);
 	});
 }

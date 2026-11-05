@@ -78,3 +78,7 @@ Resolve the profile owner and check its enrollment under the account lock on the
 ## People pages
 
 Follow [P-301](P301_PEOPLE.md) for server-controlled domain dispatch and bounded encrypted directory search. A route must resolve fresh owner authority, and a failed foundation operation must never fall through to legacy storage. Extend the exact enabled route set only alongside the corresponding repository and isolation tests. Keep the directory response explicit when search covers one page rather than the whole vault.
+
+## Public exchange
+
+Follow [P-302](P302_EXCHANGE.md) for visitor capture. Keep route consent/token/origin checks, use the existing dispatch adapter, and never construct an owner FoundationAccess from Profile.userId. Only the capture repository invokes `withPublicCapture`; no callback result may become a visitor response. Preserve atomic person/receipt creation and use STORED_ONLY admission. Later claim and sharing features need their own explicit authorization.

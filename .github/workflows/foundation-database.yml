@@ -7,6 +7,7 @@ on:
       - 'prisma/**'
       - 'src/lib/**'
       - 'src/routes/people/**'
+      - 'src/routes/u/**'
       - 'src/routes/auth/**'
       - 'src/routes/api/auth/**'
       - 'src/routes/api/guest/claim-linkedin/**'
@@ -44,6 +45,7 @@ jobs:
           node-version: '22'
           cache: npm
       - run: npm ci
+      - run: npm run check:foundation:capture
       - run: npm run check:foundation:people
       - run: npm run check:foundation:rehearsal
       - run: npm run check:foundation:schema

@@ -196,7 +196,8 @@ test(
 					await transition('second', 'PREPARED', 1, 'ACTIVE');
 					await assert.rejects(transition('pilot', 'PREPARED', 1, 'ACTIVE'), /Stale/);
 					await assert.rejects(people.listPeople(before), /unavailable/);
-					await assert.rejects(publicCapture('pilot', 'active'), (e) => e.status === 503);
+					// P-302 requires a verified browser-bound form token for ACTIVE intake.
+					await assert.rejects(publicCapture('pilot', 'active'), (e) => e.status === 403);
 					await assert.rejects(
 						prisma.$transaction((tx) => provision.requireLegacyPeopleDomain('pilot', tx)),
 						(e) => e.status === 503

@@ -42,7 +42,7 @@ export const actions: Actions = {
     try { receipt = verifyContactCaptureToken(form.get('captureToken'), profile.id, cookies.get(CAPTURE_COOKIE) || ''); }
     catch { return fail(403, { error: 'This form has expired. Reload the page and try again.', values }); }
     try {
-      await capturePrivateContact(profile, { ...values, ...receipt, browser: cookies.get(CAPTURE_COOKIE)! });
+      await capturePrivateContact(profile, { ...values, ...receipt, captureToken: form.get('captureToken'), browser: cookies.get(CAPTURE_COOKIE)! });
     } catch (e) {
       if (isHttpError(e)) return fail(e.status, { error: e.body.message, values });
       // Do not log the visitor payload or database error objects.

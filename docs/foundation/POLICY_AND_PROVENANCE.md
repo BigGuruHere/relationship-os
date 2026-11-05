@@ -57,3 +57,7 @@ Sharing: newly added fields excluded unless authorised; public/restricted views 
 Understanding/discovery: restricted inputs cannot leak through summaries, citations, candidate existence, counts or notifications; withdrawal races block pending delivery; independent evidence is reassessed; joint acknowledgement is version-specific.
 
 Implement these tests with the corresponding capability. Do not claim future guarantees from documentation or stub policy functions.
+
+## Implemented public intake boundary
+
+P-302 implements [narrowly scoped anonymous exchange intake](P302_EXCHANGE.md). A browser/profile-bound token locates the submission destination, while explicit route consent authorizes the private contact/follow-up purpose. The token grants neither identity assurance nor owner read authority. Captured evidence is recorded by VISITOR with STORED_ONLY admission. Account linking, private analysis and continuing disclosure require separate future authority.

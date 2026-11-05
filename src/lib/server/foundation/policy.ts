@@ -1,6 +1,9 @@
-// Owner-private authority, resolved from authenticated server locals. No visitor/agent delegation ships.
+// Owner-private authority and narrowly scoped public intake. Neither delegates general owner access.
 import { prisma, type AppTransactionClient } from '$lib/db';
 import { FoundationDenied, runFoundationBoundary } from './internal';
+import { error } from '@sveltejs/kit';
+import { buildScopedMacToken } from '$lib/crypto';
+import { verifyContactCaptureToken } from '$lib/server/core/contactCaptureToken';
 import { lockFoundationAccount } from './provisioning';
 export type FoundationOperation =
 	| 'READ'
@@ -119,6 +122,88 @@ export async function withFoundationAccess<T>(
 				);
 			},
 			{ timeout: 10000 }
+		)
+	);
+}
+
+// Only the capture repository may call this boundary. The token is independently verified here.
+// The profile owner is always read from the database, never supplied as authority by the visitor.
+export async function withPublicCapture(
+	profileId: string,
+	token: unknown,
+	browser: string,
+	record: (
+		tx: AppTransactionClient,
+		intake: {
+			ownerUserId: string;
+			vaultId: string;
+			prefix: string;
+			nonce: string;
+			via: 'qr' | 'event' | 'profile_link';
+			profileId: string;
+			profileKind: string;
+		}
+	) => Promise<void>
+): Promise<void> {
+	try {
+		verifyContactCaptureToken(token, profileId, browser);
+	} catch {
+		throw error(403, 'This form has expired. Reload the page and try again.');
+	}
+	const candidate = await prisma.profile.findFirst({
+		where: { id: profileId, isPublished: true },
+		select: { userId: true }
+	});
+	if (!candidate) throw error(404, 'Profile unavailable.');
+	await runFoundationBoundary({ ownerUserId: candidate.userId, mode: 'RESOLVE' }, () =>
+		prisma.$transaction(
+			async (tx) => {
+				let root;
+				try {
+					root = await current(tx, candidate.userId, false);
+				} catch (e) {
+					if (e instanceof FoundationDenied)
+						throw error(503, 'People storage is temporarily unavailable.');
+					throw e;
+				}
+				// Row lock coordinates publication/ownership updates as well as concurrent captures.
+				await tx.$queryRaw`SELECT "id" FROM "Profile" WHERE "id" = ${profileId} FOR UPDATE`;
+				const profile = await tx.profile.findFirst({
+					where: { id: profileId, userId: candidate.userId, isPublished: true },
+					select: { id: true, kind: true }
+				});
+				if (!profile) throw error(404, 'Profile unavailable.');
+				// A queued request must still be within the token lifetime after waiting for locks.
+				let receipt;
+				try {
+					receipt = verifyContactCaptureToken(token, profileId, browser);
+				} catch {
+					throw error(403, 'This form has expired. Reload the page and try again.');
+				}
+				const prefix =
+					'exchange:v1:' +
+					buildScopedMacToken(profileId, 'foundation:' + root.vaultId + ':capture-profile') +
+					':';
+				await runFoundationBoundary(
+					{
+						ownerUserId: candidate.userId,
+						vaultId: root.vaultId,
+						mode: 'PUBLIC_CAPTURE',
+						capturePrefix: prefix
+					},
+					() =>
+						record(tx, {
+							ownerUserId: candidate.userId,
+							vaultId: root.vaultId,
+							prefix,
+							profileId,
+							profileKind: profile.kind,
+							...receipt
+						})
+				);
+				// Deliberately discard callback results. Public intake never returns private record IDs or data.
+			},
+			{ isolationLevel: 'ReadCommitted', timeout: 10000 }
 		)
 	);
 }

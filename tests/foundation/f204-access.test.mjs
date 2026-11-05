@@ -1,6 +1,7 @@
 // Integration proof against the actual shared Prisma guard and repository code.
 // Only synthetic PGlite or an explicitly named empty loopback PostgreSQL database is used.
 import test from 'node:test';
+import { exerciseCaptureConcurrency } from './p302-concurrency-cases.mjs';
 import { exerciseEvidence } from './f205-evidence-cases.mjs';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
@@ -360,6 +361,7 @@ try {
 		}
 	);
 	await exerciseEvidence({ vite, db, endpoint });
+	await exerciseCaptureConcurrency({ vite, db, endpoint });
 } finally {
 	if (prisma) await prisma.$disconnect();
 	if (vite) await vite.close();

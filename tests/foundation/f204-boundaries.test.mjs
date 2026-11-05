@@ -41,6 +41,8 @@ test('only reviewed modules may establish foundation authority or construct an O
 							),
 							file
 						);
+					if (name === 'withPublicCapture')
+						assert.equal(file, 'src/lib/server/foundation/capture.ts');
 					if (name === 'resolvePreparedFoundationAccess')
 						assert.fail('Internal prepared resolver must have no shipped caller: ' + file);
 				}

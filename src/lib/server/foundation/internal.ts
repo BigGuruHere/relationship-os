@@ -7,7 +7,8 @@ import { Prisma } from '@prisma/client';
 type Boundary = {
 	ownerUserId: string;
 	vaultId?: string;
-	mode: 'RESOLVE' | 'PROVISION' | FoundationOperation;
+	mode: 'RESOLVE' | 'PROVISION' | 'PUBLIC_CAPTURE' | FoundationOperation;
+	capturePrefix?: string;
 };
 const boundary = new AsyncLocalStorage<{ scope: Boundary; active: boolean }>();
 export function runFoundationBoundary<T>(scope: Boundary, fn: () => Promise<T>): Promise<T> {
@@ -34,6 +35,45 @@ const domainModels = new Set([
 	'FoundationMembership',
 	'FoundationPerspective'
 ]);
+
+// Public intake has no private subject reader, updates, statements or analysis capability.
+function captureOperationAllowed(model: string, op: string, args: any, prefix?: string) {
+	if (!prefix) return false;
+	if (op === 'create') {
+		if (model === 'FoundationSubject') return args.data.kind === 'PERSON' && !args.data.selfUserId;
+		if (model === 'FoundationSource')
+			return (
+				args.data.kind === 'CONTACT_EXCHANGE' &&
+				typeof args.data.ingestKey === 'string' &&
+				args.data.ingestKey.startsWith(prefix)
+			);
+		if (model === 'FoundationSourceVersion')
+			return (
+				args.data.version === 1 &&
+				args.data.recordedByKind === 'VISITOR' &&
+				args.data.processingAdmission === 'STORED_ONLY'
+			);
+		return ['FoundationEvidenceSegment', 'FoundationEvidenceSubject'].includes(model);
+	}
+	if (model === 'FoundationSource' && ['findFirst', 'count'].includes(op)) {
+		const key = args.where?.ingestKey;
+		const scoped = typeof key === 'string' ? key.startsWith(prefix) : key?.startsWith === prefix;
+		return (
+			scoped &&
+			args.where?.kind === 'CONTACT_EXCHANGE' &&
+			(op === 'count' || (args.select && Object.keys(args.select).every((k) => k === 'id')))
+		);
+	}
+	// Retry comparison can read only the MAC of the exact receipt, never any source payload.
+	return (
+		model === 'FoundationSourceVersion' &&
+		op === 'findFirst' &&
+		typeof args.where?.sourceId === 'string' &&
+		args.where.version === 1 &&
+		args.select &&
+		Object.keys(args.select).every((k) => k === 'contentMac')
+	);
+}
 
 // Each evidence operation has a fixed set of delegates and append-only writes.
 const sourceModels = [
@@ -128,7 +168,10 @@ export function guardFoundationQuery(model: string | undefined, operation: strin
 		if (!args?.select || Object.keys(args.select).some((k) => !allowed.includes(k)))
 			throw new FoundationDenied();
 	}
-	const evidenceAllowed = evidenceOperationAllowed(scope.mode, model, operation);
+	const evidenceAllowed =
+		scope.mode === 'PUBLIC_CAPTURE'
+			? captureOperationAllowed(model, operation, args, scope.capturePrefix)
+			: evidenceOperationAllowed(scope.mode, model, operation);
 	if (
 		!evidenceAllowed &&
 		(control

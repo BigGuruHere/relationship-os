@@ -28,7 +28,7 @@ The inherited transport remains process-local, with temporary disk audio and in-
 
 ## Acceptance and rollout
 
-Local Node 22 validation passes 15 P-303 reported checks, 20 existing P-301/P-302/boundary checks, and 25 focused legacy regressions. Svelte validation passes with zero errors/warnings. Twelve additional shared audio/Dating regression checks pass. GitHub CI is being rerun after fixing empty history retrieval.
+Local Node 22 validation passes 15 P-303 reported checks, 20 existing P-301/P-302/boundary checks, and 25 focused legacy regressions. Svelte validation passes with zero errors/warnings. Twelve additional shared audio/Dating regression checks pass. [PostgreSQL 18.6 CI run 42107460820](https://github.com/BigGuruHere/relationship-os/actions/runs/42107460820) passed all 131 foundation checks with zero failures/skips on implementation commit `9114981`. [PR #22](https://github.com/BigGuruHere/relationship-os/pull/22) is open. The following documentation commit records acceptance only.
 
 Acceptance uses actual route handlers, guarded Prisma and an isolated PGlite fixture. Provider functions are mocked. Tests cover full-text save/retrieval, encrypted stored-only admission, exact/conflicting retries, rollback/draft recovery, owner isolation, bounded pagination, corrected and disabled sources, denied stored reads under draft authority, summary failures and revocation, job isolation, retry polling, finalized uploads, empty/failed transcription and suspended/changed-epoch jobs. Existing foundation PostgreSQL concurrency checks remain in CI; browser rendering alone is not device acceptance.
 

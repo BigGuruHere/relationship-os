@@ -19,3 +19,7 @@ This first slice supports owner-entered text, one anchored excerpt per version, 
 The change uses existing F-202 tables. Deploying the code requires zero new Prisma migrations and enrolls zero accounts. Pilot routes continue using their current writers. Before any foundation write, application rollback can remove these internal callers. After writes, preserve all versioned data and eligibility guards, stop affected writers and roll forward.
 
 The F-205 tests run through the actual F-204 client fixture in `npm run check:foundation:access`. They cover replay and version conflict, atomic rollback, custody, exact offsets, parent-payload denial, attribution, shared subject references, statement correction and invalidation after both source correction and withdrawal. A competing-correction case runs on standard PostgreSQL in the foundation CI workflow.
+
+## Acceptance record
+
+[PR #18](https://github.com/BigGuruHere/relationship-os/pull/18) targets development. The [foundation CI run](https://github.com/BigGuruHere/relationship-os/actions/runs/41954241665) passed all 87 tests on implementation commit `2ee0634`, including all eight F-205 cases. The PostgreSQL 18.6 correction race produced one committed successor and one conflict. The local Node 22 Svelte check reported zero errors and warnings. Merge and DEV verification are pending.

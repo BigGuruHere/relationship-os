@@ -89,6 +89,8 @@ const statementModels = [
 	'FoundationSupport'
 ];
 function evidenceOperationAllowed(mode: Boundary['mode'], model: string, op: string) {
+	if (mode === 'READ_NOTES')
+		return reads.has(op) && [...sourceModels, 'FoundationSubject'].includes(model);
 	if (mode === 'READ_SEGMENT')
 		return reads.has(op) && [...sourceModels, 'FoundationSubject'].includes(model);
 	if (mode === 'RECORD_EVIDENCE')

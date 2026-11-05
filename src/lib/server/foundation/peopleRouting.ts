@@ -7,8 +7,12 @@ export async function peopleRouteDomain(userId: string, pathname: string) {
 	const domain = await accountDomain(userId);
 	if (domain === 'SUSPENDED') throw error(503, 'People storage is temporarily unavailable.');
 	if (domain !== 'ACTIVE') return 'LEGACY' as const;
-	// P-301 enables only directory/create/detail. Notes, uploads and transcription await P-303.
-	if (!/^\/people(?:\/(?:new|[0-9a-f-]{36}))?\/?$/i.test(pathname))
+	// Enable only the shipped People and note/draft endpoints. Diagnostics remain legacy-only.
+	if (
+		!/^\/people(?:\/(?:new|[0-9a-f-]{36}(?:\/notes\/(?:new|summarize))?|api\/(?:upload-chunk|transcribe-result)))?\/?$/i.test(
+			pathname
+		)
+	)
 		throw error(503, 'This People feature is not available yet.');
 	return 'FOUNDATION' as const;
 }

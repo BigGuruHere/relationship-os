@@ -1,4 +1,4 @@
-// F-205 internal owner-note slice. No provider, public route or background worker invokes it.
+// Versioned owner evidence. P-303 routes pass explicit owner authority and stored-only admission.
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { buildScopedMacToken, encrypt, decrypt } from '$lib/crypto';
@@ -22,7 +22,9 @@ const note = z.strictObject({
 	quote: z.string().min(1).max(8000),
 	subjectIds: subjects,
 	speakerId: id.optional(),
-	allowPrivateAnalysis: z.boolean().default(false)
+	allowPrivateAnalysis: z.boolean().default(false),
+	captureKind: z.enum(['OWNER_NOTE', 'VOICE_NOTE']).optional(),
+	summary: z.string().max(20000).optional()
 });
 const statement = z.strictObject({
 	...revision,
@@ -93,12 +95,15 @@ export function appendOwnerNote(access: FoundationAccess, values: z.input<typeof
 		const ingestKey = mac(access, 'note-key', input.key);
 		const replay = mac(access, 'note-request', JSON.stringify(input));
 		let source = await tx.foundationSource.findFirst({ where: { ingestKey } });
-		if (source && (source.state !== 'ACTIVE' || source.kind !== 'OWNER_NOTE'))
+		if (
+			source &&
+			(source.state !== 'ACTIVE' || source.kind !== (input.captureKind ?? 'OWNER_NOTE'))
+		)
 			throw new FoundationDenied();
 		if (!source) {
 			if (input.expectedVersion !== 0) throw new FoundationConflict();
 			source = await tx.foundationSource.create({
-				data: { ...custody, kind: 'OWNER_NOTE', ingestKey }
+				data: { ...custody, kind: input.captureKind ?? 'OWNER_NOTE', ingestKey }
 			});
 		}
 		const latest = await tx.foundationSourceVersion.findFirst({
@@ -151,7 +156,12 @@ export function appendOwnerNote(access: FoundationAccess, values: z.input<typeof
 					aad(access, 'FoundationSourceVersion', 'payloadEnc', versionId)
 				),
 				provenanceEnc: encrypt(
-					JSON.stringify({ actor: access.actorId, admission, replay }),
+					JSON.stringify({
+						actor: access.actorId,
+						admission,
+						replay,
+						...(input.summary !== undefined ? { reviewedSummary: input.summary } : {})
+					}),
 					aad(access, 'FoundationSourceVersion', 'provenanceEnc', versionId)
 				)
 			}
@@ -383,5 +393,113 @@ export function readCurrentStatement(access: FoundationAccess, statementId: stri
 			perspectiveId: root.perspectiveId,
 			subjectIds
 		};
+	});
+}
+
+// Full note retrieval is a separate owner operation. Segment-only authority still cannot read parent text.
+export function listPersonNotes(access: FoundationAccess, personId: string, after?: string) {
+	return withFoundationAccess(access, 'READ_NOTES', async (tx) => {
+		if (
+			!(await tx.foundationSubject.findFirst({
+				where: { id: personId, kind: 'PERSON', state: 'ACTIVE', selfUserId: null },
+				select: { id: true }
+			}))
+		)
+			throw new FoundationDenied();
+		const cursor = after
+			? await tx.foundationEvidenceSubject.findFirst({
+					where: { id: after, subjectId: personId },
+					select: { id: true, createdAt: true }
+				})
+			: null;
+		if (after && !cursor) throw new FoundationDenied();
+		const links = await tx.foundationEvidenceSubject.findMany({
+			where: {
+				subjectId: personId,
+				...(cursor
+					? {
+							OR: [
+								{ createdAt: { lt: cursor.createdAt } },
+								{ createdAt: cursor.createdAt, id: { lt: cursor.id } }
+							]
+						}
+					: {})
+			},
+			orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+			take: 51,
+			select: { id: true, segmentId: true }
+		});
+		// Batch the bounded page so remote databases do not require one round trip per edge.
+		const segments = await tx.foundationEvidenceSegment.findMany({
+			where: { id: { in: links.slice(0, 50).map((link) => link.segmentId) } },
+			select: { id: true, sourceVersionId: true, speakerSubjectId: true }
+		});
+		const versions = await tx.foundationSourceVersion.findMany({
+			where: { id: { in: segments.map((segment) => segment.sourceVersionId) } }
+		});
+		const sources = await tx.foundationSource.findMany({
+			where: {
+				id: { in: versions.map((version) => version.sourceId) },
+				kind: { in: ['OWNER_NOTE', 'VOICE_NOTE'] },
+				state: 'ACTIVE'
+			},
+			select: { id: true, kind: true }
+		});
+		const currentVersions = new Map<string, number>();
+		for (const source of sources) {
+			// Bounded point lookups avoid loading an unbounded correction history.
+			const latest = await tx.foundationSourceVersion.findFirst({
+				where: { sourceId: source.id },
+				orderBy: { version: 'desc' },
+				select: { version: true }
+			});
+			if (latest) currentVersions.set(source.id, latest.version);
+		}
+		const current = segments.filter((segment) => {
+			const version = versions.find((version) => version.id === segment.sourceVersionId);
+			return version && currentVersions.get(version.sourceId) === version.version;
+		});
+		const associations = await tx.foundationEvidenceSubject.findMany({
+			where: { segmentId: { in: current.map((segment) => segment.id) } },
+			select: { subjectId: true },
+			take: 1601
+		});
+		// Preserve lifecycle checks for every subject/speaker, not only the person whose page is open.
+		if (associations.length > 1600) throw new FoundationDenied();
+		await activeSubjects(tx, [
+			...new Set([
+				...associations.map((link) => link.subjectId),
+				...current.flatMap((segment) =>
+					segment.speakerSubjectId ? [segment.speakerSubjectId] : []
+				)
+			])
+		]);
+		const notes = [];
+		const seen = new Set<string>();
+		for (const link of links.slice(0, 50)) {
+			const segment = current.find((segment) => segment.id === link.segmentId);
+			const version = versions.find((version) => version.id === segment?.sourceVersionId);
+			if (!version || seen.has(version.sourceId)) continue;
+			const source = sources.find((source) => source.id === version.sourceId);
+			if (!source) continue;
+			seen.add(source.id);
+			const provenance = JSON.parse(
+				decrypt(
+					version.provenanceEnc,
+					aad(access, 'FoundationSourceVersion', 'provenanceEnc', version.id)
+				)
+			);
+			notes.push({
+				id: source.id,
+				channel: source.kind === 'VOICE_NOTE' ? 'OWNER_VOICE_NOTE' : 'OWNER_NOTE',
+				at: (version.occurredAt ?? version.createdAt).toISOString(),
+				text: decrypt(
+					version.payloadEnc,
+					aad(access, 'FoundationSourceVersion', 'payloadEnc', version.id)
+				),
+				summary: typeof provenance.reviewedSummary === 'string' ? provenance.reviewedSummary : ''
+			});
+		}
+		return { notes, next: links.length > 50 ? links[49].id : null };
 	});
 }

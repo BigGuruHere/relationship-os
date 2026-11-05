@@ -252,12 +252,10 @@ test('P-301 private People routes and cohort isolation', { timeout: 120000 }, as
 			}
 		);
 		await t.test(
-			'notes/upload remain closed and suspension or a locked vault never falls back to Contacts',
+			'unsupported diagnostics remain closed and suspension or a locked vault never falls back to Contacts',
 			async () => {
 				for (const path of [
-					'/people/' + id + '/notes/new',
-					'/people/api/upload-chunk',
-					'/people/api/transcribe-result'
+					'/people/api/transcription-diagnostics'
 				]) {
 					await assert.rejects(
 						throughHook(path, () => assert.fail('route reached')),
@@ -310,7 +308,7 @@ test('P-301 private People routes and cohort isolation', { timeout: 120000 }, as
 		);
 
 		await t.test(
-			'rendered directory explains partial search and details hide unavailable note actions',
+			'rendered directory explains partial search and details expose the guarded note action',
 			async () => {
 				const out = resolve('.svelte-kit/p301-render');
 				await mkdir(out, { recursive: true });
@@ -337,7 +335,7 @@ test('P-301 private People routes and cohort isolation', { timeout: 120000 }, as
 				};
 				const person = await screen('src/routes/people/[id]/+page.svelte', 'detail', data);
 				assert.match(person, /&lt;script(?:>|&gt;)Betty/);
-				assert.doesNotMatch(person, /href="[^" ]*notes/);
+				assert.match(person, /notes\/new/);
 				const old = await screen('src/routes/people/[id]/+page.svelte', 'legacy-detail', {
 					...data,
 					foundation: false

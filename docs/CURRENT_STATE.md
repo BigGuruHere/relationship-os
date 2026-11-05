@@ -1,10 +1,14 @@
 # Relish: Current State and Open Work
 
-Status: living snapshot updated **2026-11-06**. Foundation baseline is development `9aeac97` (PR #20). Environment observations are explicitly attributed below; this is not a live deployment monitor.
+Status: living snapshot updated **2026-11-06**. Foundation baseline is development `4baa0bf` (PR #21). Environment observations are explicitly attributed below; this is not a live deployment monitor.
 
-## P-302 public exchange intake (feature branch, 2026-11-06)
+## P-303 private notes (feature branch)
 
-`feature/p302-public-exchange` connects the existing public detail-sharing flow to narrowly authorized foundation intake for ACTIVE profile owners. Person and stored-only exchange evidence commit together. Retry handling, consent, repeat-browser behavior, private provenance, transactional caps and lifecycle checks are covered by synthetic tests. No new migration or cohort activation. See [P-302 scope, acceptance and recovery](foundation/P302_EXCHANGE.md). [CI run 42051104009](https://github.com/BigGuruHere/relationship-os/actions/runs/42051104009) passed all 116 foundation checks with zero failures/skips on `9113b06`. Local Node 22 also passed 25 legacy regressions and Svelte check with zero errors/warnings. [PR #21](https://github.com/BigGuruHere/relationship-os/pull/21) is open. Merge, DEV/device testing and production remain pending. P-303 notes and retrieval is next.
+`feature/p303-private-notes` reuses the shared recorder and People pages for foundation text/voice notes, full-text history, stable retry keys and explicit transient draft processing. Saving remains stored-only. Audio jobs are bound to owner/domain/vault/epoch and checked again after provider work and on polling. No migration or activation. See [scope, tests, DEV checks and transport limitations](foundation/P303_NOTES.md). Local synthetic acceptance and CI results are recorded with the PR; live DEV/provider/mobile checks remain pending. The inherited audio transport is process-local and does not guarantee recovery after restart or replica switching. P-304 profile/auth continuity follows integration. Production remains deferred.
+
+## P-302 public exchange intake (merged, 2026-11-06)
+
+`feature/p302-public-exchange` connects the existing public detail-sharing flow to narrowly authorized foundation intake for ACTIVE profile owners. Person and stored-only exchange evidence commit together. Retry handling, consent, repeat-browser behavior, private provenance, transactional caps and lifecycle checks are covered by synthetic tests. No new migration or cohort activation. See [P-302 scope, acceptance and recovery](foundation/P302_EXCHANGE.md). [CI run 42051104009](https://github.com/BigGuruHere/relationship-os/actions/runs/42051104009) passed all 116 foundation checks with zero failures/skips on `9113b06`. Local Node 22 also passed 25 legacy regressions and Svelte check with zero errors/warnings. [PR #21](https://github.com/BigGuruHere/relationship-os/pull/21) merged at `4baa0bf`. Merge, DEV/device testing and production remain pending. P-303 notes and retrieval is implemented on its feature branch.
 
 ## P-301 private People directory (merged, 2026-11-06)
 

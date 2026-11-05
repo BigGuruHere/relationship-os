@@ -61,3 +61,7 @@ Implement these tests with the corresponding capability. Do not claim future gua
 ## Implemented public intake boundary
 
 P-302 implements [narrowly scoped anonymous exchange intake](P302_EXCHANGE.md). A browser/profile-bound token locates the submission destination, while explicit route consent authorizes the private contact/follow-up purpose. The token grants neither identity assurance nor owner read authority. Captured evidence is recorded by VISITOR with STORED_ONLY admission. Account linking, private analysis and continuing disclosure require separate future authority.
+
+## P-303 explicit transient processing
+
+[P-303](P303_NOTES.md) distinguishes owner retrieval of complete notes from segment-only authority. Saving a note remains STORED_ONLY even after explicit transcription or summarization of the submitted draft. PROCESS_DRAFT grants no stored-source reads, derived statements or disclosure. Provider input already sent before revocation cannot be recalled, but lifecycle/epoch rechecks withhold the result afterward. Transient jobs bind the issuing account/vault/epoch and current polling authority.

@@ -109,3 +109,7 @@ Resolve the profile owner and check its enrollment under the account lock on the
 ## P-302 public intake boundary
 
 [Public exchange intake](foundation/P302_EXCHANGE.md) adapts the existing sharing action for ACTIVE destination owners. Policy resolves the published profile and verifies the browser-bound token without impersonating the owner. The guarded PUBLIC_CAPTURE transaction permits new private person/evidence records, opaque receipt checks and bounded profile counts, with lifecycle/publication locks and stored-only admission. Legacy/PREPARED captures retain their original model. No identity link or continuing-sharing permission follows from a submission.
+
+## P-303 private note boundary
+
+[Private notes](foundation/P303_NOTES.md) reuse existing People and recording surfaces. READ_NOTES opens owner-private current note text without widening segment-only readers. PROCESS_DRAFT grants no stored-data access. Provider calls recheck lifecycle and epoch before/after work; transcript jobs bind user/domain/vault/epoch. Storage is encrypted and STORED_ONLY. Audio transport remains process-local with one-hour expiry and explicit recovery limits. No activation or migration ships in this stage.

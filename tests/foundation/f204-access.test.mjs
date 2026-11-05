@@ -305,6 +305,60 @@ try {
 			}
 		}
 	);
+	await test(
+		'an in-flight handoff fences a stale legacy capture decision',
+		{ skip: !endpoint },
+		async () => {
+			const owner = 'capture-race';
+			await db.exec(`INSERT INTO "User" VALUES ('capture-race')`);
+			await provision.prepareFoundationAccount(owner);
+			await provision.requireLegacyPeopleDomain(owner);
+			const { Client } = await import('pg');
+			const transition = new Client({ connectionString: endpoint });
+			await transition.connect();
+			let outcome;
+			try {
+				await transition.query('BEGIN');
+				await transition.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', [
+					'foundation:account:' + owner
+				]);
+				await transition.query(
+					`UPDATE "FoundationEnrollment" SET state='ACTIVE',epoch=epoch+1 WHERE "userId"=$1`,
+					[owner]
+				);
+				// Observe the actual lock wait before committing, then check what the writer sees.
+				outcome = prisma
+					.$transaction(async (tx) => {
+						await provision.requireLegacyPeopleDomain(owner, tx);
+						return 'legacy writer admitted';
+					})
+					.then(
+						(value) => value,
+						(error) => error.status
+					);
+				const deadline = Date.now() + 4000;
+				let blocked = false;
+				while (Date.now() < deadline) {
+					const result = await db.observer.query(
+						'SELECT EXISTS(SELECT 1 FROM pg_stat_activity WHERE $1::int=ANY(pg_blocking_pids(pid))) AS blocked',
+						[transition.processID]
+					);
+					if (result.rows[0].blocked) {
+						blocked = true;
+						break;
+					}
+					await new Promise((resolve) => setTimeout(resolve, 20));
+				}
+				assert.equal(blocked, true);
+				await transition.query('COMMIT');
+				assert.equal(await outcome, 503);
+			} finally {
+				await transition.query('ROLLBACK');
+				await transition.end();
+				if (outcome) await outcome;
+			}
+		}
+	);
 	await exerciseEvidence({ vite, db, endpoint });
 } finally {
 	if (prisma) await prisma.$disconnect();

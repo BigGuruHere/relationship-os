@@ -97,3 +97,7 @@ Read [F-204 access and usage](foundation/F204_ACCESS.md) before adding a foundat
 ## Private evidence and understanding
 
 F-205 introduces purpose-specific owner operations for recording notes, inspecting excerpts, recording statements and reading current understanding. Preserve exact UTF-16 anchors across revisions, explicit owner admission and use-time checks on each support. Follow the [F-205 service contract](foundation/F205_EVIDENCE.md).
+
+## Capture during a storage handoff
+
+Resolve the profile owner and check its enrollment under the account lock on the same transaction connection used for private-home creation, Contact and receipt. Take the profile lock second and recheck publication before persisting. Before enabling other private writers for a cohort, rehearse the complete handoff and recovery. See [F-206](foundation/F206_REHEARSAL.md).

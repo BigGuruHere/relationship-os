@@ -22,4 +22,4 @@ The F-205 tests run through the actual F-204 client fixture in `npm run check:fo
 
 ## Acceptance record
 
-[PR #18](https://github.com/BigGuruHere/relationship-os/pull/18) targets development. The [foundation CI run](https://github.com/BigGuruHere/relationship-os/actions/runs/41954241665) passed all 87 tests on implementation commit `2ee0634`, including all eight F-205 cases. The PostgreSQL 18.6 correction race produced one committed successor and one conflict. The local Node 22 Svelte check reported zero errors and warnings. Merge and DEV verification are pending.
+[PR #18](https://github.com/BigGuruHere/relationship-os/pull/18) targets development. The [foundation CI run](https://github.com/BigGuruHere/relationship-os/actions/runs/41954241665) passed all 87 tests on implementation commit `2ee0634`, including all eight F-205 cases. The PostgreSQL 18.6 correction race produced one committed successor and one conflict. The local Node 22 Svelte check reported zero errors and warnings. Merged via PR #18 at `8d895f8`. DEV verification is pending.

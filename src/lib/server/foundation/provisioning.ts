@@ -8,9 +8,12 @@ import { runFoundationBoundary } from './internal';
 
 export type AccountDomain = 'LEGACY' | 'PREPARED' | 'ACTIVE' | 'SUSPENDED';
 
-export async function accountDomain(userId: string): Promise<AccountDomain> {
+export async function accountDomain(
+	userId: string,
+	client: Pick<AppTransactionClient, 'foundationEnrollment'> = prisma
+): Promise<AccountDomain> {
 	const row = await runFoundationBoundary({ ownerUserId: userId, mode: 'RESOLVE' }, () =>
-		prisma.foundationEnrollment.findUnique({
+		client.foundationEnrollment.findUnique({
 			where: { userId },
 			select: { state: true }
 		})
@@ -138,8 +141,13 @@ export async function withLegacyAccountClaims<T>(
 
 // F-204/P-301 will supply the foundation path. Until then reject ACTIVE/SUSPENDED
 // owners instead of letting an old People/capture adapter become a competing writer.
-export async function requireLegacyPeopleDomain(userId: string) {
-	const domain = await accountDomain(userId);
+export async function requireLegacyPeopleDomain(
+	userId: string,
+	transaction?: AppTransactionClient
+) {
+	// Capture can span a cohort change. Hold the account lock through the actual legacy write.
+	if (transaction) await lockFoundationAccount(transaction, userId);
+	const domain = await accountDomain(userId, transaction);
 	if (domain === 'ACTIVE' || domain === 'SUSPENDED') {
 		const { error } = await import('@sveltejs/kit');
 		throw error(503, 'People storage is temporarily unavailable.');

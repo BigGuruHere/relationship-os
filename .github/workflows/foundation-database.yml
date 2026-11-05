@@ -43,6 +43,7 @@ jobs:
           node-version: '22'
           cache: npm
       - run: npm ci
+      - run: npm run check:foundation:rehearsal
       - run: npm run check:foundation:schema
       # CI-only driver installation leaves the application dependency lock unchanged.
       - run: npm install --no-save --package-lock=false pg@8.16.3

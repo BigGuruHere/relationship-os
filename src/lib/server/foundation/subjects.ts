@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { encrypt, decrypt } from '$lib/crypto';
 import { withFoundationAccess, type FoundationAccess } from './policy';
 import { FoundationDenied } from './internal';
+import { validateContactDetails } from '$lib/server/core/contacts';
 import type { AppTransactionClient } from '$lib/db';
 
 type Kind = 'PERSON' | 'RELATIONSHIP' | 'GROUP';
@@ -37,7 +38,8 @@ async function insert(
 	tx: AppTransactionClient,
 	access: FoundationAccess,
 	kind: Kind,
-	name: string
+	name: string,
+	details?: { email: string; phone: string }
 ) {
 	const id = randomUUID();
 	return tx.foundationSubject.create({
@@ -46,15 +48,97 @@ async function insert(
 			ownerUserId: access.ownerUserId,
 			vaultId: access.vaultId,
 			kind,
-			displayNameEnc: encrypt(label(name), aad(access, id))
+			displayNameEnc: encrypt(label(name), aad(access, id)),
+			...(details
+				? {
+						detailsEnc: encrypt(
+							JSON.stringify({ version: 1, kind: 'PERSON_DETAILS', ...details }),
+							detailsAad(access, id)
+						)
+					}
+				: {})
 		},
 		select
 	});
 }
-export function createPerson(access: FoundationAccess, name: string) {
-	return withFoundationAccess(access, 'WRITE', async (tx) =>
-		view(access, await insert(tx, access, 'PERSON', name))
-	);
+// Optional directory details reuse the existing encrypted column. They assert no verified identity.
+function detailsAad(access: FoundationAccess, id: string) {
+	return `foundation:v1:FoundationSubject:detailsEnc:${access.ownerUserId}:${access.vaultId}:${id}`;
+}
+const personSelect = { ...select, detailsEnc: true } as const;
+function personView(
+	access: FoundationAccess,
+	row: Parameters<typeof view>[1] & { detailsEnc: string | null }
+) {
+	const details = row.detailsEnc
+		? JSON.parse(decrypt(row.detailsEnc, detailsAad(access, row.id)))
+		: { version: 1, kind: 'PERSON_DETAILS', email: '', phone: '' };
+	if (
+		!details ||
+		details.version !== 1 ||
+		details.kind !== 'PERSON_DETAILS' ||
+		typeof details.email !== 'string' ||
+		typeof details.phone !== 'string'
+	)
+		throw new FoundationDenied();
+	// Explicit projection keeps future private metadata out of directory responses.
+	return {
+		...view(access, row),
+		email: typeof details.email === 'string' ? details.email : '',
+		phone: typeof details.phone === 'string' ? details.phone : ''
+	};
+}
+export function createPerson(
+	access: FoundationAccess,
+	name: string,
+	details: { email?: string; phone?: string } = {}
+) {
+	const input = validateContactDetails({ name, email: details.email, phone: details.phone });
+	return withFoundationAccess(access, 'WRITE', async (tx) => {
+		// Name and contact details are inserted together. No identity matching or merging.
+		const row = await insert(tx, access, 'PERSON', input.name, {
+			email: input.email,
+			phone: input.phone
+		});
+		return view(access, row);
+	});
+}
+export function readPerson(access: FoundationAccess, id: string) {
+	return withFoundationAccess(access, 'READ', async (tx) => {
+		const row = await tx.foundationSubject.findFirst({
+			where: { id, kind: 'PERSON', state: 'ACTIVE', selfUserId: null },
+			select: personSelect
+		});
+		if (!row) throw new FoundationDenied();
+		return personView(access, row);
+	});
+}
+// Scan a bounded owner-only page before decrypting. Continue even if this page has no matches.
+// No plaintext search index or global identity lookup is created.
+export function searchPeople(access: FoundationAccess, query = '', afterId?: string) {
+	if (query.length > 200 || (afterId && !/^[0-9a-f-]{36}$/i.test(afterId)))
+		throw new Error('Invalid directory search.');
+	return withFoundationAccess(access, 'READ', async (tx) => {
+		const rows = await tx.foundationSubject.findMany({
+			where: {
+				kind: 'PERSON',
+				state: 'ACTIVE',
+				selfUserId: null,
+				...(afterId ? { id: { gt: afterId } } : {})
+			},
+			orderBy: { id: 'asc' },
+			take: 51,
+			select: personSelect
+		});
+		const q = query.trim().toLowerCase();
+		return {
+			items: rows
+				.slice(0, 50)
+				.map((row) => personView(access, row))
+				.filter((p) => !q || [p.name, p.email, p.phone].some((v) => v.toLowerCase().includes(q))),
+			next: rows.length > 50 ? rows[49].id : null
+		};
+	});
 }
 export function readSubject(access: FoundationAccess, id: string) {
 	return withFoundationAccess(access, 'READ', async (tx) => {

@@ -13,8 +13,8 @@ The authoritative detailed backlog and stage register are in [foundation impleme
 | Stage | Outcome | Current status |
 | --- | --- | --- |
 | 1 | Architecture, decisions, policy, developer guide and implementation backlog | Merged via PR #13, `d789464` |
-| 2 | New-domain primitives, auth isolation, custody and evidence proof | F-202/F-203 merged and DEV operator-confirmed; F-204 merged; F-205 merged; F-206 internal rehearsal on feature branch. Stage 2 awaits integration and DEV verification. Next: P-301 directory and person details |
-| 3 | Invited users share details, keep people and retrieve notes | Existing UX reused; new-domain implementation planned |
+| 2 | New-domain primitives, auth isolation, custody and evidence proof | F-202/F-203 merged and DEV operator-confirmed; F-204 merged; F-205 merged; F-206 internal rehearsal merged through PR #19. Stage 2 DEV verification is pending. P-301 directory and person details are on a feature branch |
+| 3 | Invited users share details, keep people and retrieve notes | P-301 adapts existing People UI on its feature branch; P-302 public exchange intake is next. Activation awaits P-306 |
 | 4 | Secure exchange claiming and directional continuing sharing | Planned after pilot foundation |
 | 5 | Private understanding across people and relationships | Planned after evidence/correction readiness |
 | 6 | Relationship understanding from separately governed perspectives | Future gated release |
@@ -44,3 +44,5 @@ Existing pilot and Dorian infrastructure can be maintained while the new foundat
 For each material change update the relevant living docs, backlog item and stage register in the same implementation PR. Record tests actually run, migration/rollback requirements, cohort scope and limitations. Update CURRENT_STATE at merge and again at deployment with actual commit/environment evidence. Never infer deployment from a merge.
 
 Select the next task from the earliest unmet gate. New capability replaces existing code only through a demonstrated gap and explicit compatibility plan. No production writes, migration execution or deployment follow automatically from this roadmap.
+
+Production promotion is deferred by operator choice on 2026-11-05. Review the full target release diff and migrations, DEV/device evidence, snapshot/restore readiness and pilot privacy gates before recommending it.

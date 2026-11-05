@@ -1,6 +1,6 @@
 # P-302 public exchange intake
 
-Updated 2026-11-06. Implemented on `feature/p302-public-exchange` from development `9aeac97` (PR #20). Merge, DEV/device acceptance and production deployment are pending. No automatic enrollment or activation is introduced.
+Updated 2026-11-06. Implemented on `feature/p302-public-exchange` from development `9aeac97` (PR #20). Merged via PR #21 at `4baa0bf`. DEV/device acceptance and production deployment are pending. No automatic enrollment or activation is introduced.
 
 ## Existing capability and precise change
 
@@ -34,7 +34,7 @@ Profile withdrawal and suspension races are rechecked after locks. Storage failu
 
 ## Acceptance evidence
 
-Local Node 22 tests pass ten P-302 reported checks, covering actual routes and foundation persistence, encrypted provenance, consent/token binding/expiry, signed-in visitor isolation, repeat visits, changed-payload retries, separate duplicates, forged/private access, stored-only analysis denial, rollback, redaction, lifecycle rejection, caps and legacy/PREPARED compatibility. Twenty-five focused legacy People/capture/onboarding/navigation regressions pass. The combined local foundation selection reports 42 passes and five standard-server races deferred to CI. Svelte check passed with zero errors and warnings. [CI run 42051104009](https://github.com/BigGuruHere/relationship-os/actions/runs/42051104009) passed all 116 reported checks with zero failures/skips on implementation commit `9113b06`. This includes ten P-302 route checks and two standard-server P-302 race tests alongside all previous foundation checks. [PR #21](https://github.com/BigGuruHere/relationship-os/pull/21) is open. The subsequent commit records acceptance evidence only.
+Local Node 22 tests pass ten P-302 reported checks, covering actual routes and foundation persistence, encrypted provenance, consent/token binding/expiry, signed-in visitor isolation, repeat visits, changed-payload retries, separate duplicates, forged/private access, stored-only analysis denial, rollback, redaction, lifecycle rejection, caps and legacy/PREPARED compatibility. Twenty-five focused legacy People/capture/onboarding/navigation regressions pass. The combined local foundation selection reports 42 passes and five standard-server races deferred to CI. Svelte check passed with zero errors and warnings. [CI run 42051104009](https://github.com/BigGuruHere/relationship-os/actions/runs/42051104009) passed all 116 reported checks with zero failures/skips on implementation commit `9113b06`. This includes ten P-302 route checks and two standard-server P-302 race tests alongside all previous foundation checks. [PR #21](https://github.com/BigGuruHere/relationship-os/pull/21) is merged. The subsequent commit records acceptance evidence only.
 
 The standard PostgreSQL suite adds concurrent identical/conflicting retries, the last profile-cap slot, account suspension and profile withdrawal. It observes real blocking before committing lifecycle changes. Existing foundation checks and F-206 Brokerage/legacy capture rehearsal remain in CI. F-206's former ACTIVE-without-token rejection now expects 403 because P-302 admits only token-authorized intake. Real devices, provider integrations and live databases are not exercised by these synthetic tests.
 

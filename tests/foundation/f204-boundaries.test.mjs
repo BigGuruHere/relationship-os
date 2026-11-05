@@ -36,7 +36,7 @@ test('only reviewed modules may establish foundation authority or construct an O
 						);
 					if (name === 'withFoundationAccess')
 						assert.ok(
-							['subjects', 'evidence'].some(
+							['subjects', 'evidence', 'drafts'].some(
 								(name) => file === 'src/lib/server/foundation/' + name + '.ts'
 							),
 							file

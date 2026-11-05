@@ -11,14 +11,20 @@ export type FoundationOperation =
 	| 'RECORD_EVIDENCE'
 	| 'READ_SEGMENT'
 	| 'RECORD_STATEMENT'
-	| 'READ_STATEMENT';
+	| 'READ_STATEMENT'
+	| 'READ_NOTES'
+	| 'PROCESS_DRAFT';
 export type FoundationAccess = Readonly<{
 	actorId: string;
 	ownerUserId: string;
 	vaultId: string;
 	epoch: number;
 	operation: FoundationOperation;
-	purpose: 'PRIVATE_DIRECTORY' | 'PRIVATE_EVIDENCE' | 'PRIVATE_UNDERSTANDING';
+	purpose:
+		| 'PRIVATE_DIRECTORY'
+		| 'PRIVATE_EVIDENCE'
+		| 'PRIVATE_UNDERSTANDING'
+		| 'PRIVATE_DRAFT_PROCESSING';
 }>;
 const issued = new WeakMap<object, { prepared: boolean }>();
 
@@ -47,6 +53,9 @@ function purposeFor(operation: FoundationOperation): FoundationAccess['purpose']
 		case 'READ':
 		case 'WRITE':
 			return 'PRIVATE_DIRECTORY';
+		case 'PROCESS_DRAFT':
+			return 'PRIVATE_DRAFT_PROCESSING';
+		case 'READ_NOTES':
 		case 'READ_SEGMENT':
 		case 'RECORD_EVIDENCE':
 			return 'PRIVATE_EVIDENCE';
@@ -68,7 +77,9 @@ async function resolve(
 			'RECORD_EVIDENCE',
 			'READ_SEGMENT',
 			'RECORD_STATEMENT',
-			'READ_STATEMENT'
+			'READ_STATEMENT',
+			'READ_NOTES',
+			'PROCESS_DRAFT'
 		].includes(operation)
 	)
 		throw new FoundationDenied();

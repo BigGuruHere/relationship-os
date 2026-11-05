@@ -82,3 +82,7 @@ Follow [P-301](P301_PEOPLE.md) for server-controlled domain dispatch and bounded
 ## Public exchange
 
 Follow [P-302](P302_EXCHANGE.md) for visitor capture. Keep route consent/token/origin checks, use the existing dispatch adapter, and never construct an owner FoundationAccess from Profile.userId. Only the capture repository invokes `withPublicCapture`; no callback result may become a visitor response. Preserve atomic person/receipt creation and use STORED_ONLY admission. Later claim and sharing features need their own explicit authorization.
+
+## P-303 notes and draft processing
+
+Follow [P-303](P303_NOTES.md). Reuse ContactNoteForm and existing upload/provider transport. Stable form keys identify retry attempts, not people. Keep full-text note retrieval under READ_NOTES and leave READ_SEGMENT payload restrictions intact. Explicit PROCESS_DRAFT checks run before and after provider work, outside database transactions; they grant no stored-source analysis permission. Jobs must bind server-issued domain/vault/epoch and reauthorize polling. Do not treat process-local jobs as durable or silently route failed foundation writes to legacy storage.

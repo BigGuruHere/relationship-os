@@ -187,6 +187,7 @@
     "policy-sms:once:dev": "node --env-file=.env --import tsx scripts/process-stage8-22-4-policy-sms.ts",
     "policy-sms:watch:dev": "node --env-file=.env --import tsx scripts/process-stage8-22-4-policy-sms.ts --watch",
     "check:stage8.22.5": "node --test tests/core/stage8-22-5-event-landing-and-mobile-navigation.test.mjs",
+    "check:foundation:notes": "node --test tests/foundation/p303-notes.test.mjs",
     "check:foundation:capture": "node --test tests/foundation/p302-capture.test.mjs",
     "check:foundation:people": "node --test tests/foundation/p301-people.test.mjs",
     "check:foundation:rehearsal": "node --test tests/foundation/f206-transition.test.mjs",

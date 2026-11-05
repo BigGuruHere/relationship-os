@@ -19,7 +19,7 @@ export const GET: RequestHandler = async ({ locals, url }) => {
 	}
 
 	// read job state from in-memory map in upload-chunk
-	const job = getJob(jobId, locals.user.id, locals.contextSpaceId);
+	const job = getJob(jobId, locals.user.id, 'legacy:' + locals.contextSpaceId);
 	if (!job) {
 		// job not found - likely expired or never created
 		transcriptionEvent('poll.missing', transcriptionCorrelationId(url.searchParams.get('correlationId')), { httpStatus: 404 }, true);

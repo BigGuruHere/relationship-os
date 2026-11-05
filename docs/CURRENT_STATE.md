@@ -1,14 +1,18 @@
 # Relish: Current State and Open Work
 
-Status: living snapshot updated **2026-11-05**. Foundation baseline is development `8d895f8` (PR #18). Environment observations are explicitly attributed below; this is not a live deployment monitor.
+Status: living snapshot updated **2026-11-05**. Foundation baseline is development `7b92036` (PR #19). Environment observations are explicitly attributed below; this is not a live deployment monitor.
 
-## F-206 internal integration rehearsal (feature branch, 2026-11-05)
+## P-301 private People directory (feature branch, 2026-11-05)
 
-The F-206 branch exercises legacy capture, Brokerage, owner-private evidence and corrected understanding together on synthetic accounts. The QR adapter now checks enrollment inside the transaction that creates the private home, Contact and receipt. Scope, rollback and release gates are in [the rehearsal record](foundation/F206_REHEARSAL.md). Pending merge and DEV smoke verification.
+`feature/p301-private-people` adapts the existing directory, manual create and person detail pages for ACTIVE foundation accounts. Owner-only name/email/phone search has bounded pages and explicit continuation. Name and optional contact fields use existing encrypted subject columns. Legacy/PREPARED accounts retain their Contact path, with an account lock spanning manual create. Notes and public capture remain gated for foundation accounts pending P-303/P-302. No new migration, enrollment, activation or production deployment. See [scope, acceptance and recovery](foundation/P301_PEOPLE.md). Merge and DEV/device checks are pending. Local Node 22 validation passed nine P-301 reported tests and 25 focused legacy regressions. Svelte check passed with zero errors and warnings. [CI run 41990600972](https://github.com/BigGuruHere/relationship-os/actions/runs/41990600972) passed all 104 foundation checks with zero failures/skips on `4996c98`. [PR #20](https://github.com/BigGuruHere/relationship-os/pull/20) is open. DEV/device verification remains pending. The operator has chosen to defer production until release readiness is explicitly reviewed.
+
+## F-206 internal integration rehearsal (merged, 2026-11-05)
+
+The F-206 branch exercises legacy capture, Brokerage, owner-private evidence and corrected understanding together on synthetic accounts. The QR adapter now checks enrollment inside the transaction that creates the private home, Contact and receipt. Scope, rollback and release gates are in [the rehearsal record](foundation/F206_REHEARSAL.md). Merged via PR #19 at `7b92036`. CI run 41957382850 passed all 95 foundation checks. DEV smoke verification remains unconfirmed.
 
 ## F-205 private evidence (merged, 2026-11-05)
 
-Merged via PR #18 at `8d895f8`. DEV smoke confirmation is pending. One note can concern several subjects and support a private statement with a distinct perspective. Corrections retain exact historic excerpts and invalidate stale understanding. Migration count is unchanged. F-206 integration rehearsal is next. See [F-205 evidence and acceptance](foundation/F205_EVIDENCE.md).
+Merged via PR #18 at `8d895f8`. DEV smoke confirmation is pending. One note can concern several subjects and support a private statement with a distinct perspective. Corrections retain exact historic excerpts and invalidate stale understanding. Migration count is unchanged. F-206 integration rehearsal is merged. See [F-205 evidence and acceptance](foundation/F205_EVIDENCE.md).
 
 ## F-204 owner-private access and repositories (merged, 2026-11-05)
 

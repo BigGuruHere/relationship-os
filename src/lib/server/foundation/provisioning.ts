@@ -139,8 +139,8 @@ export async function withLegacyAccountClaims<T>(
 	);
 }
 
-// F-204/P-301 will supply the foundation path. Until then reject ACTIVE/SUSPENDED
-// owners instead of letting an old People/capture adapter become a competing writer.
+// Legacy adapters must reject ACTIVE/SUSPENDED owners. P-301 dispatches eligible
+// directory routes separately; capture and notes remain gated until their adapters ship.
 export async function requireLegacyPeopleDomain(
 	userId: string,
 	transaction?: AppTransactionClient

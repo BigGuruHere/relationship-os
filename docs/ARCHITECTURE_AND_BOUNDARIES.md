@@ -101,3 +101,7 @@ F-205 introduces purpose-specific owner operations for recording notes, inspecti
 ## Capture during a storage handoff
 
 Resolve the profile owner and check its enrollment under the account lock on the same transaction connection used for private-home creation, Contact and receipt. Take the profile lock second and recheck publication before persisting. Before enabling other private writers for a cohort, rehearse the complete handoff and recovery. See [F-206](foundation/F206_REHEARSAL.md).
+
+## P-301 People route adaptation
+
+[Private directory contract](foundation/P301_PEOPLE.md) documents the first user-facing foundation adapter. Server enrollment selects the existing People page storage path. ACTIVE directory routes skip legacy custody resolution and call F-204-authorized subject services. Manual name/email/phone details reuse encrypted `FoundationSubject.detailsEnc`. Search decrypts bounded owner-only pages with explicit continuation. Legacy manual Contact creation now retains its account lock through commit. Notes/capture require their separate P-303/P-302 adapters, and no cohort activation ships here.

@@ -74,3 +74,7 @@ F-205 introduces purpose-specific owner operations for recording notes, inspecti
 ## Capture during a storage handoff
 
 Resolve the profile owner and check its enrollment under the account lock on the same transaction connection used for private-home creation, Contact and receipt. Take the profile lock second and recheck publication before persisting. Before enabling other private writers for a cohort, rehearse the complete handoff and recovery. See [F-206](F206_REHEARSAL.md).
+
+## People pages
+
+Follow [P-301](P301_PEOPLE.md) for server-controlled domain dispatch and bounded encrypted directory search. A route must resolve fresh owner authority, and a failed foundation operation must never fall through to legacy storage. Extend the exact enabled route set only alongside the corresponding repository and isolation tests. Keep the directory response explicit when search covers one page rather than the whole vault.

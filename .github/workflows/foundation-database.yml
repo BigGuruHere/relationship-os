@@ -6,6 +6,7 @@ on:
     paths:
       - 'prisma/**'
       - 'src/lib/**'
+      - 'src/routes/people/**'
       - 'src/routes/auth/**'
       - 'src/routes/api/auth/**'
       - 'src/routes/api/guest/claim-linkedin/**'
@@ -43,6 +44,7 @@ jobs:
           node-version: '22'
           cache: npm
       - run: npm ci
+      - run: npm run check:foundation:people
       - run: npm run check:foundation:rehearsal
       - run: npm run check:foundation:schema
       # CI-only driver installation leaves the application dependency lock unchanged.

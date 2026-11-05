@@ -1,6 +1,8 @@
 // One ingress adapter onto Core Contacts. A submission is unverified self-reported information, not identity proof.
 import { error, isHttpError } from '@sveltejs/kit';
 import { randomUUID } from 'node:crypto';
+import { accountDomain } from '$lib/server/foundation/provisioning';
+import { captureFoundationContact } from '$lib/server/foundation/capture';
 import { captureFailureMetadata } from './contactCaptureDiagnostics';
 import { prisma } from '$lib/db';
 import { buildScopedIndexToken, encrypt } from '$lib/crypto';
@@ -9,7 +11,8 @@ import { ensurePrivatePeopleSpace } from './myPeople';
 import { createWorkspaceCoreAccess } from './accessPolicy';
 import { currentWorkspaceCustody, runWithCrossOwnerWorkspaceCustody, runWithExternalWorkspaceCustody, runWithWorkspaceCustody } from './contextSpace';
 export const CAPTURE_CHANNEL = 'CONTACT_CAPTURE';
-export const CAPTURE_CONSENT_VERSION = 'private-contact-share-v1';
+import { CAPTURE_CONSENT_VERSION } from './contactCaptureToken';
+export { CAPTURE_CONSENT_VERSION };
 const visitorLimits = new Map<string, { at: number; count: number }>();
 export async function publishedCaptureProfile(slug: string) {
   const profile = await prisma.profile.findFirst({ where: { slug, isPublished: true },
@@ -18,13 +21,20 @@ export async function publishedCaptureProfile(slug: string) {
   return profile;
 }
 export async function capturePrivateContact(profile: Awaited<ReturnType<typeof publishedCaptureProfile>>, input: {
-  name: unknown; email?: unknown; phone?: unknown; nonce: string; browser: string; via: 'qr' | 'event' | 'profile_link';
+  name: unknown; email?: unknown; phone?: unknown; nonce: string; browser: string; captureToken?: unknown; via: 'qr' | 'event' | 'profile_link';
 }) {
   const details = validateContactDetails(input);
   const prefix = `contact-capture:v1:${profile.id}:`;
   const externalRef = prefix + buildScopedIndexToken(input.nonce, 'contact-capture:receipt:v1');
   let stage = 'private_home';
   try {
+    // Choose by the published profile owner, never the visitor's account or form flags.
+    const domain = await accountDomain(profile.userId);
+    if (domain === 'SUSPENDED') throw error(503, 'People storage is temporarily unavailable.');
+    if (domain === 'ACTIVE') {
+      stage = 'foundation_capture';
+      return await captureFoundationContact(profile.id, input);
+    }
     // Resolve the private home and hold its account lock through Contact and receipt commit.
     return await prisma.$transaction(async tx => {
       const space = await ensurePrivatePeopleSpace(profile.userId, tx);

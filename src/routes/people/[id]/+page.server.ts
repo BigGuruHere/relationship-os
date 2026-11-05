@@ -13,7 +13,7 @@ export const load: PageServerLoad = async ({ locals, params }) => {
   if (!locals.user) throw redirect(303, '/auth/login');
   if (await peopleRouteDomain(locals.user.id, '/people/' + params.id) === 'FOUNDATION') {
     const contact = await foundationPage(async () => readPerson(await resolveFoundationAccess(locals, 'READ'), params.id));
-    return { contact, origin: null, notes: [], foundation: true };
+    return { contact, origin: contact.origin, notes: [], foundation: true };
   }
   const { context, contact } = await requirePeopleContact(locals, params.id);
   const rows = await prisma.interaction.findMany({ where: { userId: context.workspaceUserId, contextSpaceId: context.contextSpaceId, contactId: contact.id },

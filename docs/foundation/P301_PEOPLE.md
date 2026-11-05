@@ -1,6 +1,6 @@
 # P-301 private People directory
 
-Updated 2026-11-05. Implemented on `feature/p301-private-people` from development `7b92036` (PR #19). Merge, DEV deployment and device acceptance are pending. No account is enrolled or activated by this change.
+Updated 2026-11-05. Implemented on `feature/p301-private-people` from development `7b92036` (PR #19). Merged via PR #20 at `9aeac97` on 2026-11-06. DEV deployment and device acceptance remain unconfirmed. No account is enrolled or activated by this change.
 
 ## Reuse and scope
 

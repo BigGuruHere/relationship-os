@@ -105,3 +105,7 @@ Resolve the profile owner and check its enrollment under the account lock on the
 ## P-301 People route adaptation
 
 [Private directory contract](foundation/P301_PEOPLE.md) documents the first user-facing foundation adapter. Server enrollment selects the existing People page storage path. ACTIVE directory routes skip legacy custody resolution and call F-204-authorized subject services. Manual name/email/phone details reuse encrypted `FoundationSubject.detailsEnc`. Search decrypts bounded owner-only pages with explicit continuation. Legacy manual Contact creation now retains its account lock through commit. Notes/capture require their separate P-303/P-302 adapters, and no cohort activation ships here.
+
+## P-302 public intake boundary
+
+[Public exchange intake](foundation/P302_EXCHANGE.md) adapts the existing sharing action for ACTIVE destination owners. Policy resolves the published profile and verifies the browser-bound token without impersonating the owner. The guarded PUBLIC_CAPTURE transaction permits new private person/evidence records, opaque receipt checks and bounded profile counts, with lifecycle/publication locks and stored-only admission. Legacy/PREPARED captures retain their original model. No identity link or continuing-sharing permission follows from a submission.

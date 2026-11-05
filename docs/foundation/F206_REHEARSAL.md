@@ -26,3 +26,7 @@ Before a future handoff, record the prior state/epoch, verify recovery and pause
 ## Release scope
 
 F-206 ships the repeatable rehearsal and capture transaction fix. It requires zero new Prisma migrations. Cohort activation, data copying and invitations remain separate operator decisions. P-301 adapts the existing directory and person details. P-302 supplies the foundation public intake adapter. Invited rollout stays gated on P-305/P-306 operations, privacy and device acceptance.
+
+## Acceptance record
+
+[PR #19](https://github.com/BigGuruHere/relationship-os/pull/19) targets development. [Foundation CI run 41957382850](https://github.com/BigGuruHere/relationship-os/actions/runs/41957382850) passed all 95 reported tests with zero skips on implementation commit `7b606c2`. This includes the full disposable database journey and the PostgreSQL 18.6 lock-wait test. Locally, 22 focused People, capture and onboarding regressions passed and Svelte reported zero errors and warnings. Review, merge and the DEV smoke check remain the integration gates.

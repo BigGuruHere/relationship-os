@@ -1,6 +1,6 @@
 # Relish: Start Here
 
-Status: living documentation index. Updated 2026-11-05; F-202 schema is merged and DEV operator-confirmed; F-203 provisioning is merged and DEV operator-confirmed; F-204 access is on a feature branch; user activation remains gated.
+Status: living documentation index. Updated 2026-11-05; F-202 schema is merged and DEV operator-confirmed; F-203 provisioning is merged and DEV operator-confirmed; F-204 access is merged and F-205 evidence is on a feature branch; user activation remains gated.
 
 Relish is a person-first Relationship Operating System. Dorian is a conversational AI partner that helps people understand themselves and develop valuable relationships with other people. The architecture and the immediate product experience evolve together, but an old release note is not a current product requirement.
 
@@ -31,6 +31,8 @@ For architecture and new-domain implementation, read these linked documents afte
 - [F-203 provisioning isolation](foundation/F203_PROVISIONING.md): shared authentication boundary, preparation, claim isolation and validation.
 
 - [F-204 access and repositories](foundation/F204_ACCESS.md): owner authority, lifecycle locking, guarded queries and private subject services.
+
+- [F-205 private evidence](foundation/F205_EVIDENCE.md) covers versioned notes, excerpts, supported statements and current eligibility.
 
 These specifications guide future work; they do not replace source code as evidence of implementation. Update the relevant backlog item and stage register with each implementation PR.
 

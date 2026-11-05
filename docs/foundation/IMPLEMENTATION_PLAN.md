@@ -1,6 +1,6 @@
 # Foundation implementation and user rollout
 
-Updated: 2026-11-05. F-201 merged via PR #14; DEV inventory/restore evidence is recorded in CURRENT_STATE. F-202 merged via PR #15 (`2d6d1a3`) with operator-confirmed DEV deployment and smoke checks. F-203 merged via PR #16 (`bdd5ef8`), with operator-confirmed DEV smoke success. F-204 authorization/repositories are implemented on `feature/f204-foundation-access-20261105`, pending review/merge/deployment. F-205/F-206 and stages 3-7 remain planned. Backlog identifiers are not GitHub issue numbers.
+Updated: 2026-11-05. F-201 merged via PR #14; DEV inventory/restore evidence is recorded in CURRENT_STATE. F-202 merged via PR #15 (`2d6d1a3`) with operator-confirmed DEV deployment and smoke checks. F-203 merged via PR #16 (`bdd5ef8`), with operator-confirmed DEV smoke success. F-204 merged via PR #17 at `33f87f3`. F-205 is implemented on a feature branch. F-206 integration rehearsal follows. Backlog identifiers are not GitHub issue numbers.
 
 ## Release sequence and evidence gates
 
@@ -39,9 +39,9 @@ F-202 merged via PR #15 at `2d6d1a3`. Its 15 additive tables passed 23 embedded 
 
 F-203 implementation and acceptance evidence: [F203_PROVISIONING.md](F203_PROVISIONING.md). Shared authentication checks and internal idempotent preparation merged via PR #16. All enrollment states suppress legacy automatic claims; private routing fails closed for ACTIVE/SUSPENDED pending new adapters. No new migration, public enrollment entry point or activated users. PostgreSQL 18.6 CI run 41898613496 passed all 21 F-203 tests, including real overlapping transactions, on `6fe087e`. PR #16 merged at `bdd5ef8`; operator confirmed DEV login/People/share smoke success.
 
-F-204: owner-private authorization, guarded Prisma access and person/relationship/perspective repositories implemented on the feature branch. See [F204_ACCESS.md](F204_ACCESS.md) for acceptance evidence, scope, lifecycle locks and rollback requirements. No new migration or user activation. PR #17 is open; PostgreSQL 18.6 CI run 41911636542 passed all ten F-204 tests, including the transition race, on `77c0d0b`. Svelte check: zero errors/warnings. Merge and DEV verification remain pending.
+F-204: owner-private authorization, guarded Prisma access and person/relationship/perspective repositories implemented on the feature branch. See [F204_ACCESS.md](F204_ACCESS.md) for acceptance evidence, scope, lifecycle locks and rollback requirements. No new migration or user activation. PR #17 merged at `33f87f3`; PostgreSQL 18.6 CI run 41911636542 passed all ten F-204 tests, including the transition race, on `77c0d0b`. Svelte check: zero errors/warnings. DEV verification is pending.
 
-Next implementation: **F-205 evidence and understanding subject slice** after F-204 acceptance. Keep stage 2 open until F-206 passes; no user-facing foundation writer before custody/epoch guards.
+F-205 is implemented on `feature/f205-private-evidence`. PR #18 is open. CI run 41954241665 passed all 87 foundation tests on `2ee0634`, including eight F-205 cases. See [scope, acceptance and rollback](F205_EVIDENCE.md). Next implementation: **F-206 internal integration and transition rehearsal**. Keep stage 2 open until F-206 passes; no user-facing foundation writer before custody/epoch guards.
 
 ## Stage 3 backlog: simplest usable release
 
@@ -76,6 +76,6 @@ Use the [developer guide](DEVELOPER_GUIDE.md) for PR evidence. Stages 4-7 get a 
 | Stage | Designed | Implemented | Validated | Merged | DEV / PROD |
 | --- | --- | --- | --- | --- | --- |
 | 1 | Documentation package | Documentation only | 37 relative links and diff checks passed in PR #13 | PR #13, `d789464` | No deployment applicable |
-| 2 | F-201 merged; DEV operator inventory recorded | F-202/F-203 merged; F-204 access/repositories on feature branch | F-202: 23 schema + 25 concurrency; F-203: 21 tests; F-204: ten tests including transition race; baseline audit exceptions linked above | F-202 PR #15; F-203 PR #16; F-204 PR #17 pending | F-202/F-203 DEV operator-confirmed; F-204 not deployed; PROD unverified |
+| 2 | F-201 merged; DEV operator inventory recorded | F-202 to F-204 merged; F-205 private evidence on feature branch | F-202: 23 schema + 25 concurrency; F-203: 21 tests; F-204: ten tests; F-205: eight tests including competing corrections; baseline audit exceptions linked above | F-202 PR #15; F-203 PR #16; F-204 PR #17 merged; F-205 pending | F-202/F-203 DEV operator-confirmed; F-204 DEV unverified; F-205 awaiting integration; PROD unverified |
 | 3 | Backlog and gates | New-domain path not implemented; legacy UI exists | No new-domain validation | No | Not deployed |
 | 4-7 | Direction and gates only | No | No | No | Not deployed |

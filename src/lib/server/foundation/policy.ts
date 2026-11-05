@@ -2,14 +2,20 @@
 import { prisma, type AppTransactionClient } from '$lib/db';
 import { FoundationDenied, runFoundationBoundary } from './internal';
 import { lockFoundationAccount } from './provisioning';
-export type FoundationOperation = 'READ' | 'WRITE';
+export type FoundationOperation =
+	| 'READ'
+	| 'WRITE'
+	| 'RECORD_EVIDENCE'
+	| 'READ_SEGMENT'
+	| 'RECORD_STATEMENT'
+	| 'READ_STATEMENT';
 export type FoundationAccess = Readonly<{
 	actorId: string;
 	ownerUserId: string;
 	vaultId: string;
 	epoch: number;
 	operation: FoundationOperation;
-	purpose: 'PRIVATE_DIRECTORY';
+	purpose: 'PRIVATE_DIRECTORY' | 'PRIVATE_EVIDENCE' | 'PRIVATE_UNDERSTANDING';
 }>;
 const issued = new WeakMap<object, { prepared: boolean }>();
 
@@ -33,13 +39,36 @@ async function current(tx: AppTransactionClient, ownerUserId: string, prepared: 
 		throw new FoundationDenied();
 	return { vaultId: vault.id, epoch: enrollment.epoch };
 }
+function purposeFor(operation: FoundationOperation): FoundationAccess['purpose'] {
+	switch (operation) {
+		case 'READ':
+		case 'WRITE':
+			return 'PRIVATE_DIRECTORY';
+		case 'READ_SEGMENT':
+		case 'RECORD_EVIDENCE':
+			return 'PRIVATE_EVIDENCE';
+		default:
+			return 'PRIVATE_UNDERSTANDING';
+	}
+}
 async function resolve(
 	locals: Pick<App.Locals, 'user'>,
 	operation: FoundationOperation,
 	prepared: boolean
 ): Promise<FoundationAccess> {
 	const ownerUserId = locals.user?.id;
-	if (!ownerUserId || !['READ', 'WRITE'].includes(operation)) throw new FoundationDenied();
+	if (
+		!ownerUserId ||
+		![
+			'READ',
+			'WRITE',
+			'RECORD_EVIDENCE',
+			'READ_SEGMENT',
+			'RECORD_STATEMENT',
+			'READ_STATEMENT'
+		].includes(operation)
+	)
+		throw new FoundationDenied();
 	return runFoundationBoundary({ ownerUserId, mode: 'RESOLVE' }, () =>
 		prisma.$transaction(async (tx) => {
 			const root = await current(tx, ownerUserId, prepared);
@@ -48,7 +77,7 @@ async function resolve(
 				ownerUserId,
 				...root,
 				operation,
-				purpose: 'PRIVATE_DIRECTORY' as const
+				purpose: purposeFor(operation)
 			});
 			issued.set(access, { prepared });
 			return access;

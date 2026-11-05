@@ -2,10 +2,8 @@
 // It never reads DATABASE_URL or connects to an external database.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFile, writeFile, mkdtemp, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { execFileSync } from 'node:child_process';
+import { readFile } from 'node:fs/promises';
+import { legacySchemaFixture } from './legacy-schema-fixture.mjs';
 import { PGlite } from '@electric-sql/pglite';
 import { vector } from '@electric-sql/pglite-pgvector';
 import { PGLiteSocketServer } from '@electric-sql/pglite-socket';
@@ -14,19 +12,7 @@ import { PrismaClient } from '@prisma/client';
 const migrationPath = 'prisma/migrations/20261104010000_f202_foundation_schema/migration.sql';
 const migration = await readFile(migrationPath, 'utf8');
 const schema = await readFile('prisma/schema.prisma', 'utf8');
-const legacySchema = schema
-  .replace(/^(model|enum) Foundation\w+ \{[\s\S]*?^\}/gm, '')
-  .replace(/^\s*f202\w+ Foundation[^\n]+\n/gm, '\n');
-const legacyModels = [...legacySchema.matchAll(/^model (\w+) \{/gm)].map(m => m[1]);
-const temporary = await mkdtemp(join(tmpdir(), 'relish-f202-'));
-await writeFile(join(temporary, 'legacy.prisma'), legacySchema);
-// Generate only the legacy schema fixture; historical custom SQL is not implied.
-const legacySql = execFileSync(process.execPath, ['node_modules/prisma/build/index.js',
-  'migrate', 'diff', '--from-empty', '--to-schema-datamodel', join(temporary, 'legacy.prisma'), '--script'],
-  { encoding: 'utf8', maxBuffer: 8 * 1024 * 1024 });
-const custodySql = await readFile('prisma/migrations/20260901073000_stage8_6_context_space_custody_foundation/migration.sql', 'utf8');
-const defaultTrigger = custodySql.slice(custodySql.indexOf('CREATE OR REPLACE FUNCTION "relish_create_default_context_for_user"'),
-  custodySql.indexOf('ALTER TABLE "Contact" ADD COLUMN'));
+const {legacyModels,legacySql,defaultTrigger} = await legacySchemaFixture(schema);
 
 // All content below is synthetic. These strings are structural placeholders,
 // not production encryption and not examples for an application write path.
@@ -268,5 +254,5 @@ test('F-202 isolated PostgreSQL schema rehearsal', { timeout: 120000 }, async t 
       await db.exec('ROLLBACK');
       assert.deepEqual(await legacySnapshot(db),before);
     });
-  } finally { await db.close(); await rm(temporary,{recursive:true,force:true}); }
+  } finally { await db.close(); }
 });

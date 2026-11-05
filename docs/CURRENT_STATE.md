@@ -1,10 +1,14 @@
 # Relish: Current State and Open Work
 
-Status: living snapshot updated **2026-11-05**. Foundation baseline is development `33f87f3` (PR #17). Environment observations are explicitly attributed below; this is not a live deployment monitor.
+Status: living snapshot updated **2026-11-05**. Foundation baseline is development `8d895f8` (PR #18). Environment observations are explicitly attributed below; this is not a live deployment monitor.
 
-## F-205 private evidence (feature branch, 2026-11-05)
+## F-206 internal integration rehearsal (feature branch, 2026-11-05)
 
-Implemented on `feature/f205-private-evidence`. One note can concern several subjects and support a private statement with a distinct perspective. Corrections retain exact historic excerpts and invalidate stale understanding. Migration count is unchanged. F-206 integration rehearsal is next. See [F-205 evidence and acceptance](foundation/F205_EVIDENCE.md).
+The F-206 branch exercises legacy capture, Brokerage, owner-private evidence and corrected understanding together on synthetic accounts. The QR adapter now checks enrollment inside the transaction that creates the private home, Contact and receipt. Scope, rollback and release gates are in [the rehearsal record](foundation/F206_REHEARSAL.md). Pending merge and DEV smoke verification.
+
+## F-205 private evidence (merged, 2026-11-05)
+
+Merged via PR #18 at `8d895f8`. DEV smoke confirmation is pending. One note can concern several subjects and support a private statement with a distinct perspective. Corrections retain exact historic excerpts and invalidate stale understanding. Migration count is unchanged. F-206 integration rehearsal is next. See [F-205 evidence and acceptance](foundation/F205_EVIDENCE.md).
 
 ## F-204 owner-private access and repositories (merged, 2026-11-05)
 

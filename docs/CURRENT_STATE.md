@@ -1,10 +1,14 @@
 # Relish: Current State and Open Work
 
-Status: living snapshot updated **2026-11-05**. Foundation baseline is development `bdd5ef8` (PR #16). Environment observations are explicitly attributed below; this is not a live deployment monitor.
+Status: living snapshot updated **2026-11-05**. Foundation baseline is development `33f87f3` (PR #17). Environment observations are explicitly attributed below; this is not a live deployment monitor.
 
-## F-204 owner-private access and repositories (feature branch, 2026-11-05)
+## F-205 private evidence (feature branch, 2026-11-05)
 
-Implemented on `feature/f204-foundation-access-20261105` from development `bdd5ef8`, pending review/merge/deployment. Adds runtime-issued owner access handles, transactional state/epoch checks, guarded Prisma operations and private person/relationship/perspective services. No new migration, public route activation or cohort enrollment. PR #17 is open. [CI run 41911636542](https://github.com/BigGuruHere/relationship-os/actions/runs/41911636542) passed all ten F-204 tests plus 69 F-202/F-203 checks on code commit `77c0d0b`; the subsequent commit updates documentation only. Svelte check: zero errors/warnings. Six pre-existing audit failures reproduce on unchanged development. [Acceptance and usage](foundation/F204_ACCESS.md) records tests, limitations and rollback obligations. Next: F-205 evidence/versioned understanding slice; stage 2 remains open.
+Implemented on `feature/f205-private-evidence`. One note can concern several subjects and support a private statement with a distinct perspective. Corrections retain exact historic excerpts and invalidate stale understanding. Migration count is unchanged. F-206 integration rehearsal is next. See [F-205 evidence and acceptance](foundation/F205_EVIDENCE.md).
+
+## F-204 owner-private access and repositories (merged, 2026-11-05)
+
+Implemented on `feature/f204-foundation-access-20261105` from development `bdd5ef8`, merged through PR #17 at `33f87f3`. DEV smoke confirmation is pending. Adds runtime-issued owner access handles, transactional state/epoch checks, guarded Prisma operations and private person/relationship/perspective services. No new migration, public route activation or cohort enrollment. [CI run 41911636542](https://github.com/BigGuruHere/relationship-os/actions/runs/41911636542) passed all ten F-204 tests plus 69 F-202/F-203 checks on code commit `77c0d0b`; the subsequent commit updates documentation only. Svelte check: zero errors/warnings. Six pre-existing audit failures reproduce on unchanged development. [Acceptance and usage](foundation/F204_ACCESS.md) records tests, limitations and rollback obligations. Next: F-205 evidence/versioned understanding slice; stage 2 remains open.
 
 ## F-203 account provisioning isolation (merged, DEV confirmed, 2026-11-05)
 

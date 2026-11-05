@@ -1,6 +1,6 @@
 # F-204: Owner-private authorization and repositories
 
-Updated: 2026-11-05. Feature branch `feature/f204-foundation-access-20261105`, based on development `bdd5ef874cd63a64450950861702d46ecde5a2fd` (PR #16 merge). Pending merge and deployment. No activated users, public route changes or new migration.
+Updated: 2026-11-05. Feature branch `feature/f204-foundation-access-20261105`, based on development `bdd5ef874cd63a64450950861702d46ecde5a2fd` (PR #16 merge). Merged through PR #17 at `33f87f3`. DEV smoke confirmation is pending. No activated users, public route changes or new migration.
 
 ## Existing capability and gap
 

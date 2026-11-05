@@ -90,6 +90,10 @@ Auth accepts the existing strict Network invite paths plus exactly `/settings/pr
 
 See [account provisioning isolation](foundation/F203_PROVISIONING.md) for transaction locks, enrollment-state behavior and acceptance evidence. All auth paths reuse `createSession`; no automatic enrollment is enabled. Future enrollment transitions must use the same account advisory lock. PREPARED suppresses automatic legacy claims while retaining legacy public routing. ACTIVE/SUSPENDED private routes fail closed until the foundation adapters are available. F-204 must add repository authorization and transactional state/epoch checks before activation.
 
-## F-204 owner access boundary (feature branch, 2026-11-05)
+## F-204 owner access boundary (merged, 2026-11-05)
 
 Read [F-204 access and usage](foundation/F204_ACCESS.md) before adding a foundation caller. Resolve authority from authenticated server locals and use repository projections. Never accept owner/vault/purpose from request payloads as authority. Private operations recheck enrollment/epoch and vault lifecycle under account/root locks. Prepared access is internal-only; serialized access handles, agent identities, memberships and context labels grant nothing. Evidence/statement/job adapters remain gated pending their own policy tests. No route activation is included.
+
+## Private evidence and understanding
+
+F-205 introduces purpose-specific owner operations for recording notes, inspecting excerpts, recording statements and reading current understanding. Preserve exact UTF-16 anchors across revisions, explicit owner admission and use-time checks on each support. Follow the [F-205 service contract](foundation/F205_EVIDENCE.md).

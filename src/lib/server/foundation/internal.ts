@@ -1,12 +1,13 @@
 // Internal transaction capability. Only policy.ts and provisioning.ts may establish scope.
 // This is an application-code boundary, not protection from a compromised DB credential.
 import { AsyncLocalStorage } from 'node:async_hooks';
+import type { FoundationOperation } from './policy';
 import { Prisma } from '@prisma/client';
 
 type Boundary = {
 	ownerUserId: string;
 	vaultId?: string;
-	mode: 'RESOLVE' | 'PROVISION' | 'READ' | 'WRITE';
+	mode: 'RESOLVE' | 'PROVISION' | FoundationOperation;
 };
 const boundary = new AsyncLocalStorage<{ scope: Boundary; active: boolean }>();
 export function runFoundationBoundary<T>(scope: Boundary, fn: () => Promise<T>): Promise<T> {
@@ -34,6 +35,38 @@ const domainModels = new Set([
 	'FoundationPerspective'
 ]);
 
+// Each evidence operation has a fixed set of delegates and append-only writes.
+const sourceModels = [
+	'FoundationSource',
+	'FoundationSourceVersion',
+	'FoundationEvidenceSegment',
+	'FoundationEvidenceSubject'
+];
+const statementModels = [
+	'FoundationStatement',
+	'FoundationStatementVersion',
+	'FoundationStatementSubject',
+	'FoundationSupport'
+];
+function evidenceOperationAllowed(mode: Boundary['mode'], model: string, op: string) {
+	if (mode === 'READ_SEGMENT')
+		return reads.has(op) && [...sourceModels, 'FoundationSubject'].includes(model);
+	if (mode === 'RECORD_EVIDENCE')
+		return (
+			(reads.has(op) && ['FoundationSubject', ...sourceModels].includes(model)) ||
+			(op === 'create' && sourceModels.includes(model))
+		);
+	const canInspect =
+		reads.has(op) &&
+		[...sourceModels, ...statementModels, 'FoundationSubject', 'FoundationPerspective'].includes(
+			model
+		);
+	if (mode === 'READ_STATEMENT') return canInspect;
+	return (
+		mode === 'RECORD_STATEMENT' &&
+		(canInspect || (op === 'create' && statementModels.includes(model)))
+	);
+}
 // Reject relational traversal anywhere in a legacy query, including _count and nested filters/writes.
 // Foundation relations currently exist only on User; derive names from schema to cover additions.
 const entryRelations = new Set(
@@ -86,13 +119,25 @@ export function guardFoundationQuery(model: string | undefined, operation: strin
 	}
 	if (!scope?.ownerUserId) throw new FoundationDenied();
 	const control = scope.mode === 'PROVISION' || scope.mode === 'RESOLVE';
+	// Segment and understanding reads may inspect source eligibility, never a parent payload.
 	if (
-		control
+		model === 'FoundationSourceVersion' &&
+		['READ_SEGMENT', 'RECORD_STATEMENT', 'READ_STATEMENT'].includes(scope.mode)
+	) {
+		const allowed = ['sourceId', 'version', 'processingAdmission'];
+		if (!args?.select || Object.keys(args.select).some((k) => !allowed.includes(k)))
+			throw new FoundationDenied();
+	}
+	const evidenceAllowed = evidenceOperationAllowed(scope.mode, model, operation);
+	if (
+		!evidenceAllowed &&
+		(control
 			? !['FoundationEnrollment', 'FoundationVault', 'FoundationSubject'].includes(model)
-			: !domainModels.has(model)
+			: !['READ', 'WRITE'].includes(scope.mode) || !domainModels.has(model))
 	)
 		throw new FoundationDenied();
 	if (
+		!evidenceAllowed &&
 		!reads.has(operation) &&
 		!(scope.mode === 'PROVISION' && operation === 'create') &&
 		!(scope.mode === 'WRITE' && ['create', 'update'].includes(operation))

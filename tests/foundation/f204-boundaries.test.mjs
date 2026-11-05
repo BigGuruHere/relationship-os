@@ -35,7 +35,12 @@ test('only reviewed modules may establish foundation authority or construct an O
 							file
 						);
 					if (name === 'withFoundationAccess')
-						assert.equal(file, 'src/lib/server/foundation/subjects.ts');
+						assert.ok(
+							['subjects', 'evidence'].some(
+								(name) => file === 'src/lib/server/foundation/' + name + '.ts'
+							),
+							file
+						);
 					if (name === 'resolvePreparedFoundationAccess')
 						assert.fail('Internal prepared resolver must have no shipped caller: ' + file);
 				}

@@ -1,10 +1,14 @@
 # Relish: Current State and Open Work
 
-Status: living snapshot updated **2026-11-06**. Foundation baseline is development `d6950e2` (PR #23). Environment observations are explicitly attributed below; this is not a live deployment monitor.
+Status: living snapshot updated **2026-11-06**. Foundation baseline is development `de9a875` (PR #24). Environment observations are explicitly attributed below; this is not a live deployment monitor.
 
-## P-305 privacy and operations readiness (feature branch)
+## P-306 hosted DEV rehearsal (in progress)
 
-`feature/p305-privacy-operations` adds owner archiving, an offline support command for one foundation vault, redacted note failure references and a recovery rehearsal. Support can inspect counts, prepare a protected review file, suspend foundation authority and erase the locked vault transactionally. An empty suspended routing record prevents legacy fallback. See [P-305 scope and runbook](foundation/P305_PRIVACY_OPERATIONS.md). [PR #24](https://github.com/BigGuruHere/relationship-os/pull/24) is open. [CI run 42154492443](https://github.com/BigGuruHere/relationship-os/actions/runs/42154492443) passed all 171 checks on `15087d7`. No migration or activation. Hosted DEV restore/replay, full account closure handling across the other stores, retention verification and live device acceptance remain rollout gates.
+The operator reported matching counts on Neon development and its separate restored snapshot on 2026-11-06. Both show 15 foundation tables, no enrollments or vaults, 9 Users, 29 Contacts, 128 Interactions, 107 applied migrations and zero unfinished migrations. The [rehearsal procedure](foundation/P306_DEV_REHEARSAL.md) uses a credential-free PREPARED fixture on isolated copies. Hosted erasure/replay, live DEV and mobile checks, full closure/retention and the cohort decision remain pending.
+
+## P-305 privacy and operations readiness (merged)
+
+`feature/p305-privacy-operations` adds owner archiving, an offline support command for one foundation vault, redacted note failure references and a recovery rehearsal. Support can inspect counts, prepare a protected review file, suspend foundation authority and erase the locked vault transactionally. An empty suspended routing record prevents legacy fallback. See [P-305 scope and runbook](foundation/P305_PRIVACY_OPERATIONS.md). [PR #24](https://github.com/BigGuruHere/relationship-os/pull/24) merged at `de9a875`. [CI run 42154492443](https://github.com/BigGuruHere/relationship-os/actions/runs/42154492443) passed all 171 checks on `15087d7`. No migration or activation. Hosted DEV restore/replay, full account closure handling across the other stores, retention verification and live device acceptance remain rollout gates.
 
 ## P-304 profile and authentication continuity (merged)
 

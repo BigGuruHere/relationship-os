@@ -46,11 +46,11 @@ The review fails without a partial report above 500 rows per foundation collecti
 
 ## Restore and release checks
 
-[PR #24](https://github.com/BigGuruHere/relationship-os/pull/24) is open against development. [CI run 42154492443](https://github.com/BigGuruHere/relationship-os/actions/runs/42154492443) passed all 171 checks on implementation commit `15087d7`, with no failures or skips. This includes the standalone command, rollback and erasure against PostgreSQL 18.6. Local validation passed 22 checks across privacy, notes and the foundation boundary plus 29 profile regressions. Svelte reported zero errors/warnings. The standalone command was exercised against synthetic accounts, including wrong targets, missing confirmation and refusing to overwrite an export.
+[PR #24](https://github.com/BigGuruHere/relationship-os/pull/24) merged into development at `de9a875`. [CI run 42154492443](https://github.com/BigGuruHere/relationship-os/actions/runs/42154492443) passed all 171 checks on implementation commit `15087d7`, with no failures or skips. This includes the standalone command, rollback and erasure against PostgreSQL 18.6. Local validation passed 22 checks across privacy, notes and the foundation boundary plus 29 profile regressions. Svelte reported zero errors/warnings. The standalone command was exercised against synthetic accounts, including wrong targets, missing confirmation and refusing to overwrite an export.
 
 The automated restore test takes a physical snapshot of a disposable database containing encrypted corrected evidence and two owners. It erases one vault, restores the snapshot into a separate database, verifies the encrypted content and suspension, and reapplies erasure to the restored copy. It verifies that the other account remains accessible. This is evidence of the application recovery and replay procedure, not an attestation of hosted Neon recovery.
 
-For hosted DEV acceptance:
+The operator-reported initial DEV/restore comparison and synthetic fixture commands are in [P-306](P306_DEV_REHEARSAL.md). For hosted DEV acceptance:
 
 1. Use the previously exercised DEV snapshot process. Use the multi-step restore into a **new isolated branch**. Keep Railway DEV/PROD connections on their current branches. Record the DEV source branch, snapshot time, restored branch, expected migration state, prior counts and approved retention window in the release record.
 2. Compare the snapshot manifest and restored aggregate counts with [the read-only inventory](../../scripts/foundation/inventory-readonly.sql). Check the foundation tables and fixed status counts, without displaying any record contents.

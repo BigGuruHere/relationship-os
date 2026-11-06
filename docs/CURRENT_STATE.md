@@ -4,7 +4,7 @@ Status: living snapshot updated **2026-11-06**. Foundation baseline is developme
 
 ## P-305 privacy and operations readiness (feature branch)
 
-`feature/p305-privacy-operations` adds owner archiving, an offline support command for one foundation vault, redacted note failure references and a recovery rehearsal. Support can inspect counts, prepare a protected review file, suspend foundation authority and erase the locked vault transactionally. An empty suspended routing record prevents legacy fallback. See [P-305 scope and runbook](foundation/P305_PRIVACY_OPERATIONS.md). No migration or activation. Hosted DEV restore/replay, full account closure handling across the other stores, retention verification and live device acceptance remain rollout gates.
+`feature/p305-privacy-operations` adds owner archiving, an offline support command for one foundation vault, redacted note failure references and a recovery rehearsal. Support can inspect counts, prepare a protected review file, suspend foundation authority and erase the locked vault transactionally. An empty suspended routing record prevents legacy fallback. See [P-305 scope and runbook](foundation/P305_PRIVACY_OPERATIONS.md). [PR #24](https://github.com/BigGuruHere/relationship-os/pull/24) is open. [CI run 42154492443](https://github.com/BigGuruHere/relationship-os/actions/runs/42154492443) passed all 171 checks on `15087d7`. No migration or activation. Hosted DEV restore/replay, full account closure handling across the other stores, retention verification and live device acceptance remain rollout gates.
 
 ## P-304 profile and authentication continuity (merged)
 

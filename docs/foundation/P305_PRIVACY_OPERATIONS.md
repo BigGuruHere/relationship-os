@@ -46,7 +46,7 @@ The review fails without a partial report above 500 rows per foundation collecti
 
 ## Restore and release checks
 
-Local validation passed 22 checks across privacy, notes and the foundation boundary. The standalone command was exercised against synthetic accounts, including wrong targets, missing confirmation and refusing to overwrite an export.
+[PR #24](https://github.com/BigGuruHere/relationship-os/pull/24) is open against development. [CI run 42154492443](https://github.com/BigGuruHere/relationship-os/actions/runs/42154492443) passed all 171 checks on implementation commit `15087d7`, with no failures or skips. This includes the standalone command, rollback and erasure against PostgreSQL 18.6. Local validation passed 22 checks across privacy, notes and the foundation boundary plus 29 profile regressions. Svelte reported zero errors/warnings. The standalone command was exercised against synthetic accounts, including wrong targets, missing confirmation and refusing to overwrite an export.
 
 The automated restore test takes a physical snapshot of a disposable database containing encrypted corrected evidence and two owners. It erases one vault, restores the snapshot into a separate database, verifies the encrypted content and suspension, and reapplies erasure to the restored copy. It verifies that the other account remains accessible. This is evidence of the application recovery and replay procedure, not an attestation of hosted Neon recovery.
 

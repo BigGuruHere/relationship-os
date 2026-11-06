@@ -1,6 +1,6 @@
 # S-401 Exchange claiming and reciprocal People
 
-Status as of 2026-11-07. Design delivered on docs/stage-4-exchange-claims from development d572b1a. Runtime implementation follows in S-402 through S-404. This deliverable requires zero Prisma migrations.
+Status as of 2026-11-07. Initial design merged through PR #29 at development 56eec62. Phone/email revision delivered on docs/s401-sms-verification. Runtime implementation follows in S-402 through S-404. This deliverable requires zero Prisma migrations.
 
 ## Agreed experience
 
@@ -10,7 +10,7 @@ A future My Settings preference, “Automatically add people I exchange details 
 
 Use the existing three screens. Add concise copy beside Send explaining that the exchanged details will be available in My People when the visitor joins. Viewing a card grants public viewing only. Browser download completion is unobservable, so use the explicit Save contact action and successful Send as the exchange intent. Skip and abandoned submissions retain their current outcomes.
 
-The visitor may share without an email or account. The resulting private contact remains usable. Verification and account association can be completed later with a new explicit exchange. Historic receipts created before secure claim issuance remain historical evidence.
+The visitor may share a phone number, email, both, or neither, with an account optional. The resulting private contact remains usable. Verification and account association can be completed later with a new explicit exchange. Historic receipts created before secure claim issuance remain historical evidence.
 
 ## Source assessment
 
@@ -22,7 +22,10 @@ The visitor may share without an email or account. The resulting private contact
 | src/lib/server/foundation/provisioning.ts | Enrollment locks and private-home creation | Explicit DEV cohort admission for fresh test accounts |
 | src/lib/server/foundation/policy.ts | Lifecycle checks and server-issued authority | Narrow exchange settlement operation across two private vaults |
 | src/routes/auth/google/callback/+server.ts | OAuth callback with verified-email check | Fresh assurance bound to exact claim and account |
-| src/lib/server/magic.ts | Existing token and URL concepts | Sender currently logs links. Verified delivery requires an implemented transport |
+| src/lib/server/integrations/telnyx/messaging.ts | Direct outbound SMS with configured sender, timeout and redacted errors | Deliver claim codes through the existing transport |
+| src/lib/server/core/relishPolicySms.ts | Durable queue and delivery lease pattern | Purpose-specific verification dispatch and expiry |
+| src/lib/server/integrations/elevenlabs/phone.ts | Shared phone normalization conventions | Strict country-aware verification destination validation |
+| src/lib/server/magic.ts | Existing token and URL concepts | Email delivery currently logs links. Add an email transport in the follow-on slice |
 | src/lib/leads/link.ts | Historical reciprocal-contact behaviour | Retain its legacy domain boundary |
 | prisma/schema.prisma | Foundation subjects, sources and private custody | Add exchange, verification and account-association persistence |
 
@@ -30,15 +33,23 @@ Password registration currently establishes an account with supplied email. A su
 
 ## Proposed verification contract
 
-The initial complete flow uses a purpose-specific email challenge to the address submitted in the exchange. This is an engineering proposal for S-402. It works with password and Google accounts through the same claim boundary. Provider selection and operational delivery configuration belong to implementation.
+The agreed design accepts either phone or email verification. If the exchange includes both, the claimant can choose an available channel. One successful verification is sufficient for the exchange claim. S-402 implements SMS first, with email delivery following on the same challenge service. The interface offers each channel once its transport is operational.
 
-The claimant must hold the opaque exchange continuation, be authenticated as the intended beneficiary, and complete a short-lived challenge sent to the submitted address. Bind the challenge to the exchange ID, claimant account ID, browser continuation and current authenticated session. Require the account's address to match the verified exchange address. Address changes require fresh verification. Any account switch invalidates the pending challenge.
+The claimant holds the exchange continuation, authenticates to the beneficiary account, and completes a challenge sent to a channel recorded in that exact exchange. Bind the challenge to exchange, claimant account, browser continuation and current session. Resolve its destination from server-held exchange data. Switching accounts invalidates the pending challenge. Switching channels or resending rotates the challenge generation and invalidates older codes across both channels.
 
-Generate independent high-entropy secrets and store only hashes. Proposed initial expiry is 24 hours for continuation and 15 minutes for a challenge, with five verification attempts and bounded resends. Persist abuse limits across replicas. Resend invalidates the previous challenge. Return generic outcomes that avoid exposing account existence. Consume verification on an explicit same-origin POST so email scanners cannot claim an exchange.
+Phone verification can associate the submitted number with the authenticated claimant even when that account signs in by email. Require a fresh challenge for changed numbers or addresses. If an existing verified association conflicts, stop automatic linking and require reviewed recovery. Keep channel normalization separate from identity matching. A shared or reassigned number must never cause account merging, account recovery or private disclosure by itself.
 
-Keep secrets out of analytics, application logs, browser history and referrers. Use a short code entered in the authenticated continuation page, or a token fragment exchanged into that page before an explicit POST. Redact delivery errors. Model outbound delivery with durable retry state and expiry. Send only after the exchange transaction commits.
+Use a high-entropy continuation secret and a cryptographically random short verification code. Store a keyed digest of the short code, bound to its challenge ID, and compare in constant time. Proposed initial expiry is 24 hours for continuation and 15 minutes for a challenge, with five attempts. Apply persistent limits per challenge, account, destination and request origin, plus bounded resends and a delivery budget. Resends cannot reset the aggregate failed-attempt limit. Consume verification through an authenticated same-origin POST.
 
-For missing email, expiry, lost browser continuation or mismatched accounts, preserve saved contacts and offer a fresh exchange. Reissuing a claim requires fresh capture or reviewed recovery. Email possession verifies a channel and account association, with that assurance recorded in provenance.
+The direct Telnyx sender uses TELNYX_API_KEY and RELISH_DORIAN_SMS_NUMBER in the executing application environment. The claimant enters the code in the browser. Inbound SMS routing and caller ID supply no challenge-completion proof. Before live DEV acceptance, verify its configured sender and destination allowlist using an explicitly authorized test send. Source inspection establishes transport capability, while live configuration remains unverified.
+
+Adapt the existing durable delivery lease pattern with verification-specific state. An outbox stores the destination and retryable message encrypted until delivery or expiry, with only the keyed code digest retained for validation. Recheck challenge generation, lifecycle and expiry immediately before dispatch. Delete encrypted delivery payloads after success or expiry and during erasure. Delayed or duplicated SMS must leave older codes invalid. Diagnostics contain safe references and provider status only.
+
+The existing phone helper permissively strips characters and infers country. S-402 must validate country and complete international number structure before normalization, reject malformed or ambiguous input, and bind the resulting canonical destination to the exchange. Changing the displayed destination requires a fresh exchange or reviewed recovery.
+
+For an exchange without a supported channel, expired continuation or lost browser binding, keep its saved contact and offer a fresh exchange. Record successful assurance as channel type, encrypted canonical destination, verification time, method, challenge/exchange reference and authenticated beneficiary. Apply existing retention and withdrawal rules.
+
+Dorian may later use this channel-assurance record when resolving a returning caller. Caller-ID recognition remains provisional. Sensitive access or changes can require fresh verification bound to that action. A completed exchange challenge grants only its defined claim authority.
 
 ## Proposed persistence and settlement
 
@@ -47,7 +58,7 @@ Physical names and final SQL constraints are confirmed in S-402 before adding a 
 | Record | Required fields and constraints |
 | --- | --- |
 | Exchange | ID, origin profile and owner/vault, captured subject/source, encrypted shared-card snapshot and version, continuation hash, expiry, status, beneficiary account after binding |
-| Verification challenge | Exchange, beneficiary, session binding, secret hash, expiry, attempts, consumed time, delivery status and resend generation |
+| Verification challenge | Exchange, beneficiary, session binding, channel type, encrypted canonical destination, keyed code digest, verified time, expiry, attempts, consumed time, delivery status and resend generation |
 | Account association | Custodian/vault/subject, associated account, assurance method, exchange, version and active/revoked state |
 | Settlement receipt | Unique exchange, beneficiary, local subject IDs for both directions, selected automatic-add outcome and completion time |
 
@@ -76,24 +87,26 @@ Extend P-305 review and erasure to include exchange records, challenges, associa
 | Slice | Deliverable | Acceptance |
 | --- | --- | --- |
 | S-401 | This source-grounded design and decision record | Product flow, assurance, lifecycle and DEV scenarios specified |
-| S-402 | Additive claim persistence, verification delivery and atomic service | Migration and custody tests, replay/account-switch rejection, partial failure rollback, deterministic concurrent settlement, privacy operations coverage |
+| S-402 | Additive claim persistence, SMS-first verification delivery and atomic service | Migration and custody tests, replay/account-switch rejection, partial failure rollback, deterministic concurrent settlement, privacy operations coverage |
 | S-403 | Wire existing exchange/signup/People screens and DEV test admission | Both accounts see the shared details, retry returns one result, Skip works, archived contact stays archived, password and Google flows verified |
 | S-404 | Unlink/recovery UX and DEV acceptance | Revocation, expiry, suspension and erasure races exercised, clear recovery and operator evidence |
+| Follow-on | Email verification through the shared challenge service | Channel switching invalidates old challenges, either supported channel settles once |
 | Later | Settings preference and continuing profile updates | Preference applies to future exchanges, directional field grants and revocation verified |
 
 S-402 and S-403 require a source-reviewed migration plan. No production promotion follows from completion of this design. Ordinary feature acceptance runs on Railway DEV with synthetic data. The operator deferred the separate hosted restore exercise on 2026-11-07 until rollout preparation.
 
 ## Two-account DEV acceptance
 
-Use two fresh explicitly admitted foundation accounts and separate browser sessions. The current setup permits one generated test login, so S-403 must add a bounded two-account DEV fixture through the existing owner setup. Keep the canonical origin, explicit database binding and owner authorization checks. Verification delivery uses controlled test addresses and a test transport locally.
+Use two fresh explicitly admitted foundation accounts and separate browser sessions. The current setup permits one generated test login, so S-403 must add a bounded two-account DEV fixture through the existing owner setup. Keep the canonical origin, explicit database binding and owner authorization checks. Verification delivery uses controlled test phone numbers, later email addresses and a test transport locally.
 
 1. Mark publishes a selected test card. Betty saves it and sends her test details. Check Mark receives one private person and the source snapshot.
-2. Betty completes signup and email verification through that exchange. Check each private directory contains the other person's shared details.
+2. Betty completes signup and SMS verification through that exchange. Check each private directory contains the other person's shared details.
 3. Repeat with an existing signed-in Betty, then retry submission and settlement. Verify one settled exchange and stable person IDs.
 4. Create private notes on each side. Verify all ordinary reads, search and errors expose only the authenticated owner's records.
 5. Switch accounts before verification, reuse an expired or consumed challenge, forward a continuation without its bound session, and change submitted details on retry. Verify controlled refusal and unchanged custody.
 6. Run concurrent settlement, suspension and archive tests in the database suite. Inject a late failure and confirm both vault writes roll back together.
-7. Exercise missing email, delivery failure, profile withdrawal, self-exchange, revoked association and a pre-existing unverified duplicate. Require explicit recovery where proof or active ownership is missing. Self-exchange should complete without a duplicate self person.
-8. Verify public Save contact, Send, Skip and optional signup on real mobile browsers. Record deployed SHA and outcomes.
+7. Exercise missing or unsupported channels, delivery failure, profile withdrawal, self-exchange, revoked association and a pre-existing unverified duplicate. Require explicit recovery where proof or active ownership is missing. Self-exchange should complete without a duplicate self person.
+8. Test wrong-country and malformed numbers, phone-only exchanges, channel switches, shared-number conflicts, resend abuse, delayed delivery and codes from another DEV/PROD environment. Verify only the bound challenge can complete.
+9. Verify public Save contact, Send, Skip and optional signup on real mobile browsers. Record deployed SHA and outcomes.
 
 For production readiness, retain the deferred hosted recovery exercise and the existing account closure, retention and cohort approval gates. The design enables DEV implementation while those release obligations remain tracked.

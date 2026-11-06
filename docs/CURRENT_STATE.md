@@ -1,10 +1,10 @@
 # Relish: Current State and Open Work
 
-Status: living snapshot updated **2026-11-07**. Foundation baseline is development `d572b1a` (PR #28). Environment observations are explicitly attributed below; this is not a live deployment monitor.
+Status: living snapshot updated **2026-11-07**. Foundation baseline is development `56eec62` (PR #29). Environment observations are explicitly attributed below; this is not a live deployment monitor.
 
 ## S-401 exchange design
 
-The [Stage 4 design](foundation/S401_EXCHANGE_DESIGN.md) is delivered on docs/stage-4-exchange-claims. It specifies reciprocal saving after a real exchange, verified account association, a future automatic-add preference enabled by default, and separate continuing-update permission. Runtime work is planned in S-402 through S-404. Validation covers source references and document links. This design requires zero migrations.
+The [Stage 4 design](foundation/S401_EXCHANGE_DESIGN.md) merged through PR #29 at `56eec62`. The revision on `docs/s401-sms-verification` specifies either channel, SMS first, after inspecting the direct Telnyx sender and durable queue pattern. Live DEV delivery remains unverified. It specifies reciprocal saving after a real exchange, verified account association, a future automatic-add preference enabled by default, and separate continuing-update permission. Runtime work is planned in S-402 through S-404. Validation covers source references and document links. This design requires zero migrations.
 
 PR #28 merged at `d572b1a`. The operator chose on 2026-11-07 to defer the hosted snapshot/erase replay and continue ordinary testing on DEV. Hosted recovery remains a production-readiness item. The existing internal pilot acceptance is operator-reported.
 

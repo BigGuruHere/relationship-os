@@ -67,3 +67,7 @@ F-204 implements the accepted owner-private boundary with runtime-issued handles
 ## D-025 Reciprocal saving after exchange
 
 Accepted product direction on 2026-11-07. After Mark and Betty exchange details, each should receive the shared details in their own My People. Signup through that exchange completes the visitor's automatic saving. A future automatic-add preference defaults to enabled and applies to future additions. Account association requires verified claim proof. Ongoing updates use separate permission. Private notes retain owner custody. D-004 and D-018 remain applicable to identity and private access, with reciprocal saving now explicitly designed in [S-401](foundation/S401_EXCHANGE_DESIGN.md).
+
+## D-026 Phone or email assurance for an exchange
+
+Accepted 2026-11-07. Support either phone or email verification using a channel actually supplied in the exchange. Implement SMS first through the existing Telnyx transport. Add email to the same challenge service afterward. A successful claim records channel, method and verification time. Caller-ID recognition remains provisional and sensitive actions may require fresh assurance. This revises S-401's initial email-first proposal.

@@ -1,6 +1,6 @@
 # P-304 profile and authentication continuity
 
-Implemented on `feature/p304-profile-continuity` from development `4b0d7a3`. Development integration and live device/provider acceptance are pending. The stage reuses the three public exchange screens, existing authentication, profile editor, My Profiles and QR rendering.
+Implemented on `feature/p304-profile-continuity` from development `4b0d7a3`. Merged via PR #23 at `d6950e2`. Live device/provider acceptance is pending. The stage reuses the three public exchange screens, existing authentication, profile editor, My Profiles and QR rendering.
 
 ## Signup and account boundaries
 
@@ -18,7 +18,7 @@ An unpublished profile can be edited and previewed by its owner. Its Share page 
 
 ## Acceptance and rollout
 
-[PR #23](https://github.com/BigGuruHere/relationship-os/pull/23) is open against development. [CI run 42148654526](https://github.com/BigGuruHere/relationship-os/actions/runs/42148654526) passed 160 checks on implementation commit `6208c95` with zero failures/skips. This includes 29 profile checks and 131 existing foundation checks, including PostgreSQL 18.6 concurrency. Local focused tests passed 43 checks and Svelte reported zero errors/warnings. Additional local regressions passed 13 checks; two older Dorian consent source assertions also failed on the unchanged development base and were left untouched.
+[PR #23](https://github.com/BigGuruHere/relationship-os/pull/23) is merged into development. [CI run 42148654526](https://github.com/BigGuruHere/relationship-os/actions/runs/42148654526) passed 160 checks on implementation commit `6208c95` with zero failures/skips. This includes 29 profile checks and 131 existing foundation checks, including PostgreSQL 18.6 concurrency. Local focused tests passed 43 checks and Svelte reported zero errors/warnings. Additional local regressions passed 13 checks; two older Dorian consent source assertions also failed on the unchanged development base and were left untouched.
 
 Local route and rendering coverage checks password and Google signup, existing-account return, expiry, failed-save retention, draft scope, publication controls, matching QR and vCard selection, foreign-profile denial and legacy URLs. Google is simulated and the profile tests use synthetic route fixtures. The Foundation database workflow runs the profile checks on Node 22 alongside existing provisioning, PostgreSQL concurrency and foundation access checks.
 

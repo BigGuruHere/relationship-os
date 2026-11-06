@@ -1,6 +1,6 @@
 # Relish: Start Here
 
-Status: living documentation index. Updated 2026-11-06; F-202 schema is merged and DEV operator-confirmed; F-203 provisioning is merged and DEV operator-confirmed; F-204 through F-206 are merged; P-301 directory is merged; P-302 public exchange is merged; P-303 private notes are merged; P-304 profile continuity is on a feature branch; user activation remains gated.
+Status: living documentation index. Updated 2026-11-06; F-202 schema is merged and DEV operator-confirmed; F-203 provisioning is merged and DEV operator-confirmed; F-204 through F-206 are merged; P-301 directory is merged; P-302 public exchange is merged; P-303 private notes are merged; P-304 profile continuity is merged; P-305 privacy and operations is on a feature branch; user activation remains gated.
 
 Relish is a person-first Relationship Operating System. Dorian is a conversational AI partner that helps people understand themselves and develop valuable relationships with other people. The architecture and the immediate product experience evolve together, but an old release note is not a current product requirement.
 
@@ -43,6 +43,8 @@ For architecture and new-domain implementation, read these linked documents afte
 - [P-303 private notes](foundation/P303_NOTES.md) covers draft processing, retryable saves, history and transient audio limits.
 
 - [P-304 profile continuity](foundation/P304_PROFILE_CONTINUITY.md) covers signup draft binding, publication and QR selection.
+
+- [P-305 privacy operations](foundation/P305_PRIVACY_OPERATIONS.md) covers archive, support review, vault suspension/erasure and restore replay.
 
 These specifications guide future work; they do not replace source code as evidence of implementation. Update the relevant backlog item and stage register with each implementation PR.
 

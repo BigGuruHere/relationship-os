@@ -65,3 +65,7 @@ P-302 implements [narrowly scoped anonymous exchange intake](P302_EXCHANGE.md). 
 ## P-303 explicit transient processing
 
 [P-303](P303_NOTES.md) distinguishes owner retrieval of complete notes from segment-only authority. Saving a note remains STORED_ONLY even after explicit transcription or summarization of the submitted draft. PROCESS_DRAFT grants no stored-source reads, derived statements or disclosure. Provider input already sent before revocation cannot be recalled, but lifecycle/epoch rechecks withhold the result afterward. Transient jobs bind the issuing account/vault/epoch and current polling authority.
+
+## P-305 privacy operations
+
+Archive hides a person without removing the underlying evidence. An offline reviewed whole-vault erasure requires suspension and leaves empty routing records. A support review file is owned-vault material for redaction and case handling, not authority to disclose it to someone mentioned in the graph. The [P-305 runbook](P305_PRIVACY_OPERATIONS.md) separates live-vault erasure from account closure, backups and provider retention.

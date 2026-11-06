@@ -21,6 +21,8 @@ Sixteen focused checks passed locally, including the real password login, unpubl
 
 ## Phone acceptance
 
+The operator reported success after [PR #27](https://github.com/BigGuruHere/relationship-os/pull/27) merged at `cfbfabe`. The exact Railway revision and device/browser/provider outcomes were not captured. The [hosted replay](P306_DEV_REHEARSAL.md) can reuse this test login's synthetic evidence from a fresh DEV snapshot.
+
 Use synthetic information only.
 
 1. From the test login, open My Profiles and publish the test card. Show its QR code on one device. On your phone, scan from a browser without the test login, save the contact and send synthetic details.

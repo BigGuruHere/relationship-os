@@ -25,3 +25,20 @@ export function checkOperatorTarget(expected: string | undefined) {
 		throw new Error('Explicit database target required.');
 	return url;
 }
+
+// Require an explicitly selected restored copy of the same database.
+export function checkRehearsalTarget() {
+	const clone = checkOperatorTarget(process.env.P305_EXPECTED_TARGET);
+	const sourceTarget = process.env.P306_SOURCE_TARGET ?? '';
+	if (!/^[a-z0-9.-]+(?::[0-9]+)?\/[a-z0-9_-]+$/i.test(sourceTarget))
+		throw new Error('Explicit source DEV endpoint required.');
+	const source = new URL('postgresql://' + sourceTarget);
+	// Treat pooled and direct Neon hosts as the same branch, even with a different database or port.
+	const endpoint = (host: string) =>
+		host
+			.toLowerCase()
+			.replace(/-pooler(?=\.)/, '')
+			.replace(/\.$/, '');
+	if (source.pathname !== clone.pathname || endpoint(source.hostname) === endpoint(clone.hostname))
+		throw new Error('The source and rehearsal endpoints must be separate.');
+}

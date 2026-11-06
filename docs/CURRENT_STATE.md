@@ -1,12 +1,16 @@
 # Relish: Current State and Open Work
 
-Status: living snapshot updated **2026-11-07**. Foundation baseline is development `70649f5` (PR #25). Environment observations are explicitly attributed below; this is not a live deployment monitor.
+Status: living snapshot updated **2026-11-07**. Foundation baseline is development `cfbfabe` (PR #27). Environment observations are explicitly attributed below; this is not a live deployment monitor.
 
 ## P-306 DEV acceptance (in progress)
 
-The operator reported matching counts on Neon development and its separate restored snapshot on 2026-11-06. Both show 15 foundation tables, no enrollments or vaults, 9 Users, 29 Contacts, 128 Interactions, 107 applied migrations and zero unfinished migrations. The [rehearsal procedure](foundation/P306_DEV_REHEARSAL.md) uses a credential-free PREPARED fixture on isolated copies. The operator reported the existing Railway DEV smoke checks worked on 2026-11-07. Exact deployed SHA was not captured. This confirms the existing-account path only. Hosted erasure/replay was deferred after the synthetic seed did not return a verified result. Live foundation acceptance, full closure/retention and the cohort decision remain pending.
+The operator reported matching Neon DEV and snapshot restore counts (15 foundation tables, 0 enrollments/vaults, 9 Users, 29 Contacts, 128 Interactions, 107 applied migrations, 0 unfinished) and a successful existing-account Railway DEV smoke test. The first synthetic hosted seed returned an unclassified error before verified suspension or erasure.
 
-The [one-account DEV test](foundation/P306_DEV_TEST_ACCOUNT.md) is implemented on `feature/p306-dev-pilot-account`. The owner can create one fresh ACTIVE test login from Manage users when the canonical DEV origin and database target match. The real phone smoke remains pending. No migration, live setup or production deployment was performed.
+The [one-account DEV test](foundation/P306_DEV_TEST_ACCOUNT.md) merged via [PR #27](https://github.com/BigGuruHere/relationship-os/pull/27) at `cfbfabe`. The operator reported the test worked. Exact running SHA and individual device/browser/provider outcomes were not recorded. This is internal test acceptance.
+
+`feature/p306-dev-pilot-replay` adds an [offline hosted replay procedure](foundation/P306_DEV_REHEARSAL.md) using two independent copies of one post-test DEV snapshot and the existing synthetic test login. Local tests verify proof matching across restore, rejection of the source endpoint and wrong proof/key, erasure and preservation of account/profile rows. Hosted replay, full account closure/retention, remaining device/provider evidence and cohort approval are pending. No new migration, hosted operation or deployment in this change.
+
+Release comparison at development `cfbfabe` against production Git branch `master` at `b58ba02` shows one added migration file, `20261104010000_f202_foundation_schema`. PROD schema and migration status require separate verification before a promotion. Production remains deferred.
 
 ## P-305 privacy and operations readiness (merged)
 

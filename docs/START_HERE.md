@@ -1,6 +1,6 @@
 # Relish: Start Here
 
-Status: living documentation index. Updated 2026-11-06; F-202 schema is merged and DEV operator-confirmed; F-203 provisioning is merged and DEV operator-confirmed; F-204 through F-206 are merged; P-301 directory is merged; P-302 public exchange is merged; P-303 private notes are merged; P-304 profile continuity is merged; P-305 privacy and operations is merged; P-306 hosted restore rehearsal has started; user activation remains gated.
+Status: living documentation index. Updated 2026-11-06; F-202 schema is merged and DEV operator-confirmed; F-203 provisioning is merged and DEV operator-confirmed; F-204 through F-206 are merged; P-301 directory is merged; P-302 public exchange is merged; P-303 private notes are merged; P-304 profile continuity is merged; P-305 privacy and operations is merged; P-306 internal DEV pilot is operator-confirmed; hosted erasure replay and invited rollout remain gated.
 
 Relish is a person-first Relationship Operating System. Dorian is a conversational AI partner that helps people understand themselves and develop valuable relationships with other people. The architecture and the immediate product experience evolve together, but an old release note is not a current product requirement.
 
@@ -46,7 +46,7 @@ For architecture and new-domain implementation, read these linked documents afte
 
 - [P-305 privacy operations](foundation/P305_PRIVACY_OPERATIONS.md) covers archive, support review, vault suspension/erasure and restore replay.
 
-- [P-306 hosted DEV rehearsal](foundation/P306_DEV_REHEARSAL.md) records the restore baseline and synthetic erasure/replay steps.
+- [P-306 hosted DEV rehearsal](foundation/P306_DEV_REHEARSAL.md) records the restore baseline and replay steps using the existing DEV test login.
 
 - [P-306 DEV test account](foundation/P306_DEV_TEST_ACCOUNT.md) covers the owner setup and phone acceptance for one internal login.
 

@@ -13,11 +13,45 @@ P-305 merged into development at `de9a875`. On 2026-11-06 the operator reported 
 
 ## DEV smoke record
 
-On 2026-11-07 the operator reported the existing Railway DEV experience worked after being asked to smoke-test login, My People, note save/reopen and profile QR. The exact running commit and individual device/provider results were not recorded. There was no enrolled account in the reported DEV baseline, so this is existing-account regression evidence. The synthetic hosted seed returned an unclassified error and hosted erasure/replay was deferred before suspension. Resume by confirming the synthetic case and its state on the isolated copy before any erase. This does not close the live foundation, privacy or rollout gates.
+On 2026-11-07 the operator reported the existing Railway DEV experience worked after being asked to smoke-test login, My People, note save/reopen and profile QR. The exact running commit and individual device/provider results were not recorded. There was no enrolled account in the reported DEV baseline, so this is existing-account regression evidence. The synthetic hosted seed returned an unclassified error and hosted erasure/replay was deferred before suspension. The existing DEV pilot provides a new rehearsal path from a verified test login.
 
-For everyday phone acceptance, use the separate [one-account Railway DEV test](P306_DEV_TEST_ACCOUNT.md). The restore exercise below stays separate from that phone test.
+## Replay using the existing DEV test login
 
-## Create the synthetic fixture
+The operator confirmed that the [one-account Railway DEV test](P306_DEV_TEST_ACCOUNT.md) worked after PR #27. The exact Railway SHA and device/provider outcomes were not recorded. Take a fresh Neon **development** snapshot after the pilot has at least one saved synthetic text or voice note. Create two separate branches from that same snapshot using multi-step restore. Keep Railway connected to its current branches and leave the snapshot available until both copies have been verified.
+
+Use a local checkout containing `scripts/foundation-dev-pilot-replay.ts`, with Node 22 and dependencies installed using `npm ci`. Create two protected environment files outside the repository, with permissions 0600. Each uses the direct connection string and exact host/database of its own restored copy. The original DEV target and existing Railway DEV encryption key are the same in both files.
+
+```dotenv
+# Fill in locally for each restored copy.
+DATABASE_URL=postgresql://ROLE:PASSWORD@RESTORED_HOST/neondb?sslmode=require
+P305_EXPECTED_TARGET=RESTORED_HOST/neondb
+P306_SOURCE_TARGET=ORIGINAL_DEV_HOST/neondb
+SECRET_MASTER_KEY=EXISTING_RAILWAY_DEV_KEY
+DB_KEEPALIVE_ENABLED=NO
+```
+
+Keep connection strings and the key out of chat, terminal arguments and Git. The replay checks the original and restored endpoints, accepts only the one generated DEV member, and reports counts and a keyed proof of the bounded review. It keeps decrypted evidence inside the process.
+
+```sh
+# Load the chosen copy's settings, even if your shell already has DB settings.
+unset DATABASE_URL SECRET_MASTER_KEY P305_EXPECTED_TARGET P306_SOURCE_TARGET P306_CONFIRM DB_KEEPALIVE_ENABLED
+p306_copy="$HOME/.relish-rehearsal/copy-a.env"
+node --env-file="$p306_copy" --import tsx scripts/foundation-dev-pilot-replay.ts inspect
+```
+
+Check for `verified: ready`, `enrollment: ACTIVE`, `vault: ACTIVE` and positive source/version counts. The read-only inspection prints a 64-character `proof`. After confirming the connection points to copy A, enter that value locally.
+
+```sh
+# Replace PROOF_FROM_INSPECT with the displayed proof.
+p306_proof='PROOF_FROM_INSPECT'
+P306_CONFIRM="erase-test-copy:$p306_proof" node --env-file="$p306_copy" --import tsx scripts/foundation-dev-pilot-replay.ts replay
+```
+
+Expect `verified: erased`, a positive `erasedRows` count and zero rows in every reviewed collection. A separate `inspect` should report `erased` with the enrollment `SUSPENDED` and vault `LOCKED`. Switch `p306_copy` to copy B's file, run `inspect` and confirm that its proof matches copy A's **pre-erasure** proof. Repeat the same replay and compare the results. If a command fails, keep the branch and share the safe stage and reference. Inspect the copy again before retrying.
+
+Record the snapshot time, restored branch names, matching proof result and both final states and counts. The original DEV pilot remains available. The procedure covers the foundation vault only. User, public profile and other legacy/provider stores are outside its scope. No Prisma migration or Railway redeploy is required for this rehearsal.
+
+## Independent credential-free fixture procedure
 
 Run from the rehearsal branch in a separate local checkout on Node 22, with dependencies installed using `npm ci`. Select the already verified restored branch in Neon. Copy its **direct** connection string to a protected environment file outside the repository. Record the direct host and database path of the original Neon development branch separately. The commands verify both targets before touching the database. Keep both Railway services pointed at their existing databases.
 

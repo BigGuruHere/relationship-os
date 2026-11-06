@@ -238,10 +238,10 @@ export function readRelationship(access: FoundationAccess, id: string) {
 		return { ...view(access, row), members: people.map((p) => view(access, p)) };
 	});
 }
-export function archiveSubject(access: FoundationAccess, id: string) {
+export function archiveSubject(access: FoundationAccess, id: string, kind?: Kind) {
 	return withFoundationAccess(access, 'WRITE', async (tx) => {
 		const row = await tx.foundationSubject.findFirst({
-			where: { id, state: 'ACTIVE' },
+			where: { id, state: 'ACTIVE', ...(kind ? { kind } : {}) },
 			select: { id: true, selfUserId: true }
 		});
 		if (!row || row.selfUserId) throw new FoundationDenied();

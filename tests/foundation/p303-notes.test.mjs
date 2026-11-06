@@ -209,15 +209,25 @@ test('P-303 private notes and transient draft processing', { timeout: 120000 }, 
 				const n = await count('FoundationSource'),
 					key = randomUUID();
 				await db.exec(
-					`CREATE FUNCTION reject_note() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'test failure'; END $$; CREATE TRIGGER reject_note BEFORE INSERT ON "FoundationEvidenceSubject" FOR EACH ROW EXECUTE FUNCTION reject_note()`
+					`CREATE FUNCTION reject_note() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'synthetic private database payload'; END $$; CREATE TRIGGER reject_note BEFORE INSERT ON "FoundationEvidenceSubject" FOR EACH ROW EXECUTE FUNCTION reject_note()`
 				);
+				const logged = [];
+				const oldError = console.error;
+				console.error = (value) => logged.push(value);
 				try {
 					const failed = await save({ saveKey: key });
 					assert.equal(failed.status, 503);
+					assert.match(failed.data.reference, /^[0-9a-f-]{36}$/);
+					assert.equal(JSON.parse(logged[0]).reference, failed.data.reference);
+					assert.doesNotMatch(
+						logged.join(' '),
+						/synthetic private database payload|A private observation/
+					);
 					assert.equal(failed.data.draft.saveKey, key);
 					assert.equal(failed.data.draft.text, original.text);
 					assert.equal(await count('FoundationSource'), n);
 				} finally {
+					console.error = oldError;
 					await db.exec(
 						'DROP TRIGGER reject_note ON "FoundationEvidenceSubject"; DROP FUNCTION reject_note()'
 					);

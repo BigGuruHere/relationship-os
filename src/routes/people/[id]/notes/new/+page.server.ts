@@ -3,6 +3,7 @@ import { peopleRouteDomain, foundationPage } from '$lib/server/foundation/people
 import { resolveFoundationAccess } from '$lib/server/foundation/policy';
 import { readPerson } from '$lib/server/foundation/subjects';
 import { appendOwnerNote, FoundationConflict } from '$lib/server/foundation/evidence';
+import { captureFailureMetadata } from '$lib/server/core/contactCaptureDiagnostics';
 import { transcriptionDebugEnabled } from '$lib/server/transcriptionDiagnostics';
 import type { Actions, PageServerLoad } from './$types';
 import { fail, redirect } from '@sveltejs/kit';
@@ -74,12 +75,27 @@ export const actions: Actions = {
 					allowPrivateAnalysis: false
 				});
 			} catch (e) {
-				return fail(e instanceof FoundationConflict ? 409 : 503, {
-					error:
-						e instanceof FoundationConflict
-							? 'This draft was already saved with different text. Open the person to check it before starting a new note.'
-							: 'Could not save your note. Your text is below; please retry.',
-					draft
+				if (e instanceof FoundationConflict)
+					return fail(409, {
+						error:
+							'This draft was already saved with different text. Open the person to check it before starting a new note.',
+						draft
+					});
+				const reference = randomUUID();
+				// Match capture diagnostics: the reference links a support request to safe metadata only.
+				console.error(
+					JSON.stringify({
+						component: 'relish.foundation.note',
+						stage: 'save',
+						timestamp: new Date().toISOString(),
+						reference,
+						...captureFailureMetadata(e)
+					})
+				);
+				return fail(503, {
+					error: 'Could not save your note. Your text is below; please retry.',
+					draft,
+					reference
 				});
 			}
 			throw redirect(303, '/people/' + params.id);

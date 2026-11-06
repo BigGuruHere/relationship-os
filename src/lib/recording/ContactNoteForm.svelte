@@ -489,6 +489,7 @@
 
     {#if form?.error}
       <p style="color:var(--danger); margin-top:12px;">{form.error}</p>
+      {#if form.reference}<p class="muted">Support reference: {form.reference}</p>{/if}
     {/if}
   </div>
 </div>

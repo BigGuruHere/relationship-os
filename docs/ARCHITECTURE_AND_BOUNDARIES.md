@@ -113,3 +113,7 @@ Resolve the profile owner and check its enrollment under the account lock on the
 ## P-303 private note boundary
 
 [Private notes](foundation/P303_NOTES.md) reuse existing People and recording surfaces. READ_NOTES opens owner-private current note text without widening segment-only readers. PROCESS_DRAFT grants no stored-data access. Provider calls recheck lifecycle and epoch before/after work; transcript jobs bind user/domain/vault/epoch. Storage is encrypted and STORED_ONLY. Audio transport remains process-local with one-hour expiry and explicit recovery limits. No activation or migration ships in this stage.
+
+## P-305 private vault operations
+
+The offline support service uses the same account/vault locks as foundation writers. Its review, control and erasure scopes are separated from browser authority. Suspension advances the epoch; transactional erasure removes the scoped graph and retains an empty locked vault and suspended enrollment. Archived subjects retain their content for review. The shared account and legacy/provider data require separately scoped closure actions. See [the support and restore runbook](foundation/P305_PRIVACY_OPERATIONS.md).

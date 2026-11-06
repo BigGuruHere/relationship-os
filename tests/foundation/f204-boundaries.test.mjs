@@ -30,7 +30,8 @@ test('only reviewed modules may establish foundation authority or construct an O
 						assert.ok(
 							[
 								'src/lib/server/foundation/policy.ts',
-								'src/lib/server/foundation/provisioning.ts'
+								'src/lib/server/foundation/provisioning.ts',
+								'src/lib/server/foundation/privacyOperations.ts'
 							].includes(file),
 							file
 						);
@@ -41,6 +42,8 @@ test('only reviewed modules may establish foundation authority or construct an O
 							),
 							file
 						);
+					if (node.moduleSpecifier.text.endsWith('privacyOperations'))
+						assert.fail('Offline privacy service must have no application caller: ' + file);
 					if (name === 'withPublicCapture')
 						assert.equal(file, 'src/lib/server/foundation/capture.ts');
 					if (name === 'resolvePreparedFoundationAccess')
@@ -51,6 +54,12 @@ test('only reviewed modules may establish foundation authority or construct an O
 		}
 		walk(tree);
 		// No namespace/dynamic import may disguise access to the internal capability module.
+		if (
+			/import\s*\(.*privacyOperations|(?:import|export)\s+.*from\s+['"][^'"]*privacyOperations/.test(
+				text
+			)
+		)
+			assert.fail('Offline privacy service must have no application caller: ' + file);
 		if (
 			/import\s*\*.*(?:foundation\/internal|['"]\.\/internal)/.test(text) ||
 			/import\s*\(.*foundation\/internal/.test(text)

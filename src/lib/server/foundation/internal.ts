@@ -7,7 +7,14 @@ import { Prisma } from '@prisma/client';
 type Boundary = {
 	ownerUserId: string;
 	vaultId?: string;
-	mode: 'RESOLVE' | 'PROVISION' | 'PUBLIC_CAPTURE' | FoundationOperation;
+	mode:
+		| 'RESOLVE'
+		| 'PROVISION'
+		| 'PUBLIC_CAPTURE'
+		| 'PRIVACY_CONTROL'
+		| 'PRIVACY_REVIEW'
+		| 'PRIVACY_ERASE'
+		| FoundationOperation;
 	capturePrefix?: string;
 };
 const boundary = new AsyncLocalStorage<{ scope: Boundary; active: boolean }>();
@@ -109,6 +116,42 @@ function evidenceOperationAllowed(mode: Boundary['mode'], model: string, op: str
 		(canInspect || (op === 'create' && statementModels.includes(model)))
 	);
 }
+// Privacy scopes are issued only by the offline operator service. Keep writes exact and
+// separate from the request-facing owner and visitor capabilities.
+function privacyOperationAllowed(mode: Boundary['mode'], model: string, op: string, args: any) {
+	if (mode === 'PRIVACY_CONTROL') {
+		if (model !== 'FoundationEnrollment' && model !== 'FoundationVault') return false;
+		if (op === 'findFirst') return true;
+		if (op !== 'updateMany') return false;
+		const data = args.data;
+		if (model === 'FoundationVault')
+			return Object.keys(data).length === 1 && data.state === 'LOCKED';
+		return (
+			Object.keys(data).length === 2 &&
+			data.state === 'SUSPENDED' &&
+			data.epoch?.increment === 1 &&
+			Object.keys(data.epoch).length === 1
+		);
+	}
+	const contentModels = [
+		...sourceModels,
+		...statementModels,
+		...domainModels,
+		'FoundationContext',
+		'FoundationContextAssociation'
+	];
+	if (!contentModels.includes(model)) return false;
+	if (mode === 'PRIVACY_REVIEW') return op === 'findMany' || op === 'count';
+	if (mode !== 'PRIVACY_ERASE') return false;
+	return (
+		op === 'deleteMany' ||
+		(model === 'FoundationStatement' &&
+			op === 'updateMany' &&
+			Object.keys(args.data).length === 1 &&
+			args.data.state === 'DELETING')
+	);
+}
+
 // Reject relational traversal anywhere in a legacy query, including _count and nested filters/writes.
 // Foundation relations currently exist only on User; derive names from schema to cover additions.
 const entryRelations = new Set(
@@ -149,7 +192,12 @@ export function guardFoundationQuery(model: string | undefined, operation: strin
 			const values = args?.values ?? args?.[0]?.values ?? [];
 			if (
 				!scope ||
-				!(accountLock || (vaultLock && scope.mode === 'RESOLVE' && values[1] === scope.ownerUserId))
+				!(
+					accountLock ||
+					(vaultLock &&
+						['RESOLVE', 'PRIVACY_CONTROL'].includes(scope.mode) &&
+						values[1] === scope.ownerUserId)
+				)
 			)
 				throw new FoundationDenied();
 		}
@@ -160,7 +208,8 @@ export function guardFoundationQuery(model: string | undefined, operation: strin
 		return args;
 	}
 	if (!scope?.ownerUserId) throw new FoundationDenied();
-	const control = scope.mode === 'PROVISION' || scope.mode === 'RESOLVE';
+	const control =
+		scope.mode === 'PROVISION' || scope.mode === 'RESOLVE' || scope.mode === 'PRIVACY_CONTROL';
 	// Segment and understanding reads may inspect source eligibility, never a parent payload.
 	if (
 		model === 'FoundationSourceVersion' &&
@@ -173,7 +222,9 @@ export function guardFoundationQuery(model: string | undefined, operation: strin
 	const evidenceAllowed =
 		scope.mode === 'PUBLIC_CAPTURE'
 			? captureOperationAllowed(model, operation, args, scope.capturePrefix)
-			: evidenceOperationAllowed(scope.mode, model, operation);
+			: evidenceOperationAllowed(scope.mode, model, operation) ||
+				privacyOperationAllowed(scope.mode, model, operation, args);
+	if (scope.mode === 'PRIVACY_CONTROL' && !evidenceAllowed) throw new FoundationDenied();
 	if (
 		!evidenceAllowed &&
 		(control

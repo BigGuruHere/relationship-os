@@ -1,10 +1,14 @@
 # Relish: Current State and Open Work
 
-Status: living snapshot updated **2026-11-06**. Foundation baseline is development `4baa0bf` (PR #21). Environment observations are explicitly attributed below; this is not a live deployment monitor.
+Status: living snapshot updated **2026-11-06**. Foundation baseline is development `d6950e2` (PR #23). Environment observations are explicitly attributed below; this is not a live deployment monitor.
 
-## P-304 profile and authentication continuity (feature branch)
+## P-305 privacy and operations readiness (feature branch)
 
-`feature/p304-profile-continuity` binds signup prefills to the new account and exact profile, keeps the new card unpublished until the owner chooses to publish, and sends existing accounts to My Profiles unless resuming their own draft. Share and QR preview use the selected owned profile. Existing public slugs and aliases remain valid. See [P-304 scope and acceptance](foundation/P304_PROFILE_CONTINUITY.md). [PR #23](https://github.com/BigGuruHere/relationship-os/pull/23) is open. [CI run 42148654526](https://github.com/BigGuruHere/relationship-os/actions/runs/42148654526) passed all 160 checks on `6208c95`. Local focused tests passed 43 checks, with zero Svelte errors/warnings. Live DEV/provider/device testing and integration are pending. No migration or activation.
+`feature/p305-privacy-operations` adds owner archiving, an offline support command for one foundation vault, redacted note failure references and a recovery rehearsal. Support can inspect counts, prepare a protected review file, suspend foundation authority and erase the locked vault transactionally. An empty suspended routing record prevents legacy fallback. See [P-305 scope and runbook](foundation/P305_PRIVACY_OPERATIONS.md). No migration or activation. Hosted DEV restore/replay, full account closure handling across the other stores, retention verification and live device acceptance remain rollout gates.
+
+## P-304 profile and authentication continuity (merged)
+
+`feature/p304-profile-continuity` binds signup prefills to the new account and exact profile, keeps the new card unpublished until the owner chooses to publish, and sends existing accounts to My Profiles unless resuming their own draft. Share and QR preview use the selected owned profile. Existing public slugs and aliases remain valid. See [P-304 scope and acceptance](foundation/P304_PROFILE_CONTINUITY.md). [PR #23](https://github.com/BigGuruHere/relationship-os/pull/23) merged at `d6950e2`. [CI run 42148654526](https://github.com/BigGuruHere/relationship-os/actions/runs/42148654526) passed all 160 checks on `6208c95`. Local focused tests passed 43 checks, with zero Svelte errors/warnings. Live DEV/provider/device testing remains pending. No migration or activation.
 
 ## P-303 private notes (merged)
 

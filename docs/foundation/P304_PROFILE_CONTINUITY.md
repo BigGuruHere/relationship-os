@@ -18,6 +18,8 @@ An unpublished profile can be edited and previewed by its owner. Its Share page 
 
 ## Acceptance and rollout
 
+[PR #23](https://github.com/BigGuruHere/relationship-os/pull/23) is open against development. [CI run 42148654526](https://github.com/BigGuruHere/relationship-os/actions/runs/42148654526) passed 160 checks on implementation commit `6208c95` with zero failures/skips. This includes 29 profile checks and 131 existing foundation checks, including PostgreSQL 18.6 concurrency. Local focused tests passed 43 checks and Svelte reported zero errors/warnings. Additional local regressions passed 13 checks; two older Dorian consent source assertions also failed on the unchanged development base and were left untouched.
+
 Local route and rendering coverage checks password and Google signup, existing-account return, expiry, failed-save retention, draft scope, publication controls, matching QR and vCard selection, foreign-profile denial and legacy URLs. Google is simulated and the profile tests use synthetic route fixtures. The Foundation database workflow runs the profile checks on Node 22 alongside existing provisioning, PostgreSQL concurrency and foundation access checks.
 
 No Prisma migration or account activation is required. No DEV or production deployment was performed. Once a DEV deployment is authorized, test the exchange-to-signup flow using password and Google, including a returning account. Confirm the new card is unavailable from a second browser before publication, publish deliberately, then scan its QR and open an existing public alias. Switch between two profiles of the same kind and confirm the QR, copied URL and vCard all refer to the selected one. Recheck Brokerage login and profiles separately.

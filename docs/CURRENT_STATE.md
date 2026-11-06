@@ -4,7 +4,7 @@ Status: living snapshot updated **2026-11-06**. Foundation baseline is developme
 
 ## P-304 profile and authentication continuity (feature branch)
 
-`feature/p304-profile-continuity` binds signup prefills to the new account and exact profile, keeps the new card unpublished until the owner chooses to publish, and sends existing accounts to My Profiles unless resuming their own draft. Share and QR preview use the selected owned profile. Existing public slugs and aliases remain valid. See [P-304 scope and acceptance](foundation/P304_PROFILE_CONTINUITY.md). Local profile and auth checks pass. GitHub CI, live DEV/device testing and integration are pending. No migration or activation.
+`feature/p304-profile-continuity` binds signup prefills to the new account and exact profile, keeps the new card unpublished until the owner chooses to publish, and sends existing accounts to My Profiles unless resuming their own draft. Share and QR preview use the selected owned profile. Existing public slugs and aliases remain valid. See [P-304 scope and acceptance](foundation/P304_PROFILE_CONTINUITY.md). [PR #23](https://github.com/BigGuruHere/relationship-os/pull/23) is open. [CI run 42148654526](https://github.com/BigGuruHere/relationship-os/actions/runs/42148654526) passed all 160 checks on `6208c95`. Local focused tests passed 43 checks, with zero Svelte errors/warnings. Live DEV/provider/device testing and integration are pending. No migration or activation.
 
 ## P-303 private notes (merged)
 

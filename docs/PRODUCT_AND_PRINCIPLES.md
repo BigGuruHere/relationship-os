@@ -60,3 +60,7 @@ The immediate goal is to make that experience frictionless and dependable with a
 Product language should be human, welcoming and not overly technical. Public legal and marketing copy should generally say **data** or **personal information** rather than exposing the internal term **Living Understanding**. Dorian must be clearly identified as AI.
 
 Privacy and custody are product features, not afterthoughts. Expand the service only as consent, access control, deletion/access processes and the operational pilot are verified.
+
+## Reciprocal exchange experience
+
+After two people exchange details, each receives those shared details in their own My People, including when the visitor joins through the exchange. A future automatic-add preference defaults to enabled. Continuing updates require separate permission. See the [exchange design](foundation/S401_EXCHANGE_DESIGN.md).

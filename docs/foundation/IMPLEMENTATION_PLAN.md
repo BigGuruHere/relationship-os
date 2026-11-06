@@ -56,6 +56,12 @@ F-205 is implemented on `feature/f205-private-evidence`. PR #18 merged at `8d895
 
 Start user feedback with task completion, time to first saved person/note, repeat retrieval, failures/duplicates and qualitative usefulness. Collect only necessary telemetry; do not record private note content. Expand based on verified outcomes rather than a fixed signup target. A serious access violation, unrecoverable data loss or unsafe claim behaviour stops expansion and the affected capability.
 
+## Stage 4 backlog
+
+[S-401](S401_EXCHANGE_DESIGN.md) is the source-grounded design on docs/stage-4-exchange-claims. S-402 delivers claim persistence, verification delivery and atomic settlement. S-403 integrates the existing QR/signup/People experience and two-account DEV setup. S-404 covers recovery, unlinking and DEV acceptance. The Settings preference and continuing updates follow separately. S-401 validation covers document links and source paths, with zero migrations or runtime changes.
+
+The operator deferred hosted erase/replay on 2026-11-07 and requested ordinary testing on DEV. This permits continued DEV feature work. Hosted recovery, closure/retention and cohort approval remain production-readiness gates.
+
 ## Migration and rollback strategy
 
 1. Inventory existing data and dependent jobs; preserve legacy Brokerage by default. Keep authentication identity separate from domain enrolment.
@@ -78,4 +84,5 @@ Use the [developer guide](DEVELOPER_GUIDE.md) for PR evidence. Stages 4-7 get a 
 | 1 | Documentation package | Documentation only | 37 relative links and diff checks passed in PR #13 | PR #13, `d789464` | No deployment applicable |
 | 2 | F-201 merged; DEV operator inventory recorded | F-202 through F-206 merged | F-202: 23 schema + 25 concurrency; F-203: 21 tests; F-204: ten tests; F-205: eight tests including competing corrections; F-206 journey and handoff race passed in CI | F-202 PR #15; F-203 PR #16; F-204 PR #17 merged; F-205 PR #18 merged; F-206 PR #19 merged | F-202/F-203 DEV operator-confirmed; F-204 DEV unverified; F-205 DEV unverified; F-206 DEV unverified; PROD unverified |
 | 3 | Backlog and gates | P-301 through P-305 merged; P-306 DEV test login merged and operator-confirmed; hosted replay command on feature branch | Nine P-301 checks and 104 total foundation CI checks pass; P-302 included in 116 passing foundation CI checks, zero skips; P-303 included in 131 passing foundation CI checks; 37 local legacy/shared-audio checks and Svelte pass; P-304 included in 160 passing CI checks; P-305 included in 171 passing CI checks with disposable restore and PostgreSQL erasure; P-306 included in 178 passing CI checks; local disposable restore replay verified | P-301 PR #20; P-302 PR #21; P-303 PR #22; P-304 PR #23; P-305 PR #24; P-306 PRs #25-27 | DEV restore baseline matched; existing-account and internal pilot smoke operator-confirmed; hosted replay, detailed device/provider and closure evidence pending; no invited cohort activation |
-| 4-7 | Direction and gates only | No | No | No | Not deployed |
+| 4 | S-401 design on feature branch | Runtime planned | Source and documentation checks | Pending | Design only |
+| 5-7 | Direction and gates only | No | No | No | Not deployed |

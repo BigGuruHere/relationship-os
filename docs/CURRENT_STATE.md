@@ -1,6 +1,12 @@
 # Relish: Current State and Open Work
 
-Status: living snapshot updated **2026-11-07**. Foundation baseline is development `cfbfabe` (PR #27). Environment observations are explicitly attributed below; this is not a live deployment monitor.
+Status: living snapshot updated **2026-11-07**. Foundation baseline is development `d572b1a` (PR #28). Environment observations are explicitly attributed below; this is not a live deployment monitor.
+
+## S-401 exchange design
+
+The [Stage 4 design](foundation/S401_EXCHANGE_DESIGN.md) is delivered on docs/stage-4-exchange-claims. It specifies reciprocal saving after a real exchange, verified account association, a future automatic-add preference enabled by default, and separate continuing-update permission. Runtime work is planned in S-402 through S-404. Validation covers source references and document links. This design requires zero migrations.
+
+PR #28 merged at `d572b1a`. The operator chose on 2026-11-07 to defer the hosted snapshot/erase replay and continue ordinary testing on DEV. Hosted recovery remains a production-readiness item. The existing internal pilot acceptance is operator-reported.
 
 ## P-306 DEV acceptance (in progress)
 
@@ -8,7 +14,7 @@ The operator reported matching Neon DEV and snapshot restore counts (15 foundati
 
 The [one-account DEV test](foundation/P306_DEV_TEST_ACCOUNT.md) merged via [PR #27](https://github.com/BigGuruHere/relationship-os/pull/27) at `cfbfabe`. The operator reported the test worked. Exact running SHA and individual device/browser/provider outcomes were not recorded. This is internal test acceptance.
 
-`feature/p306-dev-pilot-replay` adds an [offline hosted replay procedure](foundation/P306_DEV_REHEARSAL.md) using two independent copies of one post-test DEV snapshot and the existing synthetic test login. Local tests verify proof matching across restore, rejection of the source endpoint and wrong proof/key, erasure and preservation of account/profile rows. Hosted replay, full account closure/retention, remaining device/provider evidence and cohort approval are pending. No new migration, hosted operation or deployment in this change.
+PR #28 merged the tooling from `feature/p306-dev-pilot-replay`, which adds an [offline hosted replay procedure](foundation/P306_DEV_REHEARSAL.md) using two independent copies of one post-test DEV snapshot and the existing synthetic test login. Local tests verify proof matching across restore, rejection of the source endpoint and wrong proof/key, erasure and preservation of account/profile rows. Hosted replay, full account closure/retention, remaining device/provider evidence and cohort approval are pending. No new migration, hosted operation or deployment in this change.
 
 Release comparison at development `cfbfabe` against production Git branch `master` at `b58ba02` shows one added migration file, `20261104010000_f202_foundation_schema`. PROD schema and migration status require separate verification before a promotion. Production remains deferred.
 

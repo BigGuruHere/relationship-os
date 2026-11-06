@@ -63,3 +63,7 @@ F-203 implements the accepted separation of account identity from private-domain
 ## 2026-11-05: Foundation access is an expiring server capability
 
 F-204 implements the accepted owner-private boundary with runtime-issued handles and transaction-time state/epoch checks. Relationship membership, attributed perspectives, semantic contexts and serialized job data cannot grant access. All new-domain services use the shared guarded Prisma client; legacy custody remains separate. Prepared rehearsal has no route caller. Evidence/AI/disclosure capabilities stay denied until implemented and tested in their own stages. See [F-204](foundation/F204_ACCESS.md).
+
+## D-025 Reciprocal saving after exchange
+
+Accepted product direction on 2026-11-07. After Mark and Betty exchange details, each should receive the shared details in their own My People. Signup through that exchange completes the visitor's automatic saving. A future automatic-add preference defaults to enabled and applies to future additions. Account association requires verified claim proof. Ongoing updates use separate permission. Private notes retain owner custody. D-004 and D-018 remain applicable to identity and private access, with reciprocal saving now explicitly designed in [S-401](foundation/S401_EXCHANGE_DESIGN.md).

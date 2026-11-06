@@ -13,7 +13,7 @@ import type { Actions, PageServerLoad } from './$types';
 import { prisma } from '$lib/db';
 import { absoluteUrlFromOrigin } from '$lib/url';
 import { mergeExtras } from '$lib/publicProfile'; // IT: merges extra_* into existing publicMeta
-import { readProfileDraft, PROFILE_DRAFT_COOKIE } from '$lib/server/profileOnboarding';
+import { readOwnedProfileDraft, PROFILE_DRAFT_COOKIE, PROFILE_ONBOARDING_RETURN } from '$lib/server/profileOnboarding';
 
 // IT: simple slugify helper
 function slugify(input: string): string {
@@ -43,7 +43,9 @@ async function ensureUniqueSlugGlobal(wanted: string): Promise<string> {
 export const load: PageServerLoad = async ({ locals, url, cookies, setHeaders }) => {
   // IT: require auth
   if (!locals.user) {
-    throw redirect(303, absoluteUrlFromOrigin(locals.appOrigin, '/auth/login'));
+    throw redirect(303, absoluteUrlFromOrigin(locals.appOrigin, '/auth/login', {
+      next: url.searchParams.get('onboarding') === '1' ? PROFILE_ONBOARDING_RETURN : undefined
+    }));
   }
 
   // IT: pick most relevant profile - default first, then most recently updated
@@ -95,7 +97,8 @@ export const load: PageServerLoad = async ({ locals, url, cookies, setHeaders })
   // IT: Prefill is shown only to the signed-in browser that explicitly chose onboarding.
   // Nothing is persisted publicly until the owner reviews and saves the existing editor.
   const onboarding = url.searchParams.get('onboarding') === '1';
-  const draft = onboarding ? readProfileDraft(cookies) : null;
+  // Only the account and profile bound after signup may receive these unverified prefills.
+  const draft = onboarding && profile ? readOwnedProfileDraft(cookies, locals.user.id, profile.id) : null;
   if (onboarding) setHeaders({ 'cache-control': 'private, no-store', 'referrer-policy': 'same-origin' });
   return { profile: profile || null, requestedProfileKind, networkEntry, creatingNew,
     onboarding, draft,
@@ -106,7 +109,9 @@ export const actions: Actions = {
   save: async ({ request, locals, url, cookies }) => {
     // IT: require auth
     if (!locals.user) {
-      throw redirect(303, absoluteUrlFromOrigin(locals.appOrigin, '/auth/login'));
+      throw redirect(303, absoluteUrlFromOrigin(locals.appOrigin, '/auth/login', {
+        next: url.searchParams.get('onboarding') === '1' ? PROFILE_ONBOARDING_RETURN : undefined
+      }));
     }
 
     const fd = await request.formData();
@@ -257,7 +262,9 @@ export const actions: Actions = {
 
     // IT: after DB work - perform redirects OUTSIDE the try/catch
     // IT: Retain the draft on validation failure, clear it only after a successful save.
-    if (fd.get('profileOnboarding') === '1') cookies.delete(PROFILE_DRAFT_COOKIE, { path: '/' });
+    if (existing && readOwnedProfileDraft(cookies, locals.user.id, existing.id)) {
+      cookies.delete(PROFILE_DRAFT_COOKIE, { path: '/' });
+    }
 
     // IT: stay in the Network experience after create and edit.
     if (networkEntry) throw redirect(303, '/network');

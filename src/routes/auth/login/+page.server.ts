@@ -17,12 +17,13 @@ import { consumePasswordLoginAttempt, clearSuccessfulLoginAccountBucket } from '
 // IT - encrypted email helpers
 import { findUserByEmail, decryptUserEmail } from '$lib/server/userEmail';
 import { ensureDefaultProfile } from '$lib/server/profiles';
+import { finishProfileAuth, profileReturnForAccount, PROFILE_ONBOARDING_RETURN } from '$lib/server/profileOnboarding';
 import { safeAuthReturn } from '$lib/server/networkJoinReturn';
 
-export const load: PageServerLoad = async ({ locals, url }) => {
+export const load: PageServerLoad = async ({ locals, url, cookies }) => {
   const next = safeAuthReturn(url.searchParams.get('next'));
   // If already signed in, redirect home
-  if (locals.user) throw redirect(303, next || '/');
+  if (locals.user) throw redirect(303, profileReturnForAccount(cookies, next, locals.user.id));
   return { next };
 };
 
@@ -68,7 +69,8 @@ export const actions: Actions = {
     // Repair old partial registrations without blocking an otherwise valid login.
     // New registrations create the profile atomically, so this is a legacy recovery path.
     try {
-      await ensureDefaultProfile(user.id, { displayName: emailInput.split('@')[0] });
+      await ensureDefaultProfile(user.id, { displayName: emailInput.split('@')[0],
+        ...(next === PROFILE_ONBOARDING_RETURN ? { isPublished: false } : {}) });
     } catch (e) {
       console.warn('Could not provision missing default profile after login:', e);
     }
@@ -79,6 +81,11 @@ export const actions: Actions = {
       await clearSuccessfulLoginAccountBucket(emailInput);
     } catch (e) {
       console.warn('Could not clear successful-login throttle bucket:', e);
+    }
+
+    // Profile continuation skips legacy claims. Existing Network and ordinary login keep their flow.
+    if (next === PROFILE_ONBOARDING_RETURN) {
+      throw redirect(303, finishProfileAuth(cookies, url, next, user.id));
     }
 
     // 7 - post auth linking - decrypt server-side to pass a string email only to the linker

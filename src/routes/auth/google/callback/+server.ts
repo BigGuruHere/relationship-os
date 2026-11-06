@@ -14,15 +14,15 @@ import { requiredEnv } from '$lib/server/config/requiredEnv';
 import type { RequestHandler } from './$types';
 import { redirect, error } from '@sveltejs/kit';
 import { safeAuthReturn } from '$lib/server/networkJoinReturn';
-import { readProfileDraft, PROFILE_ONBOARDING_RETURN } from '$lib/server/profileOnboarding';
+import { finishProfileAuth, readProfileDraft, PROFILE_ONBOARDING_RETURN } from '$lib/server/profileOnboarding';
 import { prisma } from '$lib/db';
 import { createSession, setSessionCookie } from '$lib/auth';
 import * as jose from 'jose';
 import { linkLeadsForUser } from '$lib/leads/link';
-import { ensureDefaultProfile } from '$lib/server/profiles';
+import { defaultProfileData, ensureDefaultProfile } from '$lib/server/profiles';
 
 // IT: encrypted email helpers - equality lookup and write
-import { findUserByEmail, setUserEmail, decryptUserEmail } from '$lib/server/userEmail';
+import { findUserByEmail, setUserEmail, decryptUserEmail, encryptedUserEmailFields } from '$lib/server/userEmail';
 
 // Google endpoints
 const TOKEN_ENDPOINT = 'https://oauth2.googleapis.com/token';
@@ -181,45 +181,40 @@ export const GET: RequestHandler = async ({ url, cookies, locals, getClientAddre
     }
   }
 
-  // 11c - create user if none found, then set encrypted email fields
+  const onboarding = next === PROFILE_ONBOARDING_RETURN;
+  const seed = {
+    displayName: typeof payload.name === 'string' && payload.name.trim()
+      ? payload.name.trim() : email.split('@')[0],
+    avatarUrl: typeof payload.picture === 'string' ? payload.picture.trim() : null,
+    ...(onboarding ? { isPublished: false } : {})
+  };
+  let newProfileId: string | undefined;
   if (!user) {
+    const draft = onboarding ? readProfileDraft(cookies) : null;
+    // Commit the encrypted account and its initial profile together. Draft email and phone
+    // are never used for credential lookup or written to the new profile.
     const created = await prisma.user.create({
-      data: { person: { create: {} } },
-      select: { id: true }
+      data: {
+        ...encryptedUserEmailFields(email),
+        person: { create: {} },
+        profiles: { create: defaultProfileData({ ...seed, displayName: draft?.name || seed.displayName }) }
+      },
+      select: { id: true, profiles: { select: { id: true } } }
     });
-    await setUserEmail(created.id, email);
     user = created;
+    newProfileId = created.profiles[0]?.id;
   } else {
-    // IT: ensure legacy users get encrypted email fields backfilled
+    // Existing profiles keep their own details and publication state.
     const u = await prisma.user.findUnique({
       where: { id: user.id },
       select: { email_Enc: true, email_Idx: true }
     });
-    if (!u?.email_Enc || !u?.email_Idx) {
-      await setUserEmail(user.id, email);
+    if (!u?.email_Enc || !u?.email_Idx) await setUserEmail(user.id, email);
+    try {
+      await ensureDefaultProfile(user.id, seed);
+    } catch {
+      console.warn('ensureDefaultProfile failed after Google OAuth.');
     }
-  }
-
-  // 11d - ensure a default profile exists for this user using friendly seeds from Google
-  // - prefer Google's name, fall back to the email local part
-  // - avatar is optional and safe to set here
-  try {
-    const seedName =
-      typeof payload.name === 'string' && payload.name.trim()
-        ? payload.name.trim()
-        : email.split('@')[0];
-    const seedAvatar =
-      typeof payload.picture === 'string' && payload.picture.trim()
-        ? payload.picture.trim()
-        : null;
-    // IT: Only newly provisioned profiles in this opt-in flow start unpublished.
-    // Existing profiles are returned by the shared helper without being changed.
-    const draft = next === PROFILE_ONBOARDING_RETURN ? readProfileDraft(cookies) : null;
-    await ensureDefaultProfile(user.id, { displayName: draft?.name || seedName, avatarUrl: seedAvatar,
-      ...(next === PROFILE_ONBOARDING_RETURN ? { isPublished: false } : {}) });
-  } catch (e) {
-    // IT: do not block login if profile creation fails
-    console.warn('ensureDefaultProfile failed after Google OAuth.');
   }
 
   // 12 - upsert the OAuth account record for this user
@@ -258,6 +253,11 @@ export const GET: RequestHandler = async ({ url, cookies, locals, getClientAddre
   // 14 - create a first party session cookie using env aware helpers
   const sess = await createSession(user.id);
   setSessionCookie(cookies, locals, sess.cookie, sess.expiresAt);
+
+  // The optional profile flow grants no legacy claim authority.
+  if (onboarding) {
+    throw redirect(303, finishProfileAuth(cookies, url, next, user.id, newProfileId));
+  }
 
   // 15 - post auth linking - decrypt server-side to pass a string email to the linker
   try {

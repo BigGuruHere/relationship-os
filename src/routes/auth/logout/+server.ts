@@ -7,6 +7,7 @@
 
 import type { RequestHandler } from './$types';
 import { redirect } from '@sveltejs/kit';
+import { PROFILE_DRAFT_COOKIE } from '$lib/server/profileOnboarding';
 import { destroySession, clearSessionCookie } from '$lib/auth';
 
 export const POST: RequestHandler = async ({ locals, cookies, url, request }) => {
@@ -22,6 +23,7 @@ export const POST: RequestHandler = async ({ locals, cookies, url, request }) =>
 
   // IT: clear the browser cookie - env-aware name and flags from locals
   clearSessionCookie(cookies, locals);
+  cookies.delete(PROFILE_DRAFT_COOKIE, { path: '/' });
 
   // IT: allow caller to specify where to go next, else default to login
   // - supports either query string ?redirect=/ or form field <input name="redirect" />

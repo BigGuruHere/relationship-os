@@ -7,6 +7,14 @@ on:
       - 'prisma/**'
       - 'src/lib/**'
       - 'src/routes/people/**'
+      - 'src/routes/profiles/**'
+      - 'src/routes/settings/profile/**'
+      - 'src/routes/share/**'
+      - 'src/routes/api/qr/**'
+      - 'src/routes/api/profile/generate-qr/**'
+      - 'tests/core/profile-onboarding.test.mjs'
+      - 'tests/core/profile-share-selector.test.mjs'
+      - 'tests/core/multi-profiles.test.mjs'
       - 'src/routes/u/**'
       - 'src/routes/api/upload-chunk/**'
       - 'src/routes/api/transcribe-result/**'
@@ -47,6 +55,7 @@ jobs:
           node-version: '22'
           cache: npm
       - run: npm ci
+      - run: node --test tests/core/profile-onboarding.test.mjs tests/core/profile-share-selector.test.mjs tests/core/multi-profiles.test.mjs
       - run: npm run check:foundation:notes
       - run: npm run check:foundation:capture
       - run: npm run check:foundation:people

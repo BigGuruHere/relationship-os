@@ -63,3 +63,7 @@ Reason: existing ContextSpace guards, triggers and Contact-bound LU cannot be sa
 Alternatives rejected: renaming ContextSpace without changing semantics; making every private person a global Person; unchecked entityId references; converting existing LU contactId to nullable; permanent dual writes. The chosen design adds schema surface but keeps legacy compatibility and new security responsibilities explicit.
 
 Consequences: new database guards do not arrive automatically from the existing Prisma extension. F-204 must implement and test them before routes activate. F-202 has no backfill. Target inventory is required before deployment/cutover and unavailable in this session. See [physical model](PHYSICAL_MODEL.md) and [inventory](DEPENDENCY_INVENTORY.md). Refines D-019 through D-022; no trust invariant is relaxed.
+
+## D-025 Reciprocal saving after exchange
+
+Accepted product direction on 2026-11-07. After Mark and Betty exchange details, each should receive the shared details in their own My People. Signup through that exchange completes the visitor's automatic saving. A future automatic-add preference defaults to enabled and applies to future additions. Account association requires verified claim proof. Ongoing updates use separate permission. Private notes retain owner custody. D-004 and D-018 remain applicable to identity and private access, with reciprocal saving now explicitly designed in [S-401](S401_EXCHANGE_DESIGN.md).

@@ -50,6 +50,8 @@ For architecture and new-domain implementation, read these linked documents afte
 
 - [P-306 DEV test account](foundation/P306_DEV_TEST_ACCOUNT.md) covers the owner setup and phone acceptance for one internal login.
 
+- [S-401 exchange design](foundation/S401_EXCHANGE_DESIGN.md) specifies reciprocal saving, verified account claims and the Stage 4 implementation slices.
+
 These specifications guide future work; they do not replace source code as evidence of implementation. Update the relevant backlog item and stage register with each implementation PR.
 
 ## Source-of-truth rules

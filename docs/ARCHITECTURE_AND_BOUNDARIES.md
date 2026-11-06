@@ -121,3 +121,7 @@ The offline support service uses the same account/vault locks as foundation writ
 ## P-306 internal DEV account
 
 The existing owner account page can create one fresh foundation test login when the DEV origin and explicit database binding match. The account and its ACTIVE private roots commit together. No existing account changes storage, and the test profile starts unpublished. See [P-306 DEV setup](foundation/P306_DEV_TEST_ACCOUNT.md).
+
+## Planned exchange settlement
+
+[S-401](foundation/S401_EXCHANGE_DESIGN.md) defines a narrowly authorized transaction across two private vaults for verified exchange settlement. Reciprocal entries contain the shared snapshots. Account associations and future directional update permissions remain separate authorities. Runtime implementation follows in S-402 through S-404.

@@ -52,6 +52,8 @@ For architecture and new-domain implementation, read these linked documents afte
 
 - [S-401 exchange design](foundation/S401_EXCHANGE_DESIGN.md) specifies reciprocal saving, verified account claims and the Stage 4 implementation slices.
 
+- [S-402a exchange schema](foundation/S402_EXCHANGE_SCHEMA.md) records the additive persistence, invariants and migration requirements.
+
 These specifications guide future work; they do not replace source code as evidence of implementation. Update the relevant backlog item and stage register with each implementation PR.
 
 ## Source-of-truth rules

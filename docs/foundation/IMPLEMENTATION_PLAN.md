@@ -62,6 +62,8 @@ Start user feedback with task completion, time to first saved person/note, repea
 
 The operator deferred hosted erase/replay on 2026-11-07 and requested ordinary testing on DEV. This permits continued DEV feature work. Hosted recovery, closure/retention and cohort approval remain production-readiness gates.
 
+S-402 is split into S-402a persistence and S-402b service delivery. [S-402a](S402_EXCHANGE_SCHEMA.md) is implemented on feature/s402-exchange-schema with one additive migration and disposable schema tests. Its application guard denies new model access until S-402b supplies SMS challenge delivery, settlement/association records, persistent cross-account budgets and privacy integration. Cohort and live delivery acceptance remain pending. Application rollback retains the empty additive schema.
+
 ## Migration and rollback strategy
 
 1. Inventory existing data and dependent jobs; preserve legacy Brokerage by default. Keep authentication identity separate from domain enrolment.
@@ -84,5 +86,5 @@ Use the [developer guide](DEVELOPER_GUIDE.md) for PR evidence. Stages 4-7 get a 
 | 1 | Documentation package | Documentation only | 37 relative links and diff checks passed in PR #13 | PR #13, `d789464` | No deployment applicable |
 | 2 | F-201 merged; DEV operator inventory recorded | F-202 through F-206 merged | F-202: 23 schema + 25 concurrency; F-203: 21 tests; F-204: ten tests; F-205: eight tests including competing corrections; F-206 journey and handoff race passed in CI | F-202 PR #15; F-203 PR #16; F-204 PR #17 merged; F-205 PR #18 merged; F-206 PR #19 merged | F-202/F-203 DEV operator-confirmed; F-204 DEV unverified; F-205 DEV unverified; F-206 DEV unverified; PROD unverified |
 | 3 | Backlog and gates | P-301 through P-305 merged; P-306 DEV test login merged and operator-confirmed; hosted replay command on feature branch | Nine P-301 checks and 104 total foundation CI checks pass; P-302 included in 116 passing foundation CI checks, zero skips; P-303 included in 131 passing foundation CI checks; 37 local legacy/shared-audio checks and Svelte pass; P-304 included in 160 passing CI checks; P-305 included in 171 passing CI checks with disposable restore and PostgreSQL erasure; P-306 included in 178 passing CI checks; local disposable restore replay verified | P-301 PR #20; P-302 PR #21; P-303 PR #22; P-304 PR #23; P-305 PR #24; P-306 PRs #25-27 | DEV restore baseline matched; existing-account and internal pilot smoke operator-confirmed; hosted replay, detailed device/provider and closure evidence pending; no invited cohort activation |
-| 4 | S-401 merged, SMS-first revision on feature branch | Runtime planned | Source and documentation checks | Pending | Design only |
+| 4 | S-401 merged through PR #30 | S-402a schema on feature branch, S-402b service next | Schema and guard tests | S-402a pending | DEV migration pending |
 | 5-7 | Direction and gates only | No | No | No | Not deployed |

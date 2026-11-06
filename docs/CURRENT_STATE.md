@@ -1,10 +1,10 @@
 # Relish: Current State and Open Work
 
-Status: living snapshot updated **2026-11-06**. Foundation baseline is development `de9a875` (PR #24). Environment observations are explicitly attributed below; this is not a live deployment monitor.
+Status: living snapshot updated **2026-11-07**. Foundation baseline is development `70649f5` (PR #25). Environment observations are explicitly attributed below; this is not a live deployment monitor.
 
 ## P-306 hosted DEV rehearsal (in progress)
 
-The operator reported matching counts on Neon development and its separate restored snapshot on 2026-11-06. Both show 15 foundation tables, no enrollments or vaults, 9 Users, 29 Contacts, 128 Interactions, 107 applied migrations and zero unfinished migrations. The [rehearsal procedure](foundation/P306_DEV_REHEARSAL.md) uses a credential-free PREPARED fixture on isolated copies. Hosted erasure/replay, live DEV and mobile checks, full closure/retention and the cohort decision remain pending.
+The operator reported matching counts on Neon development and its separate restored snapshot on 2026-11-06. Both show 15 foundation tables, no enrollments or vaults, 9 Users, 29 Contacts, 128 Interactions, 107 applied migrations and zero unfinished migrations. The [rehearsal procedure](foundation/P306_DEV_REHEARSAL.md) uses a credential-free PREPARED fixture on isolated copies. The operator reported the existing Railway DEV smoke checks worked on 2026-11-07. Exact deployed SHA was not captured. This confirms the existing-account path only. Hosted erasure/replay was deferred after the synthetic seed did not return a verified result. Live foundation acceptance, full closure/retention and the cohort decision remain pending.
 
 ## P-305 privacy and operations readiness (merged)
 

@@ -15,7 +15,7 @@ The authoritative detailed backlog and stage register are in [foundation impleme
 | 1 | Architecture, decisions, policy, developer guide and implementation backlog | Merged via PR #13, `d789464` |
 | 2 | New-domain primitives, auth isolation, custody and evidence proof | F-202/F-203 merged and DEV operator-confirmed; F-204 merged; F-205 merged; F-206 internal rehearsal merged through PR #19. Stage 2 DEV verification is pending. P-301 directory and person details merged through PR #20 |
 | 3 | Invited users share details, keep people and retrieve notes | P-301 through P-305 merged. P-306 internal DEV test operator-confirmed. Hosted erasure replay using the test login, closure/retention readiness, detailed device/provider coverage and cohort approval remain gates. |
-| 4 | Secure exchange claiming and directional continuing sharing | S-401 merged. SMS-first revision on feature branch. S-402 claim persistence and SMS verification, then S-403 UI integration and S-404 DEV acceptance. |
+| 4 | Secure exchange claiming and directional continuing sharing | S-401 merged through PR #30. S-402a schema on feature branch, then S-402b SMS verification and settlement, then S-403 UI integration and S-404 DEV acceptance. |
 | 5 | Private understanding across people and relationships | Planned after evidence/correction readiness |
 | 6 | Relationship understanding from separately governed perspectives | Future gated release |
 | 7 | Cross-account discovery and approved introductions | Future gated release |

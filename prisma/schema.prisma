@@ -34,6 +34,8 @@ enum UserRole {
 // - Primary account for a single tenant
 // - Email is stored encrypted at rest with a deterministic HMAC index for equality
 model User {
+  s402Exchange FoundationExchange[]
+
   // IT: Additive foundation references; no enrolment or data backfill is implied.
   f202EnrollmentUser FoundationEnrollment? @relation("F202_Enrollment_user")
   f202VaultOwner FoundationVault[] @relation("F202_Vault_owner")
@@ -777,6 +779,8 @@ enum ProfileKind {
 
 // IT: public shareable profile owned by a user
 model Profile {
+  s402Exchange FoundationExchange[]
+
   id        String      @id @default(uuid())
   userId    String
   kind      ProfileKind @default(business)
@@ -813,6 +817,7 @@ model Profile {
   publicMeta Json?
 
   @@index([userId, isDefault])
+  @@unique([id, userId], map: "s402_profile_scope")
 }
 
 // IT: flexible many-to-many relationships between contacts
@@ -4171,6 +4176,8 @@ model FoundationEnrollment {
 
 // IT: Custody references restrict deletion; services must explicitly erase dependencies.
 model FoundationVault {
+  s402Exchange FoundationExchange[]
+
   id String @id @default(uuid())
   ownerUserId String
   createdAt DateTime @default(now()) @db.Timestamptz(3)
@@ -4197,6 +4204,8 @@ model FoundationVault {
 
 // IT: Custody references restrict deletion; services must explicitly erase dependencies.
 model FoundationSubject {
+  s402Exchange FoundationExchange[]
+
   id String @id @default(uuid())
   ownerUserId String
   vaultId String
@@ -4260,6 +4269,8 @@ model FoundationPerspective {
 
 // IT: Custody references restrict deletion; services must explicitly erase dependencies.
 model FoundationSource {
+  s402Exchange FoundationExchange[]
+
   id String @id @default(uuid())
   ownerUserId String
   vaultId String
@@ -4273,6 +4284,7 @@ model FoundationSource {
   @@unique([id, ownerUserId, vaultId], map: "f202_source_scope")
   @@unique([vaultId, ingestKey], map: "f202_source_ingest")
   @@index([ownerUserId, vaultId, kind, createdAt], map: "f202_source_listing")
+  @@unique([id, ownerUserId, vaultId, kind], map: "s402_source_typed")
 }
 
 // IT: Custody references restrict deletion; services must explicitly erase dependencies.
@@ -4454,4 +4466,81 @@ model FoundationContextAssociation {
   @@index([ownerUserId, vaultId, contextId], map: "f202_contexta_contextid")
   @@index([ownerUserId, vaultId, segmentId], map: "f202_contexta_segmentid")
   @@index([ownerUserId, vaultId, statementVersionId], map: "f202_contexta_statementversion")
+}
+
+// IT: Durable exchange state. Request writers are gated until S-402b adds scoped services.
+model FoundationExchange {
+  id String @id @default(uuid())
+  ownerUserId String
+  vaultId String
+  profileId String
+  subjectId String
+  subjectKind FoundationSubjectKind @default(PERSON)
+  sourceId String
+  sourceKind FoundationSourceKind @default(CONTACT_EXCHANGE)
+  snapshotEnc String
+  destinationEnc String?
+  continuationHash String @unique
+  beneficiaryUserId String?
+  status String @default("PENDING")
+  generation Int @default(0)
+  failedAttempts Int @default(0)
+  sendCount Int @default(0)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  expiresAt DateTime @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+  vault FoundationVault @relation(fields: [vaultId, ownerUserId], references: [id, ownerUserId], onDelete: Restrict, onUpdate: Restrict)
+  profile Profile @relation(fields: [profileId, ownerUserId], references: [id, userId], onDelete: Restrict, onUpdate: Restrict)
+  subject FoundationSubject @relation(fields: [subjectId, ownerUserId, vaultId, subjectKind], references: [id, ownerUserId, vaultId, kind], onDelete: Restrict, onUpdate: Restrict)
+  source FoundationSource @relation(fields: [sourceId, ownerUserId, vaultId, sourceKind], references: [id, ownerUserId, vaultId, kind], onDelete: Restrict, onUpdate: Restrict)
+  beneficiary User? @relation(fields: [beneficiaryUserId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  challenges FoundationExchangeChallenge[]
+  @@unique([sourceId, ownerUserId, vaultId])
+  @@unique([id, ownerUserId, vaultId, beneficiaryUserId])
+  @@index([ownerUserId, vaultId, status, expiresAt])
+}
+
+// IT: Channel is persisted so the same service can later deliver email challenges.
+model FoundationExchangeChallenge {
+  id String @id @default(uuid())
+  ownerUserId String
+  vaultId String
+  exchangeId String
+  beneficiaryUserId String
+  sessionHash String
+  channel String
+  destinationEnc String
+  codeMac String
+  generation Int
+  attempts Int @default(0)
+  status String @default("PENDING")
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  expiresAt DateTime @db.Timestamptz(3)
+  verifiedAt DateTime? @db.Timestamptz(3)
+  consumedAt DateTime? @db.Timestamptz(3)
+  exchange FoundationExchange @relation(fields: [exchangeId, ownerUserId, vaultId, beneficiaryUserId], references: [id, ownerUserId, vaultId, beneficiaryUserId], onDelete: Restrict, onUpdate: Restrict)
+  dispatch FoundationExchangeDispatch?
+  @@unique([exchangeId, generation])
+  @@unique([id, ownerUserId, vaultId])
+  @@index([beneficiaryUserId, status, expiresAt])
+}
+
+// IT: Only encrypted retryable delivery content is retained while the message is pending.
+model FoundationExchangeDispatch {
+  id String @id @default(uuid())
+  ownerUserId String
+  vaultId String
+  challengeId String @unique
+  payloadEnc String?
+  status String @default("QUEUED")
+  attempts Int @default(0)
+  leaseUntil DateTime? @db.Timestamptz(3)
+  leaseToken String?
+  lastErrorCode String?
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  expiresAt DateTime @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+  challenge FoundationExchangeChallenge @relation(fields: [challengeId, ownerUserId, vaultId], references: [id, ownerUserId, vaultId], onDelete: Restrict, onUpdate: Restrict)
+  @@unique([challengeId, ownerUserId, vaultId])
+  @@index([status, expiresAt, leaseUntil])
 }

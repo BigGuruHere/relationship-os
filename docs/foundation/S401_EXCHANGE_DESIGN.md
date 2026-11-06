@@ -87,7 +87,8 @@ Extend P-305 review and erasure to include exchange records, challenges, associa
 | Slice | Deliverable | Acceptance |
 | --- | --- | --- |
 | S-401 | This source-grounded design and decision record | Product flow, assurance, lifecycle and DEV scenarios specified |
-| S-402 | Additive claim persistence, SMS-first verification delivery and atomic service | Migration and custody tests, replay/account-switch rejection, partial failure rollback, deterministic concurrent settlement, privacy operations coverage |
+| S-402a | [Exchange, challenge and dispatch schema](S402_EXCHANGE_SCHEMA.md) | Additive migration, custody and immutable binding tests |
+| S-402b | SMS service, association/settlement persistence, budgets and privacy integration | Replay/account-switch rejection, atomic settlement, concurrency and erasure tests |
 | S-403 | Wire existing exchange/signup/People screens and DEV test admission | Both accounts see the shared details, retry returns one result, Skip works, archived contact stays archived, password and Google flows verified |
 | S-404 | Unlink/recovery UX and DEV acceptance | Revocation, expiry, suspension and erasure races exercised, clear recovery and operator evidence |
 | Follow-on | Email verification through the shared challenge service | Channel switching invalidates old challenges, either supported channel settles once |

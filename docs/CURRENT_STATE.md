@@ -1,6 +1,10 @@
 # Relish: Current State and Open Work
 
-Status: living snapshot updated **2026-11-07**. Foundation baseline is development `56eec62` (PR #29). Environment observations are explicitly attributed below; this is not a live deployment monitor.
+Status: living snapshot updated **2026-11-07**. Foundation baseline is development `159c39e` (PR #30). Environment observations are explicitly attributed below; this is not a live deployment monitor.
+
+## S-402a exchange persistence
+
+Implemented on feature/s402-exchange-schema from development `159c39e`. The [schema slice](foundation/S402_EXCHANGE_SCHEMA.md) adds exchange, challenge and delivery records with custody constraints and immutable proof fields. Current application writers remain gated. S-402b delivers SMS service, association/settlement persistence and privacy integration. One additive Prisma migration is required. Runtime SMS acceptance remains pending.
 
 ## S-401 exchange design
 

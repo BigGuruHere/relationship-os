@@ -15,13 +15,13 @@ import { linkLeadsForUser } from '$lib/leads/link';
 import { findUserByEmail, encryptedUserEmailFields } from '$lib/server/userEmail';
 import { randomUUID } from 'node:crypto';
 import { safeAuthReturn } from '$lib/server/networkJoinReturn';
-import { readProfileDraft, PROFILE_ONBOARDING_RETURN } from '$lib/server/profileOnboarding';
+import { finishProfileAuth, profileReturnForAccount, readProfileDraft, PROFILE_ONBOARDING_RETURN } from '$lib/server/profileOnboarding';
 
 
 export const load: PageServerLoad = async ({ locals, url, cookies, setHeaders }) => {
   const next = safeAuthReturn(url.searchParams.get('next'));
   // If already signed in, redirect home
-  if (locals.user) throw redirect(303, next || '/');
+  if (locals.user) throw redirect(303, profileReturnForAccount(cookies, next, locals.user.id));
   // SECURITY: Draft data stays out of URLs and shared caches; it proves no identity.
   setHeaders({ 'cache-control': 'private, no-store', 'referrer-policy': 'same-origin' });
   return { next, draft: next === PROFILE_ONBOARDING_RETURN ? readProfileDraft(cookies) : null };
@@ -30,6 +30,7 @@ export const load: PageServerLoad = async ({ locals, url, cookies, setHeaders })
 export const actions: Actions = {
   default: async ({ request, cookies, locals, url }) => {
     const next = safeAuthReturn(url.searchParams.get('next'));
+    if (locals.user) throw redirect(303, profileReturnForAccount(cookies, next, locals.user.id));
     const draft = next === PROFILE_ONBOARDING_RETURN ? readProfileDraft(cookies) : null;
     // Parse form
     const form = await request.formData();
@@ -50,6 +51,7 @@ export const actions: Actions = {
     // Create the account, encrypted email and required default profile atomically.
     // A failure cannot leave a registered account without its default profile.
     let userId: string;
+    let profileId: string | undefined;
     try {
       const created = await prisma.user.create({
         data: {
@@ -69,9 +71,10 @@ export const actions: Actions = {
             }
           }
         },
-        select: { id: true }
+        select: { id: true, profiles: { select: { id: true } } }
       });
       userId = created.id;
+      if (next === PROFILE_ONBOARDING_RETURN) profileId = created.profiles[0].id;
     } catch (e: unknown) {
       // The email index is unique, including simultaneous registration attempts.
       const code = typeof e === 'object' && e && 'code' in e ? (e as { code?: string }).code : null;
@@ -85,13 +88,14 @@ export const actions: Actions = {
 
     // IT: post auth linking - claim and link any pending leads for this verified email
     try {
-      await linkLeadsForUser(userId, email);
+      // Profile signup does not initiate the separate legacy lead-claim flow.
+      if (next !== PROFILE_ONBOARDING_RETURN) await linkLeadsForUser(userId, email);
     } catch (e) {
       // Do not block registration if linking fails
       console.warn('linkLeadsForUser failed after registration:', e);
     }
 
     // Go home
-    throw redirect(303, next || '/');
+    throw redirect(303, finishProfileAuth(cookies, url, next, userId, profileId));
   }
 };

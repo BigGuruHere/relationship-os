@@ -1,15 +1,14 @@
 // PURPOSE: generate a QR code SVG for the owner's public link and store it on the profile.
-// FLOW: POST with profileId, verifies ownership, writes qrSvg and qrGeneratedAt, sets qrReady, 303 to /share/qr.
+// FLOW: POST with profileId, verifies ownership, writes qrSvg and qrGeneratedAt, sets qrReady, then redirects to the same profile's QR preview.
 
 // SECURITY: Do not leak host details. Use central origin helpers to avoid cross-env mixups.
 
 import type { RequestHandler } from './$types';
-import { redirect } from '@sveltejs/kit';
+import { error, redirect } from '@sveltejs/kit';
 import { prisma } from '$lib/db';
 import QRCode from 'qrcode';
 
 // IT: use shared helpers for origin and URL building
-import { getAppOriginLoose } from '$lib/appOrigin';
 import { absoluteUrlFromOrigin } from '$lib/url';
 
 export const POST: RequestHandler = async ({ request, locals }) => {
@@ -22,15 +21,15 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 
   const profile = await prisma.profile.findFirst({
     where: { id: profileId, userId: locals.user.id },
-    select: { id: true, slug: true }
+    select: { id: true, slug: true, isPublished: true }
   });
-  if (!profile) throw redirect(303, '/share');
+  if (!profile) throw error(404, 'Profile not found.');
 
   // IT: build canonical absolute URL from helpers
-  const origin = getAppOriginLoose();
-  const publicUrl = absoluteUrlFromOrigin(origin, `/u/${profile.slug}`);
+  const selected = encodeURIComponent(profile.slug);
+  if (!profile.isPublished) throw redirect(303, '/share?profile=' + selected);
+  const publicUrl = absoluteUrlFromOrigin(locals.appOrigin, '/u/' + selected);
 
-  // IT: optional dev skip is handled separately below
   const svg = await QRCode.toString(publicUrl, { type: 'svg', margin: 1 });
 
   await prisma.profile.update({
@@ -42,5 +41,5 @@ export const POST: RequestHandler = async ({ request, locals }) => {
     }
   });
 
-  throw redirect(303, '/share/qr');
+  throw redirect(303, '/share/qr?profile=' + selected);
 };

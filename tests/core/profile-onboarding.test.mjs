@@ -9,20 +9,27 @@ import { render } from 'svelte/server';
 
 // IT: Test-only key, never a deployment credential.
 process.env.SECRET_MASTER_KEY = 'a'.repeat(64);
-const server = await createServer({ configFile: false, server: { middlewareMode: true },
+for (const name of ['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET', 'OAUTH_REDIRECT_URI']) process.env[name] = 'synthetic';
+const server = await createServer({ configFile: false, ssr: { noExternal: ['jose'] }, server: { middlewareMode: true },
   resolve: { alias: { $lib: resolve('src/lib') } },
   plugins: [{ name: 'capture-test-boundary', enforce: 'pre',
     resolveId(id) {
-      for (const dep of ['db','auth','leads/link','server/userEmail']) {
+      for (const dep of ['db','auth','leads/link','server/userEmail','server/loginThrottle','server/tokens','server/pilot','server/core/pilotSmsCallback']) {
         if (id === '$lib/' + dep || id === resolve('src/lib',dep)) return '\0mock:$lib/' + dep;
       }
+      if (id === 'jose') return '\0mock:jose';
       if (id.endsWith('/core/contactCapture') || id.endsWith('/core/contactCaptureToken') || id.endsWith('/core/contacts')) return '\0mock:' + id.split('/').at(-1);
     },
     load(id) {
       if (id === '\0mock:$lib/db') return `export const prisma = new Proxy({}, {get:(_,key)=>globalThis.__onboardingDb[key]});`;
-      if (id === '\0mock:$lib/auth') return `export async function hashPassword(){return 'test-hash';} export async function createSession(){return {cookie:'session',expiresAt:new Date()};} export function setSessionCookie(){}`;
-      if (id === '\0mock:$lib/leads/link') return `export async function linkLeadsForUser(){}`;
-      if (id === '\0mock:$lib/server/userEmail') return `export async function findUserByEmail(){return null;} export function encryptedUserEmailFields(){return {email_Enc:'encrypted',email_Idx:'index'};}`;
+      if (id === '\0mock:$lib/auth') return `export async function hashPassword(){return 'test-hash';} export async function createSession(){return {cookie:'session',expiresAt:new Date()};} export function setSessionCookie(){} export async function verifyPassword(_,p){return p==='correct';} export function clearSessionCookie(){}`;
+      if (id === '\0mock:$lib/leads/link') return `export async function linkLeadsForUser(){globalThis.__onboardingClaims++;}`;
+      if (id === '\0mock:$lib/server/userEmail') return `export async function findUserByEmail(email){globalThis.__onboardingLookups.push(email);return globalThis.__onboardingUser || null;} export function encryptedUserEmailFields(){return {email_Enc:'encrypted',email_Idx:'index'};} export function decryptUserEmail(){return 'account@example.test';} export async function setUserEmail(){throw Error('fixture has encrypted email');}`;
+      if (id === '\0mock:jose') return `export const createRemoteJWKSet=()=>({}); export const jwtVerify=async()=>({payload:{sub:'google-account',email:'google@example.test',email_verified:true,nonce:'nonce',name:'Verified name'}});`;
+      if (id === '\0mock:$lib/server/loginThrottle') return `export async function consumePasswordLoginAttempt(){return true;} export async function clearSuccessfulLoginAccountBucket(){}`;
+      if (id === '\0mock:$lib/server/tokens') return `export const createInviteToken=async()=>({token:'fixture-invite'});`;
+      if (id === '\0mock:$lib/server/pilot') return `export const pilotDomainForKind=()=>null; export const getOrCreatePilotVisitor=()=>{}; export const ensurePilotSelfContact=()=>{}; export const pilotSource=()=>{}; export const recordPilotEvent=()=>{};`;
+      if (id === '\0mock:$lib/server/core/pilotSmsCallback') return `export const pilotTermsConfig=()=>({ready:false}); export const issuePilotSmsInvitation=()=>{};`;
       if (id === '\0mock:contactCapture') return `export async function publishedCaptureProfile(slug) { return {id:slug==='other'?'other-profile':'profile',slug,userId:'owner',displayName:'Terence'}; }
         export async function capturePrivateContact(profile,input) { if(globalThis.__onboardingCaptureFailure) throw Error('storage unavailable'); globalThis.__onboardingCaptures.push({profile,input}); }`;
       if (id === '\0mock:contactCaptureToken') return `export const CAPTURE_COOKIE='capture'; export const issueContactCaptureToken=()=> 'token';
@@ -31,6 +38,8 @@ const server = await createServer({ configFile: false, server: { middlewareMode:
     }
   }]
 });
+globalThis.__onboardingClaims = 0;
+globalThis.__onboardingLookups = [];
 const draft = await server.ssrLoadModule('/src/lib/server/profileOnboarding.ts');
 const returns = await server.ssrLoadModule('/src/lib/server/networkJoinReturn.ts');
 const route = await server.ssrLoadModule('/src/routes/u/[slug]/share-details/+page.server.ts');
@@ -146,13 +155,16 @@ try {
   await test('signup uses draft name, creates an unpublished profile, then returns to the existing editor', async () => {
     const registration=await server.ssrLoadModule('/src/routes/auth/register/+page.server.ts');
     const created=[];
-    globalThis.__onboardingDb={user:{create:async args=>{created.push(args.data);return {id:'new-user'};}}};
+    globalThis.__onboardingDb={user:{create:async args=>{created.push(args.data);return {id:'new-user',profiles:[{id:'owned'}]};}}};
     const e=event({email:'guest@example.test',password:'test-password'});
     e.url.search='?next='+encodeURIComponent(draft.PROFILE_ONBOARDING_RETURN);
     draft.saveProfileDraft(e.cookies,e.url,{name:'Guest',email:'guest@example.test',phone:'123'});
     const data=await registration.load(e);
     assert.equal(data.draft.email,'guest@example.test');
     await assert.rejects(registration.actions.default(e),r=>r.status===303 && r.location===draft.PROFILE_ONBOARDING_RETURN);
+    assert.equal(globalThis.__onboardingClaims,0);
+    assert.equal(draft.readProfileDraft(e.cookies),null);
+    assert.equal(draft.readOwnedProfileDraft(e.cookies,'new-user','owned').phone,'123');
     assert.equal(created.length,1);
     assert.equal(created[0].profiles.create.displayName,'Guest');
     assert.equal(created[0].profiles.create.isPublished,false);
@@ -162,6 +174,7 @@ try {
     const ordinary=event({email:'other@example.test',password:'test-password'});
     await assert.rejects(registration.actions.default(ordinary),r=>r.location==='/');
     assert.equal('isPublished' in created[1].profiles.create,false);
+    assert.equal(globalThis.__onboardingClaims,1);
   });
   await test('editor reads browser draft only for explicit onboarding, retaining owner-scoped profile lookup', async () => {
     const editor=await server.ssrLoadModule('/src/routes/settings/profile/+page.server.ts');
@@ -169,6 +182,10 @@ try {
     globalThis.__onboardingDb={profile:{findFirst:async args=>{queries.push(args);return {id:'owned',kind:'business',slug:'mine',isPublished:false};}}};
     const e=event({});e.locals.user={id:'new-user'};e.url.search='?onboarding=1';
     draft.saveProfileDraft(e.cookies,e.url,{name:'Guest',email:'guest@example.test',phone:'123'});
+    assert.equal((await editor.load(e)).draft,null);
+    draft.finishProfileAuth(e.cookies,e.url,draft.PROFILE_ONBOARDING_RETURN,'new-user','owned');
+    assert.equal(draft.readOwnedProfileDraft(e.cookies,'other-user','owned'),null);
+    assert.equal(draft.readOwnedProfileDraft(e.cookies,'new-user','other-profile'),null);
     const data=await editor.load(e);
     assert.equal(data.draft.phone,'123');assert.equal(queries[0].where.userId,'new-user');
     e.url.search=''; assert.equal((await editor.load(e)).draft,null);
@@ -180,16 +197,151 @@ try {
       assert.equal(args.where.userId,'new-user');
       return {id:'owned',kind:'business',slug:'mine',publicMeta:{}};
     },update:async args=>{updates.push(args);}}};
-    const invalid=event({profileOnboarding:'1'});invalid.locals.user={id:'new-user'};
+    const invalid=event({});invalid.locals.user={id:'new-user'};
     draft.saveProfileDraft(invalid.cookies,invalid.url,{name:'Guest',email:'guest@example.test',phone:'123'});
+    draft.finishProfileAuth(invalid.cookies,invalid.url,draft.PROFILE_ONBOARDING_RETURN,'new-user','owned');
     assert.equal((await editor.actions.save(invalid)).status,400);
-    assert.ok(draft.readProfileDraft(invalid.cookies));assert.equal(updates.length,0);
-    const e=event({profileOnboarding:'1',profileId:'owned',displayName:'Guest',kind:'business',emailPublic:'guest@example.test',isPublished:'on'});
+    assert.ok(draft.readOwnedProfileDraft(invalid.cookies,'new-user','owned'));assert.equal(updates.length,0);
+    const e=event({profileId:'owned',displayName:'Guest',kind:'business',emailPublic:'guest@example.test',isPublished:'on'});
     e.locals.user={id:'new-user'};
     draft.saveProfileDraft(e.cookies,e.url,{name:'Guest',email:'guest@example.test',phone:'123'});
+    draft.finishProfileAuth(e.cookies,e.url,draft.PROFILE_ONBOARDING_RETURN,'new-user','owned');
     await assert.rejects(editor.actions.save(e),r=>r.status===303 && r.location==='/share?profile=mine');
     assert.equal(updates.length,1);assert.equal(updates[0].data.isPublished,true);
-    assert.equal(draft.readProfileDraft(e.cookies),null);
+    assert.equal(e.cookies.get(draft.PROFILE_DRAFT_COOKIE),undefined);
+  });
+  await test('expired sessions retain the allowlisted review destination and logout clears the draft', async () => {
+    const editor=await server.ssrLoadModule('/src/routes/settings/profile/+page.server.ts');
+    const logout=await server.ssrLoadModule('/src/routes/auth/logout/+server.ts');
+    const e=event({});
+    e.url=new URL('https://relish.test/settings/profile?onboarding=1&profile=foreign');
+    e.locals.appOrigin=e.url.origin;
+    await assert.rejects(editor.load(e),r=>r.status===303 &&
+      new URL(r.location).searchParams.get('next')===draft.PROFILE_ONBOARDING_RETURN);
+    const input={name:'Visitor',email:'visitor@example.test',phone:'123'};
+    e.cookies.set(draft.PROFILE_DRAFT_COOKIE,draft.encodeProfileDraft(input,Date.now()-29*60*1000),{});
+    draft.finishProfileAuth(e.cookies,e.url,draft.PROFILE_ONBOARDING_RETURN,'account','owned');
+    const bound=e.writes.at(-1);
+    assert.ok(bound.options.maxAge <= 60);
+    assert.match(bound.v,/^v2\./);
+    await assert.rejects(logout.POST(e),r=>r.status===303);
+    assert.equal(e.cookies.get(draft.PROFILE_DRAFT_COOKIE),undefined);
+  });
+  await test('password sign-in retains a bound draft only for the same account', async () => {
+    const login=await server.ssrLoadModule('/src/routes/auth/login/+page.server.ts');
+    const e=event({email:'account@example.test',password:'correct'});
+    e.url.search='?next='+encodeURIComponent(draft.PROFILE_ONBOARDING_RETURN);
+    e.getClientAddress=()=> '127.0.0.1';
+    globalThis.__onboardingUser={id:'account',passwordHash:'hash'};
+    globalThis.__onboardingDb={profile:{findFirst:async()=>({id:'owned'})}};
+    const before=globalThis.__onboardingClaims;
+    try {
+      draft.saveProfileDraft(e.cookies,e.url,{name:'Visitor',email:'visitor@example.test',phone:'123'});
+      await assert.rejects(login.actions.default(e), r=>r.status===303 && r.location==='/profiles');
+      assert.equal(e.cookies.get(draft.PROFILE_DRAFT_COOKIE),undefined);
+
+      draft.saveProfileDraft(e.cookies,e.url,{name:'Visitor',email:'visitor@example.test',phone:'123'});
+      draft.finishProfileAuth(e.cookies,e.url,draft.PROFILE_ONBOARDING_RETURN,'account','owned');
+      const wrong={...e,request:new Request(e.url,{method:'POST',body:new URLSearchParams({email:'account@example.test',password:'wrong'})})};
+      assert.equal((await login.actions.default(wrong)).status,400);
+      assert.equal(draft.readOwnedProfileDraft(e.cookies,'account','owned').phone,'123');
+      const retry={...e,request:new Request(e.url,{method:'POST',body:new URLSearchParams({email:'account@example.test',password:'correct'})})};
+      await assert.rejects(login.actions.default(retry), r=>r.status===303 && r.location===draft.PROFILE_ONBOARDING_RETURN);
+      assert.equal(draft.readOwnedProfileDraft(e.cookies,'account','owned').phone,'123');
+      assert.equal(globalThis.__onboardingClaims,before);
+    } finally { delete globalThis.__onboardingUser; }
+  });
+  await test('Google signup creates unpublished profile atomically and only new accounts receive prefills', async () => {
+    const google=await server.ssrLoadModule('/src/routes/auth/google/callback/+server.ts');
+    const e=event({});
+    e.url=new URL('https://relish.test/auth/google/callback?code=code&state=state');
+    e.locals.sessionCookie={options:{secure:true}};
+    e.getClientAddress=()=> '127.0.0.2';
+    e.fetch=async()=>Response.json({id_token:'fixture-token'});
+    const created=[];
+    let returning=false;
+    globalThis.__onboardingDb={
+      user:{
+        findFirst:async()=>returning ? {id:'returning'} : null,
+        findUnique:async()=>({email_Enc:'encrypted',email_Idx:'index'}),
+        create:async({data})=>{created.push(data);return {id:'google-user',profiles:[{id:'google-profile'}]};}
+      },
+      profile:{findFirst:async()=>({id:'returning-profile'})},
+      oAuthAccount:{findFirst:async()=>null,create:async()=>({})}
+    };
+    const before=globalThis.__onboardingClaims;
+    function start() {
+      for (const [key,value] of Object.entries({oauth_state:'state',oauth_nonce:'nonce',oauth_pkce:'pkce',oauth_network_next:draft.PROFILE_ONBOARDING_RETURN})) e.cookies.set(key,value,{});
+      draft.saveProfileDraft(e.cookies,e.url,{name:'Visitor name',email:'different@example.test',phone:'123'});
+    }
+    start();
+    await assert.rejects(google.GET(e),r=>r.status===303 && r.location===draft.PROFILE_ONBOARDING_RETURN);
+    assert.equal(created[0].email_Enc,'encrypted');
+    assert.equal(globalThis.__onboardingLookups.at(-1),'google@example.test');
+    assert.equal(created[0].profiles.create.displayName,'Visitor name');
+    assert.equal(created[0].profiles.create.isPublished,false);
+    assert.equal(created[0].profiles.create.emailPublic,undefined);
+    assert.equal(draft.readOwnedProfileDraft(e.cookies,'google-user','google-profile').phone,'123');
+    returning=true;
+    start();
+    await assert.rejects(google.GET(e),r=>r.status===303 && r.location==='/profiles');
+    assert.equal(created.length,1);
+    assert.equal(e.cookies.get(draft.PROFILE_DRAFT_COOKIE),undefined);
+    assert.equal(globalThis.__onboardingClaims,before);
+  });
+  await test('Share and QR preview select the same owned profile and hide unpublished destinations', async () => {
+    const share=await server.ssrLoadModule('/src/routes/share/+page.server.ts');
+    const qr=await server.ssrLoadModule('/src/routes/share/qr/+page.server.ts');
+    const image=await server.ssrLoadModule('/src/routes/api/qr/+server.ts');
+    const generate=await server.ssrLoadModule('/src/routes/api/profile/generate-qr/+server.ts');
+    const cards=[
+      {id:'first',userId:'account',kind:'business',slug:'existing-public-url',isPublished:true,displayName:'First'},
+      {id:'second',userId:'account',kind:'business',slug:'selected',isPublished:true,displayName:'Second'},
+      {id:'draft',userId:'account',kind:'business',slug:'unpublished',isPublished:false,displayName:'Draft'},
+      {id:'foreign',userId:'other',kind:'business',slug:'foreign',isPublished:true}
+    ];
+    const writes=[];
+    globalThis.__onboardingDb={profile:{
+      update:async({where})=>writes.push(where.id),
+      findMany:async({where})=>cards.filter(row=>row.userId===where.userId),
+      findFirst:async({where})=>cards.find(row=>Object.entries(where).every(([key,value])=>row[key]===value))
+    }};
+    const locals={user:{id:'account'},appOrigin:'https://dev.relish.test'};
+    const e={locals,url:new URL('https://dev.relish.test/share?profile=selected')};
+    assert.equal((await share.load(e)).profile.id,'second');
+    const preview=await qr.load(e);
+    assert.equal(preview.qrUrl,'/api/qr?slug=selected');
+    assert.equal(preview.link,'https://dev.relish.test/u/selected');
+    assert.match(decodeURIComponent(preview.vcardUrl),/Second/);
+    for(const load of [share.load,qr.load]) {
+      await assert.rejects(load({...e,url:new URL('https://dev.relish.test/share?profile=foreign')}),r=>r.status===404);
+    }
+    e.url.search='?profile=unpublished';
+    assert.equal((await share.load(e)).profile.isPublished,false);
+    await assert.rejects(qr.load(e),r=>r.location==='/share?profile=unpublished');
+    assert.equal((await image.GET({...e,url:new URL('https://dev.relish.test/api/qr?slug=unpublished')})).status,404);
+    assert.equal((await image.GET({...e,url:new URL('https://dev.relish.test/api/qr?slug=selected')})).status,200);
+    const generateFor=profileId=>generate.POST({...e,request:new Request(e.url,{method:'POST',body:new URLSearchParams({profileId})})});
+    await assert.rejects(generateFor('second'),r=>r.status===303 && r.location==='/share/qr?profile=selected');
+    await assert.rejects(generateFor('draft'),r=>r.status===303 && r.location==='/share?profile=unpublished');
+    await assert.rejects(generateFor('foreign'),r=>r.status===404);
+    assert.deepEqual(writes,['second']);
+  });
+  await test('public loader preserves exact slugs and legacy aliases with an owner-only draft preview', async () => {
+    const publicPage=await server.ssrLoadModule('/src/routes/u/[slug]/+page.server.ts');
+    const first={id:'first',userId:'account',slug:'existing-public-url',kind:'business',isPublished:true};
+    const other={...first,id:'second',slug:'selected'};
+    const unpublished={...first,id:'draft',slug:'unpublished',isPublished:false};
+    globalThis.__onboardingDb={
+      profile:{findFirst:async({where})=>where.slug ? [first,other,unpublished].find(p=>p.slug===where.slug) : first},
+      user:{findFirst:async()=>({id:'account',publicSlug:'legacy-alias'}),findUnique:async()=>({id:'account',publicSlug:'legacy-alias'})},
+      relishContextPreference:{findUnique:async()=>null}
+    };
+    const open=(slug,user)=>publicPage.load({params:{slug},locals:{user},url:new URL('https://relish.test/u/'+slug)});
+    assert.equal((await open('selected')).profile.id,'second');
+    assert.equal((await open('legacy-alias')).profile.id,'first');
+    await assert.rejects(open('unpublished'),r=>r.status===404);
+    assert.equal((await open('unpublished',{id:'account'})).profile.id,'draft');
   });
   // IT: Compile and render the actual Svelte screen to catch conditional and escaping regressions.
   const out=resolve('.svelte-kit/onboarding-test'); mkdirSync(out,{recursive:true});
@@ -197,6 +349,19 @@ try {
   writeFileSync(out+'/capture.mjs',compiled.js.code);
   const Component=(await import(out+'/capture.mjs')).default;
   const data={profile:{name:'Terence',slug:'terence'},captureToken:'token',createStep:false,isSignedIn:false};
+  const shareCompiled=compile(readFileSync('src/routes/share/+page.svelte','utf8'),{generate:'server'});
+  writeFileSync(out+'/share.mjs',shareCompiled.js.code);
+  const Share=(await import(out+'/share.mjs')).default;
+  await test('Share offers edit and preview for an unpublished card and sharing controls after publication',()=>{
+    const profile={id:'a',kind:'business',slug:'my-card',displayName:'Owner',isPublished:false};
+    const html=()=>render(Share,{props:{data:{profile,profileOptions:[profile],origin:'https://relish.test'}}}).body;
+    assert.match(html(),/Edit profile/);
+    assert.match(html(),/Preview profile/);
+    assert.doesNotMatch(html(),/Copy link|Share by SMS|\/api\/qr/);
+    profile.isPublished=true;
+    assert.match(html(),/Copy link/);
+    assert.match(html(),/\/api\/qr\?slug=my-card/);
+  });
   await test('step two renders Send, Skip and consent without signup requirements',()=>{
     const html=render(Component,{props:{data}}).body;
     assert.match(html,/Share your details with Terence/);assert.match(html,/>Skip</);assert.match(html,/>Send</);assert.match(html,/name="contactConsent"/);assert.doesNotMatch(html,/Create my Relish profile/);
@@ -207,4 +372,4 @@ try {
     const skipped=render(Component,{props:{data:{...data,createStep:true}}}).body;
     assert.match(skipped,/Create my Relish profile/);assert.match(skipped,/Maybe later/);assert.doesNotMatch(skipped,/Your details have been shared/);
   });
-} finally { await server.close(); delete globalThis.__onboardingCaptures; delete globalThis.__onboardingDb; }
+} finally { await server.close(); delete globalThis.__onboardingCaptures; delete globalThis.__onboardingDb; delete globalThis.__onboardingClaims; delete globalThis.__onboardingLookups; }

@@ -20,8 +20,8 @@ test('profile management, editing, and Share are neutral destinations, not Conte
 test('Share selects only signed-in users own profiles by exact slug', () => {
   assert.match(shareServer, /where: \{ userId: locals\.user\.id \}/);
   assert.match(shareServer, /select: \{ id: true, slug: true, label: true, displayName: true, kind: true, isPublished: true \}/);
-  assert.match(shareServer, /targetSlug \? \{ slug: targetSlug \}/);
-  assert.match(shareServer, /if \(targetSlug && !profile\) throw error\(404/);
+  assert.match(shareServer, /profileOptions\.find\(row => row\.slug === targetSlug\)/);
+  assert.match(shareServer, /if \(targetSlug !== null && !profile\) throw error\(404/);
   assert.match(shareServer, /return \{ profile, profileOptions, origin: locals\.appOrigin \}/);
 });
 
@@ -31,5 +31,5 @@ test('Share dropdown displays owner labels and refreshes all profile-specific li
   assert.match(sharePage, /<option value=\{option\.slug\}>\{optionLabel\(option\)\}<\/option>/);
   assert.match(sharePage, /window\.location\.assign\('\/share\?profile=' \+ encodeURIComponent\(slug\)\)/);
   assert.match(sharePage, /'\/api\/qr\?slug=' \+ encodeURIComponent\(profile\.slug\)/);
-  assert.match(sharePage, /const relPath = '\/u\/' \+ profile\.slug/);
+  assert.match(sharePage, /const relPath = '\/u\/' \+ encodeURIComponent\(profile\.slug\)/);
 });

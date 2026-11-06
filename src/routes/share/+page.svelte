@@ -28,17 +28,13 @@
   const profile: any = data.profile;
 
   // IT: prefer server-provided origin to avoid SSR mismatch - fall back to window at runtime
-  const relPath = '/u/' + profile.slug;
+  const relPath = '/u/' + encodeURIComponent(profile.slug);
   let profileUrl = (data.origin || '') + relPath;
 
   if (typeof window !== 'undefined' && (!profileUrl || profileUrl.startsWith('/'))) {
     // IT: build absolute URL in the browser if needed
     profileUrl = `${window.location.origin}${relPath}`;
   }
-
-  // IT: stored SVG markup for the QR if available
-  const svg = ''; // Legacy stored SVG may encode the wrong deployment origin.
-  const hasSvg = typeof svg === 'string' && svg.trim().startsWith('<svg');
 
   // IT: derive a friendly owner name with safe fallbacks
   // 1) profile.displayName
@@ -92,19 +88,15 @@
       </select>
       <a href="/profiles">Manage profiles</a>
     </div>
-    {#if !profile.isPublished}<p role="status">This profile is unpublished. Publish it before sharing.</p>{/if}
+    {#if !profile.isPublished}
+      <p role="status">This profile is unpublished. Publish it to enable sharing.</p>
+      <p><a class="btn" href={'/settings/profile?profile=' + encodeURIComponent(profile.slug)}>Edit profile</a>
+        <a class="btn" href={relPath}>Preview profile</a></p>
+    {:else}
 
     <div style="display:flex; gap:20px; align-items:flex-start; flex-wrap:wrap;">
       <div style="min-width:220px;">
-        {#if profile.isPublished}
-          <img class="qr-live" src={'/api/qr?slug=' + encodeURIComponent(profile.slug)} alt="Scan this profile QR code" width="220" height="220" />
-        {:else}
-          <div
-            style="width:220px;height:220px;border:1px solid #eee;border-radius:10px;display:flex;align-items:center;justify-content:center;"
-          >
-            QR not generated
-          </div>
-        {/if}
+        <img class="qr-live" src={'/api/qr?slug=' + encodeURIComponent(profile.slug)} alt="Scan this profile QR code" width="220" height="220" />
       </div>
 
       <div style="flex:1; min-width:260px;">
@@ -131,6 +123,7 @@
         </div>
       </div>
     </div>
+    {/if}
   </div>
 </div>
 

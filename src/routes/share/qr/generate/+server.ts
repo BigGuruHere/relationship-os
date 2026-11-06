@@ -2,7 +2,7 @@
 // INPUTS: profileId as form field, or slug as query param
 // MULTI TENANT: Validates the profile belongs to the logged-in user.
 
-import { redirect } from '@sveltejs/kit';
+import { error, redirect } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { prisma } from '$lib/db';
 import { absoluteUrlFromOrigin } from '$lib/url';
@@ -25,9 +25,10 @@ export const POST: RequestHandler = async ({ locals, request, url }) => {
       ...(profileId ? { id: profileId } : {}),
       ...(slugFromQuery ? { slug: slugFromQuery } : {})
     },
-    select: { id: true, slug: true }
+    select: { id: true, slug: true, isPublished: true }
   });
 
+  if (!profile && (profileId || slugFromQuery)) throw error(404, 'Profile not found.');
   if (!profile) {
     // No profile yet - send to editor flow
     throw redirect(
@@ -36,8 +37,10 @@ export const POST: RequestHandler = async ({ locals, request, url }) => {
     );
   }
 
+  if (!profile.isPublished) throw redirect(303, `/share?profile=${encodeURIComponent(profile.slug)}`);
+
   // Build the absolute public URL to encode in the QR
-  const targetUrl = absoluteUrlFromOrigin(locals.appOrigin, `/u/${profile.slug}`);
+  const targetUrl = absoluteUrlFromOrigin(locals.appOrigin, `/u/${encodeURIComponent(profile.slug)}`);
 
   // Generate SVG
   let qrSvg: string | null = null;

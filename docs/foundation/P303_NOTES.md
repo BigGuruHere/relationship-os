@@ -1,6 +1,6 @@
 # P-303 private notes and retrieval
 
-Implemented on `feature/p303-private-notes` from development `4baa0bf` (P-302 PR #21). Merge, DEV/provider/device acceptance and production deployment remain pending. No account has been activated by this work.
+Implemented on `feature/p303-private-notes` from development `4baa0bf` (P-302 PR #21). Merged via PR #22 at `4b0d7a3`. DEV/provider/device acceptance and production deployment remain pending. No account has been activated by this work.
 
 ## Existing capability and change
 
@@ -28,11 +28,11 @@ The inherited transport remains process-local, with temporary disk audio and in-
 
 ## Acceptance and rollout
 
-Local Node 22 validation passes 15 P-303 reported checks, 20 existing P-301/P-302/boundary checks, and 25 focused legacy regressions. Svelte validation passes with zero errors/warnings. Twelve additional shared audio/Dating regression checks pass. [PostgreSQL 18.6 CI run 42107460820](https://github.com/BigGuruHere/relationship-os/actions/runs/42107460820) passed all 131 foundation checks with zero failures/skips on implementation commit `9114981`. [PR #22](https://github.com/BigGuruHere/relationship-os/pull/22) is open. The following documentation commit records acceptance only.
+Local Node 22 validation passes 15 P-303 reported checks, 20 existing P-301/P-302/boundary checks, and 25 focused legacy regressions. Svelte validation passes with zero errors/warnings. Twelve additional shared audio/Dating regression checks pass. [PostgreSQL 18.6 CI run 42107460820](https://github.com/BigGuruHere/relationship-os/actions/runs/42107460820) passed all 131 foundation checks with zero failures/skips on implementation commit `9114981`. [PR #22](https://github.com/BigGuruHere/relationship-os/pull/22) is merged. The final documentation commit records acceptance only.
 
 Acceptance uses actual route handlers, guarded Prisma and an isolated PGlite fixture. Provider functions are mocked. Tests cover full-text save/retrieval, encrypted stored-only admission, exact/conflicting retries, rollback/draft recovery, owner isolation, bounded pagination, corrected and disabled sources, denied stored reads under draft authority, summary failures and revocation, job isolation, retry polling, finalized uploads, empty/failed transcription and suspended/changed-epoch jobs. Existing foundation PostgreSQL concurrency checks remain in CI; browser rendering alone is not device acceptance.
 
-No Prisma migration is required. No enrollment, cohort activation, live database write, merge or deployment is performed by this branch. P-304 profile/auth continuity is next after integration. P-305 privacy operations and P-306 DEV/device/rollout acceptance remain mandatory before recommending production.
+No Prisma migration is required. No enrollment, cohort activation, live database write or deployment was performed. P-304 profile/auth continuity is next after integration. P-305 privacy operations and P-306 DEV/device/rollout acceptance remain mandatory before recommending production.
 
 After an authorized DEV deployment, check existing login, People and public-sharing behavior plus legacy text/voice notes. For a separately authorized synthetic foundation cohort, create a person, type or record a note, edit its draft, optionally summarise, save, refresh, reopen history, retry interrupted requests and test denied microphone/provider/storage paths on desktop and mobile. Record the deployed SHA and results. Do not activate existing accounts just to perform this smoke check without the documented writer handoff.
 

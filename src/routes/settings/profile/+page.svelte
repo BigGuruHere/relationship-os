@@ -72,7 +72,7 @@
   <div class="card" style="padding:16px; max-width:720px; margin:0 auto;">
     <h1 style="margin:0 0 12px 0;">{p?.id ? 'Edit profile' : 'Create profile'}</h1>
     {#if data?.onboarding}
-      <p>Review your details, choose what to publish, then save to see your own QR code.</p>
+      <p>Review your details and choose whether to publish. Your QR code becomes available after publication.</p>
     {/if}
 
     {#if isFirstTime}
@@ -82,8 +82,7 @@
     {/if}
 
     <!-- IT: main editor form - named action `save` -->
-    <form method="post" action="?/save" style="display:grid; grid-template-columns: 1fr 1fr; gap:12px;">
-      {#if data?.onboarding}<input type="hidden" name="profileOnboarding" value="1" />{/if}
+    <form method="post" action={data?.onboarding ? "?/save&onboarding=1" : "?/save"} style="display:grid; grid-template-columns: 1fr 1fr; gap:12px;">
       {#if data?.returnContext}
         <!-- IT: Return to the same context after editing, never to a mismatched profile. -->
         <input type="hidden" name="returnContext" value={data.returnContext} />
@@ -163,7 +162,7 @@
       </div>
 
       <div class="field span2">
-        <label><input type="checkbox" name="isPublished" checked={p?.id ? p.isPublished !== false : !data?.creatingNew} /> Published publicly</label>
+        <label><input type="checkbox" name="isPublished" checked={p?.id ? p.isPublished !== false : !data?.creatingNew && !data?.onboarding} /> Published publicly</label>
         <small>Uncheck to hide this profile and disable its public QR destination.</small>
       </div>
       <div class="field">

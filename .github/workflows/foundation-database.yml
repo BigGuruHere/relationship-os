@@ -26,6 +26,7 @@ on:
       - 'tests/foundation/**'
       - 'scripts/foundation-privacy.ts'
       - 'scripts/foundation-restore-rehearsal.ts'
+      - 'scripts/foundation-dev-pilot-replay.ts'
       - 'scripts/foundation/operator-target.ts'
       - 'package*.json'
       - '.github/workflows/foundation-database.yml'

@@ -1,6 +1,8 @@
 // Exercise the existing owner page, login and private People routes on a disposable database.
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { PGlite } from '@electric-sql/pglite';
@@ -316,6 +318,89 @@ test('P-306 owner creates one fresh foundation login for DEV', { timeout: 120000
 					personPage.load({ locals, params, url: noteUrl }),
 					(e) => e.status === 404
 				);
+			}
+		);
+		await t.test(
+			'only the verified synthetic vault can be erased and replayed after restore',
+			async () => {
+				const run = promisify(execFile);
+				const script = 'scripts/foundation-dev-pilot-replay.ts';
+				const clone =
+					(database, conn) =>
+					async (command, overrides = {}) => {
+						// The embedded socket shares a session across Prisma clients.
+						await database.exec('DEALLOCATE ALL');
+						return run(process.execPath, ['--import', 'tsx', script, command], {
+							env: {
+								...process.env,
+								DATABASE_URL:
+									'postgresql://postgres:postgres@' + conn + '/postgres?connection_limit=1',
+								P305_EXPECTED_TARGET: conn + '/postgres',
+								P306_SOURCE_TARGET: 'dev.example.invalid/postgres',
+								P306_CONFIRM: '',
+								...overrides
+							}
+						});
+					};
+				const json = async (result) => JSON.parse((await result).stdout);
+				const failsAt = (stage) => (error) =>
+					error.stdout === '' &&
+					JSON.parse(error.stderr).stage === stage &&
+					!/fixture note|@example\.invalid|postgresql:\/\//i.test(error.stderr);
+
+				await prisma.$disconnect();
+				const execute = clone(db, socket.getServerConn());
+				const first = await execute('inspect');
+				assert.doesNotMatch(first.stdout, /fixture note|fixture visitor|@example\.invalid/i);
+				const before = JSON.parse(first.stdout);
+				assert.equal(before.verified, 'ready');
+				assert.equal(before.enrollment, 'ACTIVE');
+				assert.equal(before.counts.sourceVersions, 2); // Exchange receipt and private note.
+				assert.match(before.proof, /^[a-f0-9]{64}$/);
+				const confirmation = { P306_CONFIRM: 'erase-test-copy:' + before.proof };
+
+				await assert.rejects(
+					execute('replay', { ...confirmation, P306_SOURCE_TARGET: target }),
+					failsAt('target')
+				);
+				await assert.rejects(
+					execute('replay', { ...confirmation, SECRET_MASTER_KEY: 'b'.repeat(64) }),
+					failsAt('pilot-identity')
+				);
+				await assert.rejects(
+					execute('replay', { P306_CONFIRM: 'erase-test-copy:' + '0'.repeat(64) }),
+					failsAt('proof')
+				);
+				assert.deepEqual(await json(execute('inspect')), before);
+
+				// Replay the same proof on a fresh copy of the saved pre-erasure data.
+				const snapshot = await db.dumpDataDir();
+				const result = await json(execute('replay', confirmation));
+				assert.equal(result.verified, 'erased');
+				assert.equal(result.enrollment, 'SUSPENDED');
+				assert.equal(result.vault, 'LOCKED');
+				assert.ok(result.erasedRows > 0);
+				assert.ok(Object.values(result.counts).every((value) => value === 0));
+				assert.equal((await json(execute('inspect'))).verified, 'erased');
+				assert.equal(await count('User'), 3);
+				assert.equal(await count('Profile'), 2);
+
+				const restored = await PGlite.create({ loadDataDir: snapshot, extensions: { vector } });
+				const restoredSocket = new PGLiteSocketServer({
+					db: restored,
+					host: '127.0.0.1',
+					port: 0,
+					maxConnections: 1
+				});
+				try {
+					await restoredSocket.start();
+					const replay = clone(restored, restoredSocket.getServerConn());
+					assert.deepEqual(await json(replay('inspect')), before);
+					assert.deepEqual(await json(replay('replay', confirmation)), result);
+				} finally {
+					await restoredSocket.stop();
+					await restored.close();
+				}
 			}
 		);
 	} finally {

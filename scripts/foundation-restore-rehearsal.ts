@@ -1,29 +1,13 @@
 // A synthetic fixture for the hosted DEV restore run. The operator supplies the separate clone.
 import { randomUUID } from 'node:crypto';
 import { captureFailureMetadata } from '../src/lib/server/core/contactCaptureDiagnostics';
-import { checkOperatorTarget } from './foundation/operator-target';
+import { checkRehearsalTarget } from './foundation/operator-target';
 
 const [command, caseRef, expected] = process.argv.slice(2);
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const validCommand = command === 'seed' || command === 'verify';
 const original = 'P-306 synthetic note, version one.';
 const corrected = 'P-306 synthetic note, version two.';
-
-function checkClone() {
-	const clone = checkOperatorTarget(process.env.P305_EXPECTED_TARGET);
-	const sourceTarget = process.env.P306_SOURCE_TARGET ?? '';
-	if (!/^[a-z0-9.-]+(?::[0-9]+)?\/[a-z0-9_-]+$/i.test(sourceTarget))
-		throw new Error('Explicit source DEV endpoint required.');
-	const source = new URL('postgresql://' + sourceTarget);
-	// Treat pooled and direct Neon hosts as the same branch, even with a different database or port.
-	const endpoint = (host: string) =>
-		host
-			.toLowerCase()
-			.replace(/-pooler(?=\.)/, '')
-			.replace(/\.$/, '');
-	if (source.pathname !== clone.pathname || endpoint(source.hostname) === endpoint(clone.hostname))
-		throw new Error('The source and rehearsal endpoints must be separate.');
-}
 
 async function main() {
 	if (
@@ -34,7 +18,7 @@ async function main() {
 			: process.argv.length !== 5 || !['prepared', 'suspended', 'erased'].includes(expected))
 	)
 		throw new Error('Invalid rehearsal command.');
-	checkClone();
+	checkRehearsalTarget();
 	if (command === 'seed' && process.env.P306_CONFIRM !== 'seed:' + caseRef)
 		throw new Error('Explicit synthetic fixture confirmation required.');
 	// The key is local to the disposable rehearsal and must survive both restore steps.

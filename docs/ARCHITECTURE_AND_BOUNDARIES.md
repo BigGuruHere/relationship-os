@@ -117,3 +117,7 @@ Resolve the profile owner and check its enrollment under the account lock on the
 ## P-305 private vault operations
 
 The offline support service uses the same account/vault locks as foundation writers. Its review, control and erasure scopes are separated from browser authority. Suspension advances the epoch; transactional erasure removes the scoped graph and retains an empty locked vault and suspended enrollment. Archived subjects retain their content for review. The shared account and legacy/provider data require separately scoped closure actions. See [the support and restore runbook](foundation/P305_PRIVACY_OPERATIONS.md).
+
+## P-306 internal DEV account
+
+The existing owner account page can create one fresh foundation test login when the DEV origin and explicit database binding match. The account and its ACTIVE private roots commit together. No existing account changes storage, and the test profile starts unpublished. See [P-306 DEV setup](foundation/P306_DEV_TEST_ACCOUNT.md).

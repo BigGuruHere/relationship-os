@@ -4,6 +4,10 @@ import { randomUUID } from 'node:crypto';
 import type { AppTransactionClient } from '$lib/db';
 import { prisma } from '$lib/db';
 import { encrypt } from '$lib/crypto';
+import { devPilotEnabled, DEV_PILOT_ID_PREFIX } from './devPilotGate';
+import { encryptedUserEmailFields } from '$lib/server/userEmail';
+import { defaultProfileData } from '$lib/server/profiles';
+import { error } from '@sveltejs/kit';
 import { runFoundationBoundary } from './internal';
 
 export type AccountDomain = 'LEGACY' | 'PREPARED' | 'ACTIVE' | 'SUSPENDED';
@@ -28,7 +32,7 @@ export async function lockFoundationAccount(tx: AppTransactionClient, userId: st
 	await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`foundation:account:${userId}`}, 0))`;
 }
 
-async function provisionPrepared(tx: AppTransactionClient, userId: string) {
+async function provisionPrivateHome(tx: AppTransactionClient, userId: string) {
 	let vault = await tx.foundationVault.findUnique({
 		where: { ownerUserId_kind: { ownerUserId: userId, kind: 'PRIVATE_HOME' } }
 	});
@@ -79,8 +83,64 @@ export async function prepareFoundationAccount(userId: string) {
 			if (!enrollment)
 				enrollment = await tx.foundationEnrollment.create({ data: { userId, state: 'PREPARED' } });
 			if (enrollment.state !== 'PREPARED') throw new Error('Account is not prepared.');
-			return provisionPrepared(tx, userId);
+			return provisionPrivateHome(tx, userId);
 		})
+	);
+}
+
+// Owner-only DEV setup. A new identity and its ACTIVE roots commit together, so no
+// legacy People writer or public profile ever sees a halfway-provisioned test account.
+export async function createDevPilotAccount(
+	locals: Pick<App.Locals, 'user' | 'env'>,
+	origin: string,
+	passwordHash: string
+) {
+	if (!devPilotEnabled(locals, origin)) throw error(404, 'DEV foundation pilot unavailable.');
+	const actorId = locals.user?.id;
+	if (!actorId || locals.user?.role !== 'owner') throw error(403, 'Owner access is required.');
+	const nonce = randomUUID();
+	const id = DEV_PILOT_ID_PREFIX + nonce;
+	const email = 'foundation-' + nonce + '@example.invalid';
+	return prisma.$transaction(
+		async (tx) => {
+			// This lock serializes simultaneous clicks even when no pilot row exists yet.
+			await lockFoundationAccount(tx, DEV_PILOT_ID_PREFIX);
+			// Recheck authority under the same lock used by database updates to the owner row.
+			await tx.$queryRaw`SELECT "id" FROM "User" WHERE "id" = ${actorId} FOR UPDATE`;
+			const actor = await tx.user.findUnique({ where: { id: actorId }, select: { role: true } });
+			if (actor?.role !== 'owner') throw error(403, 'Owner access is required.');
+			const existing = await tx.user.findFirst({
+				where: { id: { startsWith: DEV_PILOT_ID_PREFIX } },
+				select: { id: true }
+			});
+			if (existing) throw error(409, 'A DEV foundation test account already exists.');
+			await tx.user.create({
+				data: {
+					id,
+					role: 'member',
+					passwordHash,
+					...encryptedUserEmailFields(email),
+					person: { create: {} },
+					profiles: {
+						create: defaultProfileData({
+							displayName: 'Relish foundation test',
+							isPublished: false
+						})
+					}
+				},
+				select: { id: true }
+			});
+			await runFoundationBoundary({ ownerUserId: id, mode: 'PROVISION' }, async () => {
+				await lockFoundationAccount(tx, id);
+				await provisionPrivateHome(tx, id);
+				await tx.foundationEnrollment.create({
+					data: { userId: id, state: 'ACTIVE' },
+					select: { userId: true }
+				});
+			});
+			return { email };
+		},
+		{ isolationLevel: 'ReadCommitted', timeout: 15000 }
 	);
 }
 
@@ -93,7 +153,7 @@ export async function provisionAccountForSession(userId: string) {
 			const enrollment = await tx.foundationEnrollment.findUnique({ where: { userId } });
 			if (!enrollment || enrollment.state === 'SUSPENDED') return;
 			if (enrollment.state === 'PREPARED') {
-				await provisionPrepared(tx, userId);
+				await provisionPrivateHome(tx, userId);
 				return;
 			}
 			// ACTIVE accounts must already have a complete provisioned root. Never repair by switching storage.

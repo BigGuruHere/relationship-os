@@ -15,6 +15,8 @@ P-305 merged into development at `de9a875`. On 2026-11-06 the operator reported 
 
 On 2026-11-07 the operator reported the existing Railway DEV experience worked after being asked to smoke-test login, My People, note save/reopen and profile QR. The exact running commit and individual device/provider results were not recorded. There was no enrolled account in the reported DEV baseline, so this is existing-account regression evidence. The synthetic hosted seed returned an unclassified error and hosted erasure/replay was deferred before suspension. Resume by confirming the synthetic case and its state on the isolated copy before any erase. This does not close the live foundation, privacy or rollout gates.
 
+For everyday phone acceptance, use the separate [one-account Railway DEV test](P306_DEV_TEST_ACCOUNT.md). The restore exercise below stays separate from that phone test.
+
 ## Create the synthetic fixture
 
 Run from the rehearsal branch in a separate local checkout on Node 22, with dependencies installed using `npm ci`. Select the already verified restored branch in Neon. Copy its **direct** connection string to a protected environment file outside the repository. Record the direct host and database path of the original Neon development branch separately. The commands verify both targets before touching the database. Keep both Railway services pointed at their existing databases.

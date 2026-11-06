@@ -38,6 +38,8 @@ A request to add a user-facing step is **not** automatically a request to build 
 
 ## 4. Working practice
 
+- Lead each next-stage proposal with a recommendation of GPT-6.1 Sol Medium, GPT-6.1 Sol High or GPT-6 Astra Medium and a short reason tied to the work.
+
 - For nontrivial changes, report briefly **Existing capability → Actual gap → Minimum proposed change → Behaviour to preserve** before broad implementation.
 - Prioritise the next verified user benefit over speculative future features. Keep architecture extensible without implementing unneeded features.
 - **Default Git branch workflow for Codex (unless explicitly instructed otherwise):**

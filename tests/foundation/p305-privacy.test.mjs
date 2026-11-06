@@ -34,7 +34,8 @@ test('P-305 privacy operations on a disposable database', { timeout: 120000 }, a
 			);
 			assert.equal(rows[0].n, 0);
 		} else db = await PGlite.create();
-		await db.exec(`CREATE TABLE "User" (id text PRIMARY KEY);
+		await db.exec(`CREATE TYPE "UserRole" AS ENUM ('member');
+			CREATE TABLE "User" (id text PRIMARY KEY, "createdAt" timestamp NOT NULL DEFAULT now(), "updatedAt" timestamp NOT NULL DEFAULT now(), role "UserRole" NOT NULL DEFAULT 'member');
 			INSERT INTO "User" VALUES ('pilot'),('second'),('legacy');`);
 		await db.exec(
 			await readFile(
@@ -366,6 +367,66 @@ test('P-305 privacy operations on a disposable database', { timeout: 120000 }, a
 					}
 				}
 			);
+		await t.test(
+			'hosted rehearsal command refuses the source and seeds only a credential-free PREPARED fixture',
+			async () => {
+				await prisma.$disconnect();
+				const caseRef = randomUUID();
+				const account = 'p306-' + caseRef;
+				const url = new URL(process.env.DATABASE_URL);
+				const base = {
+					...process.env,
+					P305_EXPECTED_TARGET: url.host + url.pathname,
+					P306_SOURCE_TARGET: 'dev.example.invalid' + url.pathname,
+					P306_CONFIRM: 'seed:' + caseRef
+				};
+				async function cli(script, args, overrides = {}) {
+					// Separate Prisma processes share prepared statements only in this embedded fixture.
+					if (!endpoint) await db.exec('DEALLOCATE ALL');
+					return run(process.execPath, ['--import', 'tsx', 'scripts/' + script, ...args], {
+						env: { ...base, ...overrides },
+						timeout: 15000
+					});
+				}
+				const fixture = 'foundation-restore-rehearsal.ts';
+				await assert.rejects(
+					cli(fixture, ['seed', caseRef], { P306_SOURCE_TARGET: url.host + url.pathname })
+				);
+				await assert.rejects(cli(fixture, ['seed', caseRef], { P306_CONFIRM: '' }));
+				assert.equal(
+					(await db.query('SELECT count(*)::int n FROM "User" WHERE id=$1', [account])).rows[0].n,
+					0
+				);
+				const { stdout } = await cli(fixture, ['seed', caseRef]);
+				assert.deepEqual(JSON.parse(stdout), {
+					caseRef,
+					account,
+					verified: 'prepared',
+					enrollment: 'PREPARED',
+					vault: 'ACTIVE',
+					subjects: 2,
+					sources: 1,
+					versions: 2
+				});
+				assert.doesNotMatch(stdout, /synthetic note|postgresql:/);
+				await assert.rejects(cli(fixture, ['seed', caseRef]));
+				const privacyCli = 'foundation-privacy.ts';
+				await cli(privacyCli, ['suspend', caseRef, account], {
+					P305_CONFIRM: 'suspend:' + account + ':' + caseRef
+				});
+				assert.equal(
+					JSON.parse((await cli(fixture, ['verify', caseRef, 'suspended'])).stdout).verified,
+					'suspended'
+				);
+				await cli(privacyCli, ['erase', caseRef, account], {
+					P305_CONFIRM: 'erase:' + account + ':' + caseRef
+				});
+				assert.equal(
+					JSON.parse((await cli(fixture, ['verify', caseRef, 'erased'])).stdout).verified,
+					'erased'
+				);
+			}
+		);
 	} finally {
 		if (prisma) await prisma.$disconnect();
 		if (vite) await vite.close();

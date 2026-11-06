@@ -2,38 +2,13 @@
 import { open, realpath, unlink } from 'node:fs/promises';
 import { basename, dirname, isAbsolute, join, relative } from 'node:path';
 import { randomUUID } from 'node:crypto';
+import { checkOperatorTarget } from './foundation/operator-target';
 import { captureFailureMetadata } from '../src/lib/server/core/contactCaptureDiagnostics';
 
 const [command, caseRef, account, output] = process.argv.slice(2);
 const reference = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const validCommand = ['inspect', 'review', 'suspend', 'erase'].includes(command);
 let stage = 'preflight';
-
-function checkTarget() {
-	// Verify the chosen endpoint and database before loading Prisma. Reject query parameters
-	// that might redirect the connection or select another schema.
-	const url = new URL(process.env.DATABASE_URL ?? '');
-	const options = new Set([
-		'sslmode',
-		'channel_binding',
-		'connect_timeout',
-		'connection_limit',
-		'pool_timeout',
-		'schema'
-	]);
-	if (
-		!['postgresql:', 'postgres:'].includes(url.protocol) ||
-		!url.hostname ||
-		!/^\/[a-z0-9_-]+$/i.test(url.pathname) ||
-		url.hash ||
-		[...url.searchParams.keys()].some(
-			(key) => !options.has(key) || url.searchParams.getAll(key).length !== 1
-		) ||
-		(url.searchParams.has('schema') && url.searchParams.get('schema') !== 'public') ||
-		process.env.P305_EXPECTED_TARGET !== url.host + url.pathname
-	)
-		throw new Error('Explicit database target required.');
-}
 
 async function exportPath() {
 	if (!isAbsolute(output) || !output.endsWith('.json')) throw new Error('Invalid review path.');
@@ -65,7 +40,7 @@ async function main() {
 		process.argv.length !== (command === 'review' ? 6 : 5)
 	)
 		throw new Error('Invalid command.');
-	checkTarget();
+	checkOperatorTarget(process.env.P305_EXPECTED_TARGET);
 	if (
 		(command === 'suspend' || command === 'erase') &&
 		process.env.P305_CONFIRM !== command + ':' + account + ':' + caseRef

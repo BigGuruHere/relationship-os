@@ -14,7 +14,7 @@ The authoritative detailed backlog and stage register are in [foundation impleme
 | --- | --- | --- |
 | 1 | Architecture, decisions, policy, developer guide and implementation backlog | Merged via PR #13, `d789464` |
 | 2 | New-domain primitives, auth isolation, custody and evidence proof | F-202/F-203 merged and DEV operator-confirmed; F-204 merged; F-205 merged; F-206 internal rehearsal merged through PR #19. Stage 2 DEV verification is pending. P-301 directory and person details merged through PR #20 |
-| 3 | Invited users share details, keep people and retrieve notes | P-301 through P-304 merged; P-305 privacy operations is on its feature branch. Hosted recovery and full closure readiness remain gates. Activation awaits P-306 |
+| 3 | Invited users share details, keep people and retrieve notes | P-301 through P-305 merged. P-306 initial DEV/restore counts match; hosted erasure replay, closure readiness and device acceptance remain gates. |
 | 4 | Secure exchange claiming and directional continuing sharing | Planned after pilot foundation |
 | 5 | Private understanding across people and relationships | Planned after evidence/correction readiness |
 | 6 | Relationship understanding from separately governed perspectives | Future gated release |

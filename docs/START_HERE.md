@@ -48,6 +48,8 @@ For architecture and new-domain implementation, read these linked documents afte
 
 - [P-306 hosted DEV rehearsal](foundation/P306_DEV_REHEARSAL.md) records the restore baseline and synthetic erasure/replay steps.
 
+- [P-306 DEV test account](foundation/P306_DEV_TEST_ACCOUNT.md) covers the owner setup and phone acceptance for one internal login.
+
 These specifications guide future work; they do not replace source code as evidence of implementation. Update the relevant backlog item and stage register with each implementation PR.
 
 ## Source-of-truth rules

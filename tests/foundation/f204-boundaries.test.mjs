@@ -44,6 +44,8 @@ test('only reviewed modules may establish foundation authority or construct an O
 						);
 					if (node.moduleSpecifier.text.endsWith('privacyOperations'))
 						assert.fail('Offline privacy service must have no application caller: ' + file);
+					if (name === 'createDevPilotAccount')
+						assert.equal(file, 'src/routes/settings/users/+page.server.ts');
 					if (name === 'withPublicCapture')
 						assert.equal(file, 'src/lib/server/foundation/capture.ts');
 					if (name === 'resolvePreparedFoundationAccess')

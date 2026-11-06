@@ -1,8 +1,8 @@
 <script lang="ts">
   // PURPOSE: Owner-facing form for account role and capability grants.
   import { enhance } from '$app/forms';
-  export let data: { users: { id: string; email: string; role: string; grants: string[]; createdAt: string }[] };
-  export let form: { error?: string; success?: string } | null;
+  export let data: { pilotEnabled: boolean; pilotEmail: string | null; users: { id: string; email: string; role: string; grants: string[]; createdAt: string }[] };
+  export let form: { error?: string; success?: string; pilotEmail?: string } | null;
 </script>
 
 <svelte:head><title>Account permissions - Relish</title></svelte:head>
@@ -11,6 +11,23 @@
   <p>Only system owners can change user roles and capability grants. ContextSpace custody is separate.</p>
   {#if form?.error}<p role="alert" style="color:#b3261e">{form.error}</p>{/if}
   {#if form?.success}<p role="status">{form.success}</p>{/if}
+  {#if data.pilotEnabled}
+    <section class="card" style="margin:16px 0;padding:16px;">
+      <h2>Foundation test account</h2>
+      {#if form?.pilotEmail || data.pilotEmail}
+        <p>Sign in from a private window with <strong>{form?.pilotEmail || data.pilotEmail}</strong> and the password you chose.</p>
+        <p>Open My Profiles and publish the test profile when you’re ready to scan its QR code.</p>
+      {:else}
+        <p>Create one fresh test login for this DEV database.</p>
+        <form method="POST" action="?/createFoundationTest" use:enhance>
+          <label>Test password
+            <input type="password" name="pilotPassword" minlength="16" maxlength="128" autocomplete="new-password" required />
+          </label>
+          <button class="btn" type="submit">Create test account</button>
+        </form>
+      {/if}
+    </section>
+  {/if}
   {#each data.users as user (user.id)}
     <section class="card" style="margin:16px 0;padding:16px;">
       <h2 style="font-size:1rem;overflow-wrap:anywhere;">{user.email}</h2>

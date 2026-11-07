@@ -33,7 +33,7 @@ test('S-402b SMS claim service', { timeout: 120000 }, async (t) => {
 			);
 		} else db = await PGlite.create();
 		await db.exec(`CREATE TABLE "User"(id text PRIMARY KEY);
-CREATE TABLE "Profile"(id text PRIMARY KEY,"userId" text NOT NULL REFERENCES "User"(id),kind text NOT NULL DEFAULT 'business',"displayName" text,"emailPublic" text,"phonePublic" text,"isPublished" boolean NOT NULL DEFAULT true);
+CREATE TABLE "Profile"(id text PRIMARY KEY,"userId" text NOT NULL REFERENCES "User"(id),label text NOT NULL DEFAULT 'My profile',"updatedAt" timestamp NOT NULL DEFAULT now(),kind text NOT NULL DEFAULT 'business',"displayName" text,"emailPublic" text,"phonePublic" text,"isPublished" boolean NOT NULL DEFAULT true);
 CREATE TABLE "Session"(id text PRIMARY KEY,"userId" text NOT NULL REFERENCES "User"(id),"expiresAt" timestamp NOT NULL);`);
 		for (const name of [
 			'20261104010000_f202_foundation_schema',
@@ -466,6 +466,76 @@ CREATE TRIGGER s402_fail_settlement BEFORE UPDATE ON "FoundationExchange" FOR EA
 				const before = sent.length;
 				await assert.rejects(f.dispatch(), (e) => e.reason === 'DESTINATION_NOT_ALLOWED');
 				assert.equal(sent.length, before);
+			}
+		);
+		await t.test(
+			'S405b owned draft profile confirmation saves both sides without any SMS',
+			async () => {
+				const f = await fixture();
+				process.env.RELISH_EXCHANGE_BROWSER_ENABLED = 'YES';
+				const selected = 'owned-' + f.b;
+				await db.query(
+					'INSERT INTO "Profile"(id,"userId","displayName","emailPublic","isPublished") VALUES ($1,$2,$3,$4,false)',
+					[selected, f.b, 'Betty draft', 'betty@example.invalid']
+				);
+				const browser = randomUUID();
+				const choices = await claims.ownedExchangeChoices(f.locals, f.profile, browser);
+				assert.equal(choices.length, 1);
+				const token = choices[0].confirmation;
+				const confirm = (t = token, l = f.locals, b = browser, target = f.profile) =>
+					claims.confirmOwnedProfileExchange(l, t, b, target);
+				await assert.rejects(confirm(token, f.locals, 'wrong-browser'));
+				await assert.rejects(confirm(token, { ...f.locals, sessionId: 'other' }));
+				await assert.rejects(confirm(token, f.locals, browser, 'other-target'));
+				await assert.rejects(confirm(token + 'tampered'));
+                const codec=await load('lib/crypto');
+                const preview=JSON.parse(codec.decrypt(token,'exchange.profile.preview.v1'));
+                for(const patch of [{at:Date.now()-1800001},{profileId:f.profile}]) {
+                  const forged=codec.encrypt(JSON.stringify({...preview,...patch}),'exchange.profile.preview.v1');
+                  await assert.rejects(confirm(forged));
+                }
+                // Inject failure after both private copies to establish transaction rollback.
+                const before=(await db.query('SELECT count(*)::int n FROM "FoundationSource"')).rows[0].n;
+                await db.exec(`CREATE FUNCTION s405b_fail() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'synthetic late failure'; END $$;
+                CREATE TRIGGER s405b_fail BEFORE INSERT ON "FoundationExchange" FOR EACH ROW EXECUTE FUNCTION s405b_fail();`);
+                try { await assert.rejects(confirm()); } finally {await db.exec('DROP TRIGGER s405b_fail ON "FoundationExchange"; DROP FUNCTION s405b_fail();');}
+                assert.equal((await db.query('SELECT count(*)::int n FROM "FoundationSource"')).rows[0].n,before);
+                assert.equal((await privacy.reviewFoundationPrivacy(f.a)).associations.length,0);
+				const sends = sent.length;
+                const simultaneous=await Promise.all([confirm(),confirm()]);
+                assert.deepEqual(simultaneous[0],simultaneous[1]);
+				const settled = await confirm();
+				assert.deepEqual(await confirm(), settled);
+				assert.equal(sent.length, sends);
+				const a = await privacy.reviewFoundationPrivacy(f.a),
+					b = await privacy.reviewFoundationPrivacy(f.b);
+				assert.equal(a.associations.find((x) => x.accountId === f.b).channel, 'PROFILE');
+				assert.equal(b.subjects.filter((x) => !x.isSelf).length, 1);
+				const person = a.associations.find((x) => x.accountId === f.b).subjectId;
+				// A new explicit exchange reuses account links and appends evidence, without merging the guest fixture.
+				const again = (await claims.ownedExchangeChoices(f.locals, f.profile, browser))[0];
+				await claims.confirmOwnedProfileExchange(f.locals, again.confirmation, browser, f.profile);
+				assert.equal(
+					(await privacy.reviewFoundationPrivacy(f.a)).associations.find((x) => x.accountId === f.b)
+						.subjectId,
+					person
+				);
+				await db.query('UPDATE "Profile" SET "displayName"=$1 WHERE id=$2', [
+					'Changed after preview',
+					selected
+				]);
+				await assert.rejects(
+					claims.confirmOwnedProfileExchange(f.locals, again.confirmation, browser, f.profile)
+				);
+				assert.equal(
+					(await db.query('SELECT "isPublished" FROM "Profile" WHERE id=$1', [selected])).rows[0]
+						.isPublished,
+					false
+				);
+				await privacy.suspendFoundationPrivacy(f.b);
+				await assert.rejects(confirm());
+				await privacy.eraseFoundationPrivacy(f.b);
+				assert.equal((await privacy.reviewFoundationPrivacy(f.a)).associations.length, 0);
 			}
 		);
 	} finally {

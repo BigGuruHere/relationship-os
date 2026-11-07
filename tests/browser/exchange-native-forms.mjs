@@ -60,6 +60,7 @@ async function component(path, name) {
 	await writeFile('.svelte-kit/browser-check/' + name + '.js', result.js.code);
 	return (await vite.ssrLoadModule('/.svelte-kit/browser-check/' + name + '.js')).default;
 }
+const ownedUI = await component('src/routes/u/[slug]/share-details/+page.svelte', 'owned');
 const claimUI = await component('src/routes/exchange/claim/+page.svelte', 'claim');
 const profileUI = await component('src/routes/settings/profile/+page.svelte', 'profile');
 const c = cookies();
@@ -73,6 +74,42 @@ const server = httpServer(async (req, res) => {
 			policyOverride = url.searchParams.get('policy') === 'no-referrer' ? 'no-referrer' : null;
 		if (url.pathname === '/profiles') {
 			res.end('My Profiles');
+			return;
+		}
+		if (url.pathname === '/owned') {
+			res.setHeader('referrer-policy', 'same-origin');
+			if (req.method === 'POST') {
+				let body = '';
+				for await (const part of req) body += part;
+				const fields = new URLSearchParams(body);
+				assert.equal(req.headers.origin, url.origin);
+				assert.equal(fields.get('intent'), 'confirm-profile');
+				assert.equal(fields.get('confirmation'), 'opaque-test-preview');
+				res.writeHead(303, { location: '/people' });
+				res.end();
+				return;
+			}
+			res.setHeader('content-type', 'text/html');
+			res.end(
+				render(ownedUI, {
+					props: {
+						data: {
+							ownedFlow: true,
+							profile: { slug: 'mark', name: 'Mark Test' },
+							choices: [
+								{
+									label: 'My draft',
+									name: 'Betty Test',
+									email: 'betty@example.invalid',
+									phone: '',
+									confirmation: 'opaque-test-preview'
+								}
+							]
+						},
+						form: null
+					}
+				}).body
+			);
 			return;
 		}
 		let form;
@@ -185,6 +222,14 @@ try {
 	await tab.waitForURL(base + '/people');
 	assert.equal(globalThis.verifyArgs[3], '012345');
 
+	// Real native owned-profile form submits the preview without a code or typed contact fields.
+	await tab.goto(base + '/owned');
+	assert.equal(
+		await tab.locator('input[name="code"],input[name="email"],input[name="phone"]').count(),
+		0
+	);
+	await tab.getByRole('button', { name: 'Confirm exchange with Mark Test', exact: true }).click();
+	await tab.waitForURL(base + '/people');
 	// The top publication button is associated with the existing form and includes unsaved edits.
 	await tab.goto(base + '/profile');
 	await tab.getByLabel('Public name', { exact: true }).fill('Edited Mark');

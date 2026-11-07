@@ -1,6 +1,6 @@
 # S-405 Account channels and simpler profile exchange
 
-Date: 2026-11-07. Status: accepted product direction and implementation design on `feature/account-channel-exchange`, based on development `4a4ddb2` (PR #36). This stage, S-405a, changes documentation only. It does not implement the new flow, add a migration, send a message or change DEV/PROD. S-405b through S-405e below deliver the runtime changes. S-404 remains the recovery/acceptance work; its relevant obligations are incorporated here rather than silently marked complete.
+Date: 2026-11-07. Status: accepted product direction and implementation design on `feature/account-channel-exchange`, based on development `4a4ddb2` (PR #36). This stage, S-405a, changes documentation only. It does not implement the new flow, add a migration, send a message or change DEV/PROD. [S-405b](S405B_PROFILE_EXCHANGE.md) implements signed-in selection and confirmation on its feature branch; S-405c through S-405e remain planned. S-404 remains the recovery/acceptance work; its relevant obligations are incorporated here rather than silently marked complete.
 
 ## Product contract
 

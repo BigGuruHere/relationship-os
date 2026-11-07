@@ -102,9 +102,11 @@ S-403 code-input correction (2026-11-07): operator confirmed SELF_EXCHANGE was r
 | Item | Status | Acceptance / migration / rollout |
 | --- | --- | --- |
 | S-405a Architecture and source assessment | Documentation on `feature/account-channel-exchange` | Source-grounded design, relative links and diff checks; zero migrations/runtime changes; no DEV/PROD change |
-| S-405b Owned-profile confirmation | Planned next | Select/create profile, exact preview, no SMS, atomic reciprocal saving, native browser and privacy/race tests; inspect settlement SQL before deciding additive migration |
+| S-405b Owned-profile confirmation | Implemented on `feature/s405b-profile-exchange`; unmerged, DEV pending | Select/create profile, exact preview, no SMS, atomic reciprocal saving, native browser and privacy/race tests; inspect settlement SQL before deciding additive migration |
 | S-405c Account channel registry and SMS lifecycle | Planned after b | Independent encrypted channels/proofs, guarded settings, revoke/reverify and cleanup; additive schema with constraint/concurrency tests; DEV only |
 | S-405d Guest claim reuse and email | Planned after c | Exact-submission match, retained assurance, independent email/phone states, real email adapter and hardened Google proof; provider setup and authorised DEV email acceptance required |
 | S-405e Combined acceptance and recovery | Planned after b-d | Complete existing/new user cases, expiry/conflicts/privacy and mobile acceptance; S-404 recovery obligations included; no automatic PROD promotion |
 
 S-405a uses Astra Medium for architecture; b-e recommend 6.1 Sol High. Rollback for this documentation stage is documentation-only. Runtime stages retain compatible readers/privacy handlers and additive tables after writes; no fallback to legacy Brokerage. Ordinary feature testing remains on DEV, with the separate hosted recovery exercise deferred to production readiness. Stage 4 remains open until runtime and operator acceptance evidence are recorded.
+
+S-405b source and acceptance: [owned-profile exchange](S405B_PROFILE_EXCHANGE.md). No migration: existing PROFILE association and completed exchange constraints suffice. Atomic both-direction saving, preview binding and retry/privacy checks are covered; actual CI evidence is recorded in the PR. Logged-out users can sign in through the existing fixed exchange return to reach selection; DEV acceptance is pending.

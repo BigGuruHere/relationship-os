@@ -1,4 +1,6 @@
+import { saveProfileExchangeReturn } from '$lib/server/profileExchangeReturn';
 import { saveExchange, readExchange, clearExchange, EXCHANGE_RETURN } from '$lib/server/exchangeOnboarding';
+import { ownedExchangeChoices, confirmOwnedProfileExchange } from '$lib/server/foundation/exchangeClaims';
 import { captureFoundationExchange } from '$lib/server/foundation/capture';
 import { accountDomain } from '$lib/server/foundation/provisioning';
 import { exchangeBrowserEnabled } from '$lib/server/foundation/devPilotGate';
@@ -18,7 +20,9 @@ export const load: PageServerLoad = async ({ params, url, cookies, setHeaders, l
     cookies.set(CAPTURE_COOKIE, browser, { path: '/u', httpOnly: true, sameSite: 'lax', secure: url.protocol === 'https:', maxAge: 1800 });
   }
   setHeaders({ 'cache-control': 'private, no-store', 'referrer-policy': 'same-origin' });
-  return { profile: { slug: profile.slug, name: profile.displayName || 'Your new contact', headline: profile.headline, avatarUrl: profile.avatarUrl },
+  const ownedFlow = Boolean(locals.user && locals.user.id !== profile.userId && exchangeBrowserEnabled(locals,url.origin) && await accountDomain(locals.user.id)==='ACTIVE' && await accountDomain(profile.userId)==='ACTIVE');
+  const choices = ownedFlow ? await ownedExchangeChoices(locals,profile.id,browser) : [];
+  return { ownedFlow, choices, canSignIn: !locals.user && exchangeBrowserEnabled(locals,url.origin), profile: { slug: profile.slug, name: profile.displayName || 'Your new contact', headline: profile.headline, avatarUrl: profile.avatarUrl },
     // IT: Save contact always arrives here; a successful prior share skips the form.
     canClaim: readExchange(cookies)?.profileId === profile.id,
     createStep: url.searchParams.get('step') === 'create' || hasSharedContact(cookies, profile.id), isSignedIn: Boolean(locals.user),
@@ -31,6 +35,30 @@ export const actions: Actions = {
     const body = await request.text();
     if (body.length > 8192) return fail(413, { error: 'Submission is too large.' });
     const form = new URLSearchParams(body);
+    // Owned-profile confirmation is isolated from anonymous capture and never sends an SMS.
+    if (form.get('intent') === 'confirm-profile') {
+      if (!exchangeBrowserEnabled(locals,url.origin) || !locals.user) return fail(403,{error:'Sign in to exchange profiles.'});
+      const target=await publishedCaptureProfile(params.slug);
+      try {
+        // Bind the route target too, rather than accepting a preview copied from another card.
+        const choicesToken=String(form.get('confirmation') || '');
+        await confirmOwnedProfileExchange(locals,choicesToken,cookies.get(CAPTURE_COOKIE) || '',target.id);
+      } catch { return fail(409,{error:'This exchange could not be completed. Reload to review current details. Archived or revoked contacts need recovery.'}); }
+      rememberContactShare(cookies,url,target.id);
+      throw redirect(303,'/people');
+    }
+    if(form.get('intent')==='signin-exchange') {
+      const target=await publishedCaptureProfile(params.slug);
+      if(!exchangeBrowserEnabled(locals,url.origin)) return fail(404,{error:'Exchange unavailable.'});
+      saveProfileExchangeReturn(cookies,url,'visitor',target.slug);
+      throw redirect(303,'/auth/login?next='+encodeURIComponent(EXCHANGE_RETURN));
+    }
+    if (form.get('intent') === 'new-exchange-profile') {
+      const target=await publishedCaptureProfile(params.slug);
+      if(!locals.user || !exchangeBrowserEnabled(locals,url.origin)) return fail(403,{error:'Sign in first.'});
+      saveProfileExchangeReturn(cookies,url,locals.user.id,target.slug);
+      throw redirect(303,'/settings/profile?mode=new&exchange=1');
+    }
     // IT: Only the explicit third-screen button starts signup. It never creates another Contact.
     if (form.get('intent') === 'create-profile') {
       const selected = await publishedCaptureProfile(params.slug);

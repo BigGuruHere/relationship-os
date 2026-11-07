@@ -161,6 +161,7 @@
     {/each}
     <!-- IT: One action starts the vCard download and continues to optional detail sharing. -->
     <a class="fc-primary" href={vcardUrl} download on:click|preventDefault={saveThenShare}>Save contact</a>
+    {#if data.canExchangeProfile}<a class="fc-primary" href={captureUrl}>Share my details back</a>{/if}
   </section>
   <p class="fc-footer">Relish helps people develop and enrich their relationships. A scan or call does not share your private understanding with someone else.</p>
 </main>

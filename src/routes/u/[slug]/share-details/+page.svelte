@@ -19,7 +19,23 @@
     <span>Relish</span>
     {#if !createStep}<a href={'/u/' + encodeURIComponent(data.profile.slug) + '/share-details?step=create'}>Skip</a>{/if}
   </nav>
-  {#if createStep}
+  {#if data.ownedFlow}
+    <section class="capture-card">
+      <h1>Share my details back</h1>
+      <p>Choose a profile to share with {data.profile.name}. Confirming saves each person's shared details in the other's My People.</p>
+      {#if form?.error}<p role="alert">{form.error}</p>{/if}
+      {#each data.choices as choice}
+        <article class="profile-preview preview-body">
+          <h2>{choice.label}</h2><p>{choice.name}</p>
+          {#if choice.email}<p>{choice.email}</p>{/if}
+          {#if choice.phone}<p>{choice.phone}</p>{/if}
+          <form method="POST"><input type="hidden" name="intent" value="confirm-profile" /><input type="hidden" name="confirmation" value={choice.confirmation} /><button class="primary">Confirm exchange with {data.profile.name}</button></form>
+        </article>
+      {/each}
+      <form method="POST"><input type="hidden" name="intent" value="new-exchange-profile" /><button class="primary">Create a new profile</button></form>
+      <a class="later" href={profileUrl}>Continue later</a>
+    </section>
+  {:else if createStep}
     <!-- IT: Successful sharing and skipping both finish here. Signup is an independent choice. -->
     {#if form?.shared}<p class="receipt" role="status">Your details have been shared with {data.profile.name}.</p>{/if}
     <section class="capture-card" aria-labelledby="create-heading">
@@ -55,6 +71,7 @@
   {:else}
     <section class="capture-card" aria-labelledby="capture-heading">
       {#if data.profile.avatarUrl}<img class="avatar" src={data.profile.avatarUrl} alt="" width="64" height="64" />{/if}
+      {#if data.canSignIn}<form method="POST"><input type="hidden" name="intent" value="signin-exchange" /><button class="primary">Already use Relish? Sign in to choose a profile</button></form>{/if}
       <h1 id="capture-heading">Share your details with {data.profile.name}</h1>
       <p>Let {data.profile.name} save your details privately and follow up after meeting you.</p>
       <form method="POST">

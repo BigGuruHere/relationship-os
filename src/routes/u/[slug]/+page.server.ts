@@ -6,6 +6,8 @@
 // - Returns profile info, owner info, flags for edit affordances, and origin for SSR-safe links
 
 import type { Actions, PageServerLoad } from './$types';
+import { exchangeBrowserEnabled } from '$lib/server/foundation/devPilotGate';
+import { accountDomain } from '$lib/server/foundation/provisioning';
 import { prisma } from '$lib/db';
 import { createInviteToken } from '$lib/server/tokens';
 import { fail, redirect, error } from '@sveltejs/kit';
@@ -177,6 +179,7 @@ export const load: PageServerLoad = async ({ params, url, locals }) => {
     inviteToken: invite.token,
     profile: profile || null,
     isOwner,
+    canExchangeProfile: Boolean(locals.user && !isOwner && exchangeBrowserEnabled(locals,url.origin) && await accountDomain(locals.user.id)==='ACTIVE' && await accountDomain(ownerId!)==='ACTIVE'),
     editingRequested,
     firstVisit,
     origin,

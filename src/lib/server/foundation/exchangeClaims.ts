@@ -1,6 +1,8 @@
 import { ExchangeDenied } from './exchangeDiagnostics';
 // Server-only claim service. Route callers supply authenticated locals and server-resolved client address.
 import { randomInt, randomUUID } from 'node:crypto';
+import { encrypt, decrypt } from '$lib/crypto';
+import { prisma } from '$lib/db';
 import type { AppTransactionClient } from '$lib/db';
 import type { FoundationExchange } from '@prisma/client';
 import { FoundationDenied, runFoundationBoundary } from './internal';
@@ -14,7 +16,7 @@ import { claimMac, sameMac, seal, open, verificationPhone } from './exchangeCryp
 import { insertExchangeReceipt } from './exchangeReceipt';
 import { insertPrivatePerson } from './subjects';
 import { sendTelnyxSms } from '$lib/server/integrations/telnyx/messaging';
-import { devPilotEnabled } from './devPilotGate';
+import { devPilotEnabled, exchangeBrowserEnabled } from './devPilotGate';
 
 type Actor = Pick<App.Locals, 'user' | 'sessionId' | 'env' | 'appOrigin'>;
 type Root = { ownerUserId: string; vaultId: string };
@@ -440,4 +442,215 @@ export async function verifyExchangeCode(
 		});
 		return { status: 'SETTLED' as const, personId };
 	});
+}
+
+// S-405b: preview capabilities bind both exact projections, the persisted session and browser.
+// They authorise a one-off profile snapshot, never channel assurance or publication.
+const exchangeProfileSelect = {
+	id: true,
+	userId: true,
+	label: true,
+	displayName: true,
+	emailPublic: true,
+	phonePublic: true
+} as const;
+export async function ownedExchangeChoices(locals: Actor, targetId: string, browser: string) {
+	if (!locals.user?.id || !locals.sessionId || !exchangeBrowserEnabled(locals, locals.appOrigin))
+		throw new FoundationDenied();
+	const target = await prisma.profile.findFirst({
+		where: { id: targetId, isPublished: true },
+		select: exchangeProfileSelect
+	});
+	if (!target || target.userId === locals.user.id) throw new FoundationDenied();
+	const profiles = await prisma.profile.findMany({
+		where: { userId: locals.user.id },
+		orderBy: { updatedAt: 'desc' },
+		take: 100,
+		select: exchangeProfileSelect
+	});
+	return profiles.map((p) => ({
+		id: p.id,
+		label: p.label || p.displayName || 'My profile',
+		...card(p),
+		confirmation: encrypt(
+			JSON.stringify({
+				version: 1,
+				id: randomUUID(),
+				actor: locals.user!.id,
+				session: locals.sessionId,
+				browser,
+				targetId,
+				profileId: p.id,
+				targetMac: cardMac(target),
+				profileMac: cardMac(p),
+				at: Date.now()
+			}),
+			'exchange.profile.preview.v1'
+		)
+	}));
+}
+function card(p: {
+	displayName: string | null;
+	emailPublic: string | null;
+	phonePublic: string | null;
+}) {
+	return { name: p.displayName || '', email: p.emailPublic || '', phone: p.phonePublic || '' };
+}
+function cardMac(p: Parameters<typeof card>[0]) {
+	return claimMac(JSON.stringify(card(p)), 'profile-preview');
+}
+
+export async function confirmOwnedProfileExchange(
+	locals: Actor,
+	token: string,
+	browser: string,
+	targetId: string
+) {
+	if (!locals.user?.id || !exchangeBrowserEnabled(locals, locals.appOrigin) || token.length > 5000)
+		throw new FoundationDenied();
+	if(token.split(':').length!==3 || token.split(':').some(part=>Buffer.from(part,'base64').toString('base64')!==part)) throw new FoundationDenied();
+	const preview = JSON.parse(decrypt(token, 'exchange.profile.preview.v1'));
+	if (
+		preview.targetId !== targetId ||
+		preview.version !== 1 ||
+		preview.actor !== locals.user.id ||
+		preview.session !== locals.sessionId ||
+		!browser ||
+		preview.browser !== browser ||
+		!uuid.test(preview.id) ||
+		!Number.isFinite(preview.at) ||
+		preview.at > Date.now() ||
+		Date.now() - preview.at >= 1800000
+	)
+		throw new FoundationDenied();
+	return exchangeTransaction(locals.user.id, async (tx) => {
+		const actor = await requireClaimSession(tx, locals);
+		const target = await tx.profile.findFirst({
+			where: { id: preview.targetId, isPublished: true },
+			select: exchangeProfileSelect
+		});
+		if (!target || target.userId === actor.accountId) throw new FoundationDenied();
+		const roots = await exchangeRoots(tx, [target.userId, actor.accountId]);
+		// Lock both profiles in deterministic order before validating the exact previewed projection.
+		for (const id of [preview.targetId, preview.profileId].sort())
+			await tx.$queryRaw`SELECT "id" FROM "Profile" WHERE "id" = ${id} FOR UPDATE`;
+		const selected = await tx.profile.findFirst({
+			where: { id: preview.profileId, userId: actor.accountId },
+			select: exchangeProfileSelect
+		});
+		const current = await tx.profile.findFirst({
+			where: { id: preview.targetId, userId: target.userId, isPublished: true },
+			select: exchangeProfileSelect
+		});
+		if (
+			!selected ||
+			!current ||
+			!card(selected).name ||
+			!card(current).name ||
+			cardMac(selected) !== preview.profileMac ||
+			cardMac(current) !== preview.targetMac
+		)
+			throw new FoundationDenied();
+		const origin = roots.get(target.userId)!,
+			recipient = roots.get(actor.accountId)!;
+		return exchangeScope(origin, async () => {
+			const prior = await tx.foundationExchange.findFirst({ where: { id: preview.id } });
+			if (prior) {
+				if (prior.beneficiaryUserId !== actor.accountId || prior.status !== 'SETTLED')
+					throw new FoundationDenied();
+				// Archived/revoked entries never revive through retry.
+				for (const root of [origin, recipient])
+					await exchangeScope(root, async () => {
+						const link = await tx.foundationAccountAssociation.findFirst({
+							where: {
+								accountId: root === origin ? actor.accountId : target.userId,
+								state: 'ACTIVE'
+							}
+						});
+						if (
+							!link ||
+							!(await tx.foundationSubject.findFirst({
+								where: { id: link.subjectId, state: 'ACTIVE' }
+							}))
+						)
+							throw new FoundationDenied();
+					});
+				return { status: 'SETTLED' as const, personId: prior.settledSubjectId };
+			}
+			if (
+				!(await budget(tx, actor.accountId, [
+					['profile:account:' + actor.accountId, 100],
+					['profile:target:' + target.id, 100]
+				]))
+			)
+				throw new FoundationDenied();
+			// Reuse the same private person/evidence writers for each direction. PROFILE is explicit
+			// account ownership authority and intentionally asserts no verified phone/email.
+			const originPerson = await saveProfileSide(tx, origin, actor.accountId, selected, preview.id);
+			const recipientPerson = await exchangeScope(recipient, () =>
+				saveProfileSide(tx, recipient, target.userId, current, preview.id)
+			);
+			await tx.foundationExchange.create({
+				data: {
+					...origin,
+					id: preview.id,
+					profileId: target.id,
+					subjectId: originPerson.personId,
+					sourceId: originPerson.sourceId,
+					snapshotEnc: seal('FoundationExchange', 'snapshotEnc', origin, preview.id, card(current)),
+					continuationHash: claimMac(preview.id, 'profile-confirmation'),
+					beneficiaryUserId: actor.accountId,
+					status: 'SETTLED',
+					settledSubjectId: recipientPerson.personId,
+					settledVaultId: recipient.vaultId,
+					expiresAt: new Date(Date.now() + 86400000)
+				}
+			});
+			return { status: 'SETTLED' as const, personId: recipientPerson.personId };
+		});
+	});
+}
+async function saveProfileSide(
+	tx: AppTransactionClient,
+	root: Root,
+	accountId: string,
+	profile: Parameters<typeof card>[0] & { id: string },
+	exchangeId: string
+) {
+	const prior = await tx.foundationAccountAssociation.findFirst({ where: { accountId } });
+	let personId = prior?.subjectId;
+	if (
+		prior &&
+		(prior.state !== 'ACTIVE' ||
+			!(await tx.foundationSubject.findFirst({ where: { id: prior.subjectId, state: 'ACTIVE' } })))
+	)
+		throw new FoundationDenied();
+	if (!personId) {
+		const person = await insertPrivatePerson(tx, root, card(profile), {
+			submittedAt: new Date().toISOString(),
+			profileId: profile.id,
+			sourceId: exchangeId
+		});
+		personId = person.id;
+		await tx.foundationAccountAssociation.create({
+			data: {
+				...root,
+				subjectId: personId,
+				accountId,
+				channel: 'PROFILE',
+				channelHash: '',
+				verifiedAt: new Date(),
+				exchangeRef: exchangeId
+			}
+		});
+	}
+	const sourceId = await insertExchangeReceipt(
+		tx,
+		root,
+		personId,
+		card(profile),
+		exchangeId,
+		profile.id
+	);
+	return { personId, sourceId };
 }

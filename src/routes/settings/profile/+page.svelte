@@ -90,6 +90,7 @@
 
     <!-- IT: main editor form - named action `save` -->
     <form id="profile-editor" method="post" action={data?.onboarding ? "?/save&onboarding=1" : "?/save"} style="display:grid; grid-template-columns: 1fr 1fr; gap:12px;">
+      {#if data?.exchangeReturn}<input type="hidden" name="returnToExchange" value="1" />{/if}
       {#if data?.returnContext}
         <!-- IT: Return to the same context after editing, never to a mismatched profile. -->
         <input type="hidden" name="returnContext" value={data.returnContext} />
@@ -194,7 +195,7 @@
 
       <div style="grid-column: 1 / span 2; display:flex; gap:8px; margin-top:8px; flex-wrap:wrap; align-items:center;">
         <button class="btn primary" type="submit">Save</button>
-        <a class="btn" href="/profiles">Back to My Profiles</a>
+        <a class="btn" href={data?.exchangeReturn || "/profiles"}>{data?.exchangeReturn ? "Cancel and return to exchange" : "Back to My Profiles"}</a>
       </div>
 
       {#if form?.error}

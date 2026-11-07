@@ -10,6 +10,7 @@
 
 import { error, fail, redirect } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
+import { profileExchangeReturn } from '$lib/server/profileExchangeReturn';
 import { prisma } from '$lib/db';
 import { absoluteUrlFromOrigin } from '$lib/url';
 import { mergeExtras } from '$lib/publicProfile'; // IT: merges extra_* into existing publicMeta
@@ -100,7 +101,8 @@ export const load: PageServerLoad = async ({ locals, url, cookies, setHeaders })
   // Only the account and profile bound after signup may receive these unverified prefills.
   const draft = onboarding && profile ? readOwnedProfileDraft(cookies, locals.user.id, profile.id) : null;
   if (onboarding) setHeaders({ 'cache-control': 'private, no-store', 'referrer-policy': 'same-origin' });
-  return { profile: profile || null, requestedProfileKind, networkEntry, creatingNew,
+  const exchangeReturn = url.searchParams.get('exchange')==='1' ? profileExchangeReturn(cookies,locals.user.id) : null;
+  return { exchangeReturn, profile: profile || null, requestedProfileKind, networkEntry, creatingNew,
     onboarding, draft,
     fromProfiles: url.searchParams.get('from') === 'profiles', mode, first, next, returnContext };
 };
@@ -267,6 +269,11 @@ export const actions: Actions = {
       cookies.delete(PROFILE_DRAFT_COOKIE, { path: '/' });
     }
 
+    // A new private card can return to confirmation without being published.
+    if(fd.get('returnToExchange')==='1') {
+      const back=profileExchangeReturn(cookies,locals.user.id);
+      if(back) throw redirect(303,back);
+    }
     // IT: stay in the Network experience after create and edit.
     if (networkEntry) throw redirect(303, '/network');
 

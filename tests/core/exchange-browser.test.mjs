@@ -16,15 +16,17 @@ const vite = await createServer({
 			name: 'exchange-test-services',
 			enforce: 'pre',
 			resolveId(id) {
-				if (id.endsWith('/foundation/devPilotGate')) return '\0gate';
+				if (id.endsWith('/core/contactCapture')) return '\0capture';
+                if (id.endsWith('/foundation/devPilotGate')) return '\0gate';
 				if (id.endsWith('/foundation/exchangeClaims')) return '\0claims';
 				if (id.endsWith('/foundation/provisioning')) return '\0domain';
 			},
 			load(id) {
-				if (id === '\0gate') return `export function exchangeBrowserEnabled(){return true;}`;
+				if (id === '\0capture') return `export async function publishedCaptureProfile(){return {id:'target',userId:'mark',slug:'mark',displayName:'Mark'};} export async function capturePrivateContact(){throw Error('unexpected guest capture');}`;
+                if (id === '\0gate') return `export function exchangeBrowserEnabled(){return true;}`;
 				if (id === '\0domain') return `export async function accountDomain(){return 'ACTIVE';}`;
 				if (id === '\0claims')
-					return `export async function requestExchangeCode(...a){globalThis.claimArgs=a;if(globalThis.claimFailure)throw globalThis.claimFailure;return {status:'QUEUED',challengeId:'challenge'};} export async function dispatchExchangeCode(){return {status:'SENT'};} export async function verifyExchangeCode(...a){globalThis.verifyArgs=a;return {status:'SETTLED',personId:'private-person'};}`;
+					return `export async function ownedExchangeChoices(){return [];} export async function confirmOwnedProfileExchange(...a){globalThis.ownedArgs=a;} export async function requestExchangeCode(...a){globalThis.claimArgs=a;if(globalThis.claimFailure)throw globalThis.claimFailure;return {status:'QUEUED',challengeId:'challenge'};} export async function dispatchExchangeCode(){return {status:'SENT'};} export async function verifyExchangeCode(...a){globalThis.verifyArgs=a;return {status:'SETTLED',personId:'private-person'};}`;
 			}
 		}
 	]
@@ -51,6 +53,21 @@ function event(c, body, origin = 'https://dev.relish.live') {
 	};
 }
 try {
+    await test('owned confirmation route keeps same-origin and fixed target binding; editor return is account-bound',async()=>{
+      const route=await vite.ssrLoadModule('/src/routes/u/[slug]/share-details/+page.server.ts');
+      const back=await vite.ssrLoadModule('/src/lib/server/profileExchangeReturn.ts');
+      const c=cookies();c.set('relish_contact_capture','browser');
+      const ev=event(c,{intent:'confirm-profile',confirmation:'opaque-preview'});
+      ev.params={slug:'mark'};
+      ev.url=new URL('https://dev.relish.live/u/mark/share-details');
+      await assert.rejects(route.actions.default(ev),e=>e.status===303 && e.location==='/people');
+      assert.equal(globalThis.ownedArgs[1],'opaque-preview');assert.equal(globalThis.ownedArgs[3],'target');
+      const bad=event(c,{intent:'confirm-profile'},'https://evil.invalid');bad.params={slug:'mark'};
+      assert.equal((await route.actions.default(bad)).status,403);
+      back.saveProfileExchangeReturn(c,ev.url,'betty','mark');
+      assert.equal(back.profileExchangeReturn(c,'betty'),'/u/mark/share-details');
+      assert.equal(back.profileExchangeReturn(c,'other'),null);
+    });
 	await test('continuation is browser-bound, tamper-resistant and absent from auth URLs', () => {
 		const c = cookies(),
 			url = new URL('https://dev.relish.live');

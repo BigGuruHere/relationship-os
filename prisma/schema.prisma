@@ -34,6 +34,7 @@ enum UserRole {
 // - Primary account for a single tenant
 // - Email is stored encrypted at rest with a deterministic HMAC index for equality
 model User {
+  accountChannels FoundationAccountChannel[]
   s402Association FoundationAccountAssociation[]
 
   s402Exchange FoundationExchange[]
@@ -4583,4 +4584,72 @@ model FoundationClaimBudget {
  count Int
  expiresAt DateTime @db.Timestamptz(3)
  @@index([expiresAt])
+}
+
+// Account-owned channel assurance is independent of private relationship vault custody.
+model FoundationAccountChannel {
+ id String @id @default(uuid())
+ ownerUserId String
+ type String
+ valueEnc String
+ valueHash String
+ normalizationVersion Int @default(1)
+ status String @default("PENDING")
+ generation Int @default(0)
+ failedAttempts Int @default(0)
+ sendCount Int @default(0)
+ windowAt DateTime @default(now()) @db.Timestamptz(3)
+ createdAt DateTime @default(now()) @db.Timestamptz(3)
+ updatedAt DateTime @updatedAt @db.Timestamptz(3)
+ owner User @relation(fields:[ownerUserId],references:[id],onDelete:Restrict,onUpdate:Restrict)
+ proofs FoundationAccountChannelVerification[]
+ challenges FoundationAccountChannelChallenge[]
+ @@unique([id,ownerUserId])
+ @@unique([ownerUserId,type,valueHash])
+}
+// Proof history is immutable except for explicit monotonic revocation metadata.
+model FoundationAccountChannelVerification {
+ id String @id @default(uuid())
+ ownerUserId String
+ channelId String
+ generation Int
+ method String
+ proofRef String
+ verifiedAt DateTime @default(now()) @db.Timestamptz(3)
+ revokedAt DateTime? @db.Timestamptz(3)
+ revokeReason String?
+ channel FoundationAccountChannel @relation(fields:[channelId,ownerUserId],references:[id,ownerUserId],onDelete:Restrict,onUpdate:Restrict)
+ @@unique([channelId,generation])
+}
+// New challenge generations invalidate old codes; session and purpose are immutable bindings.
+model FoundationAccountChannelChallenge {
+ id String @id @default(uuid())
+ ownerUserId String
+ channelId String
+ generation Int
+ sessionHash String
+ codeMac String
+ purpose String @default("VERIFY_CHANNEL")
+ status String @default("PENDING")
+ attempts Int @default(0)
+ createdAt DateTime @default(now()) @db.Timestamptz(3)
+ expiresAt DateTime @db.Timestamptz(3)
+ consumedAt DateTime? @db.Timestamptz(3)
+ channel FoundationAccountChannel @relation(fields:[channelId,ownerUserId],references:[id,ownerUserId],onDelete:Restrict,onUpdate:Restrict)
+ dispatch FoundationAccountChannelDispatch?
+ @@unique([id,ownerUserId])
+ @@unique([channelId,generation])
+}
+// Durable encrypted payloads exist only while delivery is retryable.
+model FoundationAccountChannelDispatch {
+ id String @id @default(uuid())
+ ownerUserId String
+ challengeId String @unique
+ payloadEnc String?
+ status String @default("QUEUED")
+ attempts Int @default(0)
+ createdAt DateTime @default(now()) @db.Timestamptz(3)
+ expiresAt DateTime @db.Timestamptz(3)
+ @@unique([challengeId,ownerUserId])
+ challenge FoundationAccountChannelChallenge @relation(fields:[challengeId,ownerUserId],references:[id,ownerUserId],onDelete:Restrict,onUpdate:Restrict)
 }

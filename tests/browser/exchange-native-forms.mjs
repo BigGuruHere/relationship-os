@@ -18,12 +18,14 @@ const vite = await createServer({
 			name: 'exchange-test-services',
 			enforce: 'pre',
 			resolveId(id) {
-				if (id.endsWith('/foundation/devPilotGate')) return '\0gate';
+				if (id.endsWith('/foundation/accountChannels')) return '\0channels';
+                if (id.endsWith('/foundation/devPilotGate')) return '\0gate';
 				if (id.endsWith('/foundation/exchangeClaims')) return '\0claims';
 				if (id.endsWith('/foundation/provisioning')) return '\0domain';
 			},
 			load(id) {
-				if (id === '\0gate') return `export function exchangeBrowserEnabled(){return true;}`;
+				if(id==='\0channels') return `export async function listAccountChannels(){return [{id:'phone',type:'PHONE',masked:'•••• 0000',status:globalThis.channelVerified?'VERIFIED':'PENDING'}];} export async function addAccountChannel(){return 'phone';} export async function requestAccountChannelCode(){return {status:'QUEUED',challengeId:'account-challenge'};} export async function dispatchAccountChannelCode(){return 'SENT';} export async function verifyAccountChannelCode(...a){globalThis.accountVerifyArgs=a;globalThis.channelVerified=true;return 'VERIFIED';} export async function revokeAccountChannel(){} export async function eraseRevokedAccountChannel(){}`;
+                if (id === '\0gate') return `export function exchangeBrowserEnabled(){return true;}`;
 				if (id === '\0domain') return `export async function accountDomain(){return 'ACTIVE';}`;
 				if (id === '\0claims')
 					return `export async function requestExchangeCode(...a){globalThis.claimArgs=a;return {status:'QUEUED',challengeId:'challenge'};} export async function dispatchExchangeCode(){return {status:'SENT'};} export async function verifyExchangeCode(...a){globalThis.verifyArgs=a;return {status:'SETTLED',personId:'private-person'};}`;
@@ -61,6 +63,8 @@ async function component(path, name) {
 	return (await vite.ssrLoadModule('/.svelte-kit/browser-check/' + name + '.js')).default;
 }
 const ownedUI = await component('src/routes/u/[slug]/share-details/+page.svelte', 'owned');
+const channelsUI=await component('src/routes/settings/channels/+page.svelte','channels');
+const channelPage=await vite.ssrLoadModule('/src/routes/settings/channels/+page.server.ts');
 const claimUI = await component('src/routes/exchange/claim/+page.svelte', 'claim');
 const profileUI = await component('src/routes/settings/profile/+page.svelte', 'profile');
 const c = cookies();
@@ -125,7 +129,7 @@ const server = httpServer(async (req, res) => {
 			e.url = url;
 			e.request = new Request(url, { method: 'POST', headers: req.headers, body });
 			try {
-				const result = await page.actions.default(e);
+				const result = await (url.pathname==='/channels'?channelPage:page).actions.default(e);
 				form = result.data ?? result;
 			} catch (r) {
 				if (r.status === 303) {
@@ -156,7 +160,7 @@ const server = httpServer(async (req, res) => {
 			);
 			return;
 		}
-		const data = await page.load({
+		const data = await (url.pathname==='/channels'?channelPage:page).load({
 			...event(c, {}),
 			url,
 			setHeaders: (h) => {
@@ -165,7 +169,7 @@ const server = httpServer(async (req, res) => {
 		});
 		if (policyOverride) res.setHeader('referrer-policy', policyOverride);
 		res.setHeader('content-type', 'text/html');
-		res.end(render(claimUI, { props: { data, form } }).body);
+		res.end(render(url.pathname==='/channels'?channelsUI:claimUI, { props: { data, form } }).body);
 	} catch (e) {
 		res.statusCode = 500;
 		res.end(String(e));
@@ -230,6 +234,13 @@ try {
 	);
 	await tab.getByRole('button', { name: 'Confirm exchange with Mark Test', exact: true }).click();
 	await tab.waitForURL(base + '/people');
+    // Independent account verification also uses the literal six-digit native constraint.
+    await tab.goto(base+'/channels');
+    await tab.getByRole('button',{name:'Send verification code',exact:true}).click();
+    await tab.getByLabel('Verification code',{exact:true}).fill('005321');
+    await tab.getByRole('button',{name:'Verify phone number',exact:true}).click();
+    await tab.getByRole('status').filter({hasText:'Phone number verified.'}).waitFor();
+    assert.equal(globalThis.accountVerifyArgs[2],'005321');
 	// The top publication button is associated with the existing form and includes unsaved edits.
 	await tab.goto(base + '/profile');
 	await tab.getByLabel('Public name', { exact: true }).fill('Edited Mark');

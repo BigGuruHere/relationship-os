@@ -9,7 +9,7 @@ export async function peopleRouteDomain(userId: string, pathname: string) {
 	if (domain !== 'ACTIVE') return 'LEGACY' as const;
 	// Enable only the shipped People and note/draft endpoints. Diagnostics remain legacy-only.
 	if (
-		pathname !== '/exchange/claim' &&
+		pathname !== '/exchange/claim' && pathname !== '/settings/channels' &&
 		!/^\/people(?:\/(?:new|[0-9a-f-]{36}(?:\/notes\/(?:new|summarize))?|api\/(?:upload-chunk|transcribe-result)))?\/?$/i.test(
 			pathname
 		)

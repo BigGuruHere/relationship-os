@@ -19,6 +19,8 @@ For a quick visual or text change, read only the relevant sections and inspect t
 
 Read [S-405 account channels and simpler exchange](foundation/S405_ACCOUNT_CHANNELS_AND_EXCHANGE.md) for the accepted correction to S-401: owned-profile confirmation for existing users and reusable, independently verified account phone/email channels for guest claims. S-405a is documentation only; runtime stages are listed there. Earlier S-401/S-402 documents remain evidence of the currently implemented per-exchange SMS flow.
 
+For the next runtime slice, see [S-405c account channel settings, migration and acceptance](foundation/S405C_ACCOUNT_CHANNELS.md). Email verification and guest assurance reuse remain planned.
+
 ## Relationship foundation programme
 
 For architecture and new-domain implementation, read these linked documents after the living overview:

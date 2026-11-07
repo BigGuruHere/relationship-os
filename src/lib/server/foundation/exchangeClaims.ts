@@ -76,7 +76,7 @@ async function withClaim<T>(
 	});
 }
 // All budget operations are serialized by the exchange lock. Hashes avoid storing IP or phone in counters.
-async function budget(tx: AppTransactionClient, actorId: string, keys: [string, number][]) {
+export async function budget(tx: AppTransactionClient, actorId: string, keys: [string, number][]) {
 	return runFoundationBoundary({ ownerUserId: actorId, mode: 'EXCHANGE_BUDGET' }, async () => {
 		const hour = Math.floor(Date.now() / 3600000);
 		await tx.foundationClaimBudget.deleteMany({ where: { expiresAt: { lte: new Date() } } });

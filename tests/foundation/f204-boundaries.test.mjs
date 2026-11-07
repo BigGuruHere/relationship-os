@@ -35,7 +35,8 @@ test('only reviewed modules may establish foundation authority or construct an O
 								// S-402b reviewed transaction, budget and privacy dependency boundaries.
 								'src/lib/server/foundation/exchangeAuthority.ts',
 								'src/lib/server/foundation/exchangeClaims.ts',
-								'src/lib/server/foundation/exchangePrivacy.ts'
+								'src/lib/server/foundation/exchangePrivacy.ts',
+                                'src/lib/server/foundation/accountChannels.ts'
 							].includes(file),
 							file
 						);
@@ -48,10 +49,12 @@ test('only reviewed modules may establish foundation authority or construct an O
 							'exchangePrivacy',
 							'privacyOperations'
 						],
-						exchangeTransaction: ['exchangeClaims'],
-						exchangeRoots: ['exchangeClaims'],
+						exchangeTransaction: ['exchangeClaims','accountChannels'],
+						exchangeRoots: ['exchangeClaims','accountChannels'],
 						lockExchanges: ['privacyOperations'],
-						requireClaimSession: ['exchangeClaims'],
+						requireClaimSession: ['exchangeClaims','accountChannels'],
+                        budget: ['accountChannels'],
+                        maintainAccountChannelDelivery: ['privacyOperations'],
 						lockActiveFoundationRoot: ['exchangeAuthority'],
 						issueCapturedExchange: ['capture'],
 						removeExchangeDependencies: ['privacyOperations']

@@ -38,7 +38,8 @@ CREATE TABLE "Session"(id text PRIMARY KEY,"userId" text NOT NULL REFERENCES "Us
 		for (const name of [
 			'20261104010000_f202_foundation_schema',
 			'20261107010000_s402_exchange_claims',
-			'20261107020000_s402b_exchange_service'
+			'20261107020000_s402b_exchange_service',
+            '20261107030000_s405c_account_channels'
 		])
 			await db.exec(await readFile('prisma/migrations/' + name + '/migration.sql', 'utf8'));
 		if (!endpoint) {
@@ -538,6 +539,97 @@ CREATE TRIGGER s402_fail_settlement BEFORE UPDATE ON "FoundationExchange" FOR EA
 				assert.equal((await privacy.reviewFoundationPrivacy(f.a)).associations.length, 0);
 			}
 		);
+        await t.test('S405c account channels retain independent SMS proof, guards, revocation and cleanup',async()=>{
+          const accounts=await load('lib/server/foundation/accountChannels');
+          const f=await fixture();process.env.RELISH_EXCHANGE_BROWSER_ENABLED='YES';
+          const id=await accounts.addAccountChannel(f.locals,'PHONE',f.phone);
+          const email=await accounts.addAccountChannel(f.locals,'EMAIL','betty@example.invalid');
+          assert.equal(await accounts.addAccountChannel(f.locals,'PHONE',f.phone),id);
+          let channels=await accounts.listAccountChannels(f.locals);assert.equal(channels.length,2);assert.ok(channels.every(c=>c.status==='PENDING'));
+          assert.doesNotMatch(JSON.stringify(channels),new RegExp(f.phone.replace('+','\\+')));
+          await assert.rejects(prisma.foundationAccountChannel.findMany());
+          await assert.rejects(prisma.user.findMany({select:{accountChannels:true}}));
+          const req=await accounts.requestAccountChannelCode(f.locals,id,randomUUID(),'channel-ip');
+          assert.equal(req.status,'QUEUED');
+          await assert.rejects(accounts.requestAccountChannelCode(f.locals,email,randomUUID(),'channel-ip'));
+          assert.equal(await accounts.dispatchAccountChannelCode(f.locals,req.challengeId),'SENT');
+          const code=f.code();
+          assert.equal(await accounts.verifyAccountChannelCode(f.locals,req.challengeId,'not-a-code','channel-ip'),'INVALID');
+          await assert.rejects(accounts.verifyAccountChannelCode({...f.locals,sessionId:'other'},req.challengeId,code,'channel-ip'));
+          const verified=await Promise.all([accounts.verifyAccountChannelCode(f.locals,req.challengeId,code,'channel-ip'),accounts.verifyAccountChannelCode(f.locals,req.challengeId,code,'channel-ip')]);
+          assert.deepEqual(verified,['VERIFIED','VERIFIED']);
+          assert.equal((await accounts.listAccountChannels(f.locals)).find(c=>c.id===email).status,'PENDING');
+          assert.equal((await accounts.requestAccountChannelCode(f.locals,id,randomUUID(),'channel-ip')).status,'VERIFIED');
+          await assert.rejects(db.query("UPDATE \"FoundationAccountChannelVerification\" SET method='EMAIL_CODE' WHERE \"channelId\"=$1",[id]));
+          await assert.rejects(db.query('UPDATE "FoundationAccountChannel" SET "ownerUserId"=$1 WHERE id=$2',[f.a,id]));
+          await accounts.revokeAccountChannel(f.locals,id);
+          await assert.rejects(accounts.verifyAccountChannelCode(f.locals,req.challengeId,code,'channel-ip'));
+          assert.equal((await accounts.listAccountChannels(f.locals)).find(c=>c.id===id).status,'REVOKED');
+          // Revocation remains history; a fresh generation can prove control again after cooldown.
+          await db.query('UPDATE "FoundationAccountChannelChallenge" SET "createdAt"="createdAt" WHERE id=$1',[req.challengeId]);
+          const next=await accounts.requestAccountChannelCode(f.locals,id,randomUUID(),'channel-ip');assert.equal(next.status,'LIMITED');
+          const originalNow=Date.now;
+          let fresh;
+          try {Date.now=()=>originalNow()+61000;fresh=await accounts.requestAccountChannelCode(f.locals,id,randomUUID(),'channel-ip');} finally {Date.now=originalNow;}
+          assert.equal(fresh.status,'QUEUED');
+          await accounts.dispatchAccountChannelCode(f.locals,fresh.challengeId);
+          assert.equal(await accounts.verifyAccountChannelCode(f.locals,fresh.challengeId,f.code(),'channel-ip'),'VERIFIED');
+          assert.equal((await db.query('SELECT count(*)::int n FROM "FoundationAccountChannelVerification" WHERE "channelId"=$1',[id])).rows[0].n,2);
+          await accounts.revokeAccountChannel(f.locals,id);
+          await accounts.eraseRevokedAccountChannel(f.locals,id);
+          assert.equal((await accounts.listAccountChannels(f.locals)).length,1);
+          // Vault-only suspension denies use, but does not destroy account-owned channels.
+          // Offline expiry also scrubs dormant account-owned deliveries when settings are never revisited.
+          const expiredChallenge=randomUUID();
+          await db.query(`INSERT INTO "FoundationAccountChannelChallenge"(id,"ownerUserId","channelId",generation,"sessionHash","codeMac","createdAt","expiresAt") VALUES ($1,$2,$3,1,repeat('a',64),repeat('b',64),now()-interval '16 minutes',now()-interval '1 minute')`,[expiredChallenge,f.b,email]);
+          await db.query(`INSERT INTO "FoundationAccountChannelDispatch"(id,"ownerUserId","challengeId","payloadEnc","createdAt","expiresAt") VALUES ($1,$2,$3,'synthetic-expired-ciphertext',now()-interval '16 minutes',now()-interval '1 minute')`,[randomUUID(),f.b,expiredChallenge]);
+          await privacy.expireFoundationExchanges(f.b);
+          const expired=(await db.query('SELECT status,"payloadEnc" FROM "FoundationAccountChannelDispatch" WHERE "challengeId"=$1',[expiredChallenge])).rows[0];
+          assert.equal(expired.status,'EXPIRED');assert.equal(expired.payloadEnc,null);
+          const pending=await accounts.addAccountChannel(f.locals,'PHONE','+61491579999');
+          const queued=await accounts.requestAccountChannelCode(f.locals,pending,randomUUID(),'channel-ip');
+          await privacy.suspendFoundationPrivacy(f.b);
+          assert.equal((await db.query('SELECT "payloadEnc",status FROM "FoundationAccountChannelDispatch" WHERE "challengeId"=$1',[queued.challengeId])).rows[0].payloadEnc,null);
+          await assert.rejects(accounts.listAccountChannels(f.locals));
+          assert.equal((await db.query('SELECT count(*)::int n FROM "FoundationAccountChannel" WHERE "ownerUserId"=$1',[f.b])).rows[0].n,2);
+        });
+
+        await t.test('S405c competing accounts cannot both own verified assurance for one canonical number',async()=>{
+          const service=await load('lib/server/foundation/accountChannels');
+          const first=await fixture(), second=await fixture(first.phone);
+          process.env.RELISH_EXCHANGE_BROWSER_ENABLED='YES';
+          const local='0'+first.phone.slice(3);
+          const a=await service.addAccountChannel(first.locals,'PHONE',local);
+          const b=await service.addAccountChannel(second.locals,'PHONE',first.phone);
+          await assert.rejects(service.revokeAccountChannel(second.locals,a));
+          const c1=await service.requestAccountChannelCode(first.locals,a,randomUUID(),'compete-ip');
+          const c2=await service.requestAccountChannelCode(second.locals,b,randomUUID(),'compete-ip');
+          await service.dispatchAccountChannelCode(first.locals,c1.challengeId);const code1=first.code();
+          await service.dispatchAccountChannelCode(second.locals,c2.challengeId);const code2=second.code();
+          const results=await Promise.allSettled([service.verifyAccountChannelCode(first.locals,c1.challengeId,code1,'compete-ip'),service.verifyAccountChannelCode(second.locals,c2.challengeId,code2,'compete-ip')]);
+          assert.equal(results.filter(r=>r.status==='fulfilled').length,1);
+          assert.equal((await db.query(`SELECT count(*)::int n FROM "FoundationAccountChannel" WHERE id IN ($1,$2) AND status='VERIFIED'`,[a,b])).rows[0].n,1);
+          assert.equal((await privacy.reviewFoundationPrivacy(first.a)).associations.length,0);
+          await assert.rejects(db.query(`UPDATE "FoundationAccountChannel" SET status='VERIFIED' WHERE id=$1`,[results[0].status==='fulfilled'?b:a]));
+        });
+
+        await t.test('S405c delivery retry caps, resend invalidation and aggregate failures remain bounded',async()=>{
+          const service=await load('lib/server/foundation/accountChannels');const f=await fixture();
+          const id=await service.addAccountChannel(f.locals,'PHONE',f.phone);
+          const issued=await service.requestAccountChannelCode(f.locals,id,randomUUID(),'bounded-channel-ip');
+          providerFailure=true;
+          try{for(let n=0;n<3;n++) assert.equal(await service.dispatchAccountChannelCode(f.locals,issued.challengeId),'FAILED');}finally{providerFailure=false;}
+          await assert.rejects(service.dispatchAccountChannelCode(f.locals,issued.challengeId));
+          assert.equal((await db.query('SELECT "payloadEnc" FROM "FoundationAccountChannelDispatch" WHERE "challengeId"=$1',[issued.challengeId])).rows[0].payloadEnc,null);
+          const originalNow=Date.now;let next;
+          try{Date.now=()=>originalNow()+61000;next=await service.requestAccountChannelCode(f.locals,id,randomUUID(),'bounded-channel-ip');}finally{Date.now=originalNow;}
+          await assert.rejects(service.verifyAccountChannelCode(f.locals,issued.challengeId,'123456','bounded-channel-ip'));
+          for(let n=0;n<5;n++) assert.equal(await service.verifyAccountChannelCode(f.locals,next.challengeId,'invalid','bounded-channel-ip'),'INVALID');
+          await assert.rejects(service.verifyAccountChannelCode(f.locals,next.challengeId,'123456','bounded-channel-ip'));
+          await service.revokeAccountChannel(f.locals,id);
+          assert.equal((await service.listAccountChannels(f.locals))[0].status,'REVOKED');
+        });
+
 	} finally {
 		globalThis.fetch = originalFetch;
 		if (prisma) await prisma.$disconnect();

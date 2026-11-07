@@ -48,7 +48,8 @@ test('P-305 privacy operations on a disposable database', { timeout: 120000 }, a
 		);
 		for (const name of [
 			'20261107010000_s402_exchange_claims',
-			'20261107020000_s402b_exchange_service'
+			'20261107020000_s402b_exchange_service',
+            '20261107030000_s405c_account_channels'
 		]) {
 			await db.exec(await readFile('prisma/migrations/' + name + '/migration.sql', 'utf8'));
 		}

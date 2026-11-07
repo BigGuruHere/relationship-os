@@ -17,6 +17,7 @@
   <div class="profile-manager-top">
     <div>
       <h1>My Profiles</h1>
+      <a href="/settings/channels">Phone and email verification</a>
       <p>Create as many separate profiles as you like. Give each one a name, then choose whether it is Business, Friendship or Dating. Each profile has its own link and QR code.</p>
     </div>
     <a class="btn primary" href="/settings/profile?mode=new&kind=business">Create Profile</a>

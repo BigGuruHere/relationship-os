@@ -9,6 +9,7 @@ on:
       - 'src/routes/people/**'
       - 'src/routes/profiles/**'
       - 'src/routes/settings/profile/**'
+      - 'src/routes/settings/channels/**'
       - 'src/routes/settings/users/**'
       - 'src/routes/share/**'
       - 'src/routes/api/qr/**'

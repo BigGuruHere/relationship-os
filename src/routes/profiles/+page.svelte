@@ -33,6 +33,9 @@
           {#if profile.displayName}<p class="public-name">Public name: {profile.displayName}</p>{/if}
           {#if profile.headline}<p>{profile.headline}</p>{/if}
           <p class:published={profile.isPublished} class="status">{profile.isPublished ? 'Published' : 'Unpublished'}</p>
+          {#if !profile.isPublished}
+            <a class="btn primary publish-profile" href={'/settings/profile?profile=' + encodeURIComponent(profile.slug) + '&kind=' + profile.kind + '&from=profiles'}>Review and publish</a>
+          {/if}
           <div class="profile-actions">
             <a href={'/settings/profile?profile=' + encodeURIComponent(profile.slug) + '&kind=' + profile.kind + '&from=profiles'}>Edit</a>
             <a href={'/u/' + encodeURIComponent(profile.slug)}>Preview</a>
@@ -76,6 +79,7 @@
   .public-name { font-size: .9rem; color: #52666b; }
   .status { font-size: .84rem; color: #78672e; }
   .status.published { color: #16805d; }
+  .publish-profile{display:inline-flex;align-items:center;min-height:44px;box-sizing:border-box;font-weight:700;}
   .profile-actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 14px; }
   .profile-actions a { font-weight: 600; }
   .btn { padding: 10px 14px; border: 1px solid #b9c7c5; border-radius: 10px; text-decoration: none; }

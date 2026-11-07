@@ -37,3 +37,7 @@ Live mobile/browser and provider acceptance remains operator work on DEV, not a 
 5. Record deployed SHA, devices, account scenario and approved destination outcome. Disable browser activation if acceptance fails.
 
 Application rollback disables `RELISH_EXCHANGE_BROWSER_ENABLED` and removes the UI adapter while keeping S-402 tables and compatible privacy tooling. No schema rollback or data backfill is required. S-404 adds unlink/recovery UX and records DEV acceptance. Hosted restore/erasure replay remains deferred until production preparation.
+
+## First DEV acceptance report
+
+PR #33 merged at `0b3444a`. The operator confirmed deployment and successful intake into Mark's People, but reported blocked claim-page forms and hard-to-find publication controls. The [DEV acceptance fix](S403_DEV_FIXES.md) corrects the native form referrer policy and improves publication controls. Reciprocal live SMS acceptance is still pending.

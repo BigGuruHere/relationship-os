@@ -30,12 +30,18 @@
 		</p>
 		{#if form?.error}<p role="alert">{form.error}</p>{/if}
 		{#if form?.sent}<p role="status">Code sent. Check your messages.</p>{/if}
-		<form method="POST">
-			<input type="hidden" name="intent" value="resend" /><button>Request a new code</button>
-		</form>
-		<form method="POST">
-			<input type="hidden" name="intent" value="send" /><button>Send or retry code</button>
-		</form>
+		{#if data.codeRequested || form?.sent}
+			<form method="POST">
+				<input type="hidden" name="intent" value="resend" /><button class="later"
+					>Request a new code</button
+				>
+			</form>
+		{:else}
+			<form method="POST">
+				<input type="hidden" name="intent" value="send" /><button>Send verification code</button>
+			</form>
+		{/if}
+
 		{#if data.codeRequested || form?.sent}<form method="POST">
 				<input type="hidden" name="intent" value="verify" /><label for="code"
 					>Verification code</label

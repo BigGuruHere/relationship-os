@@ -131,7 +131,8 @@ export const actions: Actions = {
     const emailPublic = String(fd.get('emailPublic') || '').trim();
     const phonePublic = String(fd.get('phonePublic') || '').trim();
     // SECURITY: Publication is an explicit owner decision, not inferred from QR generation.
-    const isPublished = fd.get('isPublished') === 'on';
+    // The prominent publish button submits the same editor and all its validation.
+    const isPublished = fd.get('publishNow') === 'yes' || fd.get('isPublished') === 'on';
     // IT: Network entry never permits changing another profile kind through form tampering.
     const networkEntry = String(fd.get('entry') || '') === 'network';
     const requestedKind = networkEntry ? 'personal' : String(fd.get('kind') || 'business').trim();

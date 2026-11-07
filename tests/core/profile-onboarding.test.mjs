@@ -202,7 +202,7 @@ try {
     draft.finishProfileAuth(invalid.cookies,invalid.url,draft.PROFILE_ONBOARDING_RETURN,'new-user','owned');
     assert.equal((await editor.actions.save(invalid)).status,400);
     assert.ok(draft.readOwnedProfileDraft(invalid.cookies,'new-user','owned'));assert.equal(updates.length,0);
-    const e=event({profileId:'owned',displayName:'Guest',kind:'business',emailPublic:'guest@example.test',isPublished:'on'});
+    const e=event({profileId:'owned',displayName:'Guest',kind:'business',emailPublic:'guest@example.test',publishNow:'yes'});
     e.locals.user={id:'new-user'};
     draft.saveProfileDraft(e.cookies,e.url,{name:'Guest',email:'guest@example.test',phone:'123'});
     draft.finishProfileAuth(e.cookies,e.url,draft.PROFILE_ONBOARDING_RETURN,'new-user','owned');

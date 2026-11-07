@@ -8,7 +8,7 @@ Status: living snapshot updated **2026-11-08**. Foundation baseline is developme
 
 ## S-405c account channels and SMS verification
 
-PR #39 is merged at `7205d53`; deployment and live SMS acceptance remain unverified.
+PR #39 is merged at `7205d53`; deployment and live SMS acceptance remain unverified. The feature-branch implementation description below records its delivery state before that merge.
 
 [Account channel service and migration](foundation/S405C_ACCOUNT_CHANNELS.md) are implemented on `feature/s405c-account-channels`, based on merged PR #38 (`42ae818`). Account settings separately track pending/verified/revoked phones and emails, with SMS proof/revoke/reverify and privacy/expiry cleanup. Email remains pending; reusable guest claims follow in S-405d. One additive migration brings totals to 110 migrations / 24 Foundation tables. No live migration/message/deployment performed; DEV acceptance pending.
 

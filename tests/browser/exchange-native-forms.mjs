@@ -238,8 +238,8 @@ try {
     await tab.goto(base+'/channels');
     await tab.getByRole('button',{name:'Send verification code',exact:true}).click();
     await tab.getByLabel('Verification code',{exact:true}).fill('005321');
-    await tab.getByRole('button',{name:'Verify phone number',exact:true}).click();
-    await tab.getByRole('status').filter({hasText:'Phone number verified.'}).waitFor();
+    await tab.getByRole('button',{name:'Verify channel',exact:true}).click();
+    await tab.getByRole('status').filter({hasText:'Channel verified.'}).waitFor();
     assert.equal(globalThis.accountVerifyArgs[2],'005321');
     // Existing retained assurance completes a v2 guest exchange through a same-origin native POST.
     flow.saveExchange(c,new URL('https://dev.relish.live'),'b'.repeat(64),'profile',2);

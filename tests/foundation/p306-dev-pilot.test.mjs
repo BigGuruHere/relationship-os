@@ -16,7 +16,11 @@ test('P-306 owner creates one fresh foundation login for DEV', { timeout: 120000
 	let socket, vite, prisma;
 	try {
 		const { legacySql, defaultTrigger } = await legacySchemaFixture(
-			await readFile('prisma/schema.prisma', 'utf8')
+			// Reconstruct the pre-S402 legacy schema; that migration creates this index.
+			(await readFile('prisma/schema.prisma', 'utf8')).replace(
+				/^.*@@unique.*s402_profile_scope.*\n/gm,
+				''
+			)
 		);
 		await db.exec('CREATE EXTENSION vector');
 		await db.exec(legacySql);
@@ -31,6 +35,13 @@ test('P-306 owner creates one fresh foundation login for DEV', { timeout: 120000
 			INSERT INTO "Profile"(id,"userId",slug,"updatedAt") VALUES ('legacy-card','owner','legacy-owner',now());`);
 		socket = new PGLiteSocketServer({ db, host: '127.0.0.1', port: 0, maxConnections: 1 });
 		await socket.start();
+		for (const name of [
+			'20261107010000_s402_exchange_claims',
+			'20261107020000_s402b_exchange_service'
+		]) {
+			await db.exec(await readFile('prisma/migrations/' + name + '/migration.sql', 'utf8'));
+		}
+
 		process.env.DATABASE_URL =
 			'postgresql://postgres:postgres@' + socket.getServerConn() + '/postgres?connection_limit=1';
 		process.env.SECRET_MASTER_KEY = 'a'.repeat(64);

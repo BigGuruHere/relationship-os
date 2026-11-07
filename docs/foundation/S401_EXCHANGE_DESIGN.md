@@ -1,6 +1,6 @@
 # S-401 Exchange claiming and reciprocal People
 
-Status as of 2026-11-07. Initial design merged through PR #29 at development 56eec62. Phone/email revision delivered on docs/s401-sms-verification. Runtime implementation follows in S-402 through S-404. This deliverable requires zero Prisma migrations.
+Status as of 2026-11-07. Initial design merged through PR #29 at development 56eec62. Phone/email revision merged through PR #30. Runtime implementation follows in S-402 through S-404. This deliverable requires zero Prisma migrations.
 
 ## Agreed experience
 
@@ -106,7 +106,7 @@ Use two fresh explicitly admitted foundation accounts and separate browser sessi
 4. Create private notes on each side. Verify all ordinary reads, search and errors expose only the authenticated owner's records.
 5. Switch accounts before verification, reuse an expired or consumed challenge, forward a continuation without its bound session, and change submitted details on retry. Verify controlled refusal and unchanged custody.
 6. Run concurrent settlement, suspension and archive tests in the database suite. Inject a late failure and confirm both vault writes roll back together.
-7. Exercise missing or unsupported channels, delivery failure, profile withdrawal, self-exchange, revoked association and a pre-existing unverified duplicate. Require explicit recovery where proof or active ownership is missing. Self-exchange should complete without a duplicate self person.
+7. Exercise missing or unsupported channels, delivery failure, profile withdrawal, self-exchange, revoked association and a pre-existing unverified duplicate. Require explicit recovery where proof or active ownership is missing. S-402b refuses self-account claims before issuing proof; S-403 must return the existing self/profile experience before a new self capture.
 8. Test wrong-country and malformed numbers, phone-only exchanges, channel switches, shared-number conflicts, resend abuse, delayed delivery and codes from another DEV/PROD environment. Verify only the bound challenge can complete.
 9. Verify public Save contact, Send, Skip and optional signup on real mobile browsers. Record deployed SHA and outcomes.
 

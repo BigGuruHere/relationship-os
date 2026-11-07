@@ -1,10 +1,14 @@
 # Relish: Current State and Open Work
 
-Status: living snapshot updated **2026-11-07**. Foundation baseline is development `159c39e` (PR #30). Environment observations are explicitly attributed below; this is not a live deployment monitor.
+Status: living snapshot updated **2026-11-07**. Foundation baseline is development `477adb9` (PR #31). Environment observations are explicitly attributed below; this is not a live deployment monitor.
+
+## S-402b SMS verification and settlement
+
+Implemented on `feature/s402b-sms-claims` from development `477adb9`. The [service and operations guide](foundation/S402_EXCHANGE_SERVICE.md) records session/exchange-bound SMS proof, encrypted outbox, persistent budgets, reciprocal private card/evidence copies, and inbound/outbound privacy cleanup. One additive migration brings the schema to 109 migrations / 20 foundation tables. Existing browser flows are unchanged; S-403 will wire them to this service. Controlled DEV SMS is limited to explicitly allowlisted Australian mobiles. No live delivery, deployment, enrollment or production promotion is claimed. Local validation passed 34 focused checks and 70 regressions, with zero Svelte errors/warnings. PostgreSQL CI results are recorded in the PR.
 
 ## S-402a exchange persistence
 
-Implemented on feature/s402-exchange-schema from development `159c39e`. The [schema slice](foundation/S402_EXCHANGE_SCHEMA.md) adds exchange, challenge and delivery records with custody constraints and immutable proof fields. Current application writers remain gated. S-402b delivers SMS service, association/settlement persistence and privacy integration. One additive Prisma migration is required. Runtime SMS acceptance remains pending.
+Merged through PR #31 at development `477adb9`, confirmed from Git. The [schema slice](foundation/S402_EXCHANGE_SCHEMA.md) adds exchange, challenge and delivery records with custody constraints and immutable proof fields. The merged schema gated writers; the S-402b feature branch adds the internal service and privacy integration while public routes remain unchanged. One additive Prisma migration is required. Runtime SMS acceptance remains pending.
 
 ## S-401 exchange design
 

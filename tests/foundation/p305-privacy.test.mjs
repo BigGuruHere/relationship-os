@@ -43,6 +43,16 @@ test('P-305 privacy operations on a disposable database', { timeout: 120000 }, a
 				'utf8'
 			)
 		);
+		await db.exec(
+			'CREATE TABLE "Profile" (id text PRIMARY KEY, "userId" text NOT NULL REFERENCES "User"(id))'
+		);
+		for (const name of [
+			'20261107010000_s402_exchange_claims',
+			'20261107020000_s402b_exchange_service'
+		]) {
+			await db.exec(await readFile('prisma/migrations/' + name + '/migration.sql', 'utf8'));
+		}
+
 		if (!endpoint) {
 			socket = new PGLiteSocketServer({ db, host: '127.0.0.1', port: 0, maxConnections: 1 });
 			await socket.start();

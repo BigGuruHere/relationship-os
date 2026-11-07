@@ -6,9 +6,10 @@ import { validateContactDetails } from '$lib/server/core/contacts';
 import { CAPTURE_CONSENT_VERSION } from '$lib/server/core/contactCaptureToken';
 import { withPublicCapture } from './policy';
 import { insertPrivatePerson } from './subjects';
+import { issueCapturedExchange } from './exchangeIssue';
 
 const visitorLimits = new Map<string, { at: number; count: number }>();
-export async function captureFoundationContact(
+async function capture(
 	profileId: string,
 	input: {
 		name: unknown;
@@ -16,8 +17,10 @@ export async function captureFoundationContact(
 		phone?: unknown;
 		captureToken?: unknown;
 		browser: string;
-	}
+	},
+	issueClaim: boolean
 ) {
+	let continuation: string | undefined;
 	const details = validateContactDetails(input);
 	await withPublicCapture(profileId, input.captureToken, input.browser, async (tx, intake) => {
 		const { ownerUserId, vaultId, prefix } = intake;
@@ -43,6 +46,15 @@ export async function captureFoundationContact(
 				throw error(
 					409,
 					'This form was already submitted with different details. Reload to share again.'
+				);
+			if (issueClaim)
+				continuation = await issueCapturedExchange(
+					tx,
+					intake,
+					input.browser,
+					prior.id,
+					null,
+					details.phone
 				);
 			return;
 		}
@@ -138,5 +150,30 @@ export async function captureFoundationContact(
 			data: { ...custody, segmentId, subjectId: person.id },
 			select: { id: true }
 		});
+		if (issueClaim)
+			continuation = await issueCapturedExchange(
+				tx,
+				intake,
+				input.browser,
+				sourceId,
+				person.id,
+				details.phone
+			);
 	});
+	return continuation;
+}
+
+// Existing callers retain anonymous capture without starting verification.
+export async function captureFoundationContact(
+	profileId: string,
+	input: Parameters<typeof capture>[1]
+) {
+	await capture(profileId, input, false);
+}
+// S-403 will wire this entry point after explicit exchange intent in the existing UI.
+export async function captureFoundationExchange(
+	profileId: string,
+	input: Parameters<typeof capture>[1]
+) {
+	return capture(profileId, input, true);
 }

@@ -7,7 +7,9 @@ import { captureFailureMetadata } from '../src/lib/server/core/contactCaptureDia
 
 const [command, caseRef, account, output] = process.argv.slice(2);
 const reference = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const validCommand = ['inspect', 'review', 'suspend', 'erase'].includes(command);
+const validCommand = ['inspect', 'review', 'suspend', 'erase', 'expire-exchanges'].includes(
+	command
+);
 let stage = 'preflight';
 
 async function exportPath() {
@@ -42,7 +44,7 @@ async function main() {
 		throw new Error('Invalid command.');
 	checkOperatorTarget(process.env.P305_EXPECTED_TARGET);
 	if (
-		(command === 'suspend' || command === 'erase') &&
+		['suspend', 'erase', 'expire-exchanges'].includes(command) &&
 		process.env.P305_CONFIRM !== command + ':' + account + ':' + caseRef
 	)
 		throw new Error('Case confirmation required.');
@@ -62,11 +64,13 @@ async function main() {
 			return;
 		}
 		const result =
-			command === 'erase'
-				? await privacy.eraseFoundationPrivacy(account)
-				: command === 'suspend'
-					? await privacy.suspendFoundationPrivacy(account)
-					: await privacy.inspectFoundationPrivacy(account);
+			command === 'expire-exchanges'
+				? await privacy.expireFoundationExchanges(account)
+				: command === 'erase'
+					? await privacy.eraseFoundationPrivacy(account)
+					: command === 'suspend'
+						? await privacy.suspendFoundationPrivacy(account)
+						: await privacy.inspectFoundationPrivacy(account);
 		console.log(
 			JSON.stringify({ component: 'relish.foundation.privacy', caseRef, command, ...result })
 		);

@@ -80,6 +80,20 @@ try {
 		assert.equal(flow.readExchange(c), null);
 		assert.equal(globalThis.verifyArgs[4], 'trusted-address');
 	});
+	await test('claim policy preserves native form origins and Continue later retains the claim', async () => {
+		const c = cookies();
+		flow.saveExchange(c, new URL('https://dev.relish.live'), 'd'.repeat(64), 'profile');
+		const e = event(c, { intent: 'later' });
+		let headers;
+		await page.load({ ...e, setHeaders: (h) => (headers = h) });
+		assert.equal(headers['referrer-policy'], 'same-origin');
+		await assert.rejects(
+			page.actions.default(e),
+			(r) => r.status === 303 && r.location === '/profiles'
+		);
+		assert.ok(flow.readExchange(c));
+		assert.equal((await page.actions.default(event(c, { intent: 'send' }, 'null'))).status, 403);
+	});
 	await test('unsupported form encoding and oversized payloads fail before service invocation', async () => {
 		const c = cookies(),
 			e = event(c, { intent: 'send' });

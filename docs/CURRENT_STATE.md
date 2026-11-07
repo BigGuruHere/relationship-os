@@ -1,10 +1,14 @@
 # Relish: Current State and Open Work
 
-Status: living snapshot updated **2026-11-07**. Foundation baseline is development `dd1d7d0` (PR #32). Environment observations are explicitly attributed below; this is not a live deployment monitor.
+Status: living snapshot updated **2026-11-07**. Foundation baseline is development `0b3444a` (PR #33). Environment observations are explicitly attributed below; this is not a live deployment monitor.
+
+## S-403 DEV acceptance fixes
+
+On 2026-11-07 the operator reported successful DEV deployment and capture into Mark's People, but blocked verification and Continue later forms. Feature branch `fix/profile-publish-exchange-origin` fixes the native form referrer-policy/origin conflict and adds prominent profile publication actions. No migration or live send. [Fixes and log diagnosis](foundation/S403_DEV_FIXES.md) records tests, direct migration connection guidance and the separate legacy OAuth warning. Live reciprocal SMS acceptance remains pending.
 
 ## S-403 browser integration
 
-Implemented on `feature/s403-exchange-browser` from development `dd1d7d0`. [Browser flow and DEV acceptance](foundation/S403_EXCHANGE_BROWSER.md) connects supported exchanges through password/Google auth to SMS verification and reciprocal My People saving. Browser activation defaults off behind an explicit DEV flag. Owner setup supports two generated logins; a separate two-email allowlist can admit genuinely new DEV signups atomically. Ordinary capture and public signup retain their prior cohort policy. No new migration, live SMS or deployment is claimed. Automated results are recorded in the PR; live mobile/provider acceptance remains pending.
+Merged through PR #33 at development `0b3444a`. [Browser flow and DEV acceptance](foundation/S403_EXCHANGE_BROWSER.md) connects supported exchanges through password/Google auth to SMS verification and reciprocal My People saving. Browser activation defaults off behind an explicit DEV flag. Owner setup supports two generated logins; a separate two-email allowlist can admit genuinely new DEV signups atomically. Ordinary capture and public signup retain their prior cohort policy. No new migration, live SMS or deployment is claimed. Automated results are recorded in the PR; live mobile/provider acceptance remains pending.
 
 ## S-402b SMS verification and settlement
 

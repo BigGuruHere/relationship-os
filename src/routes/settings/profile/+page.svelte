@@ -71,6 +71,13 @@
 <div class="container">
   <div class="card" style="padding:16px; max-width:720px; margin:0 auto;">
     <h1 style="margin:0 0 12px 0;">{p?.id ? 'Edit profile' : 'Create profile'}</h1>
+    {#if p.isPublished === false || !p.id}
+      <!-- Submit the existing editor, including unsaved fields and its normal validation. -->
+      <aside class="publication-banner" aria-label="Profile publication status">
+        <div><strong>Your profile is unpublished</strong><p>Publish it to make your profile link and QR code available.</p></div>
+        <button class="btn primary" type="submit" form="profile-editor" name="publishNow" value="yes">Publish profile</button>
+      </aside>
+    {/if}
     {#if data?.onboarding}
       <p>Review your details and choose whether to publish. Your QR code becomes available after publication.</p>
     {/if}
@@ -82,7 +89,7 @@
     {/if}
 
     <!-- IT: main editor form - named action `save` -->
-    <form method="post" action={data?.onboarding ? "?/save&onboarding=1" : "?/save"} style="display:grid; grid-template-columns: 1fr 1fr; gap:12px;">
+    <form id="profile-editor" method="post" action={data?.onboarding ? "?/save&onboarding=1" : "?/save"} style="display:grid; grid-template-columns: 1fr 1fr; gap:12px;">
       {#if data?.returnContext}
         <!-- IT: Return to the same context after editing, never to a mismatched profile. -->
         <input type="hidden" name="returnContext" value={data.returnContext} />
@@ -200,6 +207,9 @@
 </div>
 
 <style>
+  .publication-banner{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;padding:18px;margin:16px 0 22px;border:2px solid #256457;border-radius:12px;background:#edf7f2;}
+  .publication-banner p{margin:6px 0 0;line-height:1.5;}
+  .publication-banner button{min-height:48px;font-weight:700;padding:12px 20px;}
   .profile-photo-preview { width:76px; height:76px; border-radius:50%; object-fit:cover; }
   @media(max-width:540px){form{grid-template-columns:minmax(0,1fr)!important;} .span2{grid-column:1!important;} input,textarea,select{min-width:0;max-width:100%;box-sizing:border-box;} }
   .field { display:flex; flex-direction:column; gap:6px; }

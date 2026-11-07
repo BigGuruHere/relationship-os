@@ -17,7 +17,10 @@ import {
 import { accountDomain } from '$lib/server/foundation/provisioning';
 
 export const load: PageServerLoad = async ({ locals, cookies, setHeaders, url }) => {
-	setHeaders({ 'cache-control': 'private, no-store', 'referrer-policy': 'no-referrer' });
+	setHeaders({
+		'cache-control': 'private, no-store', // Native POST forms need a non-null Origin for strict CSRF checks.
+		'referrer-policy': 'same-origin'
+	});
 	const claim = readExchange(cookies);
 	return {
 		available: Boolean(claim && exchangeBrowserEnabled(locals, url.origin)),

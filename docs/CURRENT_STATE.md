@@ -2,7 +2,13 @@
 
 Status: living snapshot updated **2026-11-07**. Foundation baseline is development `4a4ddb2` (PR #36). Environment observations are explicitly attributed below; this is not a live deployment monitor.
 
+## S-405c account channels and SMS verification
+
+[Account channel service and migration](foundation/S405C_ACCOUNT_CHANNELS.md) are implemented on `feature/s405c-account-channels`, based on merged PR #38 (`42ae818`). Account settings separately track pending/verified/revoked phones and emails, with SMS proof/revoke/reverify and privacy/expiry cleanup. Email remains pending; reusable guest claims follow in S-405d. One additive migration brings totals to 110 migrations / 24 Foundation tables. No live migration/message/deployment performed; DEV acceptance pending.
+
 ## S-405b owned-profile exchange
+
+PR #38 is merged at `42ae818`; live DEV acceptance remains unverified.
 
 [Implementation and DEV checks](foundation/S405B_PROFILE_EXCHANGE.md) are on `feature/s405b-profile-exchange`, based on merged PR #37 (`8fe9117`). Eligible signed-in users select an owned profile or create an unpublished card, then confirm reciprocal saving without SMS. Existing account links are reused and private history preserved. No migration; 109 migrations / 20 foundation tables remain. Local and CI evidence is recorded in the PR. Not merged/deployed; live DEV acceptance pending. Account-channel registry and email remain S-405c/d.
 

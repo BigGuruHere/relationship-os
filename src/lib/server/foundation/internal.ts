@@ -8,6 +8,7 @@ type Boundary = {
 	ownerUserId: string;
 	vaultId?: string;
 	mode:
+		| 'ACCOUNT_CHANNEL'
 		| 'EXCHANGE'
 		| 'EXCHANGE_LOOKUP'
 		| 'EXCHANGE_BUDGET'
@@ -215,6 +216,18 @@ export function guardFoundationQuery(model: string | undefined, operation: strin
 		return args;
 	}
 	if (!scope?.ownerUserId) throw new FoundationDenied();
+    // Account channels have account custody, never a relationship vault or cross-account lookup.
+    if(model.startsWith('FoundationAccountChannel')) {
+      if(scope.mode!=='ACCOUNT_CHANNEL' || !['findFirst','findMany','count','create','updateMany','deleteMany'].includes(operation)) throw new FoundationDenied();
+      const relations=new Set(models.get(model)!.fields.filter(f=>f.kind==='object').map(f=>f.name));
+      forbidKeys(args,relations);if(args.include) throw new FoundationDenied();
+      if(operation==='create') {
+        if(args.data.ownerUserId && args.data.ownerUserId!==scope.ownerUserId) throw new FoundationDenied();
+        return {...args,data:{...args.data,ownerUserId:scope.ownerUserId}};
+      }
+      if(args.data?.ownerUserId!==undefined) throw new FoundationDenied();
+      return {...args,where:{AND:[args.where || {},{ownerUserId:scope.ownerUserId}]}};
+    }
 	// Global metadata lookup is confined to exact claim capabilities or privacy dependency IDs.
 	if (scope.mode === 'EXCHANGE_LOOKUP') {
 		const where = args?.where ?? {};

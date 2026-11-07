@@ -37,7 +37,8 @@ test('P-306 owner creates one fresh foundation login for DEV', { timeout: 120000
 		await socket.start();
 		for (const name of [
 			'20261107010000_s402_exchange_claims',
-			'20261107020000_s402b_exchange_service'
+			'20261107020000_s402b_exchange_service',
+            '20261107030000_s405c_account_channels'
 		]) {
 			await db.exec(await readFile('prisma/migrations/' + name + '/migration.sql', 'utf8'));
 		}

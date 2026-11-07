@@ -133,3 +133,8 @@ S-403 adds a fixed exchange auth return and encrypted browser continuation. New-
 ## Accepted account assurance correction, 2026-11-07
 
 [S-405](foundation/S405_ACCOUNT_CHANNELS_AND_EXCHANGE.md) separates account-owned channel assurance from vault-owned account associations and exchange receipts. Authenticated owned-profile confirmation needs no channel challenge. A guest claim needs its exact continuation plus usable proof for a channel submitted there. Neither authority grants private-note access, a mutual Connection, ongoing updates or account merging. Account registry/verification/dispatch persistence is planned, not implemented by S-405a. Existing SMS, crypto, session checks, lifecycle locks and profile UI are reused. No existing email/profile/OAuth data is silently backfilled as verified. Account-channel deletion and vault erasure are distinct operations; legacy Brokerage remains unchanged.
+
+
+## S-405c account-owned channel boundary
+
+[Account channels](foundation/S405C_ACCOUNT_CHANNELS.md) add encrypted account custody independent of relationship vaults, a restricted ACCOUNT_CHANNEL query scope, persistent proof/challenge/outbox history and database-enforced current verified-channel exclusivity. Session/root lifecycle and shared exchange locks/budgets are reused. Vault erasure does not erase account channels; suspension cancels pending delivery. This is feature-branch implementation, not a deployment. Guest reuse/email/Google proof remain S-405d.

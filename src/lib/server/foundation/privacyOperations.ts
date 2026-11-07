@@ -5,6 +5,7 @@ import { decrypt } from '$lib/crypto';
 import { FoundationDenied, runFoundationBoundary } from './internal';
 import { lockFoundationAccount } from './provisioning';
 import { lockExchanges, exchangeScope } from './exchangeAuthority';
+import { maintainAccountChannelDelivery } from './accountChannels';
 import { removeExchangeDependencies } from './exchangePrivacy';
 
 type Root = { ownerUserId: string; vaultId: string };
@@ -70,6 +71,7 @@ export function inspectFoundationPrivacy(ownerUserId: string) {
 export function suspendFoundationPrivacy(ownerUserId: string) {
 	return withPrivacyRoot(ownerUserId, async (tx, root, lifecycle) => {
 		await removeExchangeDependencies(tx, ownerUserId, false);
+        await maintainAccountChannelDelivery(tx,ownerUserId,true);
 		if (lifecycle.vault === 'DELETING') throw new FoundationDenied();
 		const transition = lifecycle.enrollment !== 'SUSPENDED';
 		if (transition) {
@@ -380,6 +382,7 @@ export function expireFoundationExchanges(ownerUserId: string) {
 	return withPrivacyRoot(ownerUserId, (tx, root) =>
 		exchangeScope(root, async () => {
 			const now = new Date();
+            await maintainAccountChannelDelivery(tx,ownerUserId);
 			const deliveries = await tx.foundationExchangeDispatch.updateMany({
 				where: { expiresAt: { lte: now }, status: { in: ['QUEUED', 'FAILED', 'SENDING'] } },
 				data: { status: 'EXPIRED', payloadEnc: null, leaseToken: null, leaseUntil: null }

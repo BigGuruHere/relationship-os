@@ -17,12 +17,14 @@ const vite = await createServer({
 			enforce: 'pre',
 			resolveId(id) {
 				if (id.endsWith('/core/contactCapture')) return '\0capture';
+                if (id.endsWith('/foundation/accountChannels')) return '\0channels';
                 if (id.endsWith('/foundation/devPilotGate')) return '\0gate';
 				if (id.endsWith('/foundation/exchangeClaims')) return '\0claims';
 				if (id.endsWith('/foundation/provisioning')) return '\0domain';
 			},
 			load(id) {
 				if (id === '\0capture') return `export async function publishedCaptureProfile(){return {id:'target',userId:'mark',slug:'mark',displayName:'Mark'};} export async function capturePrivateContact(){throw Error('unexpected guest capture');}`;
+                if(id==='\0channels') return `export async function listAccountChannels(){return [{id:'phone',type:'PHONE',masked:'•••• 0000',status:globalThis.channelVerified?'VERIFIED':'PENDING'}];} export async function addAccountChannel(){return 'phone';} export async function requestAccountChannelCode(){return {status:'QUEUED',challengeId:'account-challenge'};} export async function dispatchAccountChannelCode(){return 'SENT';} export async function verifyAccountChannelCode(...a){globalThis.accountVerifyArgs=a;globalThis.channelVerified=true;return 'VERIFIED';} export async function revokeAccountChannel(){} export async function eraseRevokedAccountChannel(){}`;
                 if (id === '\0gate') return `export function exchangeBrowserEnabled(){return true;}`;
 				if (id === '\0domain') return `export async function accountDomain(){return 'ACTIVE';}`;
 				if (id === '\0claims')
@@ -67,6 +69,15 @@ try {
       back.saveProfileExchangeReturn(c,ev.url,'betty','mark');
       assert.equal(back.profileExchangeReturn(c,'betty'),'/u/mark/share-details');
       assert.equal(back.profileExchangeReturn(c,'other'),null);
+    });
+    await test('account channel settings refuse foreign origins and preserve the exact entered code',async()=>{
+      const settings=await vite.ssrLoadModule('/src/routes/settings/channels/+page.server.ts');
+      const c=cookies();
+      assert.equal((await settings.actions.default(event(c,{intent:'send',channelId:'phone'},'https://evil.invalid'))).status,403);
+      const sent=await settings.actions.default(event(c,{intent:'send',channelId:'phone'}));
+      assert.equal(sent.challengeId,'account-challenge');
+      const checked=await settings.actions.default(event(c,{intent:'verify',channelId:'phone',challengeId:sent.challengeId,code:'005321'}));
+      assert.equal(checked.message,'Phone number verified.');assert.equal(globalThis.accountVerifyArgs[2],'005321');
     });
 	await test('continuation is browser-bound, tamper-resistant and absent from auth URLs', () => {
 		const c = cookies(),

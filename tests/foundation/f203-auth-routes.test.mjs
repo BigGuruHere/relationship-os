@@ -11,8 +11,8 @@ for (const name of ['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET', 'OAUTH_REDIRECT_
 let state;
 globalThis.__f203routes = {};
 const mocks = {
-	db: `export const prisma = new Proxy({}, {get:(_,k)=>globalThis.__f203routes.db[k]});`,
-	'server/foundation/provisioning': `export async function provisionAccountForSession(id){globalThis.__f203routes.calls.push('provision:'+id); if(globalThis.__f203routes.fail) throw Error('provisioning failed');}`,
+	db: `export const prisma = new Proxy({}, {get:(_,k)=>k==='$transaction'?async fn=>fn(globalThis.__f203routes.db):globalThis.__f203routes.db[k]});`,
+	'server/foundation/provisioning': `export async function admitDevExchangeSignup(){throw Error('Unexpected DEV admission');} export async function provisionAccountForSession(id){globalThis.__f203routes.calls.push('provision:'+id); if(globalThis.__f203routes.fail) throw Error('provisioning failed');}`,
 	'leads/link': `export async function linkLeadsForUser(id){globalThis.__f203routes.calls.push('claim:'+id);} export const linkLeadsForUserFlexible=linkLeadsForUser;`,
 	'server/userEmail': `export async function findUserByEmail(){return globalThis.__f203routes.register?null:{id:'account',passwordHash:globalThis.__f203routes.hash};} export const decryptUserEmail=()=> 'test@example.test'; export const encryptedUserEmailFields=()=>({}); export async function setUserEmail(){}`,
 	'server/profiles': `export async function ensureDefaultProfile(){}`,

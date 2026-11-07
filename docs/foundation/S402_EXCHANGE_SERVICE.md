@@ -31,7 +31,7 @@ Delivery requires all of the following in the executing server environment:
 - `RELISH_EXCHANGE_TEST_PHONES`, a comma-separated allowlist of canonical test mobile numbers.
 - Existing `TELNYX_API_KEY` and `RELISH_DORIAN_SMS_NUMBER` plus the existing encryption/MAC configuration.
 
-No routes currently call the new writer or dispatcher. No automatic worker is started. An explicitly authorized live DEV test send and sender configuration check are still required before enabling browser delivery.
+At the S-402b merge, no routes called the writer or dispatcher. The subsequent [S-403 browser branch](S403_EXCHANGE_BROWSER.md) adds explicit opt-in DEV adapters. No automatic worker is started. An explicitly authorized live DEV test send and sender configuration check are still required before enabling browser delivery.
 
 For this bounded pilot, a database-wide exchange advisory lock serializes request, dispatch, settlement and privacy controls. Account locks are sorted, followed by vault and profile checks. Session revocation and profile withdrawal serialize with use. The transaction holds these locks through the existing 12-second provider timeout; this deliberately limits throughput and can delay privacy controls. Revisit before a wider cohort. Real PostgreSQL CI exercises concurrent connections.
 

@@ -1,3 +1,4 @@
+import { EXCHANGE_RETURN } from '$lib/server/exchangeOnboarding';
 // src/routes/auth/login/+page.server.ts
 // PURPOSE: verify credentials and set a new session cookie
 // SECURITY:
@@ -70,7 +71,7 @@ export const actions: Actions = {
     // New registrations create the profile atomically, so this is a legacy recovery path.
     try {
       await ensureDefaultProfile(user.id, { displayName: emailInput.split('@')[0],
-        ...(next === PROFILE_ONBOARDING_RETURN ? { isPublished: false } : {}) });
+        ...((next === PROFILE_ONBOARDING_RETURN || next === EXCHANGE_RETURN) ? { isPublished: false } : {}) });
     } catch (e) {
       console.warn('Could not provision missing default profile after login:', e);
     }
@@ -84,7 +85,7 @@ export const actions: Actions = {
     }
 
     // Profile continuation skips legacy claims. Existing Network and ordinary login keep their flow.
-    if (next === PROFILE_ONBOARDING_RETURN) {
+    if ((next === PROFILE_ONBOARDING_RETURN || next === EXCHANGE_RETURN)) {
       throw redirect(303, finishProfileAuth(cookies, url, next, user.id));
     }
 

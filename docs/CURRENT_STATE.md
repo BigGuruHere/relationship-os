@@ -1,10 +1,14 @@
 # Relish: Current State and Open Work
 
-Status: living snapshot updated **2026-11-07**. Foundation baseline is development `477adb9` (PR #31). Environment observations are explicitly attributed below; this is not a live deployment monitor.
+Status: living snapshot updated **2026-11-07**. Foundation baseline is development `dd1d7d0` (PR #32). Environment observations are explicitly attributed below; this is not a live deployment monitor.
+
+## S-403 browser integration
+
+Implemented on `feature/s403-exchange-browser` from development `dd1d7d0`. [Browser flow and DEV acceptance](foundation/S403_EXCHANGE_BROWSER.md) connects supported exchanges through password/Google auth to SMS verification and reciprocal My People saving. Browser activation defaults off behind an explicit DEV flag. Owner setup supports two generated logins; a separate two-email allowlist can admit genuinely new DEV signups atomically. Ordinary capture and public signup retain their prior cohort policy. No new migration, live SMS or deployment is claimed. Automated results are recorded in the PR; live mobile/provider acceptance remains pending.
 
 ## S-402b SMS verification and settlement
 
-Implemented on `feature/s402b-sms-claims` from development `477adb9`. The [service and operations guide](foundation/S402_EXCHANGE_SERVICE.md) records session/exchange-bound SMS proof, encrypted outbox, persistent budgets, reciprocal private card/evidence copies, and inbound/outbound privacy cleanup. One additive migration brings the schema to 109 migrations / 20 foundation tables. Existing browser flows are unchanged; S-403 will wire them to this service. Controlled DEV SMS is limited to explicitly allowlisted Australian mobiles. No live delivery, deployment, enrollment or production promotion is claimed. Local validation passed 34 focused checks and 70 regressions, with zero Svelte errors/warnings. PostgreSQL CI results are recorded in the PR.
+Merged through PR #32 at development `dd1d7d0`. The [service and operations guide](foundation/S402_EXCHANGE_SERVICE.md) records session/exchange-bound SMS proof, encrypted outbox, persistent budgets, reciprocal private card/evidence copies, and inbound/outbound privacy cleanup. One additive migration brings the schema to 109 migrations / 20 foundation tables. The S-403 feature branch adds the browser adapter; runtime activation remains an explicit DEV operator choice. Controlled DEV SMS is limited to explicitly allowlisted Australian mobiles. No live delivery, deployment, enrollment or production promotion is claimed. Local validation passed 34 focused checks and 70 regressions, with zero Svelte errors/warnings. PostgreSQL CI results are recorded in the PR.
 
 ## S-402a exchange persistence
 

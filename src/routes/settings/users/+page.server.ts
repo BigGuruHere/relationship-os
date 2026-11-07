@@ -29,11 +29,11 @@ export const load: PageServerLoad = async ({ locals, url, setHeaders }) => {
   });
   // SECURITY: Decrypt email only on this owner-restricted page, never in common layout data.
   const pilotEnabled = devPilotEnabled(locals, url.origin);
-  const pilot = pilotEnabled ? await prisma.user.findFirst({
+  const pilots = pilotEnabled ? await prisma.user.findMany({
     where: { id: { startsWith: DEV_PILOT_ID_PREFIX } },
     select: { email_Enc: true }
-  }) : null;
-  return { pilotEnabled, pilotEmail: pilot ? decryptUserEmail(pilot.email_Enc) : null,
+  }) : [];
+  return { pilotEnabled, pilotEmail: pilots[0] ? decryptUserEmail(pilots[0].email_Enc) : null, pilotEmails: pilots.map(p=>decryptUserEmail(p.email_Enc)),
     users: users.map(user => ({ id: user.id, role: user.role,
     email: decryptUserEmail(user.email_Enc) ?? '(no email)',
     createdAt: user.createdAt.toISOString(),
@@ -52,7 +52,7 @@ export const actions: Actions = {
       return fail(400, { error: 'Use a test password of 16 to 128 characters.' });
     }
     try {
-      const { email } = await createDevPilotAccount(locals, url.origin, await hashPassword(password));
+      const { email } = await createDevPilotAccount(locals, url.origin, await hashPassword(password), form.get('pilotSlot') === '2' ? 2 : 1);
       return { success: 'DEV foundation test account created.', pilotEmail: email };
     } catch (e) {
       if (isHttpError(e)) throw e;

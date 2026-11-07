@@ -123,6 +123,11 @@ export async function requestExchangeCode(
 	if (!uuid.test(requestId) || !clientAddress || clientAddress.length > 200)
 		throw new FoundationDenied();
 	return withClaim(locals, continuation, async (tx, e, actor) => {
+		// Scrub dormant expired outbox payloads for this source owner before another send.
+		await tx.foundationExchangeDispatch.updateMany({
+			where: { expiresAt: { lte: new Date() }, status: { in: ['QUEUED', 'FAILED', 'SENDING'] } },
+			data: { status: 'EXPIRED', payloadEnc: null, leaseToken: null, leaseUntil: null }
+		});
 		if (e.status === 'SETTLED') return { status: 'SETTLED' as const };
 		const sessionHash = claimMac(actor.sessionId, 'session');
 		const retry = await tx.foundationExchangeChallenge.findFirst({

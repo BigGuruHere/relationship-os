@@ -1,7 +1,7 @@
 <script lang="ts">
   // PURPOSE: Owner-facing form for account role and capability grants.
   import { enhance } from '$app/forms';
-  export let data: { pilotEnabled: boolean; pilotEmail: string | null; users: { id: string; email: string; role: string; grants: string[]; createdAt: string }[] };
+  export let data: { pilotEnabled: boolean; pilotEmails: (string | null)[]; pilotEmail: string | null; users: { id: string; email: string; role: string; grants: string[]; createdAt: string }[] };
   export let form: { error?: string; success?: string; pilotEmail?: string } | null;
 </script>
 
@@ -17,9 +17,12 @@
       {#if form?.pilotEmail || data.pilotEmail}
         <p>Sign in from a private window with <strong>{form?.pilotEmail || data.pilotEmail}</strong> and the password you chose.</p>
         <p>Open My Profiles and publish the test profile when you’re ready to scan its QR code.</p>
-      {:else}
-        <p>Create one fresh test login for this DEV database.</p>
+      {/if}
+      {#each data.pilotEmails as email}<p>DEV test login: <strong>{email}</strong></p>{/each}
+      {#if data.pilotEmails.length < 2}
+        <p>Create up to two fresh test logins for this DEV database.</p>
         <form method="POST" action="?/createFoundationTest" use:enhance>
+          <input type="hidden" name="pilotSlot" value={data.pilotEmails.length ? '2' : '1'} />
           <label>Test password
             <input type="password" name="pilotPassword" minlength="16" maxlength="128" autocomplete="new-password" required />
           </label>

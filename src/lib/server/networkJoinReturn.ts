@@ -10,6 +10,7 @@ export function safeNetworkJoinReturn(raw: string | null | undefined): string | 
 // IT: Add exactly one profile-onboarding destination without broadening Network redirects.
 // SECURITY: No arbitrary paths, query parameters, external origins or encoded URLs are accepted.
 export function safeAuthReturn(raw: string | null | undefined): string | null {
+  if (raw === '/exchange/claim') return raw;
   if (raw === '/settings/profile?onboarding=1') return raw;
   return safeNetworkJoinReturn(raw);
 }

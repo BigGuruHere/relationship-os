@@ -1,4 +1,4 @@
-import { saveExchange, readExchange, EXCHANGE_RETURN } from '$lib/server/exchangeOnboarding';
+import { saveExchange, readExchange, clearExchange, EXCHANGE_RETURN } from '$lib/server/exchangeOnboarding';
 import { captureFoundationExchange } from '$lib/server/foundation/capture';
 import { accountDomain } from '$lib/server/foundation/provisioning';
 import { exchangeBrowserEnabled } from '$lib/server/foundation/devPilotGate';
@@ -61,7 +61,11 @@ export const actions: Actions = {
       if(supported && exchangeBrowserEnabled(locals,url.origin) && await accountDomain(profile.userId)==='ACTIVE') {
         const token = await captureFoundationExchange(profile.id,input);
         if(token) saveExchange(cookies,url,token,profile.id);
-      } else await capturePrivateContact(profile,input);
+      } else {
+        await capturePrivateContact(profile,input);
+        // A new ordinary capture must not offer proof for an older submission to this profile.
+        if(readExchange(cookies)?.profileId===profile.id) clearExchange(cookies);
+      }
     } catch (e) {
       if (isHttpError(e)) return fail(e.status, { error: e.body.message, values });
       // Do not log the visitor payload or database error objects.

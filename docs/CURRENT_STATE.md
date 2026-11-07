@@ -1,10 +1,14 @@
 # Relish: Current State and Open Work
 
-Status: living snapshot updated **2026-11-07**. Foundation baseline is development `0b3444a` (PR #33). Environment observations are explicitly attributed below; this is not a live deployment monitor.
+Status: living snapshot updated **2026-11-07**. Foundation baseline is development `d19c12c` (PR #34). Environment observations are explicitly attributed below; this is not a live deployment monitor.
+
+## S-403 pre-SMS diagnostic follow-up
+
+The operator reports that Send still returns a generic service 400, with no SMS, after the native-form fix. Its live cause remains unconfirmed. `fix/exchange-send-diagnostics` adds sanitized operation/reason logging and an on-page support reference, plus canonical allowlist comparison. Tests confirm existing local-AU normalization. [Diagnostic operation](foundation/S403_SEND_DIAGNOSTICS.md) explains the next single DEV reproduction and safe log collection. No migration, live send or account-state change.
 
 ## S-403 DEV acceptance fixes
 
-On 2026-11-07 the operator reported successful DEV deployment and capture into Mark's People, but blocked verification and Continue later forms. Feature branch `fix/profile-publish-exchange-origin` fixes the native form referrer-policy/origin conflict and adds prominent profile publication actions. No migration or live send. [Fixes and log diagnosis](foundation/S403_DEV_FIXES.md) records tests, direct migration connection guidance and the separate legacy OAuth warning. Live reciprocal SMS acceptance remains pending.
+On 2026-11-07 the operator reported successful DEV deployment and capture into Mark's People, but blocked verification and Continue later forms. PR #34 merged at `d19c12c`; it fixes the native form referrer-policy/origin conflict and adds prominent profile publication actions. No migration or live send. [Fixes and log diagnosis](foundation/S403_DEV_FIXES.md) records tests, direct migration connection guidance and the separate legacy OAuth warning. Live reciprocal SMS acceptance remains pending.
 
 ## S-403 browser integration
 

@@ -32,3 +32,7 @@ References: [MDN referrer policy and Origin](https://developer.mozilla.org/en-US
 Focused route, profile-onboarding and multiple-profile checks pass locally; Svelte check reports zero errors/warnings. Null/foreign origins remain blocked. A Chromium fixture renders the actual Svelte screens and calls the real claim route with intercepted provider/domain services. It reproduces the old null-Origin error, checks corrected Send and Continue later, and verifies that the banner submits unsaved editor values. A dedicated CI job installs Chromium and runs this fixture; local Chromium launch was blocked by sandbox socket restrictions. Exact CI results are recorded in the PR.
 
 Retest on DEV after merge/deployment: refresh the claim page, request one approved SMS, verify the code and check both People lists. Check Continue later, publish a draft using its banner and reopen its QR. Record actual deployed SHA and outcomes. Live SMS acceptance remains unconfirmed until that operator test. Rollback is application-only; no schema change or data backfill.
+
+## Follow-up report
+
+PR #34 merged at `d19c12c`. The operator subsequently reports a later service 400 before SMS. The local/international number difference is already normalized by the service. The [send diagnostic follow-up](S403_SEND_DIAGNOSTICS.md) adds correlated safe logs; the remaining live cause is not yet established.

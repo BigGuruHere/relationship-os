@@ -90,3 +90,5 @@ Use the [developer guide](DEVELOPER_GUIDE.md) for PR evidence. Stages 4-7 get a 
 | 5-7 | Direction and gates only | No | No | No | Not deployed |
 
 S-403 DEV acceptance correction (2026-11-07): operator confirmed deployment and one-way intake, but claim native forms failed origin validation. `fix/profile-publish-exchange-origin` corrects referrer policy and improves publication visibility. Focused regressions and native Chromium CI cover the fix; no migration, schema rollback or live send. See [acceptance fixes and operational diagnosis](S403_DEV_FIXES.md). Both-direction live SMS acceptance remains pending.
+
+S-403 pre-SMS follow-up (2026-11-07): after PR #34 merged, the operator still reports a generic service failure before SMS. Live cause is unconfirmed. `fix/exchange-send-diagnostics` adds fixed reason/operation logging with page references and canonical configured-phone comparison. Focused privacy/normalization/service tests plus CI provide instrumentation acceptance; the next DEV event is still needed for diagnosis. No migration or schema rollback. See [send diagnostics](S403_SEND_DIAGNOSTICS.md).

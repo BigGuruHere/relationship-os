@@ -447,6 +447,27 @@ CREATE TRIGGER s402_fail_settlement BEFORE UPDATE ON "FoundationExchange" FOR EA
 				/Invalid exchange mutation/
 			);
 		});
+		await t.test(
+			'local AU contact and formatted allowlist share one canonical destination',
+			async () => {
+				const f = await fixture('0491579999');
+				process.env.RELISH_EXCHANGE_TEST_PHONES = '  +61 491 579 999  ';
+				await f.request();
+				assert.equal((await f.dispatch()).status, 'SENT');
+				assert.equal(sent.at(-1).to, '+61491579999');
+			}
+		);
+		await t.test(
+			'a blocked destination emits a safe typed reason and never calls the provider',
+			async () => {
+				const f = await fixture();
+				await f.request();
+				process.env.RELISH_EXCHANGE_TEST_PHONES = '';
+				const before = sent.length;
+				await assert.rejects(f.dispatch(), (e) => e.reason === 'DESTINATION_NOT_ALLOWED');
+				assert.equal(sent.length, before);
+			}
+		);
 	} finally {
 		globalThis.fetch = originalFetch;
 		if (prisma) await prisma.$disconnect();

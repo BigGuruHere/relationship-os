@@ -1,7 +1,7 @@
 <script lang="ts">
 	// One verification task follows the existing exchange/signup experience.
 	export let data;
-	export let form;
+	export let form: { error?: string; reference?: string; sent?: boolean } | null;
 </script>
 
 <svelte:head
@@ -29,6 +29,7 @@
 			privately in each person’s My People.
 		</p>
 		{#if form?.error}<p role="alert">{form.error}</p>{/if}
+		{#if form?.reference}<p class="support-reference">Support reference: {form.reference}</p>{/if}
 		{#if form?.sent}<p role="status">Code sent. Check your messages.</p>{/if}
 		{#if data.codeRequested || form?.sent}
 			<form method="POST">

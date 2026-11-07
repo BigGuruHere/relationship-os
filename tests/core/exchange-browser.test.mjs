@@ -21,7 +21,7 @@ const vite = await createServer({
 				if (id === '\0gate') return `export function exchangeBrowserEnabled(){return true;}`;
 				if (id === '\0domain') return `export async function accountDomain(){return 'ACTIVE';}`;
 				if (id === '\0claims')
-					return `export async function requestExchangeCode(...a){globalThis.claimArgs=a;return {status:'QUEUED',challengeId:'challenge'};} export async function dispatchExchangeCode(){return {status:'SENT'};} export async function verifyExchangeCode(...a){globalThis.verifyArgs=a;return {status:'SETTLED',personId:'private-person'};}`;
+					return `export async function requestExchangeCode(...a){globalThis.claimArgs=a;if(globalThis.claimFailure)throw globalThis.claimFailure;return {status:'QUEUED',challengeId:'challenge'};} export async function dispatchExchangeCode(){return {status:'SENT'};} export async function verifyExchangeCode(...a){globalThis.verifyArgs=a;return {status:'SETTLED',personId:'private-person'};}`;
 			}
 		}
 	]
@@ -104,6 +104,47 @@ try {
 		});
 		assert.equal((await page.actions.default(e)).status, 415);
 		assert.equal((await page.actions.default(event(c, { code: 'x'.repeat(3000) }))).status, 413);
+	});
+	await test('failures expose a reference and emit fixed reasons without private values', async () => {
+		const { ExchangeDenied, reportExchangeFailure } = await vite.ssrLoadModule(
+			'/src/lib/server/foundation/exchangeDiagnostics.ts'
+		);
+		const c = cookies();
+		flow.saveExchange(c, new URL('https://dev.relish.live'), 'e'.repeat(64), 'private-profile');
+		const original = console.error;
+		const lines = [];
+		console.error = (line) => lines.push(line);
+		try {
+			globalThis.claimFailure = new ExchangeDenied('DESTINATION_NOT_ALLOWED');
+			const response = await page.actions.default(event(c, { intent: 'send' }));
+			assert.equal(response.status, 400);
+			assert.match(response.data.reference, /^[0-9a-f-]{36}$/);
+			const log = JSON.parse(lines[0]);
+			assert.equal(log.reference, response.data.reference);
+			assert.equal(log.reason, 'DESTINATION_NOT_ALLOWED');
+			assert.equal(log.operation, 'request');
+			reportExchangeFailure(
+				'request',
+				Object.assign(new Error('private SQL secret phone +61400000000'), {
+					code: 'P2028',
+					token: 'secret',
+					phone: '+61400000000'
+				})
+			);
+			const safe = JSON.parse(lines[1]);
+			assert.equal(safe.code, 'P2028');
+			assert.doesNotMatch(
+				lines.join(' '),
+				/secret|61400000000|private-profile|betty|session|eeeeeeee/
+			);
+			assert.deepEqual(
+				Object.keys(log).sort(),
+				['component', 'reference', 'operation', 'reason', 'code', 'category'].sort()
+			);
+		} finally {
+			console.error = original;
+			delete globalThis.claimFailure;
+		}
 	});
 } finally {
 	await vite.close();

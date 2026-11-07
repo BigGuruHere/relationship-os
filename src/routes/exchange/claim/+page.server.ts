@@ -1,3 +1,4 @@
+import { reportExchangeFailure, ExchangeDenied } from '$lib/server/foundation/exchangeDiagnostics';
 import { exchangeBrowserEnabled } from '$lib/server/foundation/devPilotGate';
 // Same-origin forms are the only browser entry to proof consumption. No capability appears in URLs.
 import { fail, redirect } from '@sveltejs/kit';
@@ -55,6 +56,7 @@ export const actions: Actions = {
 			return fail(400, {
 				error: 'This exchange has expired. Share your details again to continue.'
 			});
+		let operation: 'request' | 'dispatch' | 'verify' = 'request';
 		try {
 			// Bounded per-owner expiry maintenance runs before any new delivery request.
 			// This browser adapter calls only the reviewed service, never a privacy authority constructor.
@@ -80,10 +82,16 @@ export const actions: Actions = {
 					locals.user.id,
 					locals.sessionId
 				);
+				operation = 'dispatch';
 				const delivery = await dispatchExchangeCode(locals, claim.token, issued.challengeId);
+				const reference =
+					delivery.status === 'SENT'
+						? undefined
+						: reportExchangeFailure('dispatch', new ExchangeDenied('DELIVERY_FAILED'));
 				return delivery.status === 'SENT'
 					? { sent: true }
 					: fail(503, {
+							reference,
 							error: 'The code could not be delivered. You can retry or continue later.'
 						});
 			}
@@ -94,6 +102,7 @@ export const actions: Actions = {
 				claim.sessionId !== locals.sessionId
 			)
 				return fail(400, { error: 'Request a code from this session first.' });
+			operation = 'verify';
 			const result = await verifyExchangeCode(
 				locals,
 				claim.token,
@@ -111,7 +120,9 @@ export const actions: Actions = {
 		} catch (e) {
 			if (typeof e === 'object' && e && 'status' in e && (e as { status: number }).status === 303)
 				throw e;
+			const reference = reportExchangeFailure(operation, e);
 			return fail(400, {
+				reference,
 				error:
 					'This exchange cannot be verified now. Check your account or share your details again. Your saved contact is kept.'
 			});

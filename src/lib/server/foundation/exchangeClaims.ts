@@ -1,3 +1,4 @@
+import { ExchangeDenied } from './exchangeDiagnostics';
 // Server-only claim service. Route callers supply authenticated locals and server-resolved client address.
 import { randomInt, randomUUID } from 'node:crypto';
 import type { AppTransactionClient } from '$lib/db';
@@ -20,13 +21,13 @@ type Root = { ownerUserId: string; vaultId: string };
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
 async function lookup(tx: AppTransactionClient, continuation: string) {
-	if (!/^[0-9a-f]{64}$/.test(continuation)) throw new FoundationDenied();
+	if (!/^[0-9a-f]{64}$/.test(continuation)) throw new ExchangeDenied('CONTINUATION_INVALID');
 	const rows = await tx.foundationExchange.findMany({
 		where: { continuationHash: claimMac(continuation, 'lookup') },
 		select: { id: true, ownerUserId: true, vaultId: true },
 		take: 1
 	});
-	if (!rows[0]) throw new FoundationDenied();
+	if (!rows[0]) throw new ExchangeDenied('EXCHANGE_NOT_FOUND');
 	return rows[0];
 }
 async function withClaim<T>(
@@ -44,15 +45,13 @@ async function withClaim<T>(
 		const actor = await requireClaimSession(tx, locals);
 		const located = await lookup(tx, continuation);
 		// Self-scans cannot create a reciprocal account association.
-		if (located.ownerUserId === actor.accountId) throw new FoundationDenied();
+		if (located.ownerUserId === actor.accountId) throw new ExchangeDenied('SELF_EXCHANGE');
 		const roots = await exchangeRoots(tx, [located.ownerUserId, actor.accountId]);
 		return exchangeScope(located, async () => {
 			const exchange = await tx.foundationExchange.findFirst({ where: { id: located.id } });
-			if (
-				!exchange ||
-				(exchange.beneficiaryUserId && exchange.beneficiaryUserId !== actor.accountId)
-			)
-				throw new FoundationDenied();
+			if (!exchange) throw new ExchangeDenied('EXCHANGE_NOT_FOUND');
+			if (exchange.beneficiaryUserId && exchange.beneficiaryUserId !== actor.accountId)
+				throw new ExchangeDenied('EXCHANGE_ACCOUNT_MISMATCH');
 			// Publication withdrawal must serialize with delivery and settlement.
 			await tx.$queryRaw`SELECT "id" FROM "Profile" WHERE "id" = ${exchange.profileId} FOR UPDATE`;
 			const profile = await tx.profile.findFirst({
@@ -63,13 +62,13 @@ async function withClaim<T>(
 				where: { id: exchange.subjectId, state: 'ACTIVE' },
 				select: { id: true }
 			});
-			if (
-				!profile ||
-				!person ||
-				!['PENDING', 'BOUND', 'SETTLED'].includes(exchange.status) ||
-				(exchange.status !== 'SETTLED' && exchange.expiresAt.getTime() <= Date.now())
-			)
-				throw new FoundationDenied();
+			if (!profile) throw new ExchangeDenied('PROFILE_UNPUBLISHED');
+			if (!person) throw new ExchangeDenied('CONTACT_INACTIVE');
+			if (!['PENDING', 'BOUND', 'SETTLED'].includes(exchange.status))
+				throw new ExchangeDenied('EXCHANGE_INACTIVE');
+			if (exchange.status !== 'SETTLED' && exchange.expiresAt.getTime() <= Date.now())
+				throw new ExchangeDenied('EXCHANGE_EXPIRED');
+
 			return fn(tx, exchange, actor, roots.get(actor.accountId)!);
 		});
 	});
@@ -134,16 +133,14 @@ export async function requestExchangeCode(
 			where: { id: requestId, exchangeId: e.id }
 		});
 		if (retry) {
-			if (
-				retry.sessionHash !== sessionHash ||
-				retry.status !== 'PENDING' ||
-				retry.expiresAt.getTime() <= Date.now()
-			)
-				throw new FoundationDenied();
+			if (retry.sessionHash !== sessionHash || retry.status !== 'PENDING')
+				throw new ExchangeDenied('CHALLENGE_INVALID');
+			if (retry.expiresAt.getTime() <= Date.now()) throw new ExchangeDenied('CHALLENGE_EXPIRED');
+
 			return { status: 'QUEUED' as const, challengeId: retry.id };
 		}
-		if (e.failedAttempts >= 5 || e.sendCount >= 5 || !e.destinationEnc)
-			throw new FoundationDenied();
+		if (e.failedAttempts >= 5 || e.sendCount >= 5) throw new ExchangeDenied('ATTEMPT_LIMIT');
+		if (!e.destinationEnc) throw new ExchangeDenied('DESTINATION_UNAVAILABLE');
 		const phone = verificationPhone(
 			open('FoundationExchange', 'destinationEnc', e, e.id, e.destinationEnc)
 		);
@@ -220,7 +217,7 @@ export async function dispatchExchangeCode(
 			challenge.generation !== e.generation ||
 			challenge.status !== 'PENDING'
 		)
-			throw new FoundationDenied();
+			throw new ExchangeDenied('CHALLENGE_INVALID');
 		const dispatch = await tx.foundationExchangeDispatch.findFirst({ where: { challengeId } });
 		if (!dispatch) throw new FoundationDenied();
 		if (dispatch.status === 'SENT') return { status: 'SENT' as const };
@@ -241,10 +238,20 @@ export async function dispatchExchangeCode(
 			dispatch.payloadEnc
 		);
 		const phone = verificationPhone(payload.phone);
-		const allowed = (process.env.RELISH_EXCHANGE_TEST_PHONES ?? '').split(',').filter(Boolean);
+		// Compare canonical destinations; harmless whitespace/local AU notation in configuration is accepted.
+		let allowed: string[];
+		try {
+			allowed = (process.env.RELISH_EXCHANGE_TEST_PHONES ?? '')
+				.split(',')
+				.map((x) => x.trim())
+				.filter(Boolean)
+				.map(verificationPhone);
+		} catch {
+			throw new ExchangeDenied('TEST_PHONE_CONFIG_INVALID');
+		}
 		// Pilot sends require the existing exact DEV target/origin guard and an explicit destination allowlist.
-		if (!devPilotEnabled(locals, locals.appOrigin) || !allowed.includes(phone))
-			throw new FoundationDenied();
+		if (!devPilotEnabled(locals, locals.appOrigin)) throw new ExchangeDenied('DEV_TARGET_DISABLED');
+		if (!allowed.includes(phone)) throw new ExchangeDenied('DESTINATION_NOT_ALLOWED');
 		await tx.foundationExchangeDispatch.updateMany({
 			where: { id: dispatch.id },
 			data: {

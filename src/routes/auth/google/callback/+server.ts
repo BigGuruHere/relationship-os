@@ -1,3 +1,6 @@
+import { readExchange } from '$lib/server/exchangeOnboarding';
+import { admitDevExchangeSignup } from '$lib/server/foundation/provisioning';
+import { EXCHANGE_RETURN } from '$lib/server/exchangeOnboarding';
 import { requiredEnv } from '$lib/server/config/requiredEnv';
 // src/routes/auth/google/callback/+server.ts
 // PURPOSE: exchange code for tokens, verify ID token, upsert OAuthAccount, create first party session
@@ -181,7 +184,7 @@ export const GET: RequestHandler = async ({ url, cookies, locals, getClientAddre
     }
   }
 
-  const onboarding = next === PROFILE_ONBOARDING_RETURN;
+  const onboarding = (next === PROFILE_ONBOARDING_RETURN || next === EXCHANGE_RETURN);
   const seed = {
     displayName: typeof payload.name === 'string' && payload.name.trim()
       ? payload.name.trim() : email.split('@')[0],
@@ -193,7 +196,8 @@ export const GET: RequestHandler = async ({ url, cookies, locals, getClientAddre
     const draft = onboarding ? readProfileDraft(cookies) : null;
     // Commit the encrypted account and its initial profile together. Draft email and phone
     // are never used for credential lookup or written to the new profile.
-    const created = await prisma.user.create({
+    const created = await prisma.$transaction(async tx => {
+ const created = await tx.user.create({
       data: {
         ...encryptedUserEmailFields(email),
         person: { create: {} },
@@ -201,6 +205,9 @@ export const GET: RequestHandler = async ({ url, cookies, locals, getClientAddre
       },
       select: { id: true, profiles: { select: { id: true } } }
     });
+ if(next === EXCHANGE_RETURN && readExchange(cookies)) await admitDevExchangeSignup(tx,locals,url.origin,email,created.id);
+ return created;
+ });
     user = created;
     newProfileId = created.profiles[0]?.id;
   } else {

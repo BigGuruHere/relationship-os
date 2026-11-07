@@ -1,3 +1,8 @@
+import { saveExchange, readExchange, EXCHANGE_RETURN } from '$lib/server/exchangeOnboarding';
+import { captureFoundationExchange } from '$lib/server/foundation/capture';
+import { accountDomain } from '$lib/server/foundation/provisioning';
+import { exchangeBrowserEnabled } from '$lib/server/foundation/devPilotGate';
+import { verificationPhone } from '$lib/server/foundation/exchangeCrypto';
 import type { Actions, PageServerLoad } from './$types';
 import { fail, isHttpError, redirect } from '@sveltejs/kit';
 import { randomUUID } from 'node:crypto';
@@ -15,6 +20,7 @@ export const load: PageServerLoad = async ({ params, url, cookies, setHeaders, l
   setHeaders({ 'cache-control': 'private, no-store', 'referrer-policy': 'same-origin' });
   return { profile: { slug: profile.slug, name: profile.displayName || 'Your new contact', headline: profile.headline, avatarUrl: profile.avatarUrl },
     // IT: Save contact always arrives here; a successful prior share skips the form.
+    canClaim: readExchange(cookies)?.profileId === profile.id,
     createStep: url.searchParams.get('step') === 'create' || hasSharedContact(cookies, profile.id), isSignedIn: Boolean(locals.user),
     captureToken: issueContactCaptureToken(profile.id, browser, url.searchParams.get('via')) };
 };
@@ -27,7 +33,12 @@ export const actions: Actions = {
     const form = new URLSearchParams(body);
     // IT: Only the explicit third-screen button starts signup. It never creates another Contact.
     if (form.get('intent') === 'create-profile') {
-      await publishedCaptureProfile(params.slug);
+      const selected = await publishedCaptureProfile(params.slug);
+      const claim = readExchange(cookies);
+      if(claim?.profileId===selected.id) {
+        saveProfileDraft(cookies,url,profileDraft({name:form.get('name')||'',email:form.get('email')||'',phone:form.get('phone')||''}));
+        throw redirect(303, EXCHANGE_RETURN);
+      }
       if (locals.user) throw redirect(303, '/profiles');
       saveProfileDraft(cookies, url, profileDraft({ name: form.get('name') || '', email: form.get('email') || '', phone: form.get('phone') || '' }));
       throw redirect(303, '/auth/register?next=' + encodeURIComponent(PROFILE_ONBOARDING_RETURN));
@@ -38,11 +49,19 @@ export const actions: Actions = {
     const values = { name: form.get('name') || '', email: form.get('email') || '', phone: form.get('phone') || '' };
     if (form.get('contactConsent') !== 'yes') return fail(400, { error: 'Please confirm how your details will be used.', values });
     try { validateContactDetails(values); } catch (e) { return fail(400, { error: (e as Error).message, values }); }
+    // Self scans use the existing profile experience before creating any duplicate contact.
+    if(locals.user?.id===profile.userId) throw redirect(303,'/profiles');
     let receipt;
     try { receipt = verifyContactCaptureToken(form.get('captureToken'), profile.id, cookies.get(CAPTURE_COOKIE) || ''); }
     catch { return fail(403, { error: 'This form has expired. Reload the page and try again.', values }); }
     try {
-      await capturePrivateContact(profile, { ...values, ...receipt, captureToken: form.get('captureToken'), browser: cookies.get(CAPTURE_COOKIE)! });
+      const input = { ...values, ...receipt, captureToken: form.get('captureToken'), browser: cookies.get(CAPTURE_COOKIE)! };
+      let supported = false;
+      try { verificationPhone(values.phone); supported = true; } catch { /* Ordinary capture accepts unsupported or missing channels. */ }
+      if(supported && exchangeBrowserEnabled(locals,url.origin) && await accountDomain(profile.userId)==='ACTIVE') {
+        const token = await captureFoundationExchange(profile.id,input);
+        if(token) saveExchange(cookies,url,token,profile.id);
+      } else await capturePrivateContact(profile,input);
     } catch (e) {
       if (isHttpError(e)) return fail(e.status, { error: e.body.message, values });
       // Do not log the visitor payload or database error objects.
@@ -52,6 +71,6 @@ export const actions: Actions = {
     // IT: Set only after storage succeeds. Skip, failed submissions and honeypots never count.
     rememberContactShare(cookies, url, profile.id);
     // Never expose a Contact ID, duplicate match, private data or account-linking hint to the visitor.
-    return { shared: true, values: profileDraft(values) };
+    return { shared: true, ...(readExchange(cookies)?.profileId===profile.id ? {canClaim:true} : {}), values: profileDraft(values) };
   }
 };

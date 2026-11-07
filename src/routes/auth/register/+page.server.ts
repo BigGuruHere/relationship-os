@@ -1,3 +1,6 @@
+import { readExchange } from '$lib/server/exchangeOnboarding';
+import { admitDevExchangeSignup } from '$lib/server/foundation/provisioning';
+import { EXCHANGE_RETURN } from '$lib/server/exchangeOnboarding';
 // src/routes/auth/register/+page.server.ts
 // PURPOSE: create a user and immediately sign in
 // NOTES:
@@ -24,14 +27,14 @@ export const load: PageServerLoad = async ({ locals, url, cookies, setHeaders })
   if (locals.user) throw redirect(303, profileReturnForAccount(cookies, next, locals.user.id));
   // SECURITY: Draft data stays out of URLs and shared caches; it proves no identity.
   setHeaders({ 'cache-control': 'private, no-store', 'referrer-policy': 'same-origin' });
-  return { next, draft: next === PROFILE_ONBOARDING_RETURN ? readProfileDraft(cookies) : null };
+  return { next, draft: (next === PROFILE_ONBOARDING_RETURN || next === EXCHANGE_RETURN) ? readProfileDraft(cookies) : null };
 };
 
 export const actions: Actions = {
   default: async ({ request, cookies, locals, url }) => {
     const next = safeAuthReturn(url.searchParams.get('next'));
     if (locals.user) throw redirect(303, profileReturnForAccount(cookies, next, locals.user.id));
-    const draft = next === PROFILE_ONBOARDING_RETURN ? readProfileDraft(cookies) : null;
+    const draft = (next === PROFILE_ONBOARDING_RETURN || next === EXCHANGE_RETURN) ? readProfileDraft(cookies) : null;
     // Parse form
     const form = await request.formData();
     const emailInput = String(form.get('email') || '');
@@ -53,7 +56,8 @@ export const actions: Actions = {
     let userId: string;
     let profileId: string | undefined;
     try {
-      const created = await prisma.user.create({
+      const created = await prisma.$transaction(async tx => {
+ const created = await tx.user.create({
         data: {
           passwordHash,
           ...encryptedUserEmailFields(email),
@@ -67,14 +71,17 @@ export const actions: Actions = {
               slug: `p-${randomUUID()}`,
               displayName: draft?.name || email.split('@')[0],
               // IT: The visitor reviews and explicitly publishes their own profile in the editor.
-              ...(next === PROFILE_ONBOARDING_RETURN ? { isPublished: false } : {})
+              ...((next === PROFILE_ONBOARDING_RETURN || next === EXCHANGE_RETURN) ? { isPublished: false } : {})
             }
           }
         },
         select: { id: true, profiles: { select: { id: true } } }
       });
+ if(next === EXCHANGE_RETURN && readExchange(cookies)) await admitDevExchangeSignup(tx,locals,url.origin,email,created.id);
+ return created;
+ });
       userId = created.id;
-      if (next === PROFILE_ONBOARDING_RETURN) profileId = created.profiles[0].id;
+      if ((next === PROFILE_ONBOARDING_RETURN || next === EXCHANGE_RETURN)) profileId = created.profiles[0].id;
     } catch (e: unknown) {
       // The email index is unique, including simultaneous registration attempts.
       const code = typeof e === 'object' && e && 'code' in e ? (e as { code?: string }).code : null;
@@ -89,7 +96,7 @@ export const actions: Actions = {
     // IT: post auth linking - claim and link any pending leads for this verified email
     try {
       // Profile signup does not initiate the separate legacy lead-claim flow.
-      if (next !== PROFILE_ONBOARDING_RETURN) await linkLeadsForUser(userId, email);
+      if ((next !== PROFILE_ONBOARDING_RETURN && next !== EXCHANGE_RETURN)) await linkLeadsForUser(userId, email);
     } catch (e) {
       // Do not block registration if linking fails
       console.warn('linkLeadsForUser failed after registration:', e);

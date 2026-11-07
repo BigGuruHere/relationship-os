@@ -3,6 +3,7 @@
   export let data;
   export let form: any;
   $: createStep = Boolean(form?.shared || data.createStep);
+  $: canClaim = Boolean(form?.canClaim || data.canClaim);
   $: draft = form?.values || { name: '', email: '', phone: '' };
   $: profileUrl = '/u/' + encodeURIComponent(data.profile.slug) + '?original=1';
 </script>
@@ -34,7 +35,9 @@
           <p>{draft.phone || 'Add your phone number'}</p>
         </div>
       </article>
-      {#if data.isSignedIn}
+      {#if canClaim}
+        <form method="POST"><input type="hidden" name="intent" value="create-profile" /><input type="hidden" name="name" value={draft.name} /><input type="hidden" name="email" value={draft.email} /><input type="hidden" name="phone" value={draft.phone} /><button class="primary">{data.isSignedIn ? 'Verify and save contact' : 'Create my profile and keep this contact'}</button></form>
+      {:else if data.isSignedIn}
         <a class="primary" href="/profiles">Go to My Profiles</a>
       {:else}
         <!-- SECURITY: Draft details travel in a POST, then an encrypted HttpOnly cookie, never a URL. -->
@@ -64,7 +67,7 @@
         <input id="capture-phone" name="phone" type="tel" autocomplete="tel" maxlength="40" value={form?.values?.phone || ''} />
         <div class="capture-trap" aria-hidden="true"><label for="capture-website">Leave blank</label><input id="capture-website" name="website_check" tabindex="-1" autocomplete="off" /></div>
         <label class="capture-consent"><input name="contactConsent" type="checkbox" value="yes" required /><span>I agree to share these details with {data.profile.name} for their private contact record and personal follow-up.</span></label>
-        <p class="hint">This does not create a Relish account or mutual connection, or share private notes. <a href="/legal/privacy">Privacy notice</a>.</p>
+        <p class="hint">If you join and verify your shared mobile number, the exchanged details can be saved in each person’s My People. This does not create a Relish account or mutual connection, or share private notes. <a href="/legal/privacy">Privacy notice</a>.</p>
         {#if form?.error}<p role="alert">{form.error}</p>{/if}
         {#if form?.reference}<p>Support reference: {form.reference}</p>{/if}
         <button class="primary" type="submit">Send</button>

@@ -34,6 +34,8 @@ export function normalizeContextDomainKey(value: unknown) {
 
 export function contextDomainForPathname(pathname: string): ContextDomainKey {
 	const path = String(pathname || '/');
+	// Exchange verification uses the same owner-private application boundary.
+	if (path === '/exchange/claim') return PRIVATE_DOMAIN_KEY;
 	if (path === '/people' || path.startsWith('/people/')) return PRIVATE_DOMAIN_KEY;
 	// IT: Domain selection comes from a server-owned route boundary, not from an arbitrary query parameter.
 	// IT: Pilot UI paths select custody through a trusted route prefix, never a query or cookie.

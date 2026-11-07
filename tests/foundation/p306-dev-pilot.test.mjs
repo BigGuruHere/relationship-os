@@ -414,6 +414,53 @@ test('P-306 owner creates one fresh foundation login for DEV', { timeout: 120000
 				}
 			}
 		);
+		await t.test('owner can create the second DEV fixture but cannot exceed two', async () => {
+			const before = await count('User');
+			await provision.createDevPilotAccount(owner, origin, 'fixture-only-hash', 2);
+			assert.equal(await count('User'), before + 1);
+			await assert.rejects(
+				provision.createDevPilotAccount(owner, origin, 'fixture-only-hash', 2),
+				(e) => e.status === 409
+			);
+		});
+		await t.test(
+			'new signup admission requires explicit DEV activation and credential allowlist, and rolls back atomically',
+			async () => {
+				process.env.RELISH_EXCHANGE_BROWSER_ENABLED = 'YES';
+				process.env.RELISH_EXCHANGE_REALM = 'dev-fixture';
+				process.env.RELISH_EXCHANGE_SIGNUP_EMAILS = 'signup@example.invalid';
+				const before = await totals();
+				await assert.rejects(
+					prisma.$transaction(async (tx) => {
+						await tx.user.create({ data: { id: 's403-signup', role: 'member' } });
+						await provision.admitDevExchangeSignup(
+							tx,
+							owner,
+							origin,
+							'signup@example.invalid',
+							's403-signup'
+						);
+						assert.equal(await provision.accountDomain('s403-signup', tx), 'ACTIVE');
+						throw new Error('late signup failure');
+					}),
+					/late signup failure/
+				);
+				assert.deepEqual(await totals(), before);
+				await prisma.$transaction(async (tx) => {
+					await tx.user.create({ data: { id: 's403-unlisted', role: 'member' } });
+					await provision.admitDevExchangeSignup(
+						tx,
+						owner,
+						origin,
+						'other@example.invalid',
+						's403-unlisted'
+					);
+					assert.equal(await provision.accountDomain('s403-unlisted', tx), 'LEGACY');
+				});
+				delete process.env.RELISH_EXCHANGE_BROWSER_ENABLED;
+				delete process.env.RELISH_EXCHANGE_SIGNUP_EMAILS;
+			}
+		);
 	} finally {
 		if (prisma) await prisma.$disconnect();
 		if (vite) await vite.close();

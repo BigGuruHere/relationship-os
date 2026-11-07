@@ -41,3 +41,12 @@ export function devPilotEnabled(locals: Pick<App.Locals, 'env'>, requestOrigin: 
 		return false;
 	}
 }
+
+// Browser activation is an explicit DEV-only operator choice, separate from creating a test login.
+export function exchangeBrowserEnabled(locals: Pick<App.Locals, 'env'>, origin: string) {
+	return (
+		process.env.RELISH_EXCHANGE_BROWSER_ENABLED === 'YES' &&
+		/^[a-z0-9-]{3,50}$/.test(process.env.RELISH_EXCHANGE_REALM ?? '') &&
+		devPilotEnabled(locals, origin)
+	);
+}

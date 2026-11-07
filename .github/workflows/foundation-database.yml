@@ -16,7 +16,9 @@ on:
       - 'tests/core/profile-onboarding.test.mjs'
       - 'tests/core/profile-share-selector.test.mjs'
       - 'tests/core/multi-profiles.test.mjs'
+      - 'tests/core/exchange-browser.test.mjs'
       - 'src/routes/u/**'
+      - 'src/routes/exchange/**'
       - 'src/routes/api/upload-chunk/**'
       - 'src/routes/api/transcribe-result/**'
       - 'src/routes/auth/**'
@@ -60,7 +62,7 @@ jobs:
           node-version: '22'
           cache: npm
       - run: npm ci
-      - run: node --test tests/core/profile-onboarding.test.mjs tests/core/profile-share-selector.test.mjs tests/core/multi-profiles.test.mjs
+      - run: node --test tests/core/profile-onboarding.test.mjs tests/core/profile-share-selector.test.mjs tests/core/multi-profiles.test.mjs tests/core/exchange-browser.test.mjs
       - run: node --test tests/foundation/p306-dev-pilot.test.mjs
       - run: npm run check:foundation:privacy
       - run: npm run check:foundation:notes

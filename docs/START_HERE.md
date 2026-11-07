@@ -52,6 +52,8 @@ For architecture and new-domain implementation, read these linked documents afte
 
 - [S-401 exchange design](foundation/S401_EXCHANGE_DESIGN.md) specifies reciprocal saving, verified account claims and the Stage 4 implementation slices.
 
+- [S-403 exchange browser](foundation/S403_EXCHANGE_BROWSER.md) covers signup continuation, verification forms, controlled DEV admission and device acceptance.
+
 - [S-402b exchange service](foundation/S402_EXCHANGE_SERVICE.md) covers SMS assurance, reciprocal settlement, concurrency, expiry and privacy operations.
 
 - [S-402a exchange schema](foundation/S402_EXCHANGE_SCHEMA.md) records the additive persistence, invariants and migration requirements.

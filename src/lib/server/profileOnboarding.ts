@@ -1,5 +1,6 @@
 // IT: A short-lived encrypted draft carries voluntarily entered details through signup.
 // SECURITY: This is form convenience only, never identity evidence or Contact linking authority.
+import { EXCHANGE_RETURN } from './exchangeOnboarding';
 import type { Cookies } from '@sveltejs/kit';
 import { encrypt, decrypt } from '../crypto';
 
@@ -61,6 +62,11 @@ export function profileReturnForAccount(cookies: Cookies, next: string | null, o
 }
 
 export function finishProfileAuth(cookies: Cookies, url: URL, next: string | null, ownerId: string, newProfileId?: string): string {
+  if (next === EXCHANGE_RETURN) {
+    // Bind the existing signup draft using the same ownership rules, then resume verification.
+    finishProfileAuth(cookies, url, PROFILE_ONBOARDING_RETURN, ownerId, newProfileId);
+    return EXCHANGE_RETURN;
+  }
   if (next !== PROFILE_ONBOARDING_RETURN) return next || '/';
   if (newProfileId) {
     const now = Date.now();

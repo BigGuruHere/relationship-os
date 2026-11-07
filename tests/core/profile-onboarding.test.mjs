@@ -21,7 +21,7 @@ const server = await createServer({ configFile: false, ssr: { noExternal: ['jose
       if (id.endsWith('/core/contactCapture') || id.endsWith('/core/contactCaptureToken') || id.endsWith('/core/contacts')) return '\0mock:' + id.split('/').at(-1);
     },
     load(id) {
-      if (id === '\0mock:$lib/db') return `export const prisma = new Proxy({}, {get:(_,key)=>globalThis.__onboardingDb[key]});`;
+      if (id === '\0mock:$lib/db') return `export const prisma = new Proxy({}, {get:(_,key)=>key==='$transaction' ? async fn=>fn(globalThis.__onboardingDb) : globalThis.__onboardingDb[key]});`;
       if (id === '\0mock:$lib/auth') return `export async function hashPassword(){return 'test-hash';} export async function createSession(){return {cookie:'session',expiresAt:new Date()};} export function setSessionCookie(){} export async function verifyPassword(_,p){return p==='correct';} export function clearSessionCookie(){}`;
       if (id === '\0mock:$lib/leads/link') return `export async function linkLeadsForUser(){globalThis.__onboardingClaims++;}`;
       if (id === '\0mock:$lib/server/userEmail') return `export async function findUserByEmail(email){globalThis.__onboardingLookups.push(email);return globalThis.__onboardingUser || null;} export function encryptedUserEmailFields(){return {email_Enc:'encrypted',email_Idx:'index'};} export function decryptUserEmail(){return 'account@example.test';} export async function setUserEmail(){throw Error('fixture has encrypted email');}`;
@@ -288,6 +288,13 @@ try {
     assert.equal(created.length,1);
     assert.equal(e.cookies.get(draft.PROFILE_DRAFT_COOKIE),undefined);
     assert.equal(globalThis.__onboardingClaims,before);
+    // Exchange continuation uses the same Google verification with a fixed, secret-free return.
+    returning=false;
+    start();e.cookies.set('oauth_network_next','/exchange/claim',{});
+    await assert.rejects(google.GET(e),r=>r.status===303 && r.location==='/exchange/claim');
+    assert.equal(created.at(-1).profiles.create.isPublished,false);
+    assert.equal(draft.readOwnedProfileDraft(e.cookies,'google-user','google-profile').phone,'123');
+
   });
   await test('Share and QR preview select the same owned profile and hide unpublished destinations', async () => {
     const share=await server.ssrLoadModule('/src/routes/share/+page.server.ts');

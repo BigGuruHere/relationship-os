@@ -4,7 +4,7 @@ import { randomUUID } from 'node:crypto';
 import type { AppTransactionClient } from '$lib/db';
 import { prisma } from '$lib/db';
 import { encrypt } from '$lib/crypto';
-import { devPilotEnabled, DEV_PILOT_ID_PREFIX } from './devPilotGate';
+import { devPilotEnabled, exchangeBrowserEnabled, DEV_PILOT_ID_PREFIX } from './devPilotGate';
 import { encryptedUserEmailFields } from '$lib/server/userEmail';
 import { defaultProfileData } from '$lib/server/profiles';
 import { error } from '@sveltejs/kit';
@@ -93,7 +93,8 @@ export async function prepareFoundationAccount(userId: string) {
 export async function createDevPilotAccount(
 	locals: Pick<App.Locals, 'user' | 'env'>,
 	origin: string,
-	passwordHash: string
+	passwordHash: string,
+	limit: 1 | 2 = 1
 ) {
 	if (!devPilotEnabled(locals, origin)) throw error(404, 'DEV foundation pilot unavailable.');
 	const actorId = locals.user?.id;
@@ -109,11 +110,8 @@ export async function createDevPilotAccount(
 			await tx.$queryRaw`SELECT "id" FROM "User" WHERE "id" = ${actorId} FOR UPDATE`;
 			const actor = await tx.user.findUnique({ where: { id: actorId }, select: { role: true } });
 			if (actor?.role !== 'owner') throw error(403, 'Owner access is required.');
-			const existing = await tx.user.findFirst({
-				where: { id: { startsWith: DEV_PILOT_ID_PREFIX } },
-				select: { id: true }
-			});
-			if (existing) throw error(409, 'A DEV foundation test account already exists.');
+			const existing = await tx.user.count({ where: { id: { startsWith: DEV_PILOT_ID_PREFIX } } });
+			if (existing >= limit) throw error(409, 'A DEV foundation test account already exists.');
 			await tx.user.create({
 				data: {
 					id,
@@ -212,4 +210,27 @@ export async function requireLegacyPeopleDomain(
 		const { error } = await import('@sveltejs/kit');
 		throw error(503, 'People storage is temporarily unavailable.');
 	}
+}
+
+// New-account-only DEV admission. A claim cookie alone cannot enroll an account.
+// The operator must explicitly configure at most two credential emails on the bound DEV target.
+export async function admitDevExchangeSignup(
+	tx: AppTransactionClient,
+	locals: Pick<App.Locals, 'env'>,
+	origin: string,
+	email: string,
+	userId: string
+) {
+	if (!exchangeBrowserEnabled(locals, origin)) return;
+	const allowed = (process.env.RELISH_EXCHANGE_SIGNUP_EMAILS ?? '')
+		.split(',')
+		.map((x) => x.trim().toLowerCase())
+		.filter(Boolean);
+	if (!allowed.length || allowed.length > 2 || !allowed.includes(email.toLowerCase())) return;
+	await runFoundationBoundary({ ownerUserId: userId, mode: 'PROVISION' }, async () => {
+		await lockFoundationAccount(tx, userId);
+		// Called only inside the transaction that inserts this new credential account.
+		await provisionPrivateHome(tx, userId);
+		await tx.foundationEnrollment.create({ data: { userId, state: 'ACTIVE' } });
+	});
 }

@@ -64,3 +64,7 @@ Privacy and custody are product features, not afterthoughts. Expand the service 
 ## Reciprocal exchange experience
 
 After two people exchange details, each receives those shared details in their own My People, including when the visitor joins through the exchange. A future automatic-add preference defaults to enabled. Continuing updates require separate permission. See the [exchange design](foundation/S401_EXCHANGE_DESIGN.md).
+
+## Account channels and profile exchange
+
+Accepted 2026-11-07; runtime work is staged in [S-405](foundation/S405_ACCOUNT_CHANNELS_AND_EXCHANGE.md). Existing users select an owned profile or create one, then confirm reciprocal saving without retyping or an SMS solely for profile sharing. New visitors can submit details immediately and later claim that exact submission using a verified supplied channel. Each account phone and email has independent pending/verified/revoked assurance. Adding a channel does not verify it, and proving one never verifies another. One matching proof can finish an exchange while the other supplied channel remains pending. Ordinary exchanges reuse current proof. Caller ID remains a recognition signal, with stronger checks for sensitive actions.

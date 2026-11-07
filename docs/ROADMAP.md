@@ -15,12 +15,16 @@ The authoritative detailed backlog and stage register are in [foundation impleme
 | 1 | Architecture, decisions, policy, developer guide and implementation backlog | Merged via PR #13, `d789464` |
 | 2 | New-domain primitives, auth isolation, custody and evidence proof | F-202/F-203 merged and DEV operator-confirmed; F-204 merged; F-205 merged; F-206 internal rehearsal merged through PR #19. Stage 2 DEV verification is pending. P-301 directory and person details merged through PR #20 |
 | 3 | Invited users share details, keep people and retrieve notes | P-301 through P-305 merged. P-306 internal DEV test operator-confirmed. Hosted erasure replay using the test login, closure/retention readiness, detailed device/provider coverage and cohort approval remain gates. |
-| 4 | Secure exchange claiming and directional continuing sharing | S-401 merged through PR #30. S-402 merged through PR #32; S-403 browser integration on feature branch and S-404 DEV acceptance. |
+| 4 | Secure exchange claiming and directional continuing sharing | S-403 and fixes merged through PR #36. S-405a corrects exchange/account-assurance design on feature branch; S-405b-e implementation and S-404 recovery/acceptance remain planned. |
 | 5 | Private understanding across people and relationships | Planned after evidence/correction readiness |
 | 6 | Relationship understanding from separately governed perspectives | Future gated release |
 | 7 | Cross-account discovery and approved introductions | Future gated release |
 
 Do not implement all later intelligence capabilities in stage 2. Relationship subjects and independent perspectives belong in the base design; shared relationship analysis does not need to ship with the first pilot. Brokerage stays on its current model unless separately authorised. No forced unified legacy directory is planned.
+
+## Immediate exchange correction
+
+[S-405](foundation/S405_ACCOUNT_CHANNELS_AND_EXCHANGE.md) takes priority over continuing profile updates: S-405a architecture/documentation, S-405b owned-profile confirmation, S-405c account-channel persistence and SMS lifecycle, S-405d guest reuse/email and trusted Google proof, then S-405e combined DEV acceptance. S-405a recommends Astra Medium; runtime slices recommend 6.1 Sol High. These are planned stages, not implemented features. S-404 recovery obligations remain and are incorporated in the acceptance work. The current baseline includes PR #36 at `4a4ddb2`; deployment requires separate verification.
 
 ## Parallel maintenance and validation lane
 

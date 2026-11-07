@@ -1,8 +1,14 @@
 # Relish: Current State and Open Work
 
-Status: living snapshot updated **2026-11-07**. Foundation baseline is development `1785b70` (PR #35). Environment observations are explicitly attributed below; this is not a live deployment monitor.
+Status: living snapshot updated **2026-11-07**. Foundation baseline is development `4a4ddb2` (PR #36). Environment observations are explicitly attributed below; this is not a live deployment monitor.
+
+## S-405 account channels and simpler exchange
+
+The operator requested owned-profile exchange without redundant SMS and independent reusable verification for each account phone/email. [S-405a](foundation/S405_ACCOUNT_CHANNELS_AND_EXCHANGE.md) records the accepted architecture and ordered runtime stages on `feature/account-channel-exchange`. Documentation only: the current source still requires exchange-bound SMS and has no reusable account-channel registry or working email sender. S-405b implements profile selection first; S-405c/d add channel persistence and guest/email integration. No migration, message, merge or deployment is claimed for S-405a.
 
 ## S-403 six-digit input fix
+
+PR #36 is merged at `4a4ddb2`; deployed code-entry and full reciprocal completion remain unverified.
 
 The operator's diagnostic event identified SELF_EXCHANGE, explained by signing into the card owner's account. After switching to the separate recipient account, the operator received SMS but browser pattern validation blocked code entry. `fix/exchange-code-input` preserves the six-digit regex quantifier as a Svelte string literal; the previous quoted attribute interpolated its braces and rendered `[0-9]6`. Rendered-component tests cover six digits, leading zeros and invalid lengths/text. Native Chromium now enters and submits a synthetic six-digit code. No migration, live send or credential/code logging. Full live reciprocal completion remains pending.
 

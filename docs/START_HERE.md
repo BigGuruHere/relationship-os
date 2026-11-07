@@ -15,6 +15,10 @@ Relish is a person-first Relationship Operating System. Dorian is a conversation
 
 For a quick visual or text change, read only the relevant sections and inspect the affected source files. For a cross-cutting change, read all six and inspect the current code. Avoid an unnecessarily lengthy audit of an obvious fix.
 
+## Current exchange direction
+
+Read [S-405 account channels and simpler exchange](foundation/S405_ACCOUNT_CHANNELS_AND_EXCHANGE.md) for the accepted correction to S-401: owned-profile confirmation for existing users and reusable, independently verified account phone/email channels for guest claims. S-405a is documentation only; runtime stages are listed there. Earlier S-401/S-402 documents remain evidence of the currently implemented per-exchange SMS flow.
+
 ## Relationship foundation programme
 
 For architecture and new-domain implementation, read these linked documents after the living overview:

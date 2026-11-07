@@ -2,6 +2,8 @@
 
 Status as of 2026-11-07. Initial design merged through PR #29 at development 56eec62. Phone/email revision merged through PR #30. Runtime implementation follows in S-402 through S-404. This deliverable requires zero Prisma migrations.
 
+> Direction correction, 2026-11-07: [S-405 / D-027](S405_ACCOUNT_CHANNELS_AND_EXCHANGE.md) supersedes the fresh-per-exchange proof requirement and manual form for existing users below. This document retains the historical design behind S-402/S-403. Account-owned reusable assurance and authenticated profile confirmation are planned in S-405, not implemented by its documentation stage.
+
 ## Agreed experience
 
 Mark shares a selected public card. Betty chooses Save contact and sends her details back. Mark immediately receives Betty in My People. When Betty joins or signs in through that exchange, Relish automatically saves Mark's shared card in her My People. Each receives a private record of the information exchanged. Account associations are established after the claim's verification succeeds.

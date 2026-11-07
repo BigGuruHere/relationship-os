@@ -28,7 +28,7 @@ const vite = await createServer({
                 if (id === '\0gate') return `export function exchangeBrowserEnabled(){return true;}`;
 				if (id === '\0domain') return `export async function accountDomain(){return 'ACTIVE';}`;
 				if (id === '\0claims')
-					return `export async function requestExchangeCode(...a){globalThis.claimArgs=a;return {status:'QUEUED',challengeId:'challenge'};} export async function dispatchExchangeCode(){return {status:'SENT'};} export async function verifyExchangeCode(...a){globalThis.verifyArgs=a;return {status:'SETTLED',personId:'private-person'};}`;
+					return `export async function accountClaimState(){return {canComplete:true,settled:Boolean(globalThis.guestCompleted),channels:[{type:'PHONE',verified:true,available:true,masked:'•••• 0000'}]};} export async function prepareAccountClaim(){return 'phone';} export async function completeAccountClaim(){globalThis.guestCompleted=true;return {status:'SETTLED',personId:'private-person'};} export async function requestExchangeCode(...a){globalThis.claimArgs=a;return {status:'QUEUED',challengeId:'challenge'};} export async function dispatchExchangeCode(){return {status:'SENT'};} export async function verifyExchangeCode(...a){globalThis.verifyArgs=a;return {status:'SETTLED',personId:'private-person'};}`;
 			}
 		}
 	]
@@ -241,6 +241,11 @@ try {
     await tab.getByRole('button',{name:'Verify phone number',exact:true}).click();
     await tab.getByRole('status').filter({hasText:'Phone number verified.'}).waitFor();
     assert.equal(globalThis.accountVerifyArgs[2],'005321');
+    // Existing retained assurance completes a v2 guest exchange through a same-origin native POST.
+    flow.saveExchange(c,new URL('https://dev.relish.live'),'b'.repeat(64),'profile',2);
+    await tab.goto(base);
+    await tab.getByRole('button',{name:'Save contact using my verified details',exact:true}).click();
+    await tab.getByRole('status').filter({hasText:'Your contact is saved in My People.'}).waitFor();
 	// The top publication button is associated with the existing form and includes unsaved edits.
 	await tab.goto(base + '/profile');
 	await tab.getByLabel('Public name', { exact: true }).fill('Edited Mark');

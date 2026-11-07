@@ -36,7 +36,8 @@ test('only reviewed modules may establish foundation authority or construct an O
 								'src/lib/server/foundation/exchangeAuthority.ts',
 								'src/lib/server/foundation/exchangeClaims.ts',
 								'src/lib/server/foundation/exchangePrivacy.ts',
-                                'src/lib/server/foundation/accountChannels.ts'
+                                'src/lib/server/foundation/accountChannels.ts',
+                                'src/lib/server/foundation/exchangeBudget.ts'
 							].includes(file),
 							file
 						);
@@ -53,8 +54,10 @@ test('only reviewed modules may establish foundation authority or construct an O
 						exchangeRoots: ['exchangeClaims','accountChannels'],
 						lockExchanges: ['privacyOperations'],
 						requireClaimSession: ['exchangeClaims','accountChannels'],
-                        budget: ['accountChannels'],
+                        budget: ['accountChannels','exchangeClaims'],
                         maintainAccountChannelDelivery: ['privacyOperations'],
+                        ensureSubmittedChannel:['accountChannels','exchangeClaims'],
+                        currentSubmittedProof:['exchangeClaims'],
 						lockActiveFoundationRoot: ['exchangeAuthority'],
 						issueCapturedExchange: ['capture'],
 						removeExchangeDependencies: ['privacyOperations']
@@ -66,7 +69,8 @@ test('only reviewed modules may establish foundation authority or construct an O
 							),
 							file
 						);
-					if (name === 'withFoundationAccess')
+					if(name==='recordGoogleEmailProof') assert.equal(file,'src/routes/auth/google/callback/+server.ts');
+                    if (name === 'withFoundationAccess')
 						assert.ok(
 							['subjects', 'evidence', 'drafts'].some(
 								(name) => file === 'src/lib/server/foundation/' + name + '.ts'

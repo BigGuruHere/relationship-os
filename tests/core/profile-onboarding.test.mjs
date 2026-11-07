@@ -25,7 +25,7 @@ const server = await createServer({ configFile: false, ssr: { noExternal: ['jose
       if (id === '\0mock:$lib/auth') return `export async function hashPassword(){return 'test-hash';} export async function createSession(){return {cookie:'session',expiresAt:new Date()};} export function setSessionCookie(){} export async function verifyPassword(_,p){return p==='correct';} export function clearSessionCookie(){}`;
       if (id === '\0mock:$lib/leads/link') return `export async function linkLeadsForUser(){globalThis.__onboardingClaims++;}`;
       if (id === '\0mock:$lib/server/userEmail') return `export async function findUserByEmail(email){globalThis.__onboardingLookups.push(email);return globalThis.__onboardingUser || null;} export function encryptedUserEmailFields(){return {email_Enc:'encrypted',email_Idx:'index'};} export function decryptUserEmail(){return 'account@example.test';} export async function setUserEmail(){throw Error('fixture has encrypted email');}`;
-      if (id === '\0mock:jose') return `export const createRemoteJWKSet=()=>({}); export const jwtVerify=async()=>({payload:{sub:'google-account',email:'google@example.test',email_verified:true,nonce:'nonce',name:'Verified name'}});`;
+      if (id === '\0mock:jose') return `export const createRemoteJWKSet=()=>({}); export const jwtVerify=async(_token,_keys,options)=>(globalThis.__googleOptions=options,{payload:globalThis.__googlePayload || {sub:'google-account',email:'google@example.test',email_verified:true,nonce:'nonce',name:'Verified name'}});`;
       if (id === '\0mock:$lib/server/loginThrottle') return `export async function consumePasswordLoginAttempt(){return true;} export async function clearSuccessfulLoginAccountBucket(){}`;
       if (id === '\0mock:$lib/server/tokens') return `export const createInviteToken=async()=>({token:'fixture-invite'});`;
       if (id === '\0mock:$lib/server/pilot') return `export const pilotDomainForKind=()=>null; export const getOrCreatePilotVisitor=()=>{}; export const ensurePilotSelfContact=()=>{}; export const pilotSource=()=>{}; export const recordPilotEvent=()=>{};`;
@@ -295,6 +295,22 @@ try {
     assert.equal(created.at(-1).profiles.create.isPublished,false);
     assert.equal(draft.readOwnedProfileDraft(e.cookies,'google-user','google-profile').phone,'123');
 
+  });
+  await test('Google callback rejects missing/mismatched nonce and coerced email flags before account lookup',async()=>{
+    const google=await server.ssrLoadModule('/src/routes/auth/google/callback/+server.ts');
+    const variants=[{sub:'g',email:'test@example.test',email_verified:true},{sub:'g',email:'test@example.test',email_verified:true,nonce:'wrong'},{sub:'g',email:'test@example.test',email_verified:'true',nonce:'nonce'}];
+    try{for(let n=0;n<variants.length;n++){
+      globalThis.__googlePayload=variants[n];const e=event({});
+      e.url=new URL('https://relish.test/auth/google/callback?code=code&state=state');
+      e.locals.sessionCookie={options:{secure:true}};e.getClientAddress=()=> 'nonce-case-'+n;
+      e.fetch=async()=>new Response(JSON.stringify({id_token:'synthetic-token'}),{status:200});
+      for(const [k,v] of Object.entries({oauth_state:'state',oauth_nonce:'nonce',oauth_pkce:'pkce'}))e.cookies.set(k,v,{});
+      const before=globalThis.__onboardingLookups.length;
+      await assert.rejects(google.GET(e),err=>err.status===400);
+      assert.equal(globalThis.__onboardingLookups.length,before);
+      assert.deepEqual(globalThis.__googleOptions.issuer,['https://accounts.google.com','accounts.google.com']);
+      assert.ok(globalThis.__googleOptions.requiredClaims.includes('exp'));
+    }}finally{delete globalThis.__googlePayload;}
   });
   await test('Share and QR preview select the same owned profile and hide unpublished destinations', async () => {
     const share=await server.ssrLoadModule('/src/routes/share/+page.server.ts');

@@ -1,7 +1,18 @@
 <script lang="ts">
 	// One verification task follows the existing exchange/signup experience.
 	export let data;
-	export let form: { error?: string; reference?: string; sent?: boolean } | null;
+	export let form: any;
+	import { onMount } from 'svelte';
+	// The original Send authorised reciprocal completion; this POST reuses current proof, never GET mutation.
+	onMount(() => {
+		if (
+			data.version === 2 &&
+			data.accountClaim?.canComplete &&
+			!data.accountClaim?.settled &&
+			!form?.error
+		)
+			(document.getElementById('complete-exchange') as HTMLFormElement | null)?.requestSubmit();
+	});
 </script>
 
 <svelte:head
@@ -14,7 +25,7 @@
 		</p>
 		<a href="/profiles">My Profiles</a>
 	{:else if !data.signedIn}<p>
-			Sign in or create your profile, then verify the phone number you shared.
+			Sign in or create your profile, then verify a phone number or email you shared.
 		</p>
 		<a href="/auth/register?next=%2Fexchange%2Fclaim">Create my profile</a>
 		<p><a href="/auth/login?next=%2Fexchange%2Fclaim">Sign in</a></p>
@@ -23,6 +34,58 @@
 			test group. You can continue with your profile.
 		</p>
 		<a href="/settings/profile?onboarding=1">Continue to my profile</a>
+	{:else if data.version === 2}
+		{#if form?.completed || data.accountClaim?.settled}<p role="status">
+				Your contact is saved in My People.
+			</p>
+			<a href="/people">Open My People</a>
+		{:else if data.accountClaim?.canComplete}<form id="complete-exchange" method="POST">
+				<input type="hidden" name="intent" value="complete" /><button
+					>Save contact using my verified details</button
+				>
+			</form>
+		{:else}<p>
+				Verify a phone number or email you shared. Its verification stays on your account for future
+				exchanges.
+			</p>{/if}
+		{#if form?.error}<p role="alert">{form.error}</p>{/if}
+		{#if form?.reference}<p>Support reference: {form.reference}</p>{/if}
+		{#if form?.sent}<p role="status">Code sent. Check your messages.</p>{/if}
+		{#each data.accountClaim?.channels || [] as channel}
+			<p>
+				{channel.type === 'PHONE' ? 'Phone' : 'Email'}
+				{channel.masked}: {channel.verified ? 'Verified' : 'Verification pending'}
+			</p>
+			{#if !channel.verified && channel.available && !form?.completed && !data.accountClaim?.settled}
+				<form method="POST">
+					<input type="hidden" name="intent" value="resend" /><input
+						type="hidden"
+						name="channelType"
+						value={channel.type}
+					/><button>Send {channel.type === 'PHONE' ? 'SMS' : 'email'} code</button>
+				</form>
+			{/if}
+		{/each}
+		{#if data.codeRequested && !form?.completed && !data.accountClaim?.settled}<form method="POST">
+				<input type="hidden" name="intent" value="verify" /><label
+					>Verification code <input
+						name="code"
+						inputmode="numeric"
+						autocomplete="one-time-code"
+						pattern={'[0-9]{6}'}
+						maxlength="6"
+						required
+					/></label
+				><button>Verify and save contact</button>
+			</form>{/if}
+		{#if data.accountClaim?.channels.some((c) => c.type === 'EMAIL' && !c.available && !c.verified)}<p
+			>
+				Email verification awaits sender setup. You can continue later.
+			</p>{/if}
+		<p>
+			Phone and email are checked independently. One verified channel can complete this exchange.
+		</p>
+		<a href="/settings/channels">Verify remaining details in Phone and email settings</a>
 	{:else}
 		<p>
 			We’ll send a code to the mobile number you shared. Verification saves the exchanged details

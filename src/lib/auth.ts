@@ -87,7 +87,7 @@ export async function createSession(userId: string) {
   const cookiePayload = JSON.stringify({ id: session.id, t: rawToken });
   const signedValue = sign(Buffer.from(cookiePayload).toString('base64url'));
 
-  return { cookie: signedValue, expiresAt };
+  return { cookie: signedValue, expiresAt, sessionId: session.id };
 }
 
 // Verify session from a signed cookie string

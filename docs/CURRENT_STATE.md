@@ -1,8 +1,14 @@
 # Relish: Current State and Open Work
 
-Status: living snapshot updated **2026-11-07**. Foundation baseline is development `4a4ddb2` (PR #36). Environment observations are explicitly attributed below; this is not a live deployment monitor.
+Status: living snapshot updated **2026-11-08**. Foundation baseline is development `7205d53` (PR #39). Environment observations are explicitly attributed below; this is not a live deployment monitor.
+
+## S-405d guest assurance reuse and email
+
+[Guest assurance, email setup and DEV acceptance](foundation/S405D_GUEST_ASSURANCE.md) are implemented on `feature/s405d-guest-assurance`, based on merged PR #39 (`7205d53`). New exact-submission claims reuse verified account channels, or verify a supplied phone/email and retain its proof. Phone/email statuses remain independent; Google callback proof is hardened. One additive migration brings totals to 111 migrations / 24 Foundation tables. Resend delivery remains disabled until sender/key/DEV recipient configuration. No live send, migration or deployment; full DEV acceptance pending.
 
 ## S-405c account channels and SMS verification
+
+PR #39 is merged at `7205d53`; deployment and live SMS acceptance remain unverified.
 
 [Account channel service and migration](foundation/S405C_ACCOUNT_CHANNELS.md) are implemented on `feature/s405c-account-channels`, based on merged PR #38 (`42ae818`). Account settings separately track pending/verified/revoked phones and emails, with SMS proof/revoke/reverify and privacy/expiry cleanup. Email remains pending; reusable guest claims follow in S-405d. One additive migration brings totals to 110 migrations / 24 Foundation tables. No live migration/message/deployment performed; DEV acceptance pending.
 

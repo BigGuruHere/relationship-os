@@ -1,3 +1,6 @@
+import { budget } from './exchangeBudget';
+import { emailVerificationConfigured } from '$lib/server/integrations/resend/verification';
+import { ensureSubmittedChannel, currentSubmittedProof } from './accountChannels';
 import { ExchangeDenied } from './exchangeDiagnostics';
 // Server-only claim service. Route callers supply authenticated locals and server-resolved client address.
 import { randomInt, randomUUID } from 'node:crypto';
@@ -73,30 +76,6 @@ async function withClaim<T>(
 
 			return fn(tx, exchange, actor, roots.get(actor.accountId)!);
 		});
-	});
-}
-// All budget operations are serialized by the exchange lock. Hashes avoid storing IP or phone in counters.
-export async function budget(tx: AppTransactionClient, actorId: string, keys: [string, number][]) {
-	return runFoundationBoundary({ ownerUserId: actorId, mode: 'EXCHANGE_BUDGET' }, async () => {
-		const hour = Math.floor(Date.now() / 3600000);
-		await tx.foundationClaimBudget.deleteMany({ where: { expiresAt: { lte: new Date() } } });
-		for (const [key, limit] of keys) {
-			const id = claimMac(hour + ':' + key, 'budget');
-			const row = await tx.foundationClaimBudget.findUnique({ where: { id } });
-			if (row && row.count >= limit) return false;
-		}
-		for (const [key] of keys) {
-			const id = claimMac(hour + ':' + key, 'budget');
-			const changed = await tx.foundationClaimBudget.updateMany({
-				where: { id },
-				data: { count: { increment: 1 } }
-			});
-			if (!changed.count)
-				await tx.foundationClaimBudget.create({
-					data: { id, count: 1, expiresAt: new Date((hour + 1) * 3600000) }
-				});
-		}
-		return true;
 	});
 }
 async function cancelPending(tx: AppTransactionClient, exchangeId: string) {
@@ -303,7 +282,7 @@ async function association(
 	accountId: string,
 	subjectId: string,
 	channelHash: string,
-	exchangeRef: string
+	exchangeRef: string, method = 'SMS'
 ) {
 	const prior = await tx.foundationAccountAssociation.findFirst({ where: { accountId } });
 	if (prior) {
@@ -320,7 +299,7 @@ async function association(
 			vaultId: root.vaultId,
 			subjectId,
 			accountId,
-			channel: 'SMS',
+			channel: method,
 			channelHash,
 			verifiedAt: new Date(),
 			exchangeRef
@@ -396,37 +375,8 @@ export async function verifyExchangeCode(
 		if (conflicts.some((row) => row.accountId !== actor.accountId)) throw new FoundationDenied();
 		// The original contact keeps its ID and private history. Existing verified entries are reused
 		// only for the reciprocal direction, never by matching names, phones or emails.
-		const existing = await tx.foundationAccountAssociation.findFirst({
-			where: { accountId: actor.accountId }
-		});
-		if (existing && existing.subjectId !== e.subjectId) throw new FoundationDenied();
-		await association(tx, e, actor.accountId, e.subjectId, channelHash, e.id);
-		const personId = await exchangeScope(recipient, async () => {
-			const prior = await tx.foundationAccountAssociation.findFirst({
-				where: { accountId: e.ownerUserId }
-			});
-			if (prior) return association(tx, recipient, e.ownerUserId, prior.subjectId, '', e.id);
-			const snapshot = open('FoundationExchange', 'snapshotEnc', e, e.id, e.snapshotEnc);
-			const person = await insertPrivatePerson(tx, recipient, snapshot, {
-				submittedAt: new Date().toISOString(),
-				profileId: e.profileId,
-				sourceId: e.sourceId
-			});
-			await insertExchangeReceipt(tx, recipient, person.id, snapshot, e.id, e.profileId);
-			// The published card establishes the sharer's account. It is distinct from SMS assurance.
-			await tx.foundationAccountAssociation.create({
-				data: {
-					...recipient,
-					subjectId: person.id,
-					accountId: e.ownerUserId,
-					channel: 'PROFILE',
-					channelHash: '',
-					verifiedAt: new Date(),
-					exchangeRef: e.id
-				}
-			});
-			return person.id;
-		});
+		const result = await settleClaim(tx,e,actor.accountId,recipient,channelHash,'SMS');
+		const personId=result.personId;
 		const now = new Date();
 		await tx.foundationExchangeChallenge.updateMany({
 			where: { id: challenge.id },
@@ -653,4 +603,75 @@ async function saveProfileSide(
 		profile.id
 	);
 	return { personId, sourceId };
+}
+
+// Common settlement preserves source IDs/history and copies only the selected public card.
+async function settleClaim(tx:AppTransactionClient,e:FoundationExchange,accountId:string,recipient:Root,channelHash:string,method='SMS') {
+		const existing = await tx.foundationAccountAssociation.findFirst({
+			where: { accountId: accountId }
+		});
+		if (existing && existing.subjectId !== e.subjectId) throw new FoundationDenied();
+		await association(tx, e, accountId, e.subjectId, channelHash, e.id, method);
+		const personId = await exchangeScope(recipient, async () => {
+			const prior = await tx.foundationAccountAssociation.findFirst({
+				where: { accountId: e.ownerUserId }
+			});
+			if (prior) return association(tx, recipient, e.ownerUserId, prior.subjectId, '', e.id);
+			const snapshot = open('FoundationExchange', 'snapshotEnc', e, e.id, e.snapshotEnc);
+			const person = await insertPrivatePerson(tx, recipient, snapshot, {
+				submittedAt: new Date().toISOString(),
+				profileId: e.profileId,
+				sourceId: e.sourceId
+			});
+			await insertExchangeReceipt(tx, recipient, person.id, snapshot, e.id, e.profileId);
+			// The published card establishes the sharer's account. It is distinct from SMS assurance.
+			await tx.foundationAccountAssociation.create({
+				data: {
+					...recipient,
+					subjectId: person.id,
+					accountId: e.ownerUserId,
+					channel: 'PROFILE',
+					channelHash: '',
+					verifiedAt: new Date(),
+					exchangeRef: e.id
+				}
+			});
+			return person.id;
+		});
+ await tx.foundationExchange.updateMany({where:{id:e.id},data:{beneficiaryUserId:accountId,status:'SETTLED',settledSubjectId:personId,settledVaultId:recipient.vaultId}});
+ return {status:'SETTLED' as const,personId};
+}
+
+function submittedChannels(e:FoundationExchange):{type:'PHONE'|'EMAIL';value:string}[]{
+ if(e.claimVersion!==2 || !e.submittedChannelsEnc) throw new FoundationDenied();
+ return open('FoundationExchange','submittedChannelsEnc',e,e.id,e.submittedChannelsEnc);
+}
+export async function accountClaimState(locals:Actor,token:string){
+ return withClaim(locals,token,async(tx,e,actor)=>{
+  const channels=submittedChannels(e);const statuses=[];
+  for(const c of channels){const proof=await currentSubmittedProof(tx,actor.accountId,c.type,c.value);
+   statuses.push({type:c.type,verified:Boolean(proof),available:c.type==='PHONE' || emailVerificationConfigured(),masked:c.type==='PHONE'?'•••• '+c.value.slice(-4):c.value[0]+'•••@'+c.value.split('@')[1]});}
+  return {settled:e.status==='SETTLED',channels:statuses,canComplete:statuses.some(c=>c.verified)};
+ });
+}
+// Bind a new exact submission before requesting a channel check; destination is never read from a form.
+export async function prepareAccountClaim(locals:Actor,token:string,type:string){
+ return withClaim(locals,token,async(tx,e,actor)=>{
+  const channels=submittedChannels(e);const selected=channels.find(c=>c.type===type);
+  if(!selected) throw new FoundationDenied();
+  await tx.foundationExchange.updateMany({where:{id:e.id},data:{beneficiaryUserId:actor.accountId,status:e.status==='SETTLED'?'SETTLED':'BOUND'}});
+  let selectedId='';for(const c of channels){const saved=await ensureSubmittedChannel(tx,actor.accountId,c.type,c.value);if(c.type===type) selectedId=saved.id;}
+  return selectedId;
+ });
+}
+export async function completeAccountClaim(locals:Actor,token:string){
+ return withClaim(locals,token,async(tx,e,actor,recipient)=>{
+  const channels=submittedChannels(e);let verified:{type:string;value:string}|undefined;
+  // Resolve current proof within the same global/account locks used by revocation and settlement.
+  for(const c of channels) if(await currentSubmittedProof(tx,actor.accountId,c.type,c.value)){verified=c;break;}
+  if(!verified) throw new FoundationDenied();
+  if(e.status==='SETTLED') return {status:'SETTLED' as const,personId:e.settledSubjectId};
+  for(const c of channels) await ensureSubmittedChannel(tx,actor.accountId,c.type,c.value);
+  return settleClaim(tx,e,actor.accountId,recipient,claimMac(verified.type+':'+verified.value,'channel'),'ACCOUNT_CHANNEL');
+ });
 }

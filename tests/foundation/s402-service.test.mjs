@@ -39,7 +39,8 @@ CREATE TABLE "Session"(id text PRIMARY KEY,"userId" text NOT NULL REFERENCES "Us
 			'20261104010000_f202_foundation_schema',
 			'20261107010000_s402_exchange_claims',
 			'20261107020000_s402b_exchange_service',
-            '20261107030000_s405c_account_channels'
+            '20261107030000_s405c_account_channels',
+            '20261108010000_s405d_guest_assurance'
 		])
 			await db.exec(await readFile('prisma/migrations/' + name + '/migration.sql', 'utf8'));
 		if (!endpoint) {
@@ -74,7 +75,8 @@ CREATE TABLE "Session"(id text PRIMARY KEY,"userId" text NOT NULL REFERENCES "Us
 		const sent = [];
 		let providerFailure = false;
 		globalThis.fetch = async (url, options) => {
-			assert.equal(url, 'https://api.telnyx.com/v2/messages');
+			assert.ok(['https://api.telnyx.com/v2/messages','https://api.resend.com/emails'].includes(url));
+            if(url==='https://api.resend.com/emails') assert.match(options.headers['Idempotency-Key'],/^relish-verification\//);
 			const body = JSON.parse(options.body);
 			sent.push(body);
 			return new Response('', { status: providerFailure ? 503 : 200 });
@@ -628,6 +630,66 @@ CREATE TRIGGER s402_fail_settlement BEFORE UPDATE ON "FoundationExchange" FOR EA
           await assert.rejects(service.verifyAccountChannelCode(f.locals,next.challengeId,'123456','bounded-channel-ip'));
           await service.revokeAccountChannel(f.locals,id);
           assert.equal((await service.listAccountChannels(f.locals))[0].status,'REVOKED');
+        });
+
+        async function v2(f,fields={}) {
+          const browser=randomUUID();
+          const input={...f.input,...fields,browser,captureToken:issueContactCaptureToken(f.profile,browser,'qr')};
+          return capture.captureFoundationAccountExchange(f.profile,input);
+        }
+        await t.test('S405d exact guest submission retains phone proof and reuses it without another send',async()=>{
+          const service=await load('lib/server/foundation/accountChannels');const f=await fixture();
+          const token=await v2(f,{email:'new-guest@example.invalid'});
+          assert.equal((await claims.accountClaimState(f.locals,token)).canComplete,false);
+          const id=await claims.prepareAccountClaim(f.locals,token,'PHONE');
+          const challenge=await service.requestAccountChannelCode(f.locals,id,randomUUID(),'guest-proof-ip');
+          await service.dispatchAccountChannelCode(f.locals,challenge.challengeId);
+          const code=f.code();assert.equal(await service.verifyAccountChannelCode(f.locals,challenge.challengeId,code,'guest-proof-ip'),'VERIFIED');
+          const count=sent.length;
+          const results=await Promise.all([claims.completeAccountClaim(f.locals,token),claims.completeAccountClaim(f.locals,token)]);
+          assert.deepEqual(results[0],results[1]);assert.equal(sent.length,count);
+          const status=await claims.accountClaimState(f.locals,token);
+          assert.equal(status.channels.find(c=>c.type==='PHONE').verified,true);
+          assert.equal(status.channels.find(c=>c.type==='EMAIL').verified,false);
+          assert.equal((await privacy.reviewFoundationPrivacy(f.a)).associations[0].channel,'ACCOUNT_CHANNEL');
+          const other=await fixture();const another=await v2(other,{phone:f.phone});
+          await assert.rejects(claims.completeAccountClaim(other.locals,another));
+          await claims.completeAccountClaim(f.locals,another);
+          assert.equal(sent.length,count);
+          await assert.rejects(claims.completeAccountClaim(other.locals,token));
+          await service.revokeAccountChannel(f.locals,id);
+          await assert.rejects(claims.completeAccountClaim(f.locals,token));
+        });
+        await t.test('S405d email-only claim delivers bounded codes and records independent email proof',async()=>{
+          const service=await load('lib/server/foundation/accountChannels');const f=await fixture();
+          const email='email-guest@example.invalid';process.env.RESEND_API_KEY='synthetic-intercepted';process.env.RELISH_VERIFICATION_EMAIL_FROM='Relish <verify@example.invalid>';process.env.RELISH_EXCHANGE_TEST_EMAILS=email;
+          const token=await v2(f,{phone:'',email});
+          const id=await claims.prepareAccountClaim(f.locals,token,'EMAIL');
+          await assert.rejects(claims.prepareAccountClaim(f.locals,token,'PHONE'));
+          const pending=await service.requestAccountChannelCode(f.locals,id,randomUUID(),'email-proof-ip');
+          await service.dispatchAccountChannelCode(f.locals,pending.challengeId);
+          assert.deepEqual(sent.at(-1).to,[email]);const code=f.code();
+          await service.verifyAccountChannelCode(f.locals,pending.challengeId,code,'email-proof-ip');
+          await claims.completeAccountClaim(f.locals,token);
+          const state=await service.listAccountChannels(f.locals);assert.equal(state[0].method,'EMAIL_CODE');
+          assert.equal(state[0].status,'VERIFIED');assert.equal(state.length,1);
+          await assert.rejects(db.query('UPDATE "FoundationExchange" SET "claimVersion"=1 WHERE "continuationHash"=$1',[crypto.claimMac(token,'lookup')]));
+        });
+        await t.test('S405d proof survives withdrawn exchange and Google proof never revives a revoked email',async()=>{
+          const service=await load('lib/server/foundation/accountChannels');const f=await fixture();
+          const token=await v2(f);const id=await claims.prepareAccountClaim(f.locals,token,'PHONE');
+          const issued=await service.requestAccountChannelCode(f.locals,id,randomUUID(),'withdraw-proof-ip');
+          await service.dispatchAccountChannelCode(f.locals,issued.challengeId);const code=f.code();
+          await db.query('UPDATE "Profile" SET "isPublished"=false WHERE id=$1',[f.profile]);
+          await service.verifyAccountChannelCode(f.locals,issued.challengeId,code,'withdraw-proof-ip');
+          await assert.rejects(claims.completeAccountClaim(f.locals,token));
+          assert.equal((await service.listAccountChannels(f.locals))[0].status,'VERIFIED');
+          const email='google-proof@example.invalid';
+          await service.recordGoogleEmailProof(f.locals,email);
+          const google=(await service.listAccountChannels(f.locals)).find(c=>c.type==='EMAIL');assert.equal(google.method,'GOOGLE_OIDC');
+          await service.revokeAccountChannel(f.locals,google.id);
+          assert.equal(await service.recordGoogleEmailProof(f.locals,email),'REVOKED');
+          assert.equal((await service.listAccountChannels(f.locals)).find(c=>c.id===google.id).status,'REVOKED');
         });
 
 	} finally {

@@ -90,3 +90,7 @@ Follow [P-303](P303_NOTES.md). Reuse ContactNoteForm and existing upload/provide
 ## S-402b internal exchange authority
 
 Read [S-402b service boundaries](S402_EXCHANGE_SERVICE.md) before connecting an exchange route. Only the reviewed authority, claim/budget and privacy-dependency modules may establish the new internal scopes. Scope wrappers and capture issuance are also import-allowlisted in `f204-boundaries.test.mjs`; routes must call the authenticated service rather than mint scopes. Receipt/subject helpers require an already guarded transaction. Changes to these exact import boundaries need executable isolation tests, not a broad allowlist exception.
+
+## Implementing the revised exchange
+
+Read [S-405](S405_ACCOUNT_CHANNELS_AND_EXCHANGE.md) before new exchange or channel work. Do not add a fresh SMS requirement to owned-profile confirmation, turn FoundationAccountAssociation into an account registry, or backfill verified status from profile/login fields. Implement account guards and proof lifecycle with database tests before exposing settings or reusable claims. Keep verification success separate from exchange settlement failure. Update the corresponding S-405 item and actual rollout evidence in each PR.

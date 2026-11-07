@@ -69,3 +69,7 @@ P-302 implements [narrowly scoped anonymous exchange intake](P302_EXCHANGE.md). 
 ## P-305 privacy operations
 
 Archive hides a person without removing the underlying evidence. An offline reviewed whole-vault erasure requires suspension and leaves empty routing records. A support review file is owned-vault material for redaction and case handling, not authority to disclose it to someone mentioned in the graph. The [P-305 runbook](P305_PRIVACY_OPERATIONS.md) separates live-vault erasure from account closure, backups and provider retention.
+
+## Account-channel and owned-profile authority
+
+[S-405 / D-027](S405_ACCOUNT_CHANNELS_AND_EXCHANGE.md) adds two distinct settlement authorities: authenticated confirmation of an owned profile, or an exact guest continuation backed by current account-channel proof. A phone proof cannot verify email. Profile text, login, caller ID and matching contact fields cannot manufacture channel assurance. Revocation blocks future proof use without deleting another custodian's independently saved history. This is the accepted target; S-405a changes no runtime policy.

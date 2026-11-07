@@ -43,6 +43,7 @@
 			</form>
 		{/if}
 
+		<!-- Keep the regex in a literal expression so Svelte preserves its quantifier braces. -->
 		{#if data.codeRequested || form?.sent}<form method="POST">
 				<input type="hidden" name="intent" value="verify" /><label for="code"
 					>Verification code</label
@@ -51,7 +52,7 @@
 					name="code"
 					inputmode="numeric"
 					autocomplete="one-time-code"
-					pattern="[0-9]{6}"
+					pattern={'[0-9]{6}'}
 					maxlength="6"
 					required
 				/><button>Verify and save contact</button>

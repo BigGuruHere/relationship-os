@@ -31,8 +31,36 @@ test('only reviewed modules may establish foundation authority or construct an O
 							[
 								'src/lib/server/foundation/policy.ts',
 								'src/lib/server/foundation/provisioning.ts',
-								'src/lib/server/foundation/privacyOperations.ts'
+								'src/lib/server/foundation/privacyOperations.ts',
+								// S-402b reviewed transaction, budget and privacy dependency boundaries.
+								'src/lib/server/foundation/exchangeAuthority.ts',
+								'src/lib/server/foundation/exchangeClaims.ts',
+								'src/lib/server/foundation/exchangePrivacy.ts'
 							].includes(file),
+							file
+						);
+
+					// Scope helpers are privileged too; adding a wrapper must not bypass this review gate.
+					const exchangeCallers = {
+						exchangeScope: [
+							'exchangeClaims',
+							'exchangeIssue',
+							'exchangePrivacy',
+							'privacyOperations'
+						],
+						exchangeTransaction: ['exchangeClaims'],
+						exchangeRoots: ['exchangeClaims'],
+						lockExchanges: ['privacyOperations'],
+						requireClaimSession: ['exchangeClaims'],
+						lockActiveFoundationRoot: ['exchangeAuthority'],
+						issueCapturedExchange: ['capture'],
+						removeExchangeDependencies: ['privacyOperations']
+					};
+					if (name in exchangeCallers)
+						assert.ok(
+							exchangeCallers[name].some(
+								(module) => file === 'src/lib/server/foundation/' + module + '.ts'
+							),
 							file
 						);
 					if (name === 'withFoundationAccess')

@@ -124,6 +124,6 @@ The existing owner account page can create one fresh foundation test login when 
 
 ## Planned exchange settlement
 
-[S-401](foundation/S401_EXCHANGE_DESIGN.md) defines a narrowly authorized transaction across two private vaults for verified exchange settlement. Reciprocal entries contain the shared snapshots. Account associations and future directional update permissions remain separate authorities. Runtime implementation follows in S-402 through S-404.
+[S-401](foundation/S401_EXCHANGE_DESIGN.md) defines a narrowly authorized transaction across two private vaults for verified exchange settlement. Reciprocal entries contain the shared snapshots. Account associations and future directional update permissions remain separate authorities. S-402a persistence is merged; [S-402b service](foundation/S402_EXCHANGE_SERVICE.md) is on feature/s402b-sms-claims. Narrow internal exchange scopes permit cross-vault settlement and metadata-only dependency lookup while ordinary readers remain owner-scoped. Pilot dispatch and privacy share an exchange advisory lock. Recipient evidence is encrypted in recipient custody. S-403/S-404 add browser and recovery integration; ongoing disclosure remains separate.
 
 S-401 now specifies channel-aware assurance bound to the exact exchange and authenticated account, with SMS delivery first through the direct Telnyx sender. Record method and verification time for later Dorian use. Email delivery is a follow-on transport.

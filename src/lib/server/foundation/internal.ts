@@ -8,6 +8,9 @@ type Boundary = {
 	ownerUserId: string;
 	vaultId?: string;
 	mode:
+		| 'EXCHANGE'
+		| 'EXCHANGE_LOOKUP'
+		| 'EXCHANGE_BUDGET'
 		| 'RESOLVE'
 		| 'PROVISION'
 		| 'PUBLIC_CAPTURE'
@@ -134,6 +137,10 @@ function privacyOperationAllowed(mode: Boundary['mode'], model: string, op: stri
 		);
 	}
 	const contentModels = [
+		'FoundationExchange',
+		'FoundationExchangeChallenge',
+		'FoundationExchangeDispatch',
+		'FoundationAccountAssociation',
 		...sourceModels,
 		...statementModels,
 		...domainModels,
@@ -208,6 +215,33 @@ export function guardFoundationQuery(model: string | undefined, operation: strin
 		return args;
 	}
 	if (!scope?.ownerUserId) throw new FoundationDenied();
+	// Global metadata lookup is confined to exact claim capabilities or privacy dependency IDs.
+	if (scope.mode === 'EXCHANGE_LOOKUP') {
+		const where = args?.where ?? {};
+		const keys = Object.keys(where);
+		const selected = args?.select && Object.keys(args.select);
+		const fields = ['id', 'ownerUserId', 'vaultId', 'accountId', 'beneficiaryUserId'];
+		if (
+			operation !== 'findMany' ||
+			!selected ||
+			!selected.every((k: string) => fields.includes(k)) ||
+			keys.length !== 1 ||
+			!['continuationHash', 'beneficiaryUserId', 'channelHash', 'accountId'].includes(keys[0]) ||
+			typeof where[keys[0]] !== 'string' ||
+			!['FoundationExchange', 'FoundationAccountAssociation'].includes(model)
+		)
+			throw new FoundationDenied();
+		return args;
+	}
+	if (scope.mode === 'EXCHANGE_BUDGET') {
+		if (
+			model !== 'FoundationClaimBudget' ||
+			!['findUnique', 'create', 'updateMany', 'deleteMany'].includes(operation)
+		)
+			throw new FoundationDenied();
+		return args;
+	}
+
 	const control =
 		scope.mode === 'PROVISION' || scope.mode === 'RESOLVE' || scope.mode === 'PRIVACY_CONTROL';
 	// Segment and understanding reads may inspect source eligibility, never a parent payload.
@@ -219,11 +253,30 @@ export function guardFoundationQuery(model: string | undefined, operation: strin
 		if (!args?.select || Object.keys(args.select).some((k) => !allowed.includes(k)))
 			throw new FoundationDenied();
 	}
+	const exchangeModels = [
+		'FoundationExchange',
+		'FoundationExchangeChallenge',
+		'FoundationExchangeDispatch',
+		'FoundationAccountAssociation'
+	];
 	const evidenceAllowed =
-		scope.mode === 'PUBLIC_CAPTURE'
-			? captureOperationAllowed(model, operation, args, scope.capturePrefix)
-			: evidenceOperationAllowed(scope.mode, model, operation) ||
-				privacyOperationAllowed(scope.mode, model, operation, args);
+		scope.mode === 'EXCHANGE'
+			? (exchangeModels.includes(model) &&
+					['findFirst', 'findMany', 'count', 'create', 'updateMany', 'deleteMany'].includes(
+						operation
+					)) ||
+				([
+					'FoundationSubject',
+					'FoundationSource',
+					'FoundationSourceVersion',
+					'FoundationEvidenceSegment',
+					'FoundationEvidenceSubject'
+				].includes(model) &&
+					['findFirst', 'findMany', 'create'].includes(operation))
+			: scope.mode === 'PUBLIC_CAPTURE'
+				? captureOperationAllowed(model, operation, args, scope.capturePrefix)
+				: evidenceOperationAllowed(scope.mode, model, operation) ||
+					privacyOperationAllowed(scope.mode, model, operation, args);
 	if (scope.mode === 'PRIVACY_CONTROL' && !evidenceAllowed) throw new FoundationDenied();
 	if (
 		!evidenceAllowed &&

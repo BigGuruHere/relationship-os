@@ -4,6 +4,8 @@ import { prisma, type AppTransactionClient } from '$lib/db';
 import { decrypt } from '$lib/crypto';
 import { FoundationDenied, runFoundationBoundary } from './internal';
 import { lockFoundationAccount } from './provisioning';
+import { lockExchanges, exchangeScope } from './exchangeAuthority';
+import { removeExchangeDependencies } from './exchangePrivacy';
 
 type Root = { ownerUserId: string; vaultId: string };
 const MAX_REVIEW_ROWS = 500;
@@ -22,6 +24,7 @@ async function withPrivacyRoot<T>(
 			async (tx) => {
 				// Match request writers and public capture. An in-flight writer either commits
 				// before this lock or sees the new lifecycle before it can proceed.
+				await lockExchanges(tx);
 				await lockFoundationAccount(tx, ownerUserId);
 				const enrollment = await tx.foundationEnrollment.findFirst({
 					where: { userId: ownerUserId },
@@ -66,6 +69,7 @@ export function inspectFoundationPrivacy(ownerUserId: string) {
 
 export function suspendFoundationPrivacy(ownerUserId: string) {
 	return withPrivacyRoot(ownerUserId, async (tx, root, lifecycle) => {
+		await removeExchangeDependencies(tx, ownerUserId, false);
 		if (lifecycle.vault === 'DELETING') throw new FoundationDenied();
 		const transition = lifecycle.enrollment !== 'SUSPENDED';
 		if (transition) {
@@ -260,7 +264,64 @@ export function reviewFoundationPrivacy(ownerUserId: string) {
 					select: { contextId: true, segmentId: true, statementVersionId: true }
 				})
 			);
+			const exchanges = bounded(
+				await tx.foundationExchange.findMany({
+					...page,
+					select: {
+						id: true,
+						profileId: true,
+						subjectId: true,
+						status: true,
+						createdAt: true,
+						expiresAt: true,
+						snapshotEnc: true
+					}
+				})
+			).map(({ snapshotEnc, ...row }) => ({
+				...row,
+				sharedCard: JSON.parse(
+					read('FoundationExchange', 'snapshotEnc', row, snapshotEnc) ?? 'null'
+				)
+			}));
+			const associations = bounded(
+				await tx.foundationAccountAssociation.findMany({
+					...page,
+					select: {
+						id: true,
+						subjectId: true,
+						accountId: true,
+						channel: true,
+						verifiedAt: true,
+						state: true
+					}
+				})
+			);
+			const challenges = bounded(
+				await tx.foundationExchangeChallenge.findMany({
+					...page,
+					select: {
+						id: true,
+						exchangeId: true,
+						channel: true,
+						status: true,
+						createdAt: true,
+						expiresAt: true,
+						verifiedAt: true
+					}
+				})
+			);
+			const deliveries = bounded(
+				await tx.foundationExchangeDispatch.findMany({
+					...page,
+					select: { id: true, challengeId: true, status: true, createdAt: true, expiresAt: true }
+				})
+			);
+
 			return {
+				exchanges,
+				associations,
+				challenges,
+				deliveries,
 				version: 1,
 				scope: 'FOUNDATION_REVIEW',
 				account: ownerUserId,
@@ -288,25 +349,57 @@ export function eraseFoundationPrivacy(ownerUserId: string) {
 		// Suspension is a separate committed step. Failure here leaves the owner isolated.
 		if (lifecycle.enrollment !== 'SUSPENDED' || lifecycle.vault !== 'LOCKED')
 			throw new FoundationDenied();
-		return runFoundationBoundary({ ...root, mode: 'PRIVACY_ERASE' }, async () => {
-			await tx.foundationStatement.updateMany({ data: { state: 'DELETING' } });
-			// Remove links before parents and all versions in each lineage in one SQL
-			// statement. Composite custody FKs prevent touching a second account.
-			let erasedRows = (await tx.foundationContextAssociation.deleteMany()).count;
-			erasedRows += (await tx.foundationSupport.deleteMany()).count;
-			erasedRows += (await tx.foundationStatementSubject.deleteMany()).count;
-			erasedRows += (await tx.foundationStatementVersion.deleteMany()).count;
-			erasedRows += (await tx.foundationStatement.deleteMany()).count;
-			erasedRows += (await tx.foundationEvidenceSubject.deleteMany()).count;
-			erasedRows += (await tx.foundationEvidenceSegment.deleteMany()).count;
-			erasedRows += (await tx.foundationSourceVersion.deleteMany()).count;
-			erasedRows += (await tx.foundationSource.deleteMany()).count;
-			erasedRows += (await tx.foundationMembership.deleteMany()).count;
-			erasedRows += (await tx.foundationPerspective.deleteMany()).count;
-			erasedRows += (await tx.foundationSubject.deleteMany()).count;
-			erasedRows += (await tx.foundationContext.deleteMany()).count;
-			// Keep the empty roots as a routing tombstone until reviewed account closure.
-			return { erasedRows, enrollment: 'SUSPENDED', vault: 'LOCKED' };
-		});
+		return removeExchangeDependencies(tx, ownerUserId, true).then((exchangeRows) =>
+			runFoundationBoundary({ ...root, mode: 'PRIVACY_ERASE' }, async () => {
+				await tx.foundationStatement.updateMany({ data: { state: 'DELETING' } });
+				// Remove links before parents and all versions in each lineage in one SQL
+				// statement. Composite custody FKs prevent touching a second account.
+				let erasedRows = exchangeRows + (await tx.foundationContextAssociation.deleteMany()).count;
+				erasedRows += (await tx.foundationSupport.deleteMany()).count;
+				erasedRows += (await tx.foundationStatementSubject.deleteMany()).count;
+				erasedRows += (await tx.foundationStatementVersion.deleteMany()).count;
+				erasedRows += (await tx.foundationStatement.deleteMany()).count;
+				erasedRows += (await tx.foundationEvidenceSubject.deleteMany()).count;
+				erasedRows += (await tx.foundationEvidenceSegment.deleteMany()).count;
+				erasedRows += (await tx.foundationSourceVersion.deleteMany()).count;
+				erasedRows += (await tx.foundationSource.deleteMany()).count;
+				erasedRows += (await tx.foundationMembership.deleteMany()).count;
+				erasedRows += (await tx.foundationPerspective.deleteMany()).count;
+				erasedRows += (await tx.foundationSubject.deleteMany()).count;
+				erasedRows += (await tx.foundationContext.deleteMany()).count;
+				// Keep the empty roots as a routing tombstone until reviewed account closure.
+				return { erasedRows, enrollment: 'SUSPENDED', vault: 'LOCKED' };
+			})
+		);
 	});
+}
+
+// Offline maintenance uses the same target and confirmation checks as other privacy commands.
+// It clears dormant encrypted outbox payloads even when nobody retries an expired claim.
+export function expireFoundationExchanges(ownerUserId: string) {
+	return withPrivacyRoot(ownerUserId, (tx, root) =>
+		exchangeScope(root, async () => {
+			const now = new Date();
+			const deliveries = await tx.foundationExchangeDispatch.updateMany({
+				where: { expiresAt: { lte: now }, status: { in: ['QUEUED', 'FAILED', 'SENDING'] } },
+				data: { status: 'EXPIRED', payloadEnc: null, leaseToken: null, leaseUntil: null }
+			});
+			const challenges = await tx.foundationExchangeChallenge.updateMany({
+				where: { expiresAt: { lte: now }, status: 'PENDING' },
+				data: { status: 'EXPIRED' }
+			});
+			const exchanges = await tx.foundationExchange.updateMany({
+				where: { expiresAt: { lte: now }, status: { in: ['PENDING', 'BOUND'] } },
+				data: { status: 'EXPIRED' }
+			});
+			await runFoundationBoundary({ ownerUserId, mode: 'EXCHANGE_BUDGET' }, () =>
+				tx.foundationClaimBudget.deleteMany({ where: { expiresAt: { lte: now } } })
+			);
+			return {
+				deliveries: deliveries.count,
+				challenges: challenges.count,
+				exchanges: exchanges.count
+			};
+		})
+	);
 }

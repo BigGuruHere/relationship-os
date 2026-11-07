@@ -69,3 +69,7 @@ The operator-reported initial DEV/restore comparison and synthetic fixture comma
 4. Confirm the restored copy and protected review files have the approved disposal schedule. Record the smoke results and deployed SHA for DEV. Maintain a separate rollback record. Never downgrade a suspended or erased foundation owner into legacy People storage as a recovery step.
 
 P-306 release acceptance remains gated on the hosted restore/replay, full closure and third-party retention handling, live DEV/mobile checks, and an explicit cohort decision. No live database or provider data was accessed during this implementation.
+
+## S-402b exchange dependencies
+
+The S-402b feature branch extends review, suspension and erasure to incoming and owned exchanges, challenges, outbox and account associations. It preserves the other custodian's independently held contact history. The operator-only `expire-exchanges` command clears dormant expired payloads with the usual target and confirmation checks. See [service operation and migration requirements](S402_EXCHANGE_SERVICE.md). Older privacy binaries must not erase populated S-402 data.

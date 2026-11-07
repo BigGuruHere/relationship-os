@@ -34,6 +34,8 @@ enum UserRole {
 // - Primary account for a single tenant
 // - Email is stored encrypted at rest with a deterministic HMAC index for equality
 model User {
+  s402Association FoundationAccountAssociation[]
+
   s402Exchange FoundationExchange[]
 
   // IT: Additive foundation references; no enrolment or data backfill is implied.
@@ -4176,6 +4178,8 @@ model FoundationEnrollment {
 
 // IT: Custody references restrict deletion; services must explicitly erase dependencies.
 model FoundationVault {
+  s402Association FoundationAccountAssociation[]
+
   s402Exchange FoundationExchange[]
 
   id String @id @default(uuid())
@@ -4204,6 +4208,9 @@ model FoundationVault {
 
 // IT: Custody references restrict deletion; services must explicitly erase dependencies.
 model FoundationSubject {
+  s402SettledExchange FoundationExchange[] @relation("ExchangeSettlement")
+  s402Association FoundationAccountAssociation[]
+
   s402Exchange FoundationExchange[]
 
   id String @id @default(uuid())
@@ -4482,6 +4489,8 @@ model FoundationExchange {
   destinationEnc String?
   continuationHash String @unique
   beneficiaryUserId String?
+  settledSubjectId String?
+  settledVaultId String?
   status String @default("PENDING")
   generation Int @default(0)
   failedAttempts Int @default(0)
@@ -4494,6 +4503,7 @@ model FoundationExchange {
   subject FoundationSubject @relation(fields: [subjectId, ownerUserId, vaultId, subjectKind], references: [id, ownerUserId, vaultId, kind], onDelete: Restrict, onUpdate: Restrict)
   source FoundationSource @relation(fields: [sourceId, ownerUserId, vaultId, sourceKind], references: [id, ownerUserId, vaultId, kind], onDelete: Restrict, onUpdate: Restrict)
   beneficiary User? @relation(fields: [beneficiaryUserId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  settledSubject FoundationSubject? @relation("ExchangeSettlement", fields:[settledSubjectId,beneficiaryUserId,settledVaultId], references:[id,ownerUserId,vaultId], onDelete:Restrict, onUpdate:Restrict)
   challenges FoundationExchangeChallenge[]
   @@unique([sourceId, ownerUserId, vaultId])
   @@unique([id, ownerUserId, vaultId, beneficiaryUserId])
@@ -4543,4 +4553,34 @@ model FoundationExchangeDispatch {
   challenge FoundationExchangeChallenge @relation(fields: [challengeId, ownerUserId, vaultId], references: [id, ownerUserId, vaultId], onDelete: Restrict, onUpdate: Restrict)
   @@unique([challengeId, ownerUserId, vaultId])
   @@index([status, expiresAt, leaseUntil])
+}
+
+
+// IT: Private account associations confer no access to the other participant's vault.
+model FoundationAccountAssociation {
+ id String @id @default(uuid())
+ ownerUserId String
+ vaultId String
+ subjectId String
+ subjectKind FoundationSubjectKind @default(PERSON)
+ accountId String
+ channel String
+ channelHash String
+ verifiedAt DateTime @db.Timestamptz(3)
+ state String @default("ACTIVE")
+ exchangeRef String
+ vault FoundationVault @relation(fields:[vaultId,ownerUserId], references:[id,ownerUserId], onDelete:Restrict, onUpdate:Restrict)
+ subject FoundationSubject @relation(fields:[subjectId,ownerUserId,vaultId,subjectKind], references:[id,ownerUserId,vaultId,kind], onDelete:Restrict, onUpdate:Restrict)
+ account User @relation(fields:[accountId], references:[id], onDelete:Restrict, onUpdate:Restrict)
+ @@unique([ownerUserId,vaultId,accountId])
+ @@unique([ownerUserId,vaultId,subjectId])
+ @@index([channelHash,accountId])
+}
+
+// IT: Opaque, expiring abuse counters shared across replicas and exchange attempts.
+model FoundationClaimBudget {
+ id String @id
+ count Int
+ expiresAt DateTime @db.Timestamptz(3)
+ @@index([expiresAt])
 }

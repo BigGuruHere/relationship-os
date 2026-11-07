@@ -28,7 +28,11 @@ export type FoundationAccess = Readonly<{
 }>;
 const issued = new WeakMap<object, { prepared: boolean }>();
 
-async function current(tx: AppTransactionClient, ownerUserId: string, prepared: boolean) {
+export async function lockActiveFoundationRoot(
+	tx: AppTransactionClient,
+	ownerUserId: string,
+	prepared: boolean
+) {
 	await lockFoundationAccount(tx, ownerUserId);
 	const enrollment = await tx.foundationEnrollment.findUnique({ where: { userId: ownerUserId } });
 	const vault = await tx.foundationVault.findFirst({
@@ -85,7 +89,7 @@ async function resolve(
 		throw new FoundationDenied();
 	return runFoundationBoundary({ ownerUserId, mode: 'RESOLVE' }, () =>
 		prisma.$transaction(async (tx) => {
-			const root = await current(tx, ownerUserId, prepared);
+			const root = await lockActiveFoundationRoot(tx, ownerUserId, prepared);
 			const access = Object.freeze({
 				actorId: ownerUserId,
 				ownerUserId,
@@ -124,7 +128,7 @@ export async function withFoundationAccess<T>(
 	return runFoundationBoundary({ ownerUserId: access.ownerUserId, mode: 'RESOLVE' }, () =>
 		prisma.$transaction(
 			async (tx) => {
-				const root = await current(tx, access.ownerUserId, record.prepared);
+				const root = await lockActiveFoundationRoot(tx, access.ownerUserId, record.prepared);
 				if (root.vaultId !== access.vaultId || root.epoch !== access.epoch)
 					throw new FoundationDenied();
 				return runFoundationBoundary(
@@ -171,7 +175,7 @@ export async function withPublicCapture(
 			async (tx) => {
 				let root;
 				try {
-					root = await current(tx, candidate.userId, false);
+					root = await lockActiveFoundationRoot(tx, candidate.userId, false);
 				} catch (e) {
 					if (e instanceof FoundationDenied)
 						throw error(503, 'People storage is temporarily unavailable.');

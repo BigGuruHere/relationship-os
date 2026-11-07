@@ -1,6 +1,6 @@
 # S-402a Exchange persistence
 
-Implemented on feature/s402-exchange-schema from development 159c39e, 2026-11-07. This is the first implementation slice of S-402. S-402b adds the guarded SMS service, account-association persistence, settlement, cross-account budgets and privacy operations before activation. S-403 connects the browser flow.
+Merged through PR #31 at development 477adb9, 2026-11-07. This is the first implementation slice of S-402. S-402b adds the guarded SMS service, account-association persistence, settlement, cross-account budgets and privacy operations before activation. S-403 connects the browser flow.
 
 ## Migration and constraints
 
@@ -12,7 +12,7 @@ FoundationExchangeChallenge binds account, session digest, channel, encrypted de
 
 FoundationExchangeDispatch binds one encrypted delivery payload to one challenge and its custody. SENDING requires a lease. Terminal delivery states require payload removal. A bounded error-code vocabulary prevents raw provider responses being persisted in this field. SQL cannot establish that application-supplied ciphertext or digests were produced correctly; S-402b's service must provide and test encryption, keyed hashing and secret handling.
 
-Composite foreign keys reject cross-owner references and restrictive deletion requires explicit cleanup. Mutation triggers protect custody, exact exchange evidence, challenge binding and terminal states. Current application capabilities deny all three models. Existing capture, authentication and privacy services cannot populate them.
+Composite foreign keys reject cross-owner references and restrictive deletion requires explicit cleanup. Mutation triggers protect custody, exact exchange evidence, challenge binding and terminal states. At the S-402a merge, application capabilities denied all three models. The subsequent [S-402b service branch](S402_EXCHANGE_SERVICE.md) adds narrow writer/privacy capabilities and another additive migration; ordinary application access remains denied.
 
 The provisional per-exchange limit is five verification failures and five sends, matching the design's five attempts and making bounded resends concrete. Changes to these limits require a reviewed migration. Generation checks and expiry comparisons at the moment of use, concurrent budget enforcement, dispatch authorization, verified account associations and atomic reciprocal settlement are S-402b obligations.
 

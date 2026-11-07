@@ -86,3 +86,7 @@ Follow [P-302](P302_EXCHANGE.md) for visitor capture. Keep route consent/token/o
 ## P-303 notes and draft processing
 
 Follow [P-303](P303_NOTES.md). Reuse ContactNoteForm and existing upload/provider transport. Stable form keys identify retry attempts, not people. Keep full-text note retrieval under READ_NOTES and leave READ_SEGMENT payload restrictions intact. Explicit PROCESS_DRAFT checks run before and after provider work, outside database transactions; they grant no stored-source analysis permission. Jobs must bind server-issued domain/vault/epoch and reauthorize polling. Do not treat process-local jobs as durable or silently route failed foundation writes to legacy storage.
+
+## S-402b internal exchange authority
+
+Read [S-402b service boundaries](S402_EXCHANGE_SERVICE.md) before connecting an exchange route. Only the reviewed authority, claim/budget and privacy-dependency modules may establish the new internal scopes. Scope wrappers and capture issuance are also import-allowlisted in `f204-boundaries.test.mjs`; routes must call the authenticated service rather than mint scopes. Receipt/subject helpers require an already guarded transaction. Changes to these exact import boundaries need executable isolation tests, not a broad allowlist exception.

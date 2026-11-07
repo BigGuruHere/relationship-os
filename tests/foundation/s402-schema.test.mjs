@@ -207,41 +207,32 @@ INSERT INTO "FoundationSource"(id,"ownerUserId","vaultId",kind,"ingestKey","upda
 				await reject(() => db.exec(`DELETE FROM "FoundationExchange" WHERE id='e'`), '23001');
 			}
 		);
-		await t.test(
-			'application capabilities deny new models until claim and privacy services are implemented',
-			async () => {
-				vite = await createServer({
-					configFile: false,
-					server: { middlewareMode: true, hmr: false },
-					resolve: { alias: { $lib: resolve('src/lib') } }
-				});
-				const { guardFoundationQuery, runFoundationBoundary } = await vite.ssrLoadModule(
-					'/src/lib/server/foundation/internal.ts'
-				);
-				for (const model of [
-					'FoundationExchange',
-					'FoundationExchangeChallenge',
-					'FoundationExchangeDispatch'
-				]) {
-					assert.throws(() => guardFoundationQuery(model, 'findMany', {}), /unavailable/);
-					for (const mode of [
-						'RESOLVE',
-						'PROVISION',
-						'PUBLIC_CAPTURE',
-						'READ',
-						'WRITE',
-						'PRIVACY_REVIEW',
-						'PRIVACY_ERASE'
-					])
-						await assert.rejects(
-							runFoundationBoundary({ ownerUserId: 'a', vaultId: 'va', mode }, async () =>
-								guardFoundationQuery(model, 'findMany', {})
-							),
-							/unavailable/
-						);
-				}
+		await t.test('ordinary application capabilities deny exchange models', async () => {
+			vite = await createServer({
+				configFile: false,
+				server: { middlewareMode: true, hmr: false },
+				resolve: { alias: { $lib: resolve('src/lib') } }
+			});
+			const { guardFoundationQuery, runFoundationBoundary } = await vite.ssrLoadModule(
+				'/src/lib/server/foundation/internal.ts'
+			);
+			for (const model of [
+				'FoundationExchange',
+				'FoundationExchangeChallenge',
+				'FoundationExchangeDispatch',
+				'FoundationAccountAssociation',
+				'FoundationClaimBudget'
+			]) {
+				assert.throws(() => guardFoundationQuery(model, 'findMany', {}), /unavailable/);
+				for (const mode of ['RESOLVE', 'PROVISION', 'PUBLIC_CAPTURE', 'READ', 'WRITE'])
+					await assert.rejects(
+						runFoundationBoundary({ ownerUserId: 'a', vaultId: 'va', mode }, async () =>
+							guardFoundationQuery(model, 'findMany', {})
+						),
+						/unavailable/
+					);
 			}
-		);
+		});
 		await t.test('failed migration rolls back all additions', async () => {
 			// Run on an independent empty copy to prove BEGIN/COMMIT wraps the whole migration.
 			const fresh = await PGlite.create({ extensions: { vector } });

@@ -2,6 +2,10 @@
 
 Status: living snapshot updated **2026-11-07**. Foundation baseline is development `4a4ddb2` (PR #36). Environment observations are explicitly attributed below; this is not a live deployment monitor.
 
+## S-405b owned-profile exchange
+
+[Implementation and DEV checks](foundation/S405B_PROFILE_EXCHANGE.md) are on `feature/s405b-profile-exchange`, based on merged PR #37 (`8fe9117`). Eligible signed-in users select an owned profile or create an unpublished card, then confirm reciprocal saving without SMS. Existing account links are reused and private history preserved. No migration; 109 migrations / 20 foundation tables remain. Local and CI evidence is recorded in the PR. Not merged/deployed; live DEV acceptance pending. Account-channel registry and email remain S-405c/d.
+
 ## S-405 account channels and simpler exchange
 
 The operator requested owned-profile exchange without redundant SMS and independent reusable verification for each account phone/email. [S-405a](foundation/S405_ACCOUNT_CHANNELS_AND_EXCHANGE.md) records the accepted architecture and ordered runtime stages on `feature/account-channel-exchange`. Documentation only: the current source still requires exchange-bound SMS and has no reusable account-channel registry or working email sender. S-405b implements profile selection first; S-405c/d add channel persistence and guest/email integration. No migration, message, merge or deployment is claimed for S-405a.

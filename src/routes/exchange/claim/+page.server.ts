@@ -1,3 +1,4 @@
+import { profileExchangeReturn, clearProfileExchangeReturn } from '$lib/server/profileExchangeReturn';
 import { reportExchangeFailure, ExchangeDenied } from '$lib/server/foundation/exchangeDiagnostics';
 import { exchangeBrowserEnabled } from '$lib/server/foundation/devPilotGate';
 // Same-origin forms are the only browser entry to proof consumption. No capability appears in URLs.
@@ -22,6 +23,9 @@ export const load: PageServerLoad = async ({ locals, cookies, setHeaders, url })
 		'cache-control': 'private, no-store', // Native POST forms need a non-null Origin for strict CSRF checks.
 		'referrer-policy': 'same-origin'
 	});
+	// Sign-in return is navigation only; profile ownership is checked later at confirmation.
+	const profileReturn = locals.user && exchangeBrowserEnabled(locals,url.origin) ? profileExchangeReturn(cookies,'visitor') : null;
+	if(profileReturn){ clearProfileExchangeReturn(cookies); throw redirect(303,profileReturn); }
 	const claim = readExchange(cookies);
 	return {
 		available: Boolean(claim && exchangeBrowserEnabled(locals, url.origin)),

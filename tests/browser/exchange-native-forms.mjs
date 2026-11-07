@@ -165,7 +165,7 @@ try {
 	await tab.waitForURL(base + '/profiles');
 	// The top publication button is associated with the existing form and includes unsaved edits.
 	await tab.goto(base + '/profile');
-	await tab.getByLabel('Display name', { exact: true }).fill('Edited Mark');
+	await tab.getByLabel('Public name', { exact: true }).fill('Edited Mark');
 	await tab.getByRole('button', { name: 'Publish profile', exact: true }).click();
 	assert.equal(lastProfile.get('publishNow'), 'yes');
 	assert.equal(lastProfile.get('displayName'), 'Edited Mark');

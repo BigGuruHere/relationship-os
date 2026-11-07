@@ -161,8 +161,30 @@ try {
 	await tab.getByRole('button', { name: 'Send verification code', exact: true }).click();
 	await tab.getByLabel('Verification code', { exact: true }).waitFor();
 	assert.equal(globalThis.claimArgs[3], 'trusted-address');
+	// Native constraint validation must reject incomplete codes before any service request.
+	await tab.getByLabel('Verification code', { exact: true }).fill('12345');
+	assert.equal(
+		await tab
+			.getByLabel('Verification code', { exact: true })
+			.evaluate((input) => input.checkValidity()),
+		false
+	);
+
 	await tab.getByRole('button', { name: 'Continue later', exact: true }).click();
 	await tab.waitForURL(base + '/profiles');
+	// Resume after Continue later, then submit a synthetic code with a leading zero.
+	await tab.goto(base);
+	await tab.getByLabel('Verification code', { exact: true }).fill('012345');
+	assert.equal(
+		await tab
+			.getByLabel('Verification code', { exact: true })
+			.evaluate((input) => input.checkValidity()),
+		true
+	);
+	await tab.getByRole('button', { name: 'Verify and save contact', exact: true }).click();
+	await tab.waitForURL(base + '/people');
+	assert.equal(globalThis.verifyArgs[3], '012345');
+
 	// The top publication button is associated with the existing form and includes unsaved edits.
 	await tab.goto(base + '/profile');
 	await tab.getByLabel('Public name', { exact: true }).fill('Edited Mark');
@@ -170,7 +192,7 @@ try {
 	assert.equal(lastProfile.get('publishNow'), 'yes');
 	assert.equal(lastProfile.get('displayName'), 'Edited Mark');
 	console.log(
-		'PASS: reproduced null Origin; corrected native Send and Continue later; publish submits current editor fields.'
+		'PASS: reproduced null Origin; corrected native Send, Continue later and six-digit code submission; publish submits current editor fields.'
 	);
 } finally {
 	if (browser) await browser.close();

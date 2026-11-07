@@ -29,3 +29,7 @@ Diagnostics narrow the failure; they do not establish that a live send has been 
 ## Validation
 
 Focused tests cover correlated page/log references, fixed log fields and exclusion of private values, local-format contacts against formatted international allowlist entries, blocked destinations without a provider call, plus existing claim replay, lifecycle, concurrency and rollback behavior. The full CI suite also runs real PostgreSQL and Chromium forms. Exact results belong in the PR. Application rollback requires no schema operation.
+
+## Operator diagnosis and input follow-up
+
+PR #35 merged at `1785b70`. The supplied event reported SELF_EXCHANGE: the current account owned the shared card. After using separate accounts, the operator received SMS. Browser validation then blocked six-digit entry. Feature branch `fix/exchange-code-input` corrects Svelte interpolation of the pattern quantifier and tests actual rendered/native submission with synthetic codes. No issued code is stored in this documentation or tests. Refresh after deployment and request a fresh code if the prior challenge has expired.

@@ -1,3 +1,6 @@
+import { readFile, mkdir, writeFile } from 'node:fs/promises';
+import { compile } from 'svelte/compiler';
+import { render } from 'svelte/server';
 // Exercise encrypted browser capability handling and real form boundaries without sending SMS.
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -145,6 +148,29 @@ try {
 			console.error = original;
 			delete globalThis.claimFailure;
 		}
+	});
+	await test('rendered code field accepts six digits including leading zero, rejecting other lengths/text', async () => {
+		const source = await readFile('src/routes/exchange/claim/+page.svelte', 'utf8');
+		const output = compile(source, {
+			generate: 'server',
+			filename: 'src/routes/exchange/claim/+page.svelte'
+		});
+		await mkdir('.svelte-kit', { recursive: true });
+		await writeFile('.svelte-kit/test-exchange-code-component.js', output.js.code);
+		const { default: component } = await vite.ssrLoadModule(
+			'/.svelte-kit/test-exchange-code-component.js'
+		);
+		const { body } = render(component, {
+			props: {
+				data: { available: true, signedIn: true, ready: true, codeRequested: true },
+				form: null
+			}
+		});
+		const pattern = body.match(/pattern="([^"]+)"/)[1];
+		const rule = new RegExp('^(?:' + pattern + ')$');
+		for (const code of ['123456', '012345', '000000']) assert.ok(rule.test(code));
+		for (const code of ['12345', '1234567', 'abcdef', '123 45', ''])
+			assert.equal(rule.test(code), false);
 	});
 } finally {
 	await vite.close();

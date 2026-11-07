@@ -21,6 +21,8 @@ Read [S-405 account channels and simpler exchange](foundation/S405_ACCOUNT_CHANN
 
 For the next runtime slice, see [S-405c account channel settings, migration and acceptance](foundation/S405C_ACCOUNT_CHANNELS.md). Email verification and guest assurance reuse remain planned.
 
+See [S-405d guest assurance reuse, email/Google proof and setup](foundation/S405D_GUEST_ASSURANCE.md) for the next runtime slice. Combined device/recovery acceptance remains S-405e.
+
 ## Relationship foundation programme
 
 For architecture and new-domain implementation, read these linked documents after the living overview:

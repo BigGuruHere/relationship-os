@@ -138,3 +138,8 @@ S-403 adds a fixed exchange auth return and encrypted browser continuation. New-
 ## S-405c account-owned channel boundary
 
 [Account channels](foundation/S405C_ACCOUNT_CHANNELS.md) add encrypted account custody independent of relationship vaults, a restricted ACCOUNT_CHANNEL query scope, persistent proof/challenge/outbox history and database-enforced current verified-channel exclusivity. Session/root lifecycle and shared exchange locks/budgets are reused. Vault erasure does not erase account channels; suspension cancels pending delivery. This is feature-branch implementation, not a deployment. Guest reuse/email/Google proof remain S-405d.
+
+
+## S-405d exact claims reuse account proof
+
+[Guest assurance reuse](foundation/S405D_GUEST_ASSURANCE.md) adds immutable version-2 submitted-channel snapshots and resolves current account proof under settlement/revocation locks. Proof commits independently of reciprocal saving. Existing version-1 SMS continuations drain without backfill; new browser intake has one version-2 writer. Email uses a configurable, default-disabled Resend adapter through the existing encrypted outbox and shared budgets. Newly validated Google callbacks can record exact email proof after strict token/nonce validation; revoked channels stay revoked. Feature-branch implementation only, with one additive migration and no new tables.

@@ -12,7 +12,9 @@ type Continuation = {
 	profileId: string;
 	browser: string;
 	at: number;
+    version?: 2;
 	challengeId?: string;
+    channelType?: string;
 	accountId?: string;
 	sessionId?: string;
 };
@@ -35,7 +37,7 @@ export function readExchange(cookies: Cookies): Continuation | null {
 		return null;
 	}
 }
-export function saveExchange(cookies: Cookies, url: URL, token: string, profileId: string) {
+export function saveExchange(cookies: Cookies, url: URL, token: string, profileId: string, version?: 2) {
 	const browser = randomUUID();
 	const options = {
 		path: '/',
@@ -47,7 +49,7 @@ export function saveExchange(cookies: Cookies, url: URL, token: string, profileI
 	cookies.set(BROWSER, browser, options);
 	cookies.set(
 		CLAIM,
-		encrypt(JSON.stringify({ token, profileId, browser, at: Date.now() }), purpose),
+		encrypt(JSON.stringify({ token, profileId, browser, at: Date.now(), ...(version?{version}:{}) }), purpose),
 		options
 	);
 }
@@ -57,11 +59,11 @@ export function bindExchangeChallenge(
 	value: Continuation,
 	challengeId: string,
 	accountId: string,
-	sessionId: string
+	sessionId: string, channelType?: string
 ) {
 	cookies.set(
 		CLAIM,
-		encrypt(JSON.stringify({ ...value, challengeId, accountId, sessionId }), purpose),
+		encrypt(JSON.stringify({ ...value, challengeId, accountId, sessionId, channelType }), purpose),
 		{
 			path: '/',
 			httpOnly: true,

@@ -48,7 +48,7 @@
 							? 'SMS code'
 							: channel.method}.
 					</p>{/if}
-				{#if channel.type === 'PHONE' && channel.status !== 'VERIFIED'}
+				{#if channel.status !== 'VERIFIED' && (channel.type === 'PHONE' || data.emailEnabled)}
 					<form method="POST">
 						<input type="hidden" name="intent" value="send" /><input
 							type="hidden"
@@ -58,8 +58,9 @@
 							>{channel.status === 'REVOKED' ? 'Verify again' : 'Send verification code'}</button
 						>
 					</form>
-				{:else if channel.type === 'EMAIL' && channel.status !== 'VERIFIED'}<p>
-						Email verification will be available in the next stage.
+				{/if}
+				{#if channel.type === 'EMAIL' && !data.emailEnabled && channel.status !== 'VERIFIED'}<p>
+						Email verification awaits sender setup.
 					</p>{/if}
 				{#if form?.channelId === channel.id && form?.challengeId}
 					<form method="POST">
@@ -78,7 +79,7 @@
 								maxlength="6"
 								required
 							/></label
-						><button>Verify phone number</button>
+						><button>Verify channel</button>
 					</form>
 					<form method="POST">
 						<input type="hidden" name="intent" value="retry" /><input

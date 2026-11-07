@@ -1,6 +1,6 @@
 // Purpose and realm separation prevent a copied DEV challenge from being used in PROD.
 import { timingSafeEqual } from 'node:crypto';
-import { buildScopedMacToken, encrypt, decrypt } from '$lib/crypto';
+import { buildScopedMacToken, encrypt, decrypt, normalizeEmail } from '$lib/crypto';
 import { FoundationDenied } from './internal';
 
 export function claimMac(value: string, purpose: string) {
@@ -49,4 +49,28 @@ export function verificationPhone(value: string) {
 	const phone = /^04[0-9]{8}$/.test(compact) ? '+61' + compact.slice(1) : compact;
 	if (!/^\+614[0-9]{8}$/.test(phone)) throw new FoundationDenied();
 	return phone;
+}
+// One canonical contract for submitted email and account-channel equality; no provider alias folding.
+export function verificationEmail(value: string) {
+	if (
+		typeof value !== 'string' ||
+		value.length > 254 ||
+		!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim())
+	)
+		throw new FoundationDenied();
+	return normalizeEmail(value);
+}
+export function submissionChannels(phone: string, email: string) {
+	const result: { type: 'PHONE' | 'EMAIL'; value: string }[] = [];
+	try {
+		result.push({ type: 'PHONE', value: verificationPhone(phone) });
+	} catch {
+		/* Ordinary capture still accepts unsupported phone formats. */
+	}
+	try {
+		result.push({ type: 'EMAIL', value: verificationEmail(email) });
+	} catch {
+		/* A valid optional contact may have no supported claim channel. */
+	}
+	return result;
 }

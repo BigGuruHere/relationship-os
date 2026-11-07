@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import type { AppTransactionClient } from '$lib/db';
 import { FoundationDenied } from './internal';
 import { exchangeScope } from './exchangeAuthority';
-import { claimMac, seal, verificationPhone } from './exchangeCrypto';
+import { claimMac, seal, verificationPhone, submissionChannels } from './exchangeCrypto';
 
 export async function issueCapturedExchange(
 	tx: AppTransactionClient,
@@ -11,7 +11,9 @@ export async function issueCapturedExchange(
 	browser: string,
 	sourceId: string,
 	personId: string | null,
-	phone: string
+	phone: string,
+	email = '',
+	version: 1 | 2 = 1
 ) {
 	const continuation = claimMac(
 		JSON.stringify([intake.profileId, intake.nonce, browser]),
@@ -19,10 +21,15 @@ export async function issueCapturedExchange(
 	);
 	return exchangeScope(intake, async () => {
 		const prior = await tx.foundationExchange.findFirst({ where: { sourceId } });
-		if (prior) return continuation;
+		if (prior) {
+			if (prior.claimVersion !== version) throw new FoundationDenied();
+			return continuation;
+		}
 		// A pre-existing receipt without a claim must be exchanged again.
 		if (!personId) throw new FoundationDenied();
-		const destination = verificationPhone(phone);
+		const channels = version === 2 ? submissionChannels(phone, email) : [];
+		if (version === 2 && !channels.length) throw new FoundationDenied();
+		const destination = version === 1 ? verificationPhone(phone) : null;
 		const profile = await tx.profile.findFirst({
 			where: { id: intake.profileId, userId: intake.ownerUserId, isPublished: true },
 			select: { displayName: true, emailPublic: true, phonePublic: true }
@@ -32,6 +39,18 @@ export async function issueCapturedExchange(
 		await tx.foundationExchange.create({
 			data: {
 				id,
+				claimVersion: version,
+				...(version === 2
+					? {
+							submittedChannelsEnc: seal(
+								'FoundationExchange',
+								'submittedChannelsEnc',
+								intake,
+								id,
+								channels
+							)
+						}
+					: {}),
 				...{ ownerUserId: intake.ownerUserId, vaultId: intake.vaultId },
 				profileId: intake.profileId,
 				sourceId,
@@ -41,7 +60,9 @@ export async function issueCapturedExchange(
 					email: profile.emailPublic ?? '',
 					phone: profile.phonePublic ?? ''
 				}),
-				destinationEnc: seal('FoundationExchange', 'destinationEnc', intake, id, destination),
+				destinationEnc: destination
+					? seal('FoundationExchange', 'destinationEnc', intake, id, destination)
+					: null,
 				continuationHash: claimMac(continuation, 'lookup'),
 				expiresAt: new Date(Date.now() + 86400000)
 			},

@@ -1,10 +1,10 @@
 import { saveProfileExchangeReturn } from '$lib/server/profileExchangeReturn';
 import { saveExchange, readExchange, clearExchange, EXCHANGE_RETURN } from '$lib/server/exchangeOnboarding';
 import { ownedExchangeChoices, confirmOwnedProfileExchange } from '$lib/server/foundation/exchangeClaims';
-import { captureFoundationExchange } from '$lib/server/foundation/capture';
+import { captureFoundationAccountExchange } from '$lib/server/foundation/capture';
 import { accountDomain } from '$lib/server/foundation/provisioning';
 import { exchangeBrowserEnabled } from '$lib/server/foundation/devPilotGate';
-import { verificationPhone } from '$lib/server/foundation/exchangeCrypto';
+import { submissionChannels } from '$lib/server/foundation/exchangeCrypto';
 import type { Actions, PageServerLoad } from './$types';
 import { fail, isHttpError, redirect } from '@sveltejs/kit';
 import { randomUUID } from 'node:crypto';
@@ -85,10 +85,10 @@ export const actions: Actions = {
     try {
       const input = { ...values, ...receipt, captureToken: form.get('captureToken'), browser: cookies.get(CAPTURE_COOKIE)! };
       let supported = false;
-      try { verificationPhone(values.phone); supported = true; } catch { /* Ordinary capture accepts unsupported or missing channels. */ }
+      supported = submissionChannels(values.phone,values.email).length>0;
       if(supported && exchangeBrowserEnabled(locals,url.origin) && await accountDomain(profile.userId)==='ACTIVE') {
-        const token = await captureFoundationExchange(profile.id,input);
-        if(token) saveExchange(cookies,url,token,profile.id);
+        const token = await captureFoundationAccountExchange(profile.id,input);
+        if(token) saveExchange(cookies,url,token,profile.id,2);
       } else {
         await capturePrivateContact(profile,input);
         // A new ordinary capture must not offer proof for an older submission to this profile.

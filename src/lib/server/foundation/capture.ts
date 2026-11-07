@@ -18,7 +18,7 @@ async function capture(
 		captureToken?: unknown;
 		browser: string;
 	},
-	issueClaim: boolean
+	issueClaim: boolean | 2
 ) {
 	let continuation: string | undefined;
 	const details = validateContactDetails(input);
@@ -54,7 +54,7 @@ async function capture(
 					input.browser,
 					prior.id,
 					null,
-					details.phone
+					details.phone, details.email, issueClaim===2?2:1
 				);
 			return;
 		}
@@ -157,7 +157,7 @@ async function capture(
 				input.browser,
 				sourceId,
 				person.id,
-				details.phone
+				details.phone, details.email, issueClaim===2?2:1
 			);
 	});
 	return continuation;
@@ -176,4 +176,9 @@ export async function captureFoundationExchange(
 	input: Parameters<typeof capture>[1]
 ) {
 	return capture(profileId, input, true);
+}
+
+// New browser submissions use account-owned phone/email assurance; the old writer remains for draining v1.
+export async function captureFoundationAccountExchange(profileId:string,input:Parameters<typeof capture>[1]) {
+ return capture(profileId,input,2);
 }

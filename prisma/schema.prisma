@@ -4478,6 +4478,9 @@ model FoundationContextAssociation {
 
 // IT: Durable exchange state. Request writers are gated until S-402b adds scoped services.
 model FoundationExchange {
+  // Version 2 claims retain exact submitted channel snapshots; old claims keep version 1.
+  claimVersion Int @default(1)
+  submittedChannelsEnc String?
   id String @id @default(uuid())
   ownerUserId String
   vaultId String

@@ -1,3 +1,6 @@
+import { recordGoogleEmailProof } from '$lib/server/foundation/accountChannels';
+import { exchangeBrowserEnabled } from '$lib/server/foundation/devPilotGate';
+import { accountDomain } from '$lib/server/foundation/provisioning';
 import { readExchange } from '$lib/server/exchangeOnboarding';
 import { admitDevExchangeSignup } from '$lib/server/foundation/provisioning';
 import { EXCHANGE_RETURN } from '$lib/server/exchangeOnboarding';
@@ -121,19 +124,19 @@ export const GET: RequestHandler = async ({ url, cookies, locals, getClientAddre
   }
 
   const jwks = jose.createRemoteJWKSet(new URL(JWKS_URI));
-  const { payload } = await jose.jwtVerify(idToken, jwks, { audience: clientId });
+  const { payload } = await jose.jwtVerify(idToken, jwks, { audience: clientId, issuer:['https://accounts.google.com','accounts.google.com'], requiredClaims:['exp','iat','sub','email','email_verified','nonce'], maxTokenAge:'10 minutes' });
 
   // 7 - optional nonce binding if you set one during start
-  if (nonceCookie && payload.nonce && payload.nonce !== nonceCookie) {
+  if (!nonceCookie || payload.nonce !== nonceCookie) {
     clearTempCookies(cookies, locals.sessionCookie.options.secure);
     throw error(400, 'Nonce mismatch');
   }
 
   // 8 - extract identity from the ID token
-  const sub = String(payload.sub);
-  const emailRaw = String(payload.email || '');
-  const emailVerified = Boolean(payload.email_verified);
-  if (!emailRaw || !emailVerified) {
+  const sub = typeof payload.sub==='string'?payload.sub:'';
+  const emailRaw = typeof payload.email==='string'?payload.email:'';
+  const emailVerified = payload.email_verified === true;
+  if (!sub || !emailRaw || !emailVerified) {
     clearTempCookies(cookies, locals.sessionCookie.options.secure);
     throw error(400, 'Email not verified with Google');
   }
@@ -261,6 +264,12 @@ export const GET: RequestHandler = async ({ url, cookies, locals, getClientAddre
   const sess = await createSession(user.id);
   setSessionCookie(cookies, locals, sess.cookie, sess.expiresAt);
 
+  // Only newly validated callbacks can establish account email assurance. This never blocks login
+  // or reactivates revoked channels; credentials and private domain enrollment remain independent.
+  if(exchangeBrowserEnabled(locals,url.origin) && await accountDomain(user.id)==='ACTIVE') {
+    try {await recordGoogleEmailProof({...locals,user:{id:user.id},sessionId:sess.sessionId},email);}
+    catch {console.warn('Google account-channel proof could not be recorded.');}
+  }
   // The optional profile flow grants no legacy claim authority.
   if (onboarding) {
     throw redirect(303, finishProfileAuth(cookies, url, next, user.id, newProfileId));

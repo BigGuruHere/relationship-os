@@ -1,11 +1,15 @@
+import {
+	sendVerificationEmail,
+	emailVerificationConfigured
+} from '$lib/server/integrations/resend/verification';
 // Account-owned proof service. No route can write channel status or choose another account.
 import { randomInt, randomUUID } from 'node:crypto';
 import type { AppTransactionClient } from '$lib/db';
-import { encrypt, decrypt, normalizeEmail } from '$lib/crypto';
+import { encrypt, decrypt } from '$lib/crypto';
 import { FoundationDenied, runFoundationBoundary } from './internal';
 import { exchangeTransaction, exchangeRoots, requireClaimSession } from './exchangeAuthority';
-import { claimMac, verificationPhone, sameMac } from './exchangeCrypto';
-import { budget } from './exchangeClaims';
+import { claimMac, verificationPhone, verificationEmail, sameMac } from './exchangeCrypto';
+import { budget } from './exchangeBudget';
 import { exchangeBrowserEnabled } from './devPilotGate';
 import { sendTelnyxSms } from '$lib/server/integrations/telnyx/messaging';
 type Actor = Pick<App.Locals, 'user' | 'sessionId' | 'env' | 'appOrigin'>;
@@ -14,8 +18,7 @@ const aad = (account: string, id: string, field: string) =>
 	`account-channel:v1:${account}:${id}:${field}`;
 function canonical(type: string, value: string) {
 	if (type === 'PHONE') return verificationPhone(value);
-	if (type === 'EMAIL' && value.length <= 254 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim()))
-		return normalizeEmail(value);
+	if (type === 'EMAIL') return verificationEmail(value);
 	throw new FoundationDenied();
 }
 function hash(type: string, value: string) {
@@ -125,7 +128,7 @@ export async function requestAccountChannelCode(
 	return scope(locals, async (tx, account) => {
 		await expire(tx);
 		let c = await channel(tx, id);
-		if (c.type !== 'PHONE') throw new FoundationDenied();
+		if (c.type === 'EMAIL' && !emailVerificationConfigured()) throw new FoundationDenied();
 		if (c.status === 'VERIFIED') return { status: 'VERIFIED' as const };
 		const prior = await tx.foundationAccountChannelChallenge.findFirst({
 			where: { id: requestId }
@@ -155,11 +158,11 @@ export async function requestAccountChannelCode(
 			c = await channel(tx, id);
 		}
 		if (c.failedAttempts >= 5 || c.sendCount >= 5) return { status: 'LIMITED' as const };
-		const phone = verificationPhone(decrypt(c.valueEnc, aad(account, id, 'value')));
+		const phone = canonical(c.type, decrypt(c.valueEnc, aad(account, id, 'value')));
 		if (
 			!(await budget(tx, account, [
 				['send:account:' + account, 10],
-				['send:phone:' + phone, 5],
+				[(c.type === 'PHONE' ? 'send:phone:' : 'send:email:') + phone, 5],
 				['send:origin:' + address, 30],
 				['send:global', 100]
 			]))
@@ -190,7 +193,10 @@ export async function requestAccountChannelCode(
 				ownerUserId: account,
 				challengeId: requestId,
 				expiresAt,
-				payloadEnc: encrypt(JSON.stringify({ phone, code }), aad(account, dispatchId, 'dispatch'))
+				payloadEnc: encrypt(
+					JSON.stringify({ phone, code, type: c.type }),
+					aad(account, dispatchId, 'dispatch')
+				)
 			}
 		});
 		return { status: 'QUEUED' as const, challengeId: requestId };
@@ -212,23 +218,31 @@ export async function dispatchAccountChannelCode(locals: Actor, challengeId: str
 		if (!d.payloadEnc || !['QUEUED', 'FAILED'].includes(d.status) || d.attempts >= 3)
 			throw new FoundationDenied();
 		const payload = JSON.parse(decrypt(d.payloadEnc, aad(account, d.id, 'dispatch')));
-		const allowed = (process.env.RELISH_EXCHANGE_TEST_PHONES || '').split(',').some((p) => {
-			try {
-				return verificationPhone(p.trim()) === payload.phone;
-			} catch {
-				return false;
-			}
-		});
+		const allowed = (
+			c.type === 'PHONE'
+				? process.env.RELISH_EXCHANGE_TEST_PHONES || ''
+				: process.env.RELISH_EXCHANGE_TEST_EMAILS || ''
+		)
+			.split(',')
+			.some((p) => {
+				try {
+					return canonical(c.type, p.trim()) === payload.phone;
+				} catch {
+					return false;
+				}
+			});
 		if (!allowed) throw new FoundationDenied();
 		await tx.foundationAccountChannelDispatch.updateMany({
 			where: { id: d.id },
 			data: { attempts: { increment: 1 } }
 		});
 		try {
-			await sendTelnyxSms(
-				payload.phone,
-				`Your Relish verification code: ${payload.code}. It expires in 15 minutes.`
-			);
+			if (c.type === 'EMAIL') await sendVerificationEmail(payload.phone, payload.code, d.id);
+			else
+				await sendTelnyxSms(
+					payload.phone,
+					`Your Relish verification code: ${payload.code}. It expires in 15 minutes.`
+				);
 			await tx.foundationAccountChannelDispatch.updateMany({
 				where: { id: d.id },
 				data: { status: 'SENT', payloadEnc: null }
@@ -263,11 +277,11 @@ export async function verifyAccountChannelCode(
 		if (ch.status === 'CONSUMED' && c.status === 'VERIFIED') return 'VERIFIED';
 		if (ch.status !== 'PENDING' || c.status !== 'PENDING' || c.failedAttempts >= 5)
 			throw new FoundationDenied();
-		const phone = verificationPhone(decrypt(c.valueEnc, aad(account, c.id, 'value')));
+		const phone = canonical(c.type, decrypt(c.valueEnc, aad(account, c.id, 'value')));
 		if (
 			!(await budget(tx, account, [
 				['verify:account:' + account, 20],
-				['verify:phone:' + phone, 20],
+				[(c.type === 'PHONE' ? 'verify:phone:' : 'verify:email:') + phone, 20],
 				['verify:origin:' + address, 100]
 			]))
 		)
@@ -292,7 +306,7 @@ export async function verifyAccountChannelCode(
 				ownerUserId: account,
 				channelId: c.id,
 				generation: c.generation,
-				method: 'SMS_CODE',
+				method: c.type === 'PHONE' ? 'SMS_CODE' : 'EMAIL_CODE',
 				proofRef: ch.id,
 				verifiedAt: now
 			}
@@ -357,5 +371,74 @@ export async function maintainAccountChannelDelivery(
 			const channels = await tx.foundationAccountChannel.findMany({ select: { id: true } });
 			for (const c of channels) await cancel(tx, c.id);
 		}
+	});
+}
+
+// Internal adapters require the caller's already-locked account/session/root transaction.
+export async function ensureSubmittedChannel(
+	tx: AppTransactionClient,
+	account: string,
+	type: string,
+	value: string
+) {
+	return runFoundationBoundary({ ownerUserId: account, mode: 'ACCOUNT_CHANNEL' }, async () => {
+		const normalized = canonical(type, value),
+			valueHash = hash(type, normalized);
+		let c = await tx.foundationAccountChannel.findFirst({ where: { type, valueHash } });
+		if (!c) {
+			if ((await tx.foundationAccountChannel.count()) >= 20) throw new FoundationDenied();
+			const id = randomUUID();
+			c = await tx.foundationAccountChannel.create({
+				data: {
+					ownerUserId: account,
+					id,
+					type,
+					valueHash,
+					valueEnc: encrypt(normalized, aad(account, id, 'value'))
+				}
+			});
+		}
+		return c;
+	});
+}
+export async function currentSubmittedProof(
+	tx: AppTransactionClient,
+	account: string,
+	type: string,
+	value: string
+) {
+	return runFoundationBoundary({ ownerUserId: account, mode: 'ACCOUNT_CHANNEL' }, async () => {
+		const c = await tx.foundationAccountChannel.findFirst({
+			where: { type, valueHash: hash(type, canonical(type, value)), status: 'VERIFIED' }
+		});
+		if (!c) return null;
+		return tx.foundationAccountChannelVerification.findFirst({
+			where: { channelId: c.id, generation: c.generation, revokedAt: null },
+			select: { id: true }
+		});
+	});
+}
+// Only the validated Google callback may call this adapter; it never revives revoked assurance.
+export async function recordGoogleEmailProof(locals: Actor, email: string) {
+	return scope(locals, async (tx, account) => {
+		const c = await ensureSubmittedChannel(tx, account, 'EMAIL', email);
+		if (c.status === 'REVOKED') return 'REVOKED';
+		if (c.status === 'VERIFIED') return 'VERIFIED';
+		await cancel(tx, c.id);
+		const generation = c.generation + 1;
+		await tx.foundationAccountChannelVerification.create({
+			data: {
+				ownerUserId: account,
+				channelId: c.id,
+				generation,
+				method: 'GOOGLE_OIDC',
+				proofRef: randomUUID()
+			}
+		});
+		await tx.foundationAccountChannel.updateMany({
+			where: { id: c.id },
+			data: { generation, status: 'VERIFIED' }
+		});
+		return 'VERIFIED';
 	});
 }

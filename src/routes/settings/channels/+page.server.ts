@@ -1,3 +1,4 @@
+import { emailVerificationConfigured } from '$lib/server/integrations/resend/verification';
 // Account settings reuse the existing session, DEV admission and strict native POST checks.
 import { fail, redirect } from '@sveltejs/kit';
 import { randomUUID } from 'node:crypto';
@@ -15,7 +16,7 @@ export const load: PageServerLoad = async ({ locals, setHeaders }) => {
 	if (!locals.user) throw redirect(303, '/auth/login');
 	setHeaders({ 'cache-control': 'private, no-store', 'referrer-policy': 'same-origin' });
 	try {
-		return { channels: await listAccountChannels(locals), available: true };
+		return { channels: await listAccountChannels(locals), available: true, emailEnabled:emailVerificationConfigured() };
 	} catch {
 		return { channels: [], available: false };
 	}
@@ -44,7 +45,7 @@ export const actions: Actions = {
 					randomUUID(),
 					getClientAddress()
 				);
-				if (issued.status === 'VERIFIED') return { message: 'This number is already verified.' };
+				if (issued.status === 'VERIFIED') return { message: 'This channel is already verified.' };
 				if (issued.status === 'LIMITED')
 					return fail(429, { error: 'Please wait before requesting another code.' });
 				const delivery = await dispatchAccountChannelCode(locals, issued.challengeId);
@@ -75,7 +76,7 @@ export const actions: Actions = {
 					form.get('code') || '',
 					getClientAddress()
 				);
-				if (result === 'VERIFIED') return { message: 'Phone number verified.' };
+				if (result === 'VERIFIED') return { message: 'Channel verified.' };
 				return fail(400, {
 					channelId: id,
 					challengeId,

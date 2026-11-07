@@ -28,7 +28,7 @@ const vite = await createServer({
                 if (id === '\0gate') return `export function exchangeBrowserEnabled(){return true;}`;
 				if (id === '\0domain') return `export async function accountDomain(){return 'ACTIVE';}`;
 				if (id === '\0claims')
-					return `export async function ownedExchangeChoices(){return [];} export async function confirmOwnedProfileExchange(...a){globalThis.ownedArgs=a;} export async function requestExchangeCode(...a){globalThis.claimArgs=a;if(globalThis.claimFailure)throw globalThis.claimFailure;return {status:'QUEUED',challengeId:'challenge'};} export async function dispatchExchangeCode(){return {status:'SENT'};} export async function verifyExchangeCode(...a){globalThis.verifyArgs=a;return {status:'SETTLED',personId:'private-person'};}`;
+					return `export async function accountClaimState(){return {canComplete:true,settled:Boolean(globalThis.guestCompleted),channels:[{type:'PHONE',verified:true,available:true,masked:'•••• 0000'}]};} export async function prepareAccountClaim(){return 'phone';} export async function completeAccountClaim(){globalThis.guestCompleted=true;return {status:'SETTLED',personId:'private-person'};} export async function ownedExchangeChoices(){return [];} export async function confirmOwnedProfileExchange(...a){globalThis.ownedArgs=a;} export async function requestExchangeCode(...a){globalThis.claimArgs=a;if(globalThis.claimFailure)throw globalThis.claimFailure;return {status:'QUEUED',challengeId:'challenge'};} export async function dispatchExchangeCode(){return {status:'SENT'};} export async function verifyExchangeCode(...a){globalThis.verifyArgs=a;return {status:'SETTLED',personId:'private-person'};}`;
 			}
 		}
 	]
@@ -77,7 +77,15 @@ try {
       const sent=await settings.actions.default(event(c,{intent:'send',channelId:'phone'}));
       assert.equal(sent.challengeId,'account-challenge');
       const checked=await settings.actions.default(event(c,{intent:'verify',channelId:'phone',challengeId:sent.challengeId,code:'005321'}));
-      assert.equal(checked.message,'Phone number verified.');assert.equal(globalThis.accountVerifyArgs[2],'005321');
+      assert.equal(checked.message,'Channel verified.');assert.equal(globalThis.accountVerifyArgs[2],'005321');
+    });
+    await test('v2 retained-assurance confirmation saves without a code and keeps other verification separate',async()=>{
+      const c=cookies();flow.saveExchange(c,new URL('https://dev.relish.live'),'a'.repeat(64),'profile',2);
+      const e=event(c,{intent:'complete'});e.locals.env='dev';
+      const state=await page.load(e);assert.equal(state.version,2);assert.equal(state.accountClaim.canComplete,true);
+      const before=globalThis.claimArgs;
+      const result=await page.actions.default(e);assert.equal(result.completed,true);assert.equal(globalThis.claimArgs,before);
+      globalThis.guestCompleted=false;
     });
 	await test('continuation is browser-bound, tamper-resistant and absent from auth URLs', () => {
 		const c = cookies(),

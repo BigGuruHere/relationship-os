@@ -1,3 +1,4 @@
+import { ChannelDenied } from '$lib/server/foundation/channelDiagnostics';
 // Fixed API endpoint, bounded delivery and safe errors. No credential, recipient, code or response logging.
 export function emailVerificationConfigured() {
 	return Boolean(
@@ -8,7 +9,7 @@ export function emailVerificationConfigured() {
 }
 export async function sendVerificationEmail(to: string, code: string, deliveryId: string) {
 	if (!emailVerificationConfigured() || !/^[0-9]{6}$/.test(code))
-		throw new Error('EMAIL_UNAVAILABLE');
+		throw new ChannelDenied('EMAIL_NOT_CONFIGURED');
 	const response = await fetch('https://api.resend.com/emails', {
 		method: 'POST',
 		headers: {
@@ -24,5 +25,18 @@ export async function sendVerificationEmail(to: string, code: string, deliveryId
 		}),
 		signal: AbortSignal.timeout(12000)
 	});
-	if (!response.ok) throw new Error('EMAIL_DELIVERY_FAILED');
+	if (!response.ok) {
+		const reason =
+			response.status === 401
+				? 'EMAIL_API_UNAUTHORIZED'
+				: response.status === 403
+					? 'EMAIL_API_FORBIDDEN'
+					: response.status === 429
+						? 'EMAIL_API_RATE_LIMITED'
+						: response.status >= 500
+							? 'EMAIL_API_UNAVAILABLE'
+							: 'EMAIL_API_INVALID_REQUEST';
+		// Classify the HTTP status only. Resend bodies may contain recipient addresses.
+		throw new ChannelDenied(reason);
+	}
 }

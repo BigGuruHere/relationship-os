@@ -87,6 +87,24 @@ try {
       const result=await page.actions.default(e);assert.equal(result.completed,true);assert.equal(globalThis.claimArgs,before);
       globalThis.guestCompleted=false;
     });
+    await test('channel diagnostics classify validation/schema/provider failures without private values',async()=>{
+      const diag=await vite.ssrLoadModule('/src/lib/server/foundation/channelDiagnostics.ts');
+      const email=await vite.ssrLoadModule('/src/lib/server/integrations/resend/verification.ts');
+      assert.equal(diag.channelFailureReason({code:'P2022',message:'private SQL address@example.invalid'}),'SCHEMA_NOT_READY');
+      assert.match(diag.channelFailureMessage('INVALID_PHONE'),/choose Email/);
+      const logs=[],originalError=console.error,originalFetch=globalThis.fetch;
+      process.env.RESEND_API_KEY='synthetic-private-key';process.env.RELISH_VERIFICATION_EMAIL_FROM='verify@example.invalid';
+      try{
+        console.error=(message)=>logs.push(message);
+        for(const [status,reason] of [[401,'EMAIL_API_UNAUTHORIZED'],[403,'EMAIL_API_FORBIDDEN'],[422,'EMAIL_API_INVALID_REQUEST'],[429,'EMAIL_API_RATE_LIMITED'],[503,'EMAIL_API_UNAVAILABLE']]){
+          globalThis.fetch=async()=>new Response('private address@example.invalid 123456',{status});
+          await assert.rejects(email.sendVerificationEmail('address@example.invalid','123456','test'),failure=>{
+            const result=diag.reportChannelFailure('dispatch',failure);assert.equal(result.reason,reason);return true;
+          });
+        }
+        assert.doesNotMatch(logs.join(''),/address@|123456|synthetic-private-key|private SQL/);
+      }finally{console.error=originalError;globalThis.fetch=originalFetch;delete process.env.RESEND_API_KEY;delete process.env.RELISH_VERIFICATION_EMAIL_FROM;}
+    });
 	await test('continuation is browser-bound, tamper-resistant and absent from auth URLs', () => {
 		const c = cookies(),
 			url = new URL('https://dev.relish.live');

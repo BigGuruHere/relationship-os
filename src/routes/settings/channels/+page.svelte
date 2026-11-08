@@ -14,8 +14,10 @@
 		your sign-in details.
 	</p>
 	{#if !data.available}<p>
-			Channel settings are currently available to the admitted DEV test accounts only.
+			{data.error ||
+				'Channel settings are currently available to the admitted DEV test accounts only.'}
 		</p>
+		{#if data.reference}<p>Support reference: {data.reference}</p>{/if}
 	{:else}
 		{#if form?.message}<p role="status">{form.message}</p>{/if}
 		{#if form?.error}<p role="alert">{form.error}</p>{/if}
@@ -28,9 +30,14 @@
 					></select
 				></label
 			>
-			<label>Number or email <input name="value" maxlength="254" required /></label><button
-				>Add channel</button
-			>
+			<label
+				>Number or email <input
+					name="value"
+					placeholder="One email address or Australian mobile"
+					maxlength="254"
+					required
+				/></label
+			><button>Add channel</button>
 		</form>
 		{#each data.channels as channel}
 			<section>

@@ -1,3 +1,7 @@
+import {
+	reportChannelFailure,
+	channelFailureMessage
+} from '$lib/server/foundation/channelDiagnostics';
 import { emailVerificationConfigured } from '$lib/server/integrations/resend/verification';
 // Account settings reuse the existing session, DEV admission and strict native POST checks.
 import { fail, redirect } from '@sveltejs/kit';
@@ -16,9 +20,14 @@ export const load: PageServerLoad = async ({ locals, setHeaders }) => {
 	if (!locals.user) throw redirect(303, '/auth/login');
 	setHeaders({ 'cache-control': 'private, no-store', 'referrer-policy': 'same-origin' });
 	try {
-		return { channels: await listAccountChannels(locals), available: true, emailEnabled:emailVerificationConfigured() };
-	} catch {
-		return { channels: [], available: false };
+		return {
+			channels: await listAccountChannels(locals),
+			available: true,
+			emailEnabled: emailVerificationConfigured()
+		};
+	} catch (failure) {
+		const { reference, reason } = reportChannelFailure('load', failure);
+		return { channels: [], available: false, reference, error: channelFailureMessage(reason) };
 	}
 };
 export const actions: Actions = {
@@ -36,7 +45,10 @@ export const actions: Actions = {
 		try {
 			if (intent === 'add') {
 				await addAccountChannel(locals, form.get('type') || '', form.get('value') || '');
-				return { message: 'Added. Complete verification before this channel is verified.' };
+				return {
+					message:
+						'Added as pending. Click Send verification code beside this channel to receive a code.'
+				};
 			}
 			if (intent === 'send') {
 				const issued = await requestAccountChannelCode(
@@ -48,8 +60,12 @@ export const actions: Actions = {
 				if (issued.status === 'VERIFIED') return { message: 'This channel is already verified.' };
 				if (issued.status === 'LIMITED')
 					return fail(429, { error: 'Please wait before requesting another code.' });
-				const delivery = await dispatchAccountChannelCode(locals, issued.challengeId);
+				let deliveryReference: string | undefined;
+				const delivery = await dispatchAccountChannelCode(locals, issued.challengeId, (ref) => {
+					deliveryReference = ref;
+				});
 				return {
+					reference: deliveryReference,
 					challengeId: issued.challengeId,
 					channelId: id,
 					...(delivery === 'SENT'
@@ -59,8 +75,12 @@ export const actions: Actions = {
 			}
 			if (intent === 'retry') {
 				const challengeId = form.get('challengeId') || '';
-				const delivery = await dispatchAccountChannelCode(locals, challengeId);
+				let deliveryReference: string | undefined;
+				const delivery = await dispatchAccountChannelCode(locals, challengeId, (ref) => {
+					deliveryReference = ref;
+				});
 				return {
+					reference: deliveryReference,
 					channelId: id,
 					challengeId,
 					...(delivery === 'SENT'
@@ -95,23 +115,11 @@ export const actions: Actions = {
 				return { message: 'Channel and its verification history removed.' };
 			}
 			return fail(400, { error: 'Choose an action from this page.' });
-		} catch {
-			// A safe reference helps support without exposing destinations, codes or provider/SQL messages.
-			const reference = randomUUID();
-			console.error(
-				JSON.stringify({
-					component: 'relish.account.channels',
-					reference,
-					operation: ['add', 'send', 'retry', 'verify', 'revoke', 'erase'].includes(intent || '')
-						? intent
-						: 'unknown',
-					reason: 'UNAVAILABLE'
-				})
-			);
-			return fail(400, {
+		} catch (failure) {
+			const { reference, reason } = reportChannelFailure(intent || 'unknown', failure);
+			return fail(['SCHEMA_NOT_READY', 'DATABASE_UNAVAILABLE'].includes(reason) ? 503 : 400, {
 				reference,
-				error:
-					'This action could not be completed. Check your account, number or code, or try again later.'
+				error: channelFailureMessage(reason)
 			});
 		}
 	}

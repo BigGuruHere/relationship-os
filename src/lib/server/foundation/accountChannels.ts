@@ -1,3 +1,4 @@
+import { ChannelDenied, reportChannelFailure } from './channelDiagnostics';
 import {
 	sendVerificationEmail,
 	emailVerificationConfigured
@@ -16,11 +17,12 @@ type Actor = Pick<App.Locals, 'user' | 'sessionId' | 'env' | 'appOrigin'>;
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const aad = (account: string, id: string, field: string) =>
 	`account-channel:v1:${account}:${id}:${field}`;
-function canonical(type: string, value: string) {
-	if (type === 'PHONE') return verificationPhone(value);
-	if (type === 'EMAIL') return verificationEmail(value);
-	throw new FoundationDenied();
+function canonical(type:string,value:string){
+ if(type==='PHONE'){try{return verificationPhone(value);}catch{throw new ChannelDenied('INVALID_PHONE');}}
+ if(type==='EMAIL'){try{return verificationEmail(value);}catch{throw new ChannelDenied('INVALID_EMAIL');}}
+ throw new ChannelDenied('INVALID_CHANNEL_TYPE');
 }
+
 function hash(type: string, value: string) {
 	return claimMac(type + ':' + value, 'account-channel:lookup:v1');
 }
@@ -28,11 +30,11 @@ async function scope<T>(
 	locals: Actor,
 	fn: (tx: AppTransactionClient, account: string) => Promise<T>
 ) {
-	if (!locals.user || !exchangeBrowserEnabled(locals, locals.appOrigin))
-		throw new FoundationDenied();
+	if(!locals.user || !locals.sessionId) throw new ChannelDenied('SESSION_INVALID');
+    if(!exchangeBrowserEnabled(locals,locals.appOrigin)) throw new ChannelDenied('ENVIRONMENT_DISABLED');
 	return exchangeTransaction(locals.user.id, async (tx) => {
-		const actor = await requireClaimSession(tx, locals);
-		await exchangeRoots(tx, [actor.accountId]);
+		const actor = await requireClaimSession(tx, locals).catch(failure=>{if(failure instanceof FoundationDenied) throw new ChannelDenied('SESSION_INVALID');throw failure;});
+		await exchangeRoots(tx,[actor.accountId]).catch(failure=>{if(failure instanceof FoundationDenied) throw new ChannelDenied('ACCOUNT_INACTIVE');throw failure;});
 		return runFoundationBoundary({ ownerUserId: actor.accountId, mode: 'ACCOUNT_CHANNEL' }, () =>
 			fn(tx, actor.accountId)
 		);
@@ -40,7 +42,7 @@ async function scope<T>(
 }
 async function channel(tx: AppTransactionClient, id: string) {
 	const row = await tx.foundationAccountChannel.findFirst({ where: { id } });
-	if (!row) throw new FoundationDenied();
+	if (!row) throw new ChannelDenied('CHANNEL_UNAVAILABLE');
 	return row;
 }
 // Scrub expired payloads on all admitted settings operations, including settings retrieval.
@@ -104,7 +106,7 @@ export async function addAccountChannel(locals: Actor, type: string, value: stri
 		const valueHash = hash(type, normalized);
 		const prior = await tx.foundationAccountChannel.findFirst({ where: { type, valueHash } });
 		if (prior) return prior.id;
-		if ((await tx.foundationAccountChannel.count()) >= 20) throw new FoundationDenied();
+		if ((await tx.foundationAccountChannel.count()) >= 20) throw new ChannelDenied('CHANNEL_LIMIT');
 		const id = randomUUID();
 		await tx.foundationAccountChannel.create({
 			data: {
@@ -128,7 +130,7 @@ export async function requestAccountChannelCode(
 	return scope(locals, async (tx, account) => {
 		await expire(tx);
 		let c = await channel(tx, id);
-		if (c.type === 'EMAIL' && !emailVerificationConfigured()) throw new FoundationDenied();
+		if (c.type === 'EMAIL' && !emailVerificationConfigured()) throw new ChannelDenied('EMAIL_NOT_CONFIGURED');
 		if (c.status === 'VERIFIED') return { status: 'VERIFIED' as const };
 		const prior = await tx.foundationAccountChannelChallenge.findFirst({
 			where: { id: requestId }
@@ -202,7 +204,7 @@ export async function requestAccountChannelCode(
 		return { status: 'QUEUED' as const, challengeId: requestId };
 	});
 }
-export async function dispatchAccountChannelCode(locals: Actor, challengeId: string) {
+export async function dispatchAccountChannelCode(locals: Actor, challengeId: string, onFailure?:(reference:string)=>void) {
 	return scope(locals, async (tx, account) => {
 		await expire(tx);
 		const challenge = await tx.foundationAccountChannelChallenge.findFirst({
@@ -215,8 +217,7 @@ export async function dispatchAccountChannelCode(locals: Actor, challengeId: str
 		if (!d || c.status !== 'PENDING' || c.generation !== challenge.generation)
 			throw new FoundationDenied();
 		if (d.status === 'SENT') return 'SENT';
-		if (!d.payloadEnc || !['QUEUED', 'FAILED'].includes(d.status) || d.attempts >= 3)
-			throw new FoundationDenied();
+		if (!d.payloadEnc || !['QUEUED', 'FAILED'].includes(d.status) || d.attempts >= 3) throw new ChannelDenied('DELIVERY_EXHAUSTED');
 		const payload = JSON.parse(decrypt(d.payloadEnc, aad(account, d.id, 'dispatch')));
 		const allowed = (
 			c.type === 'PHONE'
@@ -231,7 +232,7 @@ export async function dispatchAccountChannelCode(locals: Actor, challengeId: str
 					return false;
 				}
 			});
-		if (!allowed) throw new FoundationDenied();
+		if (!allowed) throw new ChannelDenied('DESTINATION_NOT_APPROVED');
 		await tx.foundationAccountChannelDispatch.updateMany({
 			where: { id: d.id },
 			data: { attempts: { increment: 1 } }
@@ -248,7 +249,8 @@ export async function dispatchAccountChannelCode(locals: Actor, challengeId: str
 				data: { status: 'SENT', payloadEnc: null }
 			});
 			return 'SENT';
-		} catch {
+		} catch(failure) {
+            const diagnostic=reportChannelFailure('dispatch',failure instanceof ChannelDenied?failure:new ChannelDenied('DELIVERY_FAILED'));onFailure?.(diagnostic.reference);
 			await tx.foundationAccountChannelDispatch.updateMany({
 				where: { id: d.id },
 				data: {
@@ -386,7 +388,7 @@ export async function ensureSubmittedChannel(
 			valueHash = hash(type, normalized);
 		let c = await tx.foundationAccountChannel.findFirst({ where: { type, valueHash } });
 		if (!c) {
-			if ((await tx.foundationAccountChannel.count()) >= 20) throw new FoundationDenied();
+			if ((await tx.foundationAccountChannel.count()) >= 20) throw new ChannelDenied('CHANNEL_LIMIT');
 			const id = randomUUID();
 			c = await tx.foundationAccountChannel.create({
 				data: {

@@ -1,12 +1,25 @@
 # Relish: Forward Plan
 
-Status: updated 2026-11-07. The relationship foundation programme supersedes the previous priority order. These are dependency gates, not committed dates or claims of implementation.
+Status: updated 2026-11-08. D-029 makes ordinary onboarding and a small production release the next priority. These are dependency gates, not committed dates or claims of implementation.
 
 ## North star
 
 Help people understand themselves, other people, relationships and influences across relationships, and create valuable human connections with permission. Preserve independent perspectives and useful legacy workflows.
 
+## Next delivery: production base
+
+Accepted direction: [D-029](DECISION_LOG.md#d-029-ordinary-onboarding-and-an-incremental-production-launch). Recommended implementation model: GPT-6.1 Sol High, because signup, atomic provisioning and private-data routing cross authentication and custody boundaries.
+
+1. Reuse password/Google signup to provision each new account's private foundation home, self reference and ACTIVE enrollment atomically. Remove the special exchange-cookie/two-email prerequisite from ordinary onboarding. Do not auto-migrate existing accounts, revive suspended roots or fall back to legacy writes on failure.
+2. Replace DEV-only product gates with explicit environment-aware capability configuration. Keep generated-account tools isolated to development. Retain origin validation, custody, consent, independent channel proof, rate limits and abuse protections. Product onboarding needs no special test login or recipient/signup allowlist.
+3. Provide consistent onboarding and explicit profile publication. Recommended first scope: signup/login/logout and working account recovery; profile editing/publication/QR; manual and QR People capture; private voice notes, transcription, editable summaries and retrieval; necessary account/privacy/support controls. Inventory existing capabilities before adding anything. Disable unfinished entry points in navigation and on the server; advanced Dorian, continuing sharing and reciprocal exchange need not all block the core release.
+4. Verify ordinary user journeys in DEV, with automated tests using isolated databases, plus provider/device acceptance for enabled features and legacy Brokerage/profile/event regressions. Fixtures remain engineering tools, not product admission policy. Promote the verified code through separately approved configuration, migration and deployment work; onboard real production users through the normal flow.
+
+See [production-base backlog](foundation/IMPLEMENTATION_PLAN.md#production-base-backlog-d-029) for acceptance and migration/rollback boundaries. Direction is accepted; runtime implementation and release acceptance remain pending.
+
 ## Active programme
+
+The production base above takes priority over the earlier invited-pilot sequence. Historical stages retain delivery evidence and future capability boundaries; completing every exchange/intelligence feature is not required before releasing the core app.
 
 The authoritative detailed backlog and stage register are in [foundation implementation and rollout](foundation/IMPLEMENTATION_PLAN.md). Architecture is in [the design](foundation/ARCHITECTURE.md); rationale is in [D-019 through D-023](foundation/DECISIONS.md).
 
@@ -14,17 +27,17 @@ The authoritative detailed backlog and stage register are in [foundation impleme
 | --- | --- | --- |
 | 1 | Architecture, decisions, policy, developer guide and implementation backlog | Merged via PR #13, `d789464` |
 | 2 | New-domain primitives, auth isolation, custody and evidence proof | F-202/F-203 merged and DEV operator-confirmed; F-204 merged; F-205 merged; F-206 internal rehearsal merged through PR #19. Stage 2 DEV verification is pending. P-301 directory and person details merged through PR #20 |
-| 3 | Invited users share details, keep people and retrieve notes | P-301 through P-305 merged. P-306 internal DEV test operator-confirmed. Hosted erasure replay using the test login, closure/retention readiness, detailed device/provider coverage and cohort approval remain gates. |
+| 3 | Ordinary users onboard, keep people and retrieve notes in production | P-301 through P-305 merged; P-306 internal DEV test operator-confirmed. Production-base onboarding and launch acceptance pending under D-029. No invited-cohort prerequisite; privacy, recovery and enabled-provider/device readiness remain. |
 | 4 | Secure exchange claiming and directional continuing sharing | S-403 and fixes merged through PR #36. S-405a corrects exchange/account-assurance design on feature branch; S-405b-e implementation and S-404 recovery/acceptance remain planned. |
 | 5 | Private understanding across people and relationships | Planned after evidence/correction readiness |
 | 6 | Relationship understanding from separately governed perspectives | Future gated release |
 | 7 | Cross-account discovery and approved introductions | Future gated release |
 
-Do not implement all later intelligence capabilities in stage 2. Relationship subjects and independent perspectives belong in the base design; shared relationship analysis does not need to ship with the first pilot. Brokerage stays on its current model unless separately authorised. No forced unified legacy directory is planned.
+Do not implement all later intelligence capabilities in stage 2. Relationship subjects and independent perspectives belong in the base design; shared relationship analysis can follow the first production release. Brokerage stays on its current model unless separately authorised. No forced unified legacy directory is planned.
 
-## Immediate exchange correction
+## Exchange follow-up
 
-[S-405](foundation/S405_ACCOUNT_CHANNELS_AND_EXCHANGE.md) takes priority over continuing profile updates: S-405a architecture/documentation, S-405b owned-profile confirmation, S-405c account-channel persistence and SMS lifecycle, S-405d guest reuse/email and trusted Google proof, then S-405e combined DEV acceptance. S-405a recommends Astra Medium; runtime slices recommend 6.1 Sol High. S-405b signed-in profile exchange is implemented on its feature branch; S-405c account-channel/SMS settings are implemented on their feature branch; S-405d guest reuse/email is implemented on its feature branch; sender setup, live DEV and S-405e combined acceptance remain pending. S-404 recovery obligations remain and are incorporated in the acceptance work. The current baseline includes PR #36 at `4a4ddb2`; deployment requires separate verification.
+[S-405](foundation/S405_ACCOUNT_CHANNELS_AND_EXCHANGE.md) remains the design for exchange functionality, subordinate to the production-base priority above: S-405a architecture/documentation, S-405b owned-profile confirmation, S-405c account-channel persistence and SMS lifecycle, S-405d guest reuse/email and trusted Google proof, then S-405e combined DEV acceptance. S-405a recommends Astra Medium; runtime slices recommend 6.1 Sol High. S-405b signed-in profile exchange is implemented on its feature branch; S-405c account-channel/SMS settings are implemented on their feature branch; S-405d guest reuse/email is implemented on its feature branch; sender setup, live DEV and S-405e combined acceptance remain pending. S-404 recovery obligations remain and are incorporated in the acceptance work. The current baseline includes PR #36 at `4a4ddb2`; deployment requires separate verification.
 
 ## Parallel maintenance and validation lane
 
@@ -49,4 +62,4 @@ For each material change update the relevant living docs, backlog item and stage
 
 Select the next task from the earliest unmet gate. New capability replaces existing code only through a demonstrated gap and explicit compatibility plan. No production writes, migration execution or deployment follow automatically from this roadmap.
 
-Production promotion is deferred by operator choice on 2026-11-05. Review the full target release diff and migrations, DEV/device evidence, snapshot/restore readiness and pilot privacy gates before recommending it.
+The 2026-11-05 production deferral and invited-cohort launch policy are superseded by D-029. Prepare an ordinary production release with the full target diff/migration review, DEV evidence, recovery readiness and privacy controls appropriate to the enabled scope. Production execution still requires separate authorization; this roadmap is not a deployment record.

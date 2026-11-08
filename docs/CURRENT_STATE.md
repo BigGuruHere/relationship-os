@@ -1,6 +1,23 @@
 # Relish: Current State and Open Work
 
-Status: living snapshot updated **2026-11-08**. Foundation baseline is development `7205d53` (PR #39). Environment observations are explicitly attributed below; this is not a live deployment monitor.
+Status: living snapshot updated **2026-11-08**. Source reviewed for production-base planning is development `61e3356` (PR #41). Environment observations are explicitly attributed below; this is not a live deployment monitor.
+
+## Next priority: ordinary production onboarding
+
+[D-029](DECISION_LOG.md#d-029-ordinary-onboarding-and-an-incremental-production-launch) replaces the invited-cohort launch approach. Establish the actual production app for ordinary new users with a small complete feature set, then add functionality incrementally. Verify changes in DEV first; no special test-account or signup-allowlist prerequisite for product onboarding. This is accepted direction, not implemented runtime behavior.
+
+Source findings at development `61e3356`:
+
+- `foundation/provisioning.ts`: ordinary signup does not automatically activate foundation storage. `admitDevExchangeSignup` requires the exchange continuation, DEV activation and at most two allowlisted credential emails. Session provisioning validates existing enrollment; it does not enroll ordinary new users.
+- `foundation/devPilotGate.ts`: exchange/channel browser functionality requires the DEV environment, canonical DEV origin and bound DEV database. A production feature flag alone cannot enable it. Replace product admission restrictions with environment-aware configuration while retaining server authority and lifecycle checks.
+- `auth/register/+page.server.ts`: unpublished defaults are explicit for profile/exchange continuation only; ordinary signup can derive the display name from the email prefix. Make private defaults, owner review and explicit publication consistent. Entering credentials is not verification of email ownership.
+- Existing foundation People, capture, notes, summary and privacy services are reuse targets. Preserve legacy Brokerage routes/data and one authoritative writer per account. Do not auto-enroll existing legacy accounts or migrate their records as a signup side effect.
+
+The [roadmap](ROADMAP.md#next-delivery-production-base) and [production-base backlog](foundation/IMPLEMENTATION_PLAN.md#production-base-backlog-d-029) define next work. Verify capability readiness during implementation, including account recovery, enabled-provider delivery and unfinished navigation/server entry points. These findings are not completed fixes or live acceptance evidence.
+
+Git comparison reviewed at development `61e3356` versus master `b58ba02` contains five added Prisma migrations. This does not establish production's deployed SHA or pending migration count. No additional schema change is currently identified merely for onboarding/gates; implementation must verify that assumption and reconcile target migration history before promotion.
+
+Documentation-only delivery on `docs/production-base-direction`: no application/schema/test changes, live database access, provider calls or deployment. Documentation checks belong to this branch; historical application checks below were not rerun. Older references to deferred production or required cohort approval describe superseded rollout policy. Privacy, data preservation and recovery obligations remain. Older source descriptions below are historical delivery records; they do not override the reviewed baseline above.
 
 ## Channel verification diagnostic follow-up
 

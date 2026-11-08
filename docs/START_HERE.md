@@ -1,6 +1,6 @@
 # Relish: Start Here
 
-Status: living documentation index. Updated 2026-11-06; F-202 schema is merged and DEV operator-confirmed; F-203 provisioning is merged and DEV operator-confirmed; F-204 through F-206 are merged; P-301 directory is merged; P-302 public exchange is merged; P-303 private notes are merged; P-304 profile continuity is merged; P-305 privacy and operations is merged; P-306 internal DEV pilot is operator-confirmed; hosted erasure replay and invited rollout remain gated.
+Status: living documentation index. Updated 2026-11-08; D-029 production-base preparation is next; F-202 schema is merged and DEV operator-confirmed; F-203 provisioning is merged and DEV operator-confirmed; F-204 through F-206 are merged; P-301 directory is merged; P-302 public exchange is merged; P-303 private notes are merged; P-304 profile continuity is merged; P-305 privacy and operations is merged; P-306 internal DEV pilot is operator-confirmed; hosted erasure replay and production acceptance remain pending. Invited-cohort launch policy is superseded below.
 
 Relish is a person-first Relationship Operating System. Dorian is a conversational AI partner that helps people understand themselves and develop valuable relationships with other people. The architecture and the immediate product experience evolve together, but an old release note is not a current product requirement.
 
@@ -14,6 +14,10 @@ Relish is a person-first Relationship Operating System. Dorian is a conversation
 6. [`DECISION_LOG.md`](DECISION_LOG.md) - major accepted decisions and links to deeper historical reasoning.
 
 For a quick visual or text change, read only the relevant sections and inspect the affected source files. For a cross-cutting change, read all six and inspect the current code. Avoid an unnecessarily lengthy audit of an obvious fix.
+
+## Current production direction
+
+[D-029](DECISION_LOG.md#d-029-ordinary-onboarding-and-an-incremental-production-launch) supersedes invited-cohort rollout and the prior production deferral: prepare the actual production app for ordinary new users with a small complete feature set, validate in DEV and add features incrementally. No special test-account or allowlist onboarding. The [production-base roadmap](ROADMAP.md#next-delivery-production-base) and [backlog](foundation/IMPLEMENTATION_PLAN.md#production-base-backlog-d-029) take priority. Runtime implementation and promotion remain pending; privacy, custody, legacy compatibility and recovery requirements remain. Older pilot/stage notes preserve history, not current launch policy.
 
 ## Current exchange direction
 

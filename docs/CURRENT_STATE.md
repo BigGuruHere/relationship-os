@@ -2,6 +2,12 @@
 
 Status: living snapshot updated **2026-11-08**. Foundation baseline is development `7205d53` (PR #39). Environment observations are explicitly attributed below; this is not a live deployment monitor.
 
+## Channel verification diagnostic follow-up
+
+Operator reported `/settings/channels` HTTP 400 and an `operation:add` / `reason:UNAVAILABLE` event at 2026-11-08 11:15:18 UTC (22:15 Melbourne), reference `bbea31cb-26bc-4c5f-83b7-d416df68f5ee`. Its relationship to the latest click is unknown. Add precedes delivery, so this event is not evidence of a Resend failure. The add form defaults to PHONE; entering email without choosing EMAIL is one possible cause, not a confirmed diagnosis.
+
+`fix/channel-verification-diagnostics`, based on development `6239d4a` (merged PR #40), adds specific validation/access/database reasons and safe provider HTTP categories, with on-page support references including failed dispatch. Source behavior otherwise remains unchanged. Local 34 focused checks pass and Svelte reports zero errors/warnings. No migration or live send; runtime cause remains unconfirmed pending one fresh DEV attempt after deployment.
+
 ## S-405d guest assurance reuse and email
 
 [Guest assurance, email setup and DEV acceptance](foundation/S405D_GUEST_ASSURANCE.md) are implemented on `feature/s405d-guest-assurance`, based on merged PR #39 (`7205d53`). New exact-submission claims reuse verified account channels, or verify a supplied phone/email and retain its proof. Phone/email statuses remain independent; Google callback proof is hardened. One additive migration brings totals to 111 migrations / 24 Foundation tables. Resend delivery remains disabled until sender/key/DEV recipient configuration. No live send, migration or deployment; full DEV acceptance pending.

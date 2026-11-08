@@ -65,3 +65,12 @@ If using one mobile for both test accounts, revoke its verification on the first
 4. Test email-only intake after sender setup, delivery failure, Continue later, expired continuation, wrong account, revoked channel and a withdrawn source profile. A successful proof must remain recorded if saving the exchange is blocked.
 5. Test fresh Google signup/sign-in using the same submitted verified email. Confirm email assurance is reused; phone remains pending. Revoked email must stay revoked until an explicit fresh verification.
 6. Record deployed SHA, migration status, mobile results and authorised real provider delivery outcomes. Combined recovery/device acceptance and production readiness remain S-405e.
+
+
+## DEV diagnostic follow-up, 2026-11-08
+
+PR #40 merged at development `6239d4a`. The operator configured email settings but reported HTTP 400. A supplied event was for adding a channel, not dispatch; its timestamp was 22:15 Melbourne and it may be older than the latest attempt. The live cause is unconfirmed.
+
+The diagnostic fix distinguishes INVALID_PHONE/INVALID_EMAIL (including the PHONE-default dropdown trap), ENVIRONMENT_DISABLED, SESSION_INVALID, ACCOUNT_INACTIVE, SCHEMA_NOT_READY, DATABASE_UNAVAILABLE and DESTINATION_NOT_APPROVED. Actual email dispatch classifies provider HTTP 401/403/422-class/429/5xx failures without reading/logging response bodies. The UI carries a random support reference for failed dispatch as well as other operations. No address, code, account/session ID, key or SQL payload is logged.
+
+Current settings require choosing Email, adding one address, then explicitly selecting Send verification code beside that pending email. Adding alone does not send. After deployment retry once and collect only the new page reference and matching operation/reason. Check Resend delivery logs only for a new dispatch attempt. Existing budgets, DEV gating, ownership and proof rules remain in force. No migration, environment mutation or live provider send in the fix.

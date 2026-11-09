@@ -10,7 +10,6 @@ import { usesLegacyProfileServices } from '$lib/server/foundation/provisioning';
 import { prisma } from '$lib/db';
 import { createInviteToken } from '$lib/server/tokens';
 import { fail, redirect, error } from '@sveltejs/kit';
-import { absoluteUrlFromOrigin } from '$lib/url';
 import { getOrCreatePilotVisitor, ensurePilotSelfContact, pilotDomainForKind, pilotSource, recordPilotEvent } from '$lib/server/pilot';
 import { issuePilotSmsInvitation, pilotTermsConfig } from '$lib/server/core/pilotSmsCallback';
 
@@ -104,6 +103,12 @@ export const load: PageServerLoad = async ({ params, url, locals }) => {
   const eventLandingOn = process.env.RELISH_EVENT_LANDING_ENABLED !== 'NO'
     && process.env.RELISH_EVENT_PROFILE_SLUG === profile?.slug;
   const ownerPreview = locals.user?.id === ownerId;
+  // Old owner edit links now enter the same editor as My Profiles.
+  if (ownerPreview && (url.searchParams.get('edit') === '1' || url.searchParams.get('first') === '1')) {
+    throw redirect(303, profile
+      ? '/settings/profile?profile=' + encodeURIComponent(profile.slug) + '&from=profiles'
+      : '/settings/profile?mode=new');
+  }
   if (eventLandingOn && profile?.isPublished && profile.kind === 'business' &&
       !ownerPreview && url.searchParams.get('original') !== '1') {
     const eventUrl = new URL(`/u/${encodeURIComponent(profile.slug)}/event`, url);
@@ -117,8 +122,6 @@ export const load: PageServerLoad = async ({ params, url, locals }) => {
 
   // IT: viewer ownership and UI flags
   const isOwner = Boolean(locals.user && locals.user.id === ownerId);
-  const editingRequested = url.searchParams.get('edit') === '1';
-  const firstVisit = url.searchParams.get('first') === '1';
   const origin = url.origin;
 
   // IT: we also return a safe owner slug for building links
@@ -181,8 +184,6 @@ export const load: PageServerLoad = async ({ params, url, locals }) => {
     legacyProfile,
     profile: profile || null,
     isOwner,
-    editingRequested,
-    firstVisit,
     origin,
     slugParam,
     captureVia: url.searchParams.get('via') === 'qr' ? 'qr' : 'profile_link',
@@ -229,67 +230,6 @@ export const actions: Actions = {
     }
   },
   // IT: save edits to a profile - owner only
-  save: async ({ request, locals }) => {
-    // IT: require login
-    if (!locals.user) throw redirect(303, '/auth/login');
-
-    const form = await request.formData();
-
-    // IT: collect posted fields
-    const profileId  = String(form.get('profileId') || '');
-    const displayName = String(form.get('displayName') || '');
-    const headline    = String(form.get('headline') || '');
-    const bio         = String(form.get('bio') || '');
-    const avatarUrl   = String(form.get('avatarUrl') || '');
-    const company     = String(form.get('company') || '');
-    const title       = String(form.get('title') || '');
-    const websiteUrl  = String(form.get('websiteUrl') || '');
-    const emailPublic = String(form.get('emailPublic') || '');
-    const phonePublic = String(form.get('phonePublic') || '');
-    const isPublished = form.get('isPublished') === 'on';
-
-    // IT: extras named extra_<key>
-    const extras: Record<string, string> = {};
-    for (const [k, v] of form.entries()) {
-      const name = String(k);
-      if (name.startsWith('extra_')) extras[name.slice('extra_'.length)] = String(v || '');
-    }
-
-    // IT: verify ownership and grab slug for redirect
-    const existing = await prisma.profile.findFirst({
-      where: { id: profileId, userId: locals.user.id },
-      select: { id: true, publicMeta: true, slug: true }
-    });
-    if (!existing) {
-      return fail(403, { error: 'You cannot edit this profile' });
-    }
-
-    // IT: merge extras and persist
-    const { mergeExtras } = await import('$lib/publicProfile');
-    const nextPublicMeta = mergeExtras(existing.publicMeta, extras);
-
-    await prisma.profile.update({
-      where: { id: existing.id },
-      data: {
-        displayName: displayName || null,
-        headline: headline || null,
-        bio: bio || null,
-        avatarUrl: avatarUrl || null,
-        company: company || null,
-        title: title || null,
-        websiteUrl: websiteUrl || null,
-        emailPublic: emailPublic || null,
-        phonePublic: phonePublic || null,
-        isPublished,
-        publicMeta: nextPublicMeta
-      }
-    });
-
-    // IT: redirect to view mode of the same profile so the UI exits edit state
-    const to = absoluteUrlFromOrigin(locals.appOrigin, `/u/${encodeURIComponent(existing.slug || '')}`);
-    throw redirect(303, to);
-  },
-
 // SECURITY: The legacy one-context instant connect cannot safely connect Business/Dating.
 // Friendship uses the existing explicit Network join flow, not this endpoint.
 connectUsers: async () => fail(410, { error: 'Use the context-specific connection invitation instead.' }),

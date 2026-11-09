@@ -1,13 +1,12 @@
 <script lang="ts">
   // IT: Every Profile is independent. Its label is owner-facing and kind is secondary.
   export let data: any;
-  const labels: Record<string, string> = { business: 'Business', personal: 'Friendship', dating: 'Dating', custom: 'Custom' };
 
   function profileTitle(profile: any) {
     // IT: Older profiles use the generic default label, so show a meaningful fallback.
     return profile.label && profile.label !== 'My profile'
       ? profile.label
-      : profile.displayName || labels[profile.kind] || 'Profile';
+      : profile.displayName || 'Profile';
   }
 </script>
 
@@ -18,9 +17,9 @@
     <div>
       <h1>My Profiles</h1>
       {#if data.channelsAvailable}<a href="/settings/channels">Phone and email verification</a>{/if}
-      <p>Create as many separate profiles as you like. Give each one a name, then choose whether it is Business, Friendship or Dating. Each profile has its own link and QR code.</p>
+      <p>Create as many separate profiles as you like. Give each one a name you’ll recognise. Each profile has its own link and QR code.</p>
     </div>
-    <a class="btn primary" href="/settings/profile?mode=new&kind=business">Create Profile</a>
+    <a class="btn primary" href="/settings/profile?mode=new">Create Profile</a>
   </div>
 
   {#if data.profiles.length}
@@ -29,16 +28,15 @@
         <article class="card profile-card">
           <div class="profile-heading">
             <h2>{profileTitle(profile)}</h2>
-            <span class="profile-kind">{labels[profile.kind] || profile.kind}</span>
           </div>
           {#if profile.displayName}<p class="public-name">Public name: {profile.displayName}</p>{/if}
           {#if profile.headline}<p>{profile.headline}</p>{/if}
           <p class:published={profile.isPublished} class="status">{profile.isPublished ? 'Published' : 'Unpublished'}</p>
           {#if !profile.isPublished}
-            <a class="btn primary publish-profile" href={'/settings/profile?profile=' + encodeURIComponent(profile.slug) + '&kind=' + profile.kind + '&from=profiles'}>Review and publish</a>
+            <a class="btn primary publish-profile" href={'/settings/profile?profile=' + encodeURIComponent(profile.slug) + '&from=profiles'}>Review and publish</a>
           {/if}
           <div class="profile-actions">
-            <a href={'/settings/profile?profile=' + encodeURIComponent(profile.slug) + '&kind=' + profile.kind + '&from=profiles'}>Edit</a>
+            <a href={'/settings/profile?profile=' + encodeURIComponent(profile.slug) + '&from=profiles'}>Edit</a>
             <a href={'/u/' + encodeURIComponent(profile.slug)}>Preview</a>
             {#if profile.isPublished}
               <a href={'/share?profile=' + encodeURIComponent(profile.slug)}>Share QR</a>
@@ -51,19 +49,6 @@
     <p>No profiles yet. Create one to share your details with people you meet.</p>
   {/if}
 
-  <h2>Connection requests</h2>
-  <p>These people explicitly offered their contact details for follow-up. Their conversations with Dorian remain private.</p>
-  {#if data.requests.length}
-    <ul>
-      {#each data.requests as request}
-        <li><strong>{request.name}</strong> - {labels[request.domainKey === 'general' ? 'personal' : request.domainKey] || request.domainKey} -
-          <a href={'mailto:' + encodeURIComponent(request.email)}>{request.email}</a> - {new Date(request.requestedAt).toLocaleDateString()}</li>
-      {/each}
-    </ul>
-  {:else}
-    <p>No connection requests yet.</p>
-  {/if}
-  <p><a href="/general/admin/product-intelligence">Product Intelligence (pilot owner)</a></p>
 </div>
 
 <style>
@@ -76,7 +61,6 @@
   .profile-card { padding: 20px; min-width: 0; }
   .profile-heading { display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
   .profile-heading h2 { margin: 0; font-size: 1.15rem; overflow-wrap: anywhere; }
-  .profile-kind { font-size: .78rem; color: #52666b; background: #edf4f3; border-radius: 12px; padding: 4px 9px; }
   .public-name { font-size: .9rem; color: #52666b; }
   .status { font-size: .84rem; color: #78672e; }
   .status.published { color: #16805d; }

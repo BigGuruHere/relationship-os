@@ -1,34 +1,44 @@
 <script lang="ts">
   // PURPOSE: edit your shareable profile with flexible extras from EXTRA_KEYS
   // SECURITY: only handles plain user-entered strings - no decryption here
+  import { onMount } from 'svelte';
   export let data: any;
   export let form: any;
 
   import { EXTRA_KEYS } from '$lib/publicProfile'; // IT: [{ key, label }]
 
-  // IT: working profile from loader or defaults
-  const p: any = data?.profile || {};
-  // IT: Label is an owner-facing name, separate from the profile's public display name.
-  let profileLabel = p.label && p.label !== 'My profile' ? p.label : (p.displayName || '');
-
-  // IT: core public fields
-  let displayName = p.displayName || data?.draft?.name || '';
-  let headline    = p.headline || '';
-  let bio         = p.bio || '';
-  let avatarUrl   = p.avatarUrl || '';
-  let company     = p.company || '';
-  let title       = p.title || '';
-  let websiteUrl  = p.websiteUrl || '';
-  let emailPublic = p.emailPublic || data?.draft?.email || '';
-  let phonePublic = p.phonePublic || data?.draft?.phone || '';
-  let kind        = p.kind || data?.requestedProfileKind || 'business';
-
-  // IT: extra inputs - one per EXTRA_KEYS entry
-  const publicMeta = p.publicMeta || {};
+  let profileLabel = '', displayName = '', headline = '', bio = '', avatarUrl = '';
+  let company = '', title = '', websiteUrl = '', emailPublic = '', phonePublic = '';
   let extra_inputs: Record<string, string> = {};
-  for (const spec of EXTRA_KEYS) {
-    extra_inputs[spec.key] = typeof publicMeta[spec.key] === 'string' ? publicMeta[spec.key] : '';
+  let baseline = '';
+  let ready = false;
+  onMount(() => { ready = true; });
+
+  // SvelteKit can reuse this editor when moving to another profile or after a save.
+  function initialise(profile: any, draft: any) {
+    profileLabel = profile.label && profile.label !== 'My profile' ? profile.label : profile.displayName || '';
+    displayName = profile.displayName || draft?.name || '';
+    headline = profile.headline || '';
+    bio = profile.bio || '';
+    avatarUrl = profile.avatarUrl || '';
+    company = profile.company || '';
+    title = profile.title || '';
+    websiteUrl = profile.websiteUrl || '';
+    emailPublic = profile.emailPublic || draft?.email || '';
+    phonePublic = profile.phonePublic || draft?.phone || '';
+    extra_inputs = Object.fromEntries(EXTRA_KEYS.map(({ key }) => [key, profile.publicMeta?.[key] || '']));
+    baseline = JSON.stringify([profileLabel, displayName, headline, bio, avatarUrl, company, title,
+      websiteUrl, emailPublic, phonePublic, extra_inputs]);
   }
+
+  $: p = data?.profile || {};
+  $: initialise(p, data?.draft);
+  $: creating = !p.id || (data?.onboarding && !p.isPublished);
+  $: kind = p.kind || data?.requestedProfileKind || 'business';
+  $: changed = JSON.stringify([profileLabel, displayName, headline, bio, avatarUrl, company, title,
+    websiteUrl, emailPublic, phonePublic, extra_inputs]) !== baseline;
+  $: editorQuery = data?.editorQuery ? '&' + data.editorQuery : '';
+  $: showSaveActions = creating || changed || !ready;
 
   let photoError = '';
   let photoBusy = false;
@@ -66,19 +76,22 @@
 </script>
 
 <div class="card profile-card">
-  <h1>{p?.id ? 'Edit profile' : 'Create profile'}</h1>
-  {#if p.isPublished === false || !p.id}
-    <!-- Submit the existing editor, including unsaved fields and its normal validation. -->
+  <h1>{creating ? 'Create profile' : 'Edit profile'}</h1>
+  {#if !creating}
     <aside class="publication-banner" aria-label="Profile publication status">
-      <div>
-        <strong>Your profile is unpublished</strong>
-        <p>{data?.onboarding ? 'Review your details, then publish when you’re ready to share your link and QR code.' : 'Publish it to make your profile link and QR code available.'}</p>
-      </div>
-      <button class="btn primary" type="submit" form="profile-editor" name="publishNow" value="yes">Publish profile</button>
+      <strong>{p.isPublished ? 'Published' : 'Unpublished'}</strong>
+      {#if !changed && !data?.exchangeReturn}
+        <form method="post" action={'?/publication' + editorQuery}>
+          <input type="hidden" name="profileId" value={p.id} />
+          <button class="btn" type="submit" name="publication" value={p.isPublished ? 'unpublish' : 'publish'}>
+            {p.isPublished ? 'Unpublish' : 'Publish saved profile'}
+          </button>
+        </form>
+      {/if}
     </aside>
   {/if}
   <!-- IT: main editor form - named action `save` -->
-  <form id="profile-editor" method="post" action={data?.onboarding ? "?/save&onboarding=1" : "?/save"} class="profile-editor">
+  <form id="profile-editor" method="post" action={'?/save' + editorQuery} class="profile-editor">
     {#if data?.exchangeReturn}<input type="hidden" name="returnToExchange" value="1" />{/if}
     {#if data?.returnContext}
       <!-- IT: Return to the same context after editing, never to a mismatched profile. -->
@@ -123,7 +136,7 @@
         <label for="photoFile">Profile photo (specific to this profile)</label>
         {#if avatarUrl}<img src={avatarUrl} alt="Current profile" class="profile-photo-preview" />{/if}
         <input id="photoFile" type="file" accept="image/jpeg,image/png,image/webp" on:change={uploadProfilePhoto} />
-        <small>Choose a photo from your phone. It will be resized and displayed publicly on this profile only.</small>
+        <small>Choose a photo from your phone. It will be resized and shown when you publish this profile.</small>
         {#if photoBusy}<small>Preparing photo…</small>{/if}
         {#if photoError}<p role="alert">{photoError}</p>{/if}
         <input type="hidden" name="avatarUrl" value={avatarUrl} />
@@ -145,17 +158,8 @@
         <small>Use this name to choose which profile to share. Visitors see your public name.</small>
       </div>
 
-      <div class="field">
-        <label for="kind">Profile type</label>
-        <select id="kind" name="kind" bind:value={kind} disabled={data?.networkEntry || !!p.id}>
-          <option value="business">Business</option>
-          <option value="personal">Friendship</option>
-          <option value="dating">Dating</option>
-          <option value="custom">Custom</option>
-        </select>
-      </div>
-
-      {#if p.id || data?.networkEntry}<input type="hidden" name="kind" value={kind} />{/if}
+      <!-- Contextual entry points still use the stored kind for legacy routing. -->
+      <input type="hidden" name="kind" value={kind} />
     </fieldset>
 
     <fieldset class="editor-section">
@@ -190,13 +194,16 @@
       </div>
     </details>
 
-    <div class="publication-setting">
-      <label class="checkbox-label"><input type="checkbox" name="isPublished" checked={p?.id ? p.isPublished !== false : !data?.creatingNew && !data?.onboarding} /> Published publicly</label>
-      <small>Turn this off to hide your profile and its QR link.</small>
-    </div>
+    {#if showSaveActions && p.isPublished}
+      <small>Save for later unpublishes this profile and turns off its public link and QR code.</small>
+    {/if}
     <div class="form-actions">
-      <button class="btn primary" type="submit">Save profile</button>
-      <a class="btn" href={data?.exchangeReturn || "/profiles"}>{data?.exchangeReturn ? "Cancel and return to exchange" : "Back to My Profiles"}</a>
+      {#if showSaveActions}
+        <!-- The first submit is private, including when Enter submits a field. -->
+        <button class="btn" type="submit" disabled={photoBusy}>Save for later</button>
+        <button class="btn primary" type="submit" name="publishNow" value="yes" disabled={photoBusy}>Publish</button>
+      {/if}
+      <a class="btn" href={data?.exchangeReturn || "/profiles"}>{data?.exchangeReturn ? "Cancel and return to exchange" : "Back to profiles"}</a>
     </div>
 
     {#if form?.error}
@@ -221,7 +228,7 @@
   }
   legend { padding: 0 4px; font-weight: 700; }
   .field { display: flex; flex-direction: column; gap: 6px; min-width: 0; margin: 0; }
-  .field input, .field textarea, .field select {
+  .field input, .field textarea {
     box-sizing: border-box;
     width: 100%;
     min-width: 0;
@@ -235,23 +242,18 @@
   .span2 { grid-column: 1 / -1; }
   .links summary { cursor: pointer; font-weight: 700; padding: 12px 0; }
   .links .editor-section { margin-top: 4px; }
-  .publication-setting { display: grid; gap: 4px; }
-  .checkbox-label { display: flex; align-items: center; gap: 8px; min-height: 44px; }
-  .checkbox-label input { flex: none; width: auto; margin: 0; }
   .publication-banner {
     display: flex;
     align-items: center;
     justify-content: space-between;
     flex-wrap: wrap;
-    gap: 12px;
-    padding: 14px;
-    margin: 16px 0 22px;
-    border: 2px solid #256457;
-    border-radius: 12px;
+    gap: 8px;
+    padding: 8px 12px;
+    margin: 8px 0 16px;
+    border: 1px solid #b9d5cc;
+    border-radius: 10px;
     background: #edf7f2;
   }
-  .publication-banner p { margin: 6px 0 0; line-height: 1.5; }
-  .publication-banner button { min-height: 48px; font-weight: 700; }
   .profile-photo-preview { width: 76px; height: 76px; border-radius: 50%; object-fit: cover; }
   .form-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
   .form-error { margin: 0; color: var(--danger); }
@@ -264,6 +266,5 @@
   }
   @media (max-width: 540px) {
     .form-actions { display: grid; }
-    .publication-banner button { width: 100%; }
   }
 </style>

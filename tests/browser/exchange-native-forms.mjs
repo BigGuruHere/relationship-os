@@ -6,7 +6,7 @@ import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 const { chromium } = createRequire(import.meta.url)('playwright');
 import assert from 'node:assert/strict';
-import { createServer } from 'vite';
+import { build, createServer } from 'vite';
 import { resolve } from 'node:path';
 process.env.SECRET_MASTER_KEY = 'b'.repeat(64);
 const vite = await createServer({
@@ -72,6 +72,24 @@ const channelPage=await vite.ssrLoadModule('/src/routes/settings/channels/+page.
 const claimUI = await component('src/routes/exchange/claim/+page.svelte', 'claim');
 const profileUI = await component('src/routes/settings/profile/+page.svelte', 'profile');
 const publicProfileUI = await component('src/routes/u/[slug]/+page.svelte', 'publicProfile');
+// Hydrate the real editor so the browser test exercises change detection as well as native forms.
+const profilePath = 'src/routes/settings/profile/+page.svelte';
+const compiledProfile = compile(await readFile(profilePath, 'utf8'), { generate: 'client', filename: profilePath });
+await writeFile('.svelte-kit/browser-check/profile-client.js', compiledProfile.js.code);
+const entry = resolve('.svelte-kit/browser-check/profile-entry.js');
+await writeFile(entry, `
+  import { hydrate } from 'svelte';
+  import Profile from './profile-client.js';
+  const target = document.querySelector('#editor-fixture');
+  hydrate(Profile, { target, props: { data: JSON.parse(target.dataset.profile), form: null } });
+`);
+const bundle = await build({
+  configFile: false,
+  logLevel: 'error',
+  resolve: { alias: { $lib: resolve('src/lib') } },
+  build: { write: false, lib: { entry, formats: ['es'] } }
+});
+const profileClient = (Array.isArray(bundle) ? bundle[0] : bundle).output.find((part) => part.type === 'chunk').code;
 const appStyles = await readFile('src/app.css', 'utf8');
 const c = cookies();
 let policyOverride = null,
@@ -82,6 +100,11 @@ const server = httpServer(async (req, res) => {
 		const url = new URL(req.url, 'http://127.0.0.1:' + server.address().port);
 		if (process.env.RELISH_BROWSER_SERVE_ONLY === 'YES')
 			policyOverride = url.searchParams.get('policy') === 'no-referrer' ? 'no-referrer' : null;
+		if (url.pathname === '/profile-client.js') {
+			res.setHeader('content-type', 'text/javascript');
+			res.end(profileClient);
+			return;
+		}
 		if (url.pathname === '/profiles') {
 			res.end('My Profiles');
 			return;
@@ -150,17 +173,20 @@ const server = httpServer(async (req, res) => {
 			const creatingNew = url.searchParams.has('new');
 			const publicEditor = url.pathname === '/public-editor';
 			const profile = {
-				id: 'p', slug: 'mark', displayName: 'Mark Test', kind: 'business', isPublished: false,
+				id: 'p', slug: 'mark', displayName: 'Mark Test', kind: 'business', isPublished: url.searchParams.has('published'),
 				publicMeta: { linkedin: 'https://www.linkedin.com/in/mark-test' }
 			};
 			const data = publicEditor
-				? { profile, isOwner: true, editingRequested: true, origin: url.origin, slugParam: 'mark' }
+				? { profile, isOwner: true, origin: url.origin, slugParam: 'mark' }
 				: { creatingNew, profile: creatingNew ? null : profile };
 			const markup = render(publicEditor ? publicProfileUI : profileUI, { props: { data, form: null } });
 			res.setHeader('content-type', 'text/html');
 			res.end('<!doctype html><html><head><meta name="viewport" content="width=device-width, initial-scale=1">' +
 				'<style>' + appStyles + componentStyles.get(publicEditor ? 'publicProfile' : 'profile') +
-				'</style>' + markup.head + '</head><body>' + markup.body + '</body></html>');
+				 '</style>' + markup.head + '</head><body>' +
+				(publicEditor ? markup.body :
+					'<div id="editor-fixture" data-profile="' + JSON.stringify(data).replaceAll('&', '&amp;').replaceAll('"', '&quot;') +
+					'">' + markup.body + '</div><script type="module" src="/profile-client.js"></script>') + '</body></html>');
 			return;
 		}
 		const data = await (url.pathname==='/channels'?channelPage:page).load({
@@ -265,9 +291,9 @@ try {
 	// Exercise both editor entry points at phone widths, with their compiled scoped CSS.
 	for (const width of [320, 390, 600]) {
 		await tab.setViewportSize({ width, height: 800 });
-		for (const path of ['/profile', '/profile?new=1', '/public-editor']) {
+		for (const path of ['/profile', '/profile?new=1']) {
 			await tab.goto(base + path);
-			const form = tab.locator(path === '/public-editor' ? 'form.grid' : '#profile-editor');
+			const form = tab.locator('#profile-editor');
 			await form.waitFor();
 			const columns = await form.evaluate(el => getComputedStyle(el).gridTemplateColumns);
 			assert.equal(columns.split(' ').length, 1, path + ' at ' + width);
@@ -283,19 +309,39 @@ try {
 		}
 	}
 
+	await tab.goto(base + '/public-editor');
+	assert.equal(await tab.getByRole('link', { name: 'Edit profile' }).getAttribute('href'),
+		'/settings/profile?profile=mark&from=profiles');
+
 	// Closed optional fields must still submit, and Publish includes unsaved edits.
 	await tab.goto(base + '/profile');
+	await tab.getByRole('button', { name: 'Publish', exact: true }).waitFor({ state: 'hidden' });
+	await tab.getByRole('button', { name: 'Save for later', exact: true }).waitFor({ state: 'hidden' });
+	await tab.getByRole('button', { name: 'Publish saved profile', exact: true }).waitFor();
 	await tab.getByLabel('Public name', { exact: true }).fill('Edited Mark');
-	await tab.getByRole('button', { name: 'Publish profile', exact: true }).click();
+	await tab.getByRole('button', { name: 'Publish', exact: true }).waitFor();
+	await tab.getByLabel('Public name', { exact: true }).fill('Mark Test');
+	await tab.getByRole('button', { name: 'Publish', exact: true }).waitFor({ state: 'hidden' });
+	await tab.getByLabel('Public name', { exact: true }).fill('Edited Mark');
+	await tab.getByRole('button', { name: 'Publish', exact: true }).click();
 	assert.equal(lastProfile.get('publishNow'), 'yes');
 	assert.equal(lastProfile.get('displayName'), 'Edited Mark');
 	assert.equal(lastProfile.get('extra_linkedin'), 'https://www.linkedin.com/in/mark-test');
+	await tab.goto(base + '/profile?published=1');
+	await tab.getByRole('button', { name: 'Unpublish', exact: true }).waitFor();
+	await tab.getByLabel('Public name', { exact: true }).fill('Private edit');
+	await tab.getByText('Save for later unpublishes', { exact: false }).waitFor();
+	await tab.getByRole('button', { name: 'Save for later', exact: true }).click();
+	assert.equal(lastProfile.get('publishNow'), null);
+
 	await tab.goto(base + '/profile?new=1');
+	assert.equal(await tab.getByLabel('Profile publication status').count(), 0);
+	await tab.getByRole('button', { name: 'Publish', exact: true }).waitFor();
 	await tab.getByLabel('Public name', { exact: true }).fill('New profile');
 	await tab.getByLabel('Profile label (only you see this)', { exact: true }).fill('Networking');
 	await tab.getByText('Website and social links', { exact: true }).click();
 	await tab.getByLabel('LinkedIn', { exact: true }).fill('https://www.linkedin.com/in/new-profile');
-	await tab.getByRole('button', { name: 'Save profile', exact: true }).click();
+	await tab.getByRole('button', { name: 'Save for later', exact: true }).click();
 	assert.equal(lastProfile.get('createNewProfile'), '1');
 	assert.equal(lastProfile.get('extra_linkedin'), 'https://www.linkedin.com/in/new-profile');
 	console.log(

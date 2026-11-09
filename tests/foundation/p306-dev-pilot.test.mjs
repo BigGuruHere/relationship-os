@@ -279,7 +279,7 @@ test('Internal DEV setup and ordinary Foundation signup on an isolated database'
 								profileId: profile.id,
 								displayName: 'Relish foundation test',
 								kind: 'business',
-								isPublished: 'on'
+								publishNow: 'yes'
 							})
 						})
 					}),
@@ -625,6 +625,20 @@ test('Internal DEV setup and ordinary Foundation signup on an isolated database'
 			const saved = (await detail(browser)).notes[0];
 			assert.equal(saved.text, 'Reviewed voice transcript');
 			assert.equal(saved.summary, 'Private summary');
+			// Unpublishing closes the live card and QR while retaining captured data.
+			await assert.rejects(publicPage.load({
+				...event(browser, '/u/' + slug + '?edit=1'), params: { slug }
+			}), at('/settings/profile?profile=' + slug + '&from=profiles'));
+			const editPath = '/settings/profile?profile=' + slug;
+			const changeVisibility = (publication) => profilesPage.actions.publication(event(browser,
+				editPath + '&/publication', { profileId: ordinaryProfile.id, publication }));
+			await assert.rejects(changeVisibility('unpublish'), at(editPath));
+			await assert.rejects(publicPage.load(publicCard), (error) => error.status === 404);
+			assert.equal((await qr.GET(event(guest, '/api/qr?slug=' + slug))).status, 404);
+			assert.equal((await detail(browser)).notes[0].id, saved.id);
+			await assert.rejects(changeVisibility('publish'), at(editPath));
+			assert.equal((await publicPage.load(publicCard)).profile.displayName, publicName);
+
 		});
 		await t.test('guest signup first opens verification and saves the card without guest account proof', async () => {
 			process.env.RELISH_DEV_FOUNDATION_PILOT_TARGET = target;

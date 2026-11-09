@@ -652,7 +652,7 @@ test('Internal DEV setup and ordinary Foundation signup on an isolated database'
 			assert.deepEqual(directory.people.map(person => person.name), [publicName]);
 			const claimPage = await load('routes/exchange/claim/+page.server');
 			const claim = await claimPage.load(event(guest, '/exchange/claim'));
-			assert.equal(claim.accountClaim.channel.type, 'PHONE');
+			assert.equal(claim.accountClaim.channel.step, 'LOGIN_EMAIL');
 			assert.equal(claim.accountClaim.canComplete, false);
 			const links = (await db.query(
 				'SELECT channel FROM "FoundationAccountAssociation" WHERE "ownerUserId"=$1 AND "accountId"=$2',

@@ -1,3 +1,4 @@
+import { googleControlsMailbox } from '$lib/server/googleEmailAuthority';
 import { recordGoogleEmailProof } from '$lib/server/foundation/accountChannels';
 import { exchangeBrowserEnabled } from '$lib/server/foundation/devPilotGate';
 import { accountDomain, provisionNewFoundationAccount } from '$lib/server/foundation/provisioning';
@@ -265,7 +266,7 @@ export const GET: RequestHandler = async ({ url, cookies, locals, getClientAddre
 
   // Only newly validated callbacks can establish account email assurance. This never blocks login
   // or reactivates revoked channels; credentials and private domain enrollment remain independent.
-  if (exchangeBrowserEnabled(locals, url.origin)) {
+  if (googleControlsMailbox(email, payload.hd) && exchangeBrowserEnabled(locals, url.origin)) {
     try {
       if (await accountDomain(user.id) === 'ACTIVE') {
         await recordGoogleEmailProof({ ...locals, user: { id: user.id }, sessionId: sess.sessionId }, email);

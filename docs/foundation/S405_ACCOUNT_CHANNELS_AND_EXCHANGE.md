@@ -85,6 +85,14 @@ Self-exchange returns the existing profile experience before capture. Both roots
 
 ## New-user journey and retained assurance
 
+
+### Email-first guest verification, 2026-11-09
+
+Confirm the account's sign-in email on the existing guest continuation before settling a new v2 exchange. Reuse current email proof when present. Password signup and Google sign-in using an outside mailbox use the existing Relish email code. The Google callback records trusted proof for Gmail and verified Google Workspace mailboxes from validated token claims. Historic Google proofs without independently identifiable mailbox authority need fresh proof. The existing authentication rules and general signup journey continue independently of the guest continuation.
+
+A verified sign-in email settles the exchange when it matches a shared email. A different sign-in email stays private. In that case, the guest can prove one of the original shared channels, or continue with the saved published card and a pending exchange. A shared phone remains independent. Prior disclosure, private notes and settled exchange records are retained. Replacing an earlier shared address or number requires a separate, consented correction action.
+
+
 Preserve guest Send, Skip, Save contact and Continue later. Send commits the sharer's private person/receipt immediately. New claim issuance stores the exact eligible submitted channels encrypted, selected originating card snapshot, expiry and a continuation version. It must support email-only submissions once the email adapter is ready. A submission without a supported channel remains a useful saved contact, without falsely promising a claim.
 
 Signup/sign-in resumes the browser-bound continuation. Authentication may ask which account to use, but must not silently switch a claim already bound to another beneficiary. Resolve any usable matching channel from that account server-side. When it exists, settle through an explicit exchange-completion intent already carried through the flow without sending another code. Otherwise ask the visitor to verify a supported supplied channel. Never let the verification form redirect proof to an unrelated replacement destination.

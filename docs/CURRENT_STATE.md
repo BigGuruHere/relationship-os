@@ -15,6 +15,10 @@ The [production-base register](foundation/IMPLEMENTATION_PLAN.md#production-base
 
 ## Guest sharing and account verification
 
+
+The `feature/email-first-guest-verification` branch changes the v2 guest continuation to confirm the sign-in email first. An exact shared email match completes the exchange without SMS. A different sign-in email stays private and a shared channel still needs its own proof. A validated Gmail or verified Google Workspace mailbox can supply email proof, while outside Google sign-in addresses require a Relish code. The additive proof migration retains historic records. Hosted acceptance is pending.
+
+
 On `feature/guest-sharing-account-verification`, guest Send requires email or mobile. An authenticated guest receives the published card in My People before verification. The verification screen asks for the exact submitted mobile when present, or email for email-only sharing. Proof links the guest to the original private entry. Account channels remain independent. No migration. Feature branch validation uses isolated databases and simulated providers. Hosted acceptance is pending. See the [exchange contract](foundation/S405_ACCOUNT_CHANNELS_AND_EXCHANGE.md).
 
 PR #45 merged into Development at `87f9205`. The operator confirmed that a guest could see the sharer's card on DEV before verification and reported a redundant sign-in choice screen and a `P2002` error. The `fix/guest-verification-entry` branch routes guests directly to the existing account screen and reports competing verified-channel ownership separately from other verification errors. The supplied log does not name the live constraint. No migration or deployed change.

@@ -115,6 +115,10 @@ S-403 code-input correction (2026-11-07): operator confirmed SELF_EXCHANGE was r
 
 ## Guest sharing follow-up
 
+
+Email-first guest verification is implemented on `feature/email-first-guest-verification` from Development `87f9205c`. It supersedes phone-first for v2 continuations. The existing email-code provider, guest route, proof registry and exact-submission settlement are reused. One additive migration distinguishes Google mailbox authority, with no backfill. Existing rows remain readable on application rollback. Isolated service checks use simulated providers. Hosted DEV acceptance and consented correction of previously sent details are pending.
+
+
 Implemented on `feature/guest-sharing-account-verification`, based on Development `169bece`. Guest Send requires an email or mobile. On authenticated v2 continuation, the published card is saved immediately with published-profile provenance. The account verification page presents mobile when supplied, and email for email-only intake. Only current proof of that required submitted channel can settle the visitor's account association. Pending secondary channels and both parties' private notes remain independent. No schema migration. Local auth/capture and isolated service tests cover early card visibility, priority, retries and the pending/verified boundary. Hosted DEV rollout and acceptance are pending. This changes the S-405d guest flow while retaining the existing DEV gate and legacy v1 protocol.
 
 Guest verification follow-up on `fix/guest-verification-entry`: skip the intermediate signed-out page while retaining the exact exchange continuation and the signup/sign-in choice. A competing verified channel receives an actionable conflict message. The database guard remains authoritative and a rejected verification rolls back proof and challenge consumption. Request, dispatch, verification and settlement diagnostics identify their own stage. No migration. Local validation passed 71 checks, Svelte diagnostics and the Chromium form suite. Hosted acceptance remains pending.

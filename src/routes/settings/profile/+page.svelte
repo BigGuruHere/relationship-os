@@ -195,15 +195,16 @@
     </details>
 
     {#if showSaveActions && p.isPublished}
-      <small>Save for later unpublishes this profile and turns off its public link and QR code.</small>
+      <small>Save for Later unpublishes this profile and turns off its public link and QR code.</small>
     {/if}
     <div class="form-actions">
       {#if showSaveActions}
-        <!-- The first submit is private, including when Enter submits a field. -->
-        <button class="btn" type="submit" disabled={photoBusy}>Save for later</button>
+        <!-- Pressing Enter in a field saves privately. Publishing requires its own action. -->
+        <button type="submit" hidden disabled={photoBusy}>Save for Later</button>
         <button class="btn primary" type="submit" name="publishNow" value="yes" disabled={photoBusy}>Publish</button>
+        <button class="btn" type="submit" disabled={photoBusy}>Save for Later</button>
       {/if}
-      <a class="btn" href={data?.exchangeReturn || "/profiles"}>{data?.exchangeReturn ? "Cancel and return to exchange" : "Back to profiles"}</a>
+      <a class="btn" href={data?.exchangeReturn || "/profiles"}>{data?.exchangeReturn ? "Cancel and return to exchange" : "Back to My Profiles"}</a>
     </div>
 
     {#if form?.error}

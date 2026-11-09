@@ -316,7 +316,7 @@ try {
 	// Closed optional fields must still submit, and Publish includes unsaved edits.
 	await tab.goto(base + '/profile');
 	await tab.getByRole('button', { name: 'Publish', exact: true }).waitFor({ state: 'hidden' });
-	await tab.getByRole('button', { name: 'Save for later', exact: true }).waitFor({ state: 'hidden' });
+	await tab.getByRole('button', { name: 'Save for Later', exact: true }).waitFor({ state: 'hidden' });
 	await tab.getByRole('button', { name: 'Publish saved profile', exact: true }).waitFor();
 	await tab.getByLabel('Public name', { exact: true }).fill('Edited Mark');
 	await tab.getByRole('button', { name: 'Publish', exact: true }).waitFor();
@@ -330,18 +330,22 @@ try {
 	await tab.goto(base + '/profile?published=1');
 	await tab.getByRole('button', { name: 'Unpublish', exact: true }).waitFor();
 	await tab.getByLabel('Public name', { exact: true }).fill('Private edit');
-	await tab.getByText('Save for later unpublishes', { exact: false }).waitFor();
-	await tab.getByRole('button', { name: 'Save for later', exact: true }).click();
+	await tab.getByText('Save for Later unpublishes', { exact: false }).waitFor();
+	await tab.getByRole('button', { name: 'Save for Later', exact: true }).click();
 	assert.equal(lastProfile.get('publishNow'), null);
 
 	await tab.goto(base + '/profile?new=1');
+	await tab.getByRole('link', { name: 'Back to My Profiles', exact: true }).waitFor();
+	assert.deepEqual(await tab.locator('#profile-editor .form-actions :is(button, a):visible').allTextContents(),
+		['Publish', 'Save for Later', 'Back to My Profiles']);
+	assert.equal(await tab.getByRole('checkbox', { name: /published publicly/i }).count(), 0);
 	assert.equal(await tab.getByLabel('Profile publication status').count(), 0);
 	await tab.getByRole('button', { name: 'Publish', exact: true }).waitFor();
 	await tab.getByLabel('Public name', { exact: true }).fill('New profile');
 	await tab.getByLabel('Profile label (only you see this)', { exact: true }).fill('Networking');
 	await tab.getByText('Website and social links', { exact: true }).click();
 	await tab.getByLabel('LinkedIn', { exact: true }).fill('https://www.linkedin.com/in/new-profile');
-	await tab.getByRole('button', { name: 'Save for later', exact: true }).click();
+	await tab.getByRole('button', { name: 'Save for Later', exact: true }).click();
 	assert.equal(lastProfile.get('createNewProfile'), '1');
 	assert.equal(lastProfile.get('extra_linkedin'), 'https://www.linkedin.com/in/new-profile');
 	console.log(

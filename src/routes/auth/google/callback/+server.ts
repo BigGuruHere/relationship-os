@@ -2,7 +2,7 @@ import { googleControlsMailbox } from '$lib/server/googleEmailAuthority';
 import { recordGoogleEmailProof } from '$lib/server/foundation/accountChannels';
 import { exchangeBrowserEnabled } from '$lib/server/foundation/devPilotGate';
 import { accountDomain, provisionNewFoundationAccount } from '$lib/server/foundation/provisioning';
-import { EXCHANGE_RETURN, startExchangeAfterAuth } from '$lib/server/exchangeOnboarding';
+import { EXCHANGE_RETURN, startExchangeAfterAuth, finishVerifiedExchange } from '$lib/server/exchangeOnboarding';
 import { requiredEnv } from '$lib/server/config/requiredEnv';
 // src/routes/auth/google/callback/+server.ts
 // PURPOSE: exchange code for tokens, verify ID token, upsert OAuthAccount, create first party session
@@ -275,6 +275,8 @@ export const GET: RequestHandler = async ({ url, cookies, locals, getClientAddre
       console.warn('Google account-channel proof could not be recorded.');
     }
   }
+  const followup = await finishVerifiedExchange(cookies, url, locals, next, user.id, sess.sessionId);
+  if (followup) throw redirect(303, followup);
   if (onboarding || newProfileId) {
     const destination = onboarding ? next : PROFILE_ONBOARDING_RETURN;
     throw redirect(303, finishProfileAuth(cookies, url, destination, user.id, newProfileId));

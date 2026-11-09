@@ -109,7 +109,7 @@ export async function requestExchangeCode(
 			where: { expiresAt: { lte: new Date() }, status: { in: ['QUEUED', 'FAILED', 'SENDING'] } },
 			data: { status: 'EXPIRED', payloadEnc: null, leaseToken: null, leaseUntil: null }
 		});
-		if (e.status === 'SETTLED') return { status: 'SETTLED' as const };
+		if (e.status === 'SETTLED') return { status: 'SETTLED' as const, personId: e.settledSubjectId };
 		const sessionHash = claimMac(actor.sessionId, 'session');
 		const retry = await tx.foundationExchangeChallenge.findFirst({
 			where: { id: requestId, exchangeId: e.id }
@@ -682,6 +682,7 @@ export async function accountClaimState(locals: Actor, token: string) {
 			: required.value[0] + '•••@' + required.value.split('@')[1];
 		return {
 			settled: e.status === 'SETTLED',
+			personId: e.status === 'SETTLED' ? e.settledSubjectId : null,
 			canComplete: Boolean(verified),
 			channels: statuses.map(({ type, verified }) => ({ type, verified })),
 			channel: {

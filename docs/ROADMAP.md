@@ -10,8 +10,8 @@ Help people understand themselves, other people, relationships and influences ac
 
 Accepted direction: [D-029](DECISION_LOG.md#d-029-ordinary-onboarding-and-an-incremental-production-launch). Recommended implementation model: GPT-6.1 Sol High, because signup, atomic provisioning and private-data routing cross authentication and custody boundaries.
 
-1. **Implemented on a feature branch.** Password and Google signup atomically provision the account, private home, self reference and unpublished profile. Existing legacy accounts keep their custody and routing.
-2. **Implemented on a feature branch.** The core runs without any exchange or DEV fixture flag. Reciprocal exchange and channel delivery stay restricted to their existing DEV configuration. Foundation navigation focuses on the core and the server rejects legacy-only writes through public lead, Network and profile call routes.
+1. **Implemented.** Password and Google signup atomically provision the account, private home, self reference and unpublished profile. Existing legacy accounts keep their custody and routing.
+2. **Implemented.** The core runs without any exchange or DEV fixture flag. Reciprocal exchange and channel delivery stay restricted to their existing DEV configuration. Foundation navigation focuses on the core and the server rejects legacy-only writes through public lead, Network and profile call routes.
 3. **Core path implemented.** Profile review and publication, QR/manual capture, My People, private voice-note transcription, editable summaries and retrieval reuse the existing services. Password self-service recovery needs verified destination proof and a delivery flow. Provider/device acceptance and privacy/support readiness remain promotion gates.
 4. **Promotion preparation pending.** Run the complete ordinary-user journey on an authorized DEV deployment, reconcile target migration history and rehearse hosted backup/restore and compatible rollback. Separately approve and execute production promotion after reviewing the evidence.
 
@@ -27,7 +27,7 @@ The authoritative detailed backlog and stage register are in [foundation impleme
 | --- | --- | --- |
 | 1 | Architecture, decisions, policy, developer guide and implementation backlog | Merged via PR #13, `d789464` |
 | 2 | New-domain primitives, auth isolation, custody and evidence proof | F-202/F-203 merged and DEV operator-confirmed; F-204 merged; F-205 merged; F-206 internal rehearsal merged through PR #19. Stage 2 DEV verification is pending. P-301 directory and person details merged through PR #20 |
-| 3 | Ordinary users onboard, keep people and retrieve notes in production | P-301 through P-305 merged; P-306 internal DEV test operator-confirmed. Production-base onboarding is on a feature branch; hosted DEV and launch acceptance are pending under D-029. No invited-cohort prerequisite; privacy, recovery and enabled-provider/device readiness remain. |
+| 3 | Ordinary users onboard, keep people and retrieve notes in production | P-301 through P-305 merged; P-306 internal DEV test operator-confirmed. Hosted DEV and launch acceptance for production-base onboarding are pending under D-029. No invited-cohort prerequisite; privacy, recovery and enabled-provider/device readiness remain. |
 | 4 | Secure exchange claiming and directional continuing sharing | S-403 and fixes merged through PR #36. S-405a corrects exchange/account-assurance design on feature branch; S-405b-e implementation and S-404 recovery/acceptance remain planned. |
 | 5 | Private understanding across people and relationships | Planned after evidence/correction readiness |
 | 6 | Relationship understanding from separately governed perspectives | Future gated release |

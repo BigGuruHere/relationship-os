@@ -4,7 +4,7 @@ Status: updated **2026-11-09**. The production-base feature branch starts at rem
 
 ## Ordinary production onboarding
 
-[D-029](DECISION_LOG.md#d-029-ordinary-onboarding-and-an-incremental-production-launch) replaces the invited-cohort launch approach. Implemented on `feature/production-base-onboarding`; merge, hosted DEV acceptance and production promotion are pending.
+[D-029](DECISION_LOG.md#d-029-ordinary-onboarding-and-an-incremental-production-launch) replaces the invited-cohort launch approach. Implementation commit `fb0d3d5` and direction commit `9cccfb6` are bundled in the Development integration PR. Hosted DEV acceptance and production promotion are pending.
 
 - New password and Google accounts receive an ACTIVE private vault, encrypted self reference and unpublished profile in the account transaction. Ordinary signup uses neither exchange admission nor operator-created logins. A matching credential email alone cannot attach a new Google login to an enrolled account. Existing accounts keep their storage domain and profile state.
 - After sign-up, the existing editor offers owner review and publication. The public card offers one primary action, Save contact. QR capture keeps visitor consent and writes to the published card owner's storage. My People, manual capture and private voice-note draft processing and retrieval reuse their existing guarded Foundation routes.

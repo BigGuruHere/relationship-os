@@ -3,6 +3,7 @@
 import type { RequestHandler } from './$types';
 import { error, redirect } from '@sveltejs/kit';
 import { prisma } from '$lib/db';
+import { usesLegacyProfileServices } from '$lib/server/foundation/provisioning';
 import { createNetworkConnection } from '$lib/connections';
 
 export const POST: RequestHandler = async ({ locals, params }) => {
@@ -11,7 +12,10 @@ export const POST: RequestHandler = async ({ locals, params }) => {
     where: { slug: params.slug, kind: 'personal' },
     select: { id: true, userId: true }
   });
-  if (!personal) throw error(404, 'Personal profile not found.');
+  if (!personal || !await usesLegacyProfileServices(personal.userId) ||
+      !await usesLegacyProfileServices(locals.user.id)) {
+    throw error(404, 'Personal profile not found.');
+  }
   if (personal.userId === locals.user.id) throw error(400, 'You cannot connect to yourself.');
   if (!locals.contextSpaceId || locals.contextDomainKey !== 'general') {
     throw error(409, 'Your General ContextSpace must be available to connect.');

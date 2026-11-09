@@ -3,6 +3,7 @@
 import type { Actions, PageServerLoad } from './$types';
 import { error, fail, redirect } from '@sveltejs/kit';
 import { prisma } from '$lib/db';
+import { usesLegacyProfileServices } from '$lib/server/foundation/provisioning';
 import { createNetworkConnection } from '$lib/connections';
 import { ensureOwnedDomainContextSpace } from '$lib/server/core/contextSpaceDirectory';
 import { runWithWorkspaceCustody } from '$lib/server/core/contextSpace';
@@ -12,7 +13,10 @@ export const load: PageServerLoad = async ({ params, locals }) => {
     where: { slug: params.slug, kind: 'personal' },
     select: { id: true, userId: true, displayName: true, slug: true }
   });
-  if (!profile) throw error(404, 'Network invitation not found.');
+  if (!profile || !await usesLegacyProfileServices(profile.userId) ||
+      (locals.user && !await usesLegacyProfileServices(locals.user.id))) {
+    throw error(404, 'Network invitation not found.');
+  }
   const next = `/network/join/${encodeURIComponent(profile.slug)}`;
   if (!locals.user) return { profile: { name: profile.displayName || 'Network member' }, signedIn: false, isSelf: false, connected: false, next };
   const isSelf = locals.user.id === profile.userId;
@@ -35,7 +39,11 @@ export const actions: Actions = {
     const personal = await prisma.profile.findFirst({
       where: { slug: params.slug, kind: 'personal' }, select: { id: true, userId: true }
     });
-    if (!personal) return fail(404, { error: 'Invitation not found.' });
+    // Explicitly separate legacy Network Contacts from Foundation private People.
+    if (!personal || !await usesLegacyProfileServices(personal.userId) ||
+        !await usesLegacyProfileServices(locals.user.id)) {
+      return fail(404, { error: 'Invitation not found.' });
+    }
     if (personal.userId === locals.user.id) return fail(400, { error: 'You cannot connect with yourself.' });
 
     // A registered member may not yet have a General workspace. Provision their own

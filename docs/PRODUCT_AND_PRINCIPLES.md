@@ -1,6 +1,6 @@
 # Relish: Product Vision and Principles
 
-Status: living product charter. Updated 2026-11-03. Describes agreed direction, not a claim that every future capability is implemented.
+Status: living product charter. Updated 2026-11-09. Describes agreed direction, not a claim that every future capability is implemented.
 
 ## Why Relish exists
 
@@ -45,7 +45,7 @@ Relationship support can involve changing its form, creating distance or ending 
 
 Meet someone -> share an existing QR/profile -> visitor elects to share contact details -> an owner-private Contact appears in My People -> the owner records a voice note -> the owner can retrieve the record. No involuntary signup, mutual connection, Brokerage Lead or Dorian invitation is implied.
 
-The immediate goal is to make that experience frictionless and dependable with a small pilot group. The broader goal is to understand and facilitate value through durable, consent-governed relationships.
+The first production release makes this experience available through ordinary signup. The account and its data start private. Users review their profile and choose when to publish it. The broader goal is to understand and facilitate value through durable, consent-governed relationships.
 
 ## Longer-term opportunities (not current implementation commitments)
 
@@ -59,7 +59,7 @@ The immediate goal is to make that experience frictionless and dependable with a
 
 Product language should be human, welcoming and not overly technical. Public legal and marketing copy should generally say **data** or **personal information** rather than exposing the internal term **Living Understanding**. Dorian must be clearly identified as AI.
 
-Privacy and custody are product features, not afterthoughts. Expand the service only as consent, access control, deletion/access processes and the operational pilot are verified.
+Privacy and custody are product features, not afterthoughts. Expand the service only as consent, access control, deletion/access processes and the enabled production workflows are verified.
 
 ## Reciprocal exchange experience
 

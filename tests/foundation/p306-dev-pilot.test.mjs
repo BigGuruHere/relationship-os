@@ -11,7 +11,7 @@ import { PGLiteSocketServer } from '@electric-sql/pglite-socket';
 import { createServer } from 'vite';
 import { legacySchemaFixture } from './legacy-schema-fixture.mjs';
 
-test('P-306 owner creates one fresh foundation login for DEV', { timeout: 120000 }, async (t) => {
+test('Internal DEV setup and ordinary Foundation signup on an isolated database', { timeout: 120000 }, async (t) => {
 	const db = await PGlite.create({ extensions: { vector } });
 	let socket, vite, prisma;
 	try {
@@ -52,18 +52,31 @@ test('P-306 owner creates one fresh foundation login for DEV', { timeout: 120000
 		process.env.LOGIN_THROTTLE_SECRET = 'synthetic-only-throttle-key-for-P306';
 		process.env.DB_KEEPALIVE_ENABLED = 'NO';
 		process.env.APP_ORIGIN_DEV = 'https://dev.relish.live';
+		for (const name of ['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET', 'OAUTH_REDIRECT_URI'])
+			process.env[name] = 'synthetic-google-config';
 		const target = socket.getServerConn() + '/postgres';
 		delete process.env.RELISH_DEV_FOUNDATION_PILOT_TARGET;
 
 		vite = await createServer({
 			configFile: false,
+			ssr: { noExternal: ['jose'] },
 			server: { middlewareMode: true, hmr: false },
 			resolve: { alias: { $lib: resolve('src/lib') } },
 			plugins: [
 				{
 					name: 'synthetic-svelte-environment',
-					resolveId: (id) => (id === '$app/environment' ? '\0p306-env' : undefined),
-					load: (id) => (id === '\0p306-env' ? 'export const dev=true;' : undefined)
+					enforce: 'pre',
+					resolveId(id) {
+						if (id === '$app/environment') return '\0p306-env';
+						if (id === 'jose') return '\0p306-google';
+					},
+					load(id) {
+						if (id === '\0p306-env') return 'export const dev=true;';
+						if (id === '\0p306-google') return `
+							export const createRemoteJWKSet = () => ({});
+							export async function jwtVerify() { return { payload: globalThis.__p306Google }; }
+						`;
+					}
 				}
 			]
 		});
@@ -425,49 +438,196 @@ test('P-306 owner creates one fresh foundation login for DEV', { timeout: 120000
 				(e) => e.status === 409
 			);
 		});
-		await t.test(
-			'new signup admission requires explicit DEV activation and credential allowlist, and rolls back atomically',
-			async () => {
-				process.env.RELISH_EXCHANGE_BROWSER_ENABLED = 'YES';
-				process.env.RELISH_EXCHANGE_REALM = 'dev-fixture';
-				process.env.RELISH_EXCHANGE_SIGNUP_EMAILS = 'signup@example.invalid';
-				const before = await totals();
-				await assert.rejects(
-					prisma.$transaction(async (tx) => {
-						await tx.user.create({ data: { id: 's403-signup', role: 'member' } });
-						await provision.admitDevExchangeSignup(
-							tx,
-							owner,
-							origin,
-							'signup@example.invalid',
-							's403-signup'
-						);
-						assert.equal(await provision.accountDomain('s403-signup', tx), 'ACTIVE');
-						throw new Error('late signup failure');
-					}),
-					/late signup failure/
-				);
+		// Run ordinary signup against the same real Prisma guards, with all DEV tooling off.
+		delete process.env.RELISH_DEV_FOUNDATION_PILOT_TARGET;
+		delete process.env.RELISH_EXCHANGE_BROWSER_ENABLED;
+		const registerPage = await load('routes/auth/register/+page.server');
+		const google = await load('routes/auth/google/callback/+server');
+		const publicPage = await load('routes/u/[slug]/+page.server');
+		const leadPage = await load('routes/u/[slug]/lead/+page.server');
+		const qr = await load('routes/api/qr/+server');
+		const people = await load('routes/people/+page.server');
+		const addPerson = await load('routes/people/new/+page.server');
+		const logout = await load('routes/auth/logout/+server');
+
+		const newBrowser = (env, appOrigin) => {
+			const map = new Map();
+			const cookies = {
+				get: (key) => map.get(key),
+				set: (key, value) => map.set(key, value),
+				delete: (key) => map.delete(key)
+			};
+			return { cookies, locals: { env, appOrigin, sessionCookie: sessionCookieConfig(env) } };
+		};
+		let browser = newBrowser('prod', 'https://app.relish.live');
+		const another = newBrowser('dev', origin);
+		const passwordEmail = 'ordinary-password@example.invalid';
+		const googleEmail = 'ordinary-google@example.invalid';
+		const publicName = 'Reviewed public name';
+		const editor = '/settings/profile?onboarding=1';
+		const event = (client, path, fields) => {
+			const url = new URL(path, client.locals.appOrigin);
+			return {
+				...client, url, getClientAddress: () => 'isolated-signup-fixture', setHeaders() {},
+				...(fields ? { request: new Request(url, {
+					method: 'POST', headers: { origin: url.origin }, body: new URLSearchParams(fields)
+				}) } : {})
+			};
+		};
+		const googleEvent = (client, email, sub) => {
+			for (const [key, value] of Object.entries({
+				oauth_state: 'state', oauth_nonce: 'nonce', oauth_pkce: 'verifier'
+			})) client.cookies.set(key, value);
+			globalThis.__p306Google = { sub, email, email_verified: true, nonce: 'nonce', name: 'Google profile name' };
+			return {
+				...event(client, '/auth/google/callback?code=code&state=state'),
+				fetch: async () => Response.json({ id_token: 'synthetic', access_token: 'discard-fixture-token' })
+			};
+		};
+		const sessionFor = (client) => getSessionFromCookie(client.cookies.get(client.locals.sessionCookie.name));
+		const profileFor = (id) => prisma.profile.findFirstOrThrow({ where: { userId: id, isDefault: true } });
+		const at = (location) => (error) => error.status === 303 && error.location === location;
+		const authAs = (client, session) => {
+			client.locals.user = { id: session.user.id, role: session.user.role };
+			client.locals.sessionId = session.session.id;
+		};
+		let ordinaryId, ordinaryProfile;
+
+		await t.test('failed password and Google provisioning roll back credentials, profile and roots', async () => {
+			const before = await totals();
+			await db.exec(`CREATE FUNCTION fail_ordinary_signup() RETURNS trigger LANGUAGE plpgsql AS $$
+				BEGIN RAISE EXCEPTION 'synthetic failure'; END $$;
+				CREATE TRIGGER fail_ordinary_signup BEFORE INSERT ON "FoundationEnrollment"
+				FOR EACH ROW EXECUTE FUNCTION fail_ordinary_signup();`);
+			try {
+				assert.equal((await registerPage.actions.default(event(browser, '/auth/register', {
+					email: passwordEmail, password
+				}))).status, 503);
+				await assert.rejects(google.GET(googleEvent(another, googleEmail, 'ordinary-sub')),
+					(error) => error.status === 503);
+				assert.equal(await sessionFor(browser), null);
+				assert.equal(await sessionFor(another), null);
+				assert.equal(await count('OAuthAccount'), 0);
 				assert.deepEqual(await totals(), before);
-				await prisma.$transaction(async (tx) => {
-					await tx.user.create({ data: { id: 's403-unlisted', role: 'member' } });
-					await provision.admitDevExchangeSignup(
-						tx,
-						owner,
-						origin,
-						'other@example.invalid',
-						's403-unlisted'
-					);
-					assert.equal(await provision.accountDomain('s403-unlisted', tx), 'LEGACY');
-				});
-				delete process.env.RELISH_EXCHANGE_BROWSER_ENABLED;
-				delete process.env.RELISH_EXCHANGE_SIGNUP_EMAILS;
+			} finally {
+				await db.exec('DROP TRIGGER fail_ordinary_signup ON "FoundationEnrollment"; DROP FUNCTION fail_ordinary_signup()');
 			}
-		);
+		});
+
+		await t.test('ordinary PROD-shaped signup is private and concurrent duplicates create one account', async () => {
+			let duplicate = newBrowser('prod', browser.locals.appOrigin);
+			const before = await totals();
+			const signup = (client) => registerPage.actions.default(event(client, '/auth/register', {
+				email: passwordEmail, password
+			}));
+			const attempts = await Promise.allSettled([signup(browser), signup(duplicate)]);
+			assert.equal(attempts.filter((attempt) => attempt.status === 'rejected' && at(editor)(attempt.reason)).length, 1);
+			assert.equal(attempts.filter((attempt) => attempt.status === 'fulfilled' && attempt.value.status === 400).length, 1);
+			if (attempts[1].status === 'rejected') [browser, duplicate] = [duplicate, browser];
+			const session = await sessionFor(browser);
+			ordinaryId = session.user.id;
+			authAs(browser, session);
+			assert.equal(session.user.role, 'member');
+			assert.ok(!session.user.email_Enc.includes(passwordEmail));
+			assert.equal(await sessionFor(duplicate), null);
+			assert.equal(await provision.accountDomain(ordinaryId), 'ACTIVE');
+			const after = await totals();
+			for (const key of ['User', 'Profile', 'FoundationEnrollment', 'FoundationVault', 'FoundationSubject'])
+				assert.equal(after[key], before[key] + 1, key);
+			assert.equal(await provision.accountDomain('owner'), 'LEGACY');
+			assert.equal((await prisma.profile.findUniqueOrThrow({ where: { id: 'legacy-card' } })).slug, 'legacy-owner');
+			ordinaryProfile = await profileFor(ordinaryId);
+			assert.equal(ordinaryProfile.isPublished, false);
+			assert.equal(ordinaryProfile.displayName, 'New Relish user');
+			assert.equal(ordinaryProfile.emailPublic, null);
+			const slug = ordinaryProfile.slug;
+			const guest = { ...event(duplicate, '/u/' + slug), params: { slug } };
+			await assert.rejects(publicPage.load(guest), (error) => error.status === 404);
+			await assert.rejects(leadPage.load(guest), (error) => error.status === 404);
+			assert.equal((await qr.GET(event(duplicate, '/api/qr?slug=' + slug))).status, 404);
+			assert.deepEqual((await people.load(event(browser, '/people'))).people, []);
+		});
+
+		await t.test('Google signs up normally in DEV and cannot claim another private vault by email', async () => {
+			await assert.rejects(google.GET(googleEvent(another, passwordEmail, 'unlinked-sub')),
+				(error) => error.status === 409);
+			assert.equal(await sessionFor(another), null);
+			await assert.rejects(google.GET(googleEvent(another, googleEmail, 'ordinary-sub')), at(editor));
+			const session = await sessionFor(another);
+			assert.notEqual(session.user.id, ordinaryId);
+			const googleProfile = await profileFor(session.user.id);
+			assert.equal(googleProfile.isPublished, false);
+			assert.equal(googleProfile.emailPublic, null);
+			assert.equal(await provision.accountDomain(session.user.id), 'ACTIVE');
+			const links = (await db.query('SELECT "userId", "accessToken" FROM "OAuthAccount"')).rows;
+			assert.deepEqual(links, [{ userId: session.user.id, accessToken: null }]);
+			await assert.rejects(google.GET(googleEvent(another, googleEmail, 'ordinary-sub')), at('/'));
+			assert.equal((await sessionFor(another)).user.id, session.user.id);
+			assert.equal((await profileFor(session.user.id)).isPublished, false);
+			authAs(another, session);
+		});
+
+		await t.test('ordinary profile publication, QR capture and manual People stay private through logout', async () => {
+			const guest = newBrowser('prod', browser.locals.appOrigin);
+			const slug = ordinaryProfile.slug;
+			await assert.rejects(profilesPage.actions.save(event(browser, editor + '&/save', {
+				profileId: ordinaryProfile.id, displayName: publicName, kind: 'business', publishNow: 'yes'
+			})), at('/share?profile=' + slug));
+			const qrImage = await qr.GET(event(guest, '/api/qr?slug=' + slug));
+			assert.equal(qrImage.status, 200);
+			assert.match(await qrImage.text(), /<svg/);
+			const publicCard = { ...event(guest, '/u/' + slug + '?via=qr'), params: { slug } };
+			assert.equal((await publicPage.load(publicCard)).profile.displayName, publicName);
+			for (const action of ['startDorian', 'requestDorian'])
+				assert.equal((await publicPage.actions[action](publicCard)).status, 404);
+			const capturePath = '/u/' + slug + '/share-details?via=qr';
+			const params = { slug };
+			const capture = await capturePage.load({ ...event(guest, capturePath), params });
+			assert.equal(capture.canSignIn, false);
+			const result = await capturePage.actions.default({
+				...event(guest, capturePath, {
+					name: 'QR visitor', email: 'visitor@example.invalid', contactConsent: 'yes',
+					captureToken: capture.captureToken
+				}), params
+			});
+			assert.equal(result.shared, true);
+			assert.equal(result.canClaim, undefined);
+			await assert.rejects(addPerson.actions.default(event(browser, '/people/new', {
+				name: 'Manual visitor'
+			})), (error) => error.status === 303 && error.location.startsWith('/people/'));
+			const directory = () => people.load(event(browser, '/people'));
+			const visible = (await directory()).people;
+			assert.deepEqual(visible.map((person) => person.name).sort(), ['Manual visitor', 'QR visitor']);
+			const person = visible.find((entry) => entry.name === 'QR visitor');
+			const personParams = { id: person.id };
+			const detail = (client) => personPage.load({ ...event(client, '/people/' + person.id), params: personParams });
+			await assert.rejects(detail(another), (error) => error.status === 404);
+			const note = await notePage.load({ locals: browser.locals, params: personParams });
+			await assert.rejects(notePage.actions.save({
+				...event(browser, '/people/' + person.id + '/notes/new?/save', {
+					text: 'Reviewed voice transcript', summary: 'Private summary', channel: 'voice', saveKey: note.saveKey
+				}), params: personParams
+			}), at('/people/' + person.id));
+			assert.equal(await count('Contact'), 0);
+			assert.equal(await count('Interaction'), 0);
+			await assert.rejects(logout.POST(event(browser, '/auth/logout', {})), at('/auth/login'));
+			assert.equal(await sessionFor(browser), null);
+			delete browser.locals.user;
+			await assert.rejects(directory(), at('/auth/login'));
+			await assert.rejects(loginPage.actions.default(event(browser, '/auth/login', {
+				email: passwordEmail, password
+			})), at('/'));
+			authAs(browser, await sessionFor(browser));
+			const saved = (await detail(browser)).notes[0];
+			assert.equal(saved.text, 'Reviewed voice transcript');
+			assert.equal(saved.summary, 'Private summary');
+		});
 	} finally {
 		if (prisma) await prisma.$disconnect();
 		if (vite) await vite.close();
 		if (socket) await socket.stop();
 		await db.close();
 		delete globalThis.prisma;
+		delete globalThis.__p306Google;
 	}
 });

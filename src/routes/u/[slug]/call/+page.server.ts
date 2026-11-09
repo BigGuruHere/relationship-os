@@ -2,6 +2,7 @@
 import { error, fail, redirect } from '@sveltejs/kit';
 import type { PageServerLoad, Actions } from './$types';
 import { prisma } from '$lib/db';
+import { usesLegacyProfileServices } from '$lib/server/foundation/provisioning';
 import { pilotDomainForKind, pilotKindLabel, pilotSource } from '$lib/server/pilot';
 import { issuePilotSmsInvitation, pilotTermsConfig } from '$lib/server/core/pilotSmsCallback';
 
@@ -23,7 +24,9 @@ export const actions: Actions = {
   request: async ({ params, locals, request, url }) => {
     const profile = await prisma.profile.findUnique({ where: { slug: params.slug },
       select: { id: true, userId: true, kind: true, isPublished: true } });
-    if (!profile?.isPublished || !pilotDomainForKind(profile.kind)) return fail(404, { error: 'Profile unavailable.' });
+    if (!profile?.isPublished || !pilotDomainForKind(profile.kind) || !await usesLegacyProfileServices(profile.userId)) {
+      return fail(404, { error: 'Profile unavailable for calls.' });
+    }
     const domainKey = pilotDomainForKind(profile.kind)!;
     if (locals.user?.id === profile.userId) return fail(400, { error: 'Use another phone to test the visitor flow.' });
     const pref = await prisma.relishContextPreference.findUnique({ where: {

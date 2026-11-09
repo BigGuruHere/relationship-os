@@ -6,8 +6,7 @@
 // - Returns profile info, owner info, flags for edit affordances, and origin for SSR-safe links
 
 import type { Actions, PageServerLoad } from './$types';
-import { exchangeBrowserEnabled } from '$lib/server/foundation/devPilotGate';
-import { accountDomain } from '$lib/server/foundation/provisioning';
+import { usesLegacyProfileServices } from '$lib/server/foundation/provisioning';
 import { prisma } from '$lib/db';
 import { createInviteToken } from '$lib/server/tokens';
 import { fail, redirect, error } from '@sveltejs/kit';
@@ -111,8 +110,10 @@ export const load: PageServerLoad = async ({ params, url, locals }) => {
     if (url.searchParams.has('via')) eventUrl.searchParams.set('via', url.searchParams.get('via') || 'link');
     throw redirect(307, eventUrl.pathname + eventUrl.search);
   }
-  // IT: generate invite token for guest flow
-  const invite = await createInviteToken({ ownerId, ttlMinutes: 30 });
+  // Foundation cards use the consent-scoped capture route. Legacy invitation
+  // tokens and pilot tracking belong to the earlier profile experience.
+  const legacyProfile = await usesLegacyProfileServices(ownerId);
+  const invite = legacyProfile ? await createInviteToken({ ownerId, ttlMinutes: 30 }) : null;
 
   // IT: viewer ownership and UI flags
   const isOwner = Boolean(locals.user && locals.user.id === ownerId);
@@ -126,7 +127,7 @@ export const load: PageServerLoad = async ({ params, url, locals }) => {
     select: { id: true, publicSlug: true }
   });
 
-  const contextPref = profile ? await prisma.relishContextPreference.findUnique({ where: {
+  const contextPref = profile && legacyProfile ? await prisma.relishContextPreference.findUnique({ where: {
     ownerUserId_domainKey: { ownerUserId: ownerId!, domainKey: pilotDomainForKind(profile.kind) || 'general' }
   } }) : null;
 
@@ -138,7 +139,7 @@ export const load: PageServerLoad = async ({ params, url, locals }) => {
   let isAlreadyConnected = false;
   let visitorProfile = null;
   
-  if (visitorUserId && visitorUserId !== ownerId) {
+  if (legacyProfile && visitorUserId && visitorUserId !== ownerId) {
     // SECURITY: NetworkConnectionOrigin is the durable authoritative link for
     // personal-profile Network connections. Check both directions, because the
     // visitor may have originally been the inviter in a previous scan.
@@ -176,10 +177,10 @@ export const load: PageServerLoad = async ({ params, url, locals }) => {
 
   return {
     owner: { id: ownerId, slug: owner?.publicSlug ?? slugParam },
-    inviteToken: invite.token,
+    inviteToken: invite?.token,
+    legacyProfile,
     profile: profile || null,
     isOwner,
-    canExchangeProfile: Boolean(locals.user && !isOwner && exchangeBrowserEnabled(locals,url.origin) && await accountDomain(locals.user.id)==='ACTIVE' && await accountDomain(ownerId!)==='ACTIVE'),
     editingRequested,
     firstVisit,
     origin,
@@ -202,7 +203,9 @@ export const actions: Actions = {
   requestDorian: async ({ params, request, locals, url }) => {
     const profile = await prisma.profile.findUnique({ where: { slug: params.slug },
       select: { id: true, userId: true, kind: true, isPublished: true } });
-    if (!profile?.isPublished) return fail(404, { error: 'This profile is unavailable.' });
+    if (!profile?.isPublished || !await usesLegacyProfileServices(profile.userId)) {
+      return fail(404, { error: 'This profile is unavailable for calls.' });
+    }
     const domainKey = pilotDomainForKind(profile.kind);
     if (!domainKey) return fail(400, { error: 'Telephone onboarding is unavailable for this profile.' });
     if (locals.user?.id === profile.userId) return fail(409, { error: 'Use a different phone to test a new participant.' });
@@ -295,7 +298,10 @@ connectUsers: async () => fail(410, { error: 'Use the context-specific connectio
   startDorian: async ({ locals, cookies, params, url }) => {
     const profile = await prisma.profile.findUnique({ where: { slug: params.slug },
       select: { id: true, slug: true, kind: true, userId: true, isPublished: true } });
-    if (!profile?.isPublished) return fail(404, { error: 'Profile unavailable.' });
+    if (!profile?.isPublished || !await usesLegacyProfileServices(profile.userId) ||
+        (locals.user && !await usesLegacyProfileServices(locals.user.id))) {
+      return fail(404, { error: 'This profile is unavailable for calls.' });
+    }
     const domainKey = pilotDomainForKind(profile.kind);
     if (!domainKey) return fail(400, { error: 'This profile does not support Dorian.' });
     // An owner must not create a visitor relation to themselves.

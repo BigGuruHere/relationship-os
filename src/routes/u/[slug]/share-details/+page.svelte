@@ -84,7 +84,7 @@
         <input id="capture-phone" name="phone" type="tel" autocomplete="tel" maxlength="40" value={form?.values?.phone || ''} />
         <div class="capture-trap" aria-hidden="true"><label for="capture-website">Leave blank</label><input id="capture-website" name="website_check" tabindex="-1" autocomplete="off" /></div>
         <label class="capture-consent"><input name="contactConsent" type="checkbox" value="yes" required /><span>I agree to share these details with {data.profile.name} for their private contact record and personal follow-up.</span></label>
-        <p class="hint">If you join and verify a phone number or email you shared, the exchanged details can be saved in each person’s My People. This does not create a Relish account or mutual connection, or share private notes. <a href="/legal/privacy">Privacy notice</a>.</p>
+        <p class="hint">{#if data.exchangeAvailable}If you join and verify a phone number or email you shared, the exchanged details can be saved in each person’s My People. {/if}Sharing your details leaves account creation optional and keeps private notes separate. <a href="/legal/privacy">Privacy notice</a>.</p>
         {#if form?.error}<p role="alert">{form.error}</p>{/if}
         {#if form?.reference}<p>Support reference: {form.reference}</p>{/if}
         <button class="primary" type="submit">Send</button>

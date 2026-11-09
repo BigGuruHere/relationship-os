@@ -14,9 +14,10 @@ const server = await createServer({ configFile: false, ssr: { noExternal: ['jose
   resolve: { alias: { $lib: resolve('src/lib') } },
   plugins: [{ name: 'capture-test-boundary', enforce: 'pre',
     resolveId(id) {
-      for (const dep of ['db','auth','leads/link','server/userEmail','server/loginThrottle','server/tokens','server/pilot','server/core/pilotSmsCallback']) {
+      for (const dep of ['db','auth','leads/link','server/userEmail','server/loginThrottle','server/foundation/provisioning','server/tokens','server/pilot','server/core/pilotSmsCallback']) {
         if (id === '$lib/' + dep || id === resolve('src/lib',dep)) return '\0mock:$lib/' + dep;
       }
+      if (id === '$app/forms') return '\0mock:forms';
       if (id === 'jose') return '\0mock:jose';
       if (id.endsWith('/core/contactCapture') || id.endsWith('/core/contactCaptureToken') || id.endsWith('/core/contacts')) return '\0mock:' + id.split('/').at(-1);
     },
@@ -25,8 +26,10 @@ const server = await createServer({ configFile: false, ssr: { noExternal: ['jose
       if (id === '\0mock:$lib/auth') return `export async function hashPassword(){return 'test-hash';} export async function createSession(){return {cookie:'session',expiresAt:new Date()};} export function setSessionCookie(){} export async function verifyPassword(_,p){return p==='correct';} export function clearSessionCookie(){}`;
       if (id === '\0mock:$lib/leads/link') return `export async function linkLeadsForUser(){globalThis.__onboardingClaims++;}`;
       if (id === '\0mock:$lib/server/userEmail') return `export async function findUserByEmail(email){globalThis.__onboardingLookups.push(email);return globalThis.__onboardingUser || null;} export function encryptedUserEmailFields(){return {email_Enc:'encrypted',email_Idx:'index'};} export function decryptUserEmail(){return 'account@example.test';} export async function setUserEmail(){throw Error('fixture has encrypted email');}`;
+      if (id === '\0mock:forms') return 'export function enhance(){}';
       if (id === '\0mock:jose') return `export const createRemoteJWKSet=()=>({}); export const jwtVerify=async(_token,_keys,options)=>(globalThis.__googleOptions=options,{payload:globalThis.__googlePayload || {sub:'google-account',email:'google@example.test',email_verified:true,nonce:'nonce',name:'Verified name'}});`;
-      if (id === '\0mock:$lib/server/loginThrottle') return `export async function consumePasswordLoginAttempt(){return true;} export async function clearSuccessfulLoginAccountBucket(){}`;
+      if (id === '\0mock:$lib/server/foundation/provisioning') return `export async function provisionNewFoundationAccount(){} export async function accountDomain(){return 'LEGACY';} export async function usesLegacyProfileServices(){return true;}`;
+      if (id === '\0mock:$lib/server/loginThrottle') return `export async function consumePasswordSignupAttempt(){return true;} export async function consumePasswordLoginAttempt(){return true;} export async function clearSuccessfulLoginAccountBucket(){}`;
       if (id === '\0mock:$lib/server/tokens') return `export const createInviteToken=async()=>({token:'fixture-invite'});`;
       if (id === '\0mock:$lib/server/pilot') return `export const pilotDomainForKind=()=>null; export const getOrCreatePilotVisitor=()=>{}; export const ensurePilotSelfContact=()=>{}; export const pilotSource=()=>{}; export const recordPilotEvent=()=>{};`;
       if (id === '\0mock:$lib/server/core/pilotSmsCallback') return `export const pilotTermsConfig=()=>({ready:false}); export const issuePilotSmsInvitation=()=>{};`;
@@ -49,7 +52,7 @@ function event(values, origin = 'https://relish.test') {
   const writes = [];
   return { params: {slug:'terence'}, locals:{}, url:new URL('https://relish.test/u/terence/share-details'),
     request:new Request('https://relish.test/u/terence/share-details', {method:'POST',headers:{origin,'content-type':'application/x-www-form-urlencoded'},body:new URLSearchParams(values)}),
-    cookies:{get:k=>stored.get(k),delete:k=>stored.delete(k),set:(k,v,options)=>{stored.set(k,v);writes.push({k,v,options});}}, writes, setHeaders(){} };
+    cookies:{get:k=>stored.get(k),delete:k=>stored.delete(k),set:(k,v,options)=>{stored.set(k,v);writes.push({k,v,options});}}, writes, getClientAddress:()=>'127.0.0.1', setHeaders(){} };
 }
 
 try {
@@ -170,11 +173,12 @@ try {
     assert.equal(created[0].profiles.create.isPublished,false);
     assert.equal('emailPublic' in created[0].profiles.create,false);
     assert.equal('phonePublic' in created[0].profiles.create,false);
-    // IT: Ordinary registrations retain their established defaults.
+    // Ordinary registration follows the same explicit publication review without a draft.
     const ordinary=event({email:'other@example.test',password:'test-password'});
-    await assert.rejects(registration.actions.default(ordinary),r=>r.location==='/');
-    assert.equal('isPublished' in created[1].profiles.create,false);
-    assert.equal(globalThis.__onboardingClaims,1);
+    await assert.rejects(registration.actions.default(ordinary),r=>r.location===draft.PROFILE_ONBOARDING_RETURN);
+    assert.equal(created[1].profiles.create.isPublished,false);
+    assert.equal(created[1].profiles.create.displayName,'New Relish user');
+    assert.equal(globalThis.__onboardingClaims,0);
   });
   await test('editor reads browser draft only for explicit onboarding, retaining owner-scoped profile lookup', async () => {
     const editor=await server.ssrLoadModule('/src/routes/settings/profile/+page.server.ts');
@@ -267,7 +271,7 @@ try {
         create:async({data})=>{created.push(data);return {id:'google-user',profiles:[{id:'google-profile'}]};}
       },
       profile:{findFirst:async()=>({id:'returning-profile'})},
-      oAuthAccount:{findFirst:async()=>null,create:async()=>({})}
+      oAuthAccount:{upsert:async()=>({userId:'returning'}),update:async()=>({})}
     };
     const before=globalThis.__onboardingClaims;
     function start() {
@@ -375,6 +379,18 @@ try {
   const shareCompiled=compile(readFileSync('src/routes/share/+page.svelte','utf8'),{generate:'server'});
   writeFileSync(out+'/share.mjs',shareCompiled.js.code);
   const Share=(await import(out+'/share.mjs')).default;
+  const publicCompiled = compile(readFileSync('src/routes/u/[slug]/+page.svelte', 'utf8'), {generate:'server'});
+  writeFileSync(out + '/public-profile.js', publicCompiled.js.code);
+  const PublicProfile = (await server.ssrLoadModule('/.svelte-kit/onboarding-test/public-profile.js')).default;
+  await test('step one offers one primary action even to signed-in visitors who can exchange', () => {
+    const html = render(PublicProfile, {props:{data:{
+      profile:{displayName:'Owner',slug:'owner',kind:'business',isPublished:true},
+      origin:'https://relish.test',isVisitorLoggedIn:true,captureVia:'qr',canExchangeProfile:true
+    }}}).body;
+    assert.equal((html.match(/class="fc-primary(?:\s[^"]*)?"/g) || []).length, 1);
+    assert.match(html, />Save contact</);
+    assert.doesNotMatch(html, /Share my details back/);
+  });
   await test('Share offers edit and preview for an unpublished card and sharing controls after publication',()=>{
     const profile={id:'a',kind:'business',slug:'my-card',displayName:'Owner',isPublished:false};
     const html=()=>render(Share,{props:{data:{profile,profileOptions:[profile],origin:'https://relish.test'}}}).body;
@@ -387,7 +403,9 @@ try {
   });
   await test('step two renders Send, Skip and consent without signup requirements',()=>{
     const html=render(Component,{props:{data}}).body;
-    assert.match(html,/Share your details with Terence/);assert.match(html,/>Skip</);assert.match(html,/>Send</);assert.match(html,/name="contactConsent"/);assert.doesNotMatch(html,/Create my Relish profile/);
+    assert.match(html,/Share your details with Terence/);assert.match(html,/>Skip</);assert.match(html,/>Send</);assert.match(html,/name="contactConsent"/);assert.doesNotMatch(html,/Create my Relish profile|verify a phone number/);
+    const enabled=render(Component,{props:{data:{...data,exchangeAvailable:true}}}).body;
+    assert.match(enabled,/verify a phone number/);
   });
   await test('Send and Skip each show optional step three; preview escapes submitted markup',()=>{
     const html=render(Component,{props:{data,form:{shared:true,values:{name:'<script>Guest</script>',email:'guest@example.test',phone:''}}}}).body;

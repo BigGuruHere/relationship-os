@@ -1,6 +1,17 @@
 # Relish: Current State and Open Work
 
-Status: living snapshot updated **2026-11-08**. Foundation baseline is development `7205d53` (PR #39). Environment observations are explicitly attributed below; this is not a live deployment monitor.
+Status: updated **2026-11-09**. The production-base feature branch starts at remote development `61e3356` (PR #41) and incorporates direction commit `9cccfb6`. Environment observations below are separately attributed.
+
+## Ordinary production onboarding
+
+[D-029](DECISION_LOG.md#d-029-ordinary-onboarding-and-an-incremental-production-launch) replaces the invited-cohort launch approach. Implemented on `feature/production-base-onboarding`; merge, hosted DEV acceptance and production promotion are pending.
+
+- New password and Google accounts receive an ACTIVE private vault, encrypted self reference and unpublished profile in the account transaction. Ordinary signup uses neither exchange admission nor operator-created logins. A matching credential email alone cannot attach a new Google login to an enrolled account. Existing accounts keep their storage domain and profile state.
+- After sign-up, the existing editor offers owner review and publication. The public card offers one primary action, Save contact. QR capture keeps visitor consent and writes to the published card owner's storage. My People, manual capture and private voice-note draft processing and retrieval reuse their existing guarded Foundation routes.
+- Reciprocal exchange and channel delivery retain their existing explicit DEV acceptance configuration. Foundation members use neutral navigation, and legacy-only Network, lead and profile Dorian entry points cannot write for the Foundation journey. Existing legacy Brokerage, profiles and configured events keep their established routes. Legacy-to-legacy Network behavior is preserved.
+- Password self-service recovery has no working request/delivery flow. The existing magic-link sender is a legacy stub. Password signup does not verify mailbox ownership. Recovery requires a reviewed proof and delivery flow before general password onboarding is promoted. The existing Privacy and support page is reachable from the account menu.
+
+The [production-base register](foundation/IMPLEMENTATION_PLAN.md#production-base-backlog-d-029) records verification, provider and recovery gaps. There is no new Prisma migration. The Git diff from `master` at `b58ba02` contains five existing Foundation migrations; this does not establish the deployed production SHA or migration history.
 
 ## Channel verification diagnostic follow-up
 

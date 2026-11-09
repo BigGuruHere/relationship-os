@@ -20,11 +20,14 @@ export const load: PageServerLoad = async ({ params, url, cookies, setHeaders, l
     cookies.set(CAPTURE_COOKIE, browser, { path: '/u', httpOnly: true, sameSite: 'lax', secure: url.protocol === 'https:', maxAge: 1800 });
   }
   setHeaders({ 'cache-control': 'private, no-store', 'referrer-policy': 'same-origin' });
-  const ownedFlow = Boolean(locals.user && locals.user.id !== profile.userId && exchangeBrowserEnabled(locals,url.origin) && await accountDomain(locals.user.id)==='ACTIVE' && await accountDomain(profile.userId)==='ACTIVE');
+  const exchangeAvailable = exchangeBrowserEnabled(locals, url.origin) &&
+    await accountDomain(profile.userId) === 'ACTIVE';
+  const ownedFlow = Boolean(locals.user && locals.user.id !== profile.userId && exchangeAvailable &&
+    await accountDomain(locals.user.id) === 'ACTIVE');
   const choices = ownedFlow ? await ownedExchangeChoices(locals,profile.id,browser) : [];
-  return { ownedFlow, choices, canSignIn: !locals.user && exchangeBrowserEnabled(locals,url.origin), profile: { slug: profile.slug, name: profile.displayName || 'Your new contact', headline: profile.headline, avatarUrl: profile.avatarUrl },
+  return { ownedFlow, choices, exchangeAvailable, canSignIn: !locals.user && exchangeAvailable, profile: { slug: profile.slug, name: profile.displayName || 'Your new contact', headline: profile.headline, avatarUrl: profile.avatarUrl },
     // IT: Save contact always arrives here; a successful prior share skips the form.
-    canClaim: readExchange(cookies)?.profileId === profile.id,
+    canClaim: exchangeAvailable && readExchange(cookies)?.profileId === profile.id,
     createStep: url.searchParams.get('step') === 'create' || hasSharedContact(cookies, profile.id), isSignedIn: Boolean(locals.user),
     captureToken: issueContactCaptureToken(profile.id, browser, url.searchParams.get('via')) };
 };
@@ -63,7 +66,7 @@ export const actions: Actions = {
     if (form.get('intent') === 'create-profile') {
       const selected = await publishedCaptureProfile(params.slug);
       const claim = readExchange(cookies);
-      if(claim?.profileId===selected.id) {
+      if(exchangeBrowserEnabled(locals, url.origin) && claim?.profileId===selected.id) {
         saveProfileDraft(cookies,url,profileDraft({name:form.get('name')||'',email:form.get('email')||'',phone:form.get('phone')||''}));
         throw redirect(303, EXCHANGE_RETURN);
       }

@@ -79,7 +79,7 @@ test('only reviewed modules may establish foundation authority or construct an O
 						);
 					if (node.moduleSpecifier.text.endsWith('privacyOperations'))
 						assert.fail('Offline privacy service must have no application caller: ' + file);
-					if (name === 'admitDevExchangeSignup')
+					if (name === 'provisionNewFoundationAccount')
 						assert.ok(
 							[
 								'src/routes/auth/register/+page.server.ts',

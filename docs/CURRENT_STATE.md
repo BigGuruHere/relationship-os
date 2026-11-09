@@ -13,6 +13,10 @@ Status: updated **2026-11-09**. The production-base feature branch starts at rem
 
 The [production-base register](foundation/IMPLEMENTATION_PLAN.md#production-base-backlog-d-029) records verification, provider and recovery gaps. There is no new Prisma migration. The Git diff from `master` at `b58ba02` contains five existing Foundation migrations; this does not establish the deployed production SHA or migration history.
 
+## Production exchange, password recovery and contact download
+
+Implemented on `feature/production-account-exchange` from Development `ff3b4066`. Password reset uses Resend and revokes existing sessions after a single-use link succeeds. Verified v2 exchange supports an explicitly enabled, database-bound production runtime. Phone contact downloads add public URLs alongside Relish. The password reset migration is additive. Hosted provider and device acceptance are pending. See [rollout and recovery](foundation/PRODUCTION_EXCHANGE_AND_RECOVERY.md).
+
 ## Guest sharing and account verification
 
 

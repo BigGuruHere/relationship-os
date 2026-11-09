@@ -20,7 +20,8 @@ test('Internal DEV setup and ordinary Foundation signup on an isolated database'
 			(await readFile('prisma/schema.prisma', 'utf8')).replace(
 				/^.*@@unique.*s402_profile_scope.*\n/gm,
 				''
-			)
+			).replace(/^model PasswordResetToken \{[\s\S]*?^\}/gm, '')
+				.replace(/^.*passwordResetTokens PasswordResetToken\[\].*\n/gm, '')
 		);
 		await db.exec('CREATE EXTENSION vector');
 		await db.exec(legacySql);
@@ -39,7 +40,9 @@ test('Internal DEV setup and ordinary Foundation signup on an isolated database'
 			'20261107010000_s402_exchange_claims',
 			'20261107020000_s402b_exchange_service',
             '20261107030000_s405c_account_channels',
-            '20261108010000_s405d_guest_assurance'
+            '20261108010000_s405d_guest_assurance',
+            '20261109060000_google_mailbox_authority',
+            '20261109070000_password_reset'
 		]) {
 			await db.exec(await readFile('prisma/migrations/' + name + '/migration.sql', 'utf8'));
 		}
@@ -659,6 +662,58 @@ test('Internal DEV setup and ordinary Foundation signup on an isolated database'
 				[ordinaryId, session.user.id]
 			)).rows;
 			assert.deepEqual(links, []);
+		});
+
+		await t.test('password reset gives a neutral response and one concurrent winner, revoking older sessions', async () => {
+			process.env.RESEND_API_KEY = 'synthetic';
+			process.env.RELISH_VERIFICATION_EMAIL_FROM = 'verify@example.invalid';
+			process.env.RELISH_EXCHANGE_TEST_EMAILS = passwordEmail;
+			const resetPage = await load('routes/auth/reset-password/+page.server');
+			const { requestPasswordReset } = await load('lib/server/passwordReset');
+			const { verifyPassword } = await load('lib/auth');
+			const resetOrigin = 'https://app.relish.live';
+			const requester = newBrowser('prod', resetOrigin);
+			const resetPath = '/auth/reset-password';
+			const sent = [];
+			const originalFetch = globalThis.fetch;
+			globalThis.fetch = async (url, options) => {
+				assert.equal(url, 'https://api.resend.com/emails');
+				sent.push(JSON.parse(options.body));
+				return new Response('', { status: 200 });
+			};
+			try {
+				const replies = await Promise.all(['unknown@example.invalid', passwordEmail].map(email =>
+					resetPage.actions.request(event(requester, resetPath, { email }))));
+				assert.deepEqual(replies, [{ requested: true }, { requested: true }]);
+				assert.equal(sent.length, 1);
+				assert.deepEqual(sent[0].to, [passwordEmail]);
+				const issued = () => new URL(sent.at(-1).text.match(/https:\/\/[^\s]+/)[0]);
+				const firstLink = issued();
+				assert.equal(firstLink.origin, resetOrigin);
+				assert.equal(firstLink.search, '');
+				assert.match(firstLink.hash, /^#[A-Za-z0-9_-]{43}$/);
+				await requestPasswordReset(passwordEmail, resetOrigin);
+				const secondLink = issued();
+				const existing = await prisma.session.findMany({ where: { userId: ordinaryId } });
+				assert.ok(existing.length > 0);
+				const replacement = 'new-strong-password-123';
+				const submit = (link) => resetPage.actions.complete(event(requester, resetPath, {
+					token: link.hash.slice(1), password: replacement, confirmation: replacement
+				}));
+				const results = await Promise.all([submit(firstLink), submit(secondLink)]);
+				assert.equal(results.filter(result => result.completed).length, 1);
+				assert.equal((await submit(firstLink)).status, 400);
+				const user = await prisma.user.findUniqueOrThrow({ where: { id: ordinaryId } });
+				assert.equal(await verifyPassword(user.passwordHash, replacement), true);
+				assert.equal(await verifyPassword(user.passwordHash, password), false);
+				assert.equal(await prisma.session.count({ where: { userId: ordinaryId } }), 0);
+				assert.equal(await prisma.passwordResetToken.count({ where: { userId: ordinaryId } }), 0);
+				const signIn = event(requester, '/auth/login', { email: passwordEmail, password: replacement });
+				await assert.rejects(loginPage.actions.default(signIn), at('/'));
+				assert.equal((await sessionFor(requester)).user.id, ordinaryId);
+			} finally {
+				globalThis.fetch = originalFetch;
+			}
 		});
 
 	} finally {

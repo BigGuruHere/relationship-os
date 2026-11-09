@@ -14,7 +14,7 @@ export const load: PageServerLoad = async ({ locals, url }) => {
     orderBy: [{ isDefault: 'desc' }, { updatedAt: 'desc' }],
     select: {
       slug: true, isPublished: true, displayName: true, company: true,
-      title: true, emailPublic: true, phonePublic: true
+      title: true, emailPublic: true, phonePublic: true, websiteUrl: true, publicMeta: true
     }
   });
   if (slug !== null && !profile) throw error(404, 'Profile not found.');

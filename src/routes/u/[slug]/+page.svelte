@@ -59,9 +59,9 @@
   $: hdr = headerFrom({ displayName, headline, avatarUrl, company, title });
   $: rows = publicRows({ websiteUrl, emailPublic, phonePublic, publicMeta });
 
-  // IT: vCard url includes public link as a note or source tag depending on your helper
+  // The download includes the profile link and the visible public contact URLs.
   $: vcardUrl = buildVcardUrl(
-    { displayName, company, title, emailPublic, phonePublic },
+    { displayName, company, title, emailPublic, phonePublic, websiteUrl, publicMeta },
     publicLink
   );
 

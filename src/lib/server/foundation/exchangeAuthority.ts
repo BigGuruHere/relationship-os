@@ -11,12 +11,13 @@ export async function lockExchanges(tx: AppTransactionClient) {
 
 export async function exchangeTransaction<T>(
 	actorId: string,
-	operation: (tx: AppTransactionClient) => Promise<T>
+	operation: (tx: AppTransactionClient) => Promise<T>,
+	lockGlobal = true
 ) {
 	return runFoundationBoundary({ ownerUserId: actorId, mode: 'EXCHANGE_LOOKUP' }, () =>
 		prisma.$transaction(
 			async (tx) => {
-				await lockExchanges(tx);
+				if (lockGlobal) await lockExchanges(tx);
 				return operation(tx);
 			},
 			{ isolationLevel: 'ReadCommitted', timeout: 25000 }

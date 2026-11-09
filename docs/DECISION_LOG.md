@@ -14,6 +14,8 @@ Adapt existing registration/Google signup, foundation provisioning and DEV-only 
 
 Implementation is recorded on `feature/production-base-onboarding`. New accounts are enrolled in the private domain by normal signup; existing accounts stay in their current domains. Reciprocal exchange and advanced voice experiences remain outside the initial Foundation release. The core branch and the separately approved promotion gates are tracked in [Current State](CURRENT_STATE.md). Earlier stage notes retain historical evidence.
 
+Follow-up accepted 2026-11-09. Include verified reciprocal exchange in the production rollout once the migration and provider checks pass. Production must use its own origin, database binding and verification realm. The first release also includes self-service password recovery and public social links in contact downloads. See [rollout and recovery](foundation/PRODUCTION_EXCHANGE_AND_RECOVERY.md).
+
 | ID | Decision | Status and rationale |
 | --- | --- | --- |
 | D-001 | Relish is a person-first Relationship OS; Dorian enriches human-to-human relationships instead of substituting for them. | Accepted direction. Product meaning and quality of relationships govern architecture. |

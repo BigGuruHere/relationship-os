@@ -787,6 +787,34 @@ CREATE TRIGGER s402_fail_settlement BEFORE UPDATE ON "FoundationExchange" FOR EA
           assert.equal((await service.listAccountChannels(f.locals)).find(c=>c.id===google.id).status,'REVOKED');
         });
 
+		await t.test('production v2 settles with real service boundaries and both provider destinations outside DEV allowlists', async () => {
+			const service = await load('lib/server/foundation/accountChannels');
+			const { exchangeBrowserEnabled } = await load('lib/server/foundation/devPilotGate');
+			const prod = { env: 'prod', appOrigin: 'https://app.relish.live' };
+			process.env.RELISH_PROD_EXCHANGE_ENABLED = 'YES';
+			process.env.APP_ORIGIN_PROD = prod.appOrigin;
+			process.env.RELISH_PROD_EXCHANGE_TARGET = 'wrong.example/postgres';
+			assert.equal(exchangeBrowserEnabled(prod, prod.appOrigin), false);
+			process.env.RELISH_PROD_EXCHANGE_TARGET = new URL(process.env.DATABASE_URL).host + new URL(process.env.DATABASE_URL).pathname;
+			assert.equal(exchangeBrowserEnabled(prod, 'https://wrong.example'), false);
+			assert.equal(exchangeBrowserEnabled(prod, prod.appOrigin), true);
+			for (const type of ['EMAIL', 'PHONE']) {
+				const f = await fixture();
+				const email = 'production-guest@example.invalid';
+				const token = await v2(f, type === 'EMAIL' ? { phone: '', email } : {});
+				const locals = { ...f.locals, ...prod };
+				process.env.RELISH_EXCHANGE_TEST_PHONES = '';
+				process.env.RELISH_EXCHANGE_TEST_EMAILS = '';
+				const id = await claims.prepareAccountClaim(locals, token, type);
+				const issued = await service.requestAccountChannelCode(locals, id, randomUUID(), 'production-fixture');
+				await assert.rejects(service.dispatchAccountChannelCode(f.locals, issued.challengeId));
+				assert.equal(await service.dispatchAccountChannelCode(locals, issued.challengeId), 'SENT');
+				assert.deepEqual(sent.at(-1).to, type === 'EMAIL' ? [email] : f.phone);
+				assert.equal(await service.verifyAccountChannelCode(locals, issued.challengeId, f.code(), 'production-fixture'), 'VERIFIED');
+				assert.equal((await claims.completeAccountClaim(locals, token)).status, 'SETTLED');
+			}
+		});
+
 	} finally {
 		globalThis.fetch = originalFetch;
 		if (prisma) await prisma.$disconnect();

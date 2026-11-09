@@ -17,7 +17,7 @@ For a quick visual or text change, read only the relevant sections and inspect t
 
 ## Current production direction
 
-[D-029](DECISION_LOG.md#d-029-ordinary-onboarding-and-an-incremental-production-launch) supersedes invited-cohort rollout and the prior production deferral: prepare the actual production app for ordinary new users with a small complete feature set, validate in DEV and add features incrementally. No special test-account or allowlist onboarding. The [production-base roadmap](ROADMAP.md#next-delivery-production-base) and [backlog](foundation/IMPLEMENTATION_PLAN.md#production-base-backlog-d-029) take priority. Core onboarding is implemented. Hosted DEV acceptance, password recovery and promotion remain pending. Older pilot/stage notes preserve history, not current launch policy.
+[D-029](DECISION_LOG.md#d-029-ordinary-onboarding-and-an-incremental-production-launch) supersedes invited-cohort rollout and the prior production deferral: prepare the actual production app for ordinary new users with a small complete feature set, validate in DEV and add features incrementally. No special test-account or allowlist onboarding. The [production-base roadmap](ROADMAP.md#next-delivery-production-base) and [backlog](foundation/IMPLEMENTATION_PLAN.md#production-base-backlog-d-029) take priority. Core onboarding is implemented. The production exchange and recovery branch adds password reset, production exchange activation and richer phone contact export. Hosted DEV acceptance and promotion remain pending. See [rollout and recovery](foundation/PRODUCTION_EXCHANGE_AND_RECOVERY.md). Older pilot/stage notes preserve history, not current launch policy.
 
 ## Current exchange direction
 

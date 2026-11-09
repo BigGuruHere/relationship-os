@@ -12,7 +12,7 @@ import { FoundationDenied, runFoundationBoundary } from './internal';
 import { exchangeTransaction, exchangeRoots, requireClaimSession } from './exchangeAuthority';
 import { claimMac, verificationPhone, verificationEmail, sameMac } from './exchangeCrypto';
 import { budget } from './exchangeBudget';
-import { exchangeBrowserEnabled } from './devPilotGate';
+import { exchangeBrowserEnabled, productionExchangeEnabled } from './devPilotGate';
 import { sendTelnyxSms } from '$lib/server/integrations/telnyx/messaging';
 type Actor = Pick<App.Locals, 'user' | 'sessionId' | 'env' | 'appOrigin'>;
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
@@ -29,7 +29,8 @@ function hash(type: string, value: string) {
 }
 async function scope<T>(
 	locals: Actor,
-	fn: (tx: AppTransactionClient, account: string) => Promise<T>
+	fn: (tx: AppTransactionClient, account: string) => Promise<T>,
+	lockGlobal = true
 ) {
 	if(!locals.user || !locals.sessionId) throw new ChannelDenied('SESSION_INVALID');
     if(!exchangeBrowserEnabled(locals,locals.appOrigin)) throw new ChannelDenied('ENVIRONMENT_DISABLED');
@@ -39,7 +40,7 @@ async function scope<T>(
 		return runFoundationBoundary({ ownerUserId: actor.accountId, mode: 'ACCOUNT_CHANNEL' }, () =>
 			fn(tx, actor.accountId)
 		);
-	});
+	}, lockGlobal);
 }
 async function channel(tx: AppTransactionClient, id: string) {
 	const row = await tx.foundationAccountChannel.findFirst({ where: { id } });
@@ -227,6 +228,9 @@ export async function requestAccountChannelCode(
 	});
 }
 export async function dispatchAccountChannelCode(locals: Actor, challengeId: string, onFailure?:(reference:string)=>void) {
+	// Production delivery only needs this account's session and root locks.
+	// Keep provider latency out of the global settlement lock.
+	const production = productionExchangeEnabled(locals, locals.appOrigin);
 	return scope(locals, async (tx, account) => {
 		await expire(tx);
 		const challenge = await tx.foundationAccountChannelChallenge.findFirst({
@@ -254,7 +258,8 @@ export async function dispatchAccountChannelCode(locals: Actor, challengeId: str
 					return false;
 				}
 			});
-		if (!allowed) throw new ChannelDenied('DESTINATION_NOT_APPROVED');
+		if (!allowed && !production)
+			throw new ChannelDenied('DESTINATION_NOT_APPROVED');
 		await tx.foundationAccountChannelDispatch.updateMany({
 			where: { id: d.id },
 			data: { attempts: { increment: 1 } }
@@ -282,7 +287,7 @@ export async function dispatchAccountChannelCode(locals: Actor, challengeId: str
 			});
 			return 'FAILED';
 		}
-	});
+	}, !production);
 }
 export async function verifyAccountChannelCode(
 	locals: Actor,

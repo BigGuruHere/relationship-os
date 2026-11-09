@@ -337,7 +337,7 @@
       <!-- IT: edit mode - posts to the named save action -->
       <form method="post" action="?/save" class="grid">
         <input type="hidden" name="profileId" value={profileId} />
-        <label><input type="checkbox" name="isPublished" checked={prof.isPublished !== false} /> Published publicly</label>
+        <label class="span2 publication-toggle"><input type="checkbox" name="isPublished" checked={prof.isPublished !== false} /> Published publicly</label>
 
         <div class="field"><label for="displayName">Name</label><input id="displayName" name="displayName" bind:value={displayName} /></div>
         <div class="field"><label for="headline">Headline</label><input id="headline" name="headline" bind:value={headline} /></div>
@@ -359,7 +359,7 @@
           {/key}
         {/each}
 
-        <div class="btnrow" style="grid-column: 1 / span 2;">
+        <div class="btnrow span2">
           <button class="btn primary" type="submit">Save</button>
           <button class="btn" type="button" on:click={() => (editing = false)}>Cancel</button>
         </div>
@@ -404,7 +404,6 @@
   .public-profile .topbar { width: 100%; box-sizing: border-box; min-width: 0; }
   .public-profile header > div { min-width: 0; overflow-wrap: anywhere; }
   .info-row { flex-wrap: wrap; min-width: 0; overflow-wrap: anywhere; }
-  @media (max-width: 520px) { .grid { grid-template-columns: minmax(0, 1fr) !important; } .span2 { grid-column: 1 !important; } }
   .avatar { width:64px; height:64px; border-radius:50%; object-fit:cover; }
   .muted { color:#666; }
   .small { font-size:0.95rem; }
@@ -423,10 +422,13 @@
     display:inline-flex; align-items:center; justify-content:center;
     width:32px; height:32px; border:1px solid #ddd; border-radius:10px; background:#fff; cursor:pointer;
   }
-  .grid { display:grid; grid-template-columns: 1fr 1fr; gap:12px; }
+  .grid { display:grid; grid-template-columns: minmax(0, 1fr); gap:12px; }
+  @media (min-width: 851px) { .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
   .field { display:flex; flex-direction:column; gap:6px; }
   .field input, .field textarea { padding:8px 10px; border:1px solid #ddd; border-radius:10px; }
-  .span2 { grid-column: 1 / span 2; }
+  .span2 { grid-column: 1 / -1; }
+  .publication-toggle { display:flex; align-items:center; gap:8px; }
+  .publication-toggle input { flex:none; width:auto; margin:0; }
   .note { background:#f6f7f8; border:1px solid #e3e4e6; border-radius:10px; padding:8px 10px; color:#444; }
 
   /* IT: make the helper text look like plain text */

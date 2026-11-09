@@ -18,12 +18,14 @@ const vite = await createServer({
 			name: 'exchange-test-services',
 			enforce: 'pre',
 			resolveId(id) {
+				if (id === '$app/forms') return '\0app-forms';
 				if (id.endsWith('/foundation/accountChannels')) return '\0channels';
                 if (id.endsWith('/foundation/devPilotGate')) return '\0gate';
 				if (id.endsWith('/foundation/exchangeClaims')) return '\0claims';
 				if (id.endsWith('/foundation/provisioning')) return '\0domain';
 			},
 			load(id) {
+				if (id === '\0app-forms') return 'export function enhance() {}';
 				if(id==='\0channels') return `export async function listAccountChannels(){return [{id:'phone',type:'PHONE',masked:'•••• 0000',status:globalThis.channelVerified?'VERIFIED':'PENDING'}];} export async function addAccountChannel(){return 'phone';} export async function requestAccountChannelCode(){return {status:'QUEUED',challengeId:'account-challenge'};} export async function dispatchAccountChannelCode(){return 'SENT';} export async function verifyAccountChannelCode(...a){globalThis.accountVerifyArgs=a;globalThis.channelVerified=true;if(globalThis.guestNeedsProof)globalThis.guestNeedsProof=false;return 'VERIFIED';} export async function revokeAccountChannel(){} export async function eraseRevokedAccountChannel(){}`;
                 if (id === '\0gate') return `export function exchangeBrowserEnabled(){return true;}`;
 				if (id === '\0domain') return `export async function accountDomain(){return 'ACTIVE';}`;
@@ -56,9 +58,11 @@ function event(c, body, origin = 'https://dev.relish.live') {
 }
 // Optional local Chromium acceptance. Provider/domain services above are intercepted.
 await mkdir('.svelte-kit/browser-check', { recursive: true });
+const componentStyles = new Map();
 async function component(path, name) {
 	const source = await readFile(path, 'utf8');
 	const result = compile(source, { generate: 'server', filename: path });
+	componentStyles.set(name, result.css?.code || '');
 	await writeFile('.svelte-kit/browser-check/' + name + '.js', result.js.code);
 	return (await vite.ssrLoadModule('/.svelte-kit/browser-check/' + name + '.js')).default;
 }
@@ -67,6 +71,8 @@ const channelsUI=await component('src/routes/settings/channels/+page.svelte','ch
 const channelPage=await vite.ssrLoadModule('/src/routes/settings/channels/+page.server.ts');
 const claimUI = await component('src/routes/exchange/claim/+page.svelte', 'claim');
 const profileUI = await component('src/routes/settings/profile/+page.svelte', 'profile');
+const publicProfileUI = await component('src/routes/u/[slug]/+page.svelte', 'publicProfile');
+const appStyles = await readFile('src/app.css', 'utf8');
 const c = cookies();
 let policyOverride = null,
 	lastProfile;
@@ -140,24 +146,21 @@ const server = httpServer(async (req, res) => {
 				throw r;
 			}
 		}
-		if (url.pathname === '/profile') {
+		if (url.pathname === '/profile' || url.pathname === '/public-editor') {
+			const creatingNew = url.searchParams.has('new');
+			const publicEditor = url.pathname === '/public-editor';
+			const profile = {
+				id: 'p', slug: 'mark', displayName: 'Mark Test', kind: 'business', isPublished: false,
+				publicMeta: { linkedin: 'https://www.linkedin.com/in/mark-test' }
+			};
+			const data = publicEditor
+				? { profile, isOwner: true, editingRequested: true, origin: url.origin, slugParam: 'mark' }
+				: { creatingNew, profile: creatingNew ? null : profile };
+			const markup = render(publicEditor ? publicProfileUI : profileUI, { props: { data, form: null } });
 			res.setHeader('content-type', 'text/html');
-			res.end(
-				render(profileUI, {
-					props: {
-						data: {
-							profile: {
-								id: 'p',
-								slug: 'mark',
-								displayName: 'Mark Test',
-								kind: 'business',
-								isPublished: false
-							}
-						},
-						form: null
-					}
-				}).body
-			);
+			res.end('<!doctype html><html><head><meta name="viewport" content="width=device-width, initial-scale=1">' +
+				'<style>' + appStyles + componentStyles.get(publicEditor ? 'publicProfile' : 'profile') +
+				'</style>' + markup.head + '</head><body>' + markup.body + '</body></html>');
 			return;
 		}
 		const data = await (url.pathname==='/channels'?channelPage:page).load({
@@ -259,14 +262,44 @@ try {
     await tab.getByRole('status').filter({hasText:'Your account details are verified.'}).waitFor();
     assert.equal(globalThis.accountVerifyArgs[2],'005321');
 
-	// The top publication button is associated with the existing form and includes unsaved edits.
+	// Exercise both editor entry points at phone widths, with their compiled scoped CSS.
+	for (const width of [320, 390, 600]) {
+		await tab.setViewportSize({ width, height: 800 });
+		for (const path of ['/profile', '/profile?new=1', '/public-editor']) {
+			await tab.goto(base + path);
+			const form = tab.locator(path === '/public-editor' ? 'form.grid' : '#profile-editor');
+			await form.waitFor();
+			const columns = await form.evaluate(el => getComputedStyle(el).gridTemplateColumns);
+			assert.equal(columns.split(' ').length, 1, path + ' at ' + width);
+			const overflow = await tab.evaluate(() => ({
+				width: document.documentElement.scrollWidth,
+				nodes: [...document.querySelectorAll('body *')].filter(el => el.getBoundingClientRect().right > document.documentElement.clientWidth + 1)
+					.map(el => [el.tagName, el.className, Math.round(el.getBoundingClientRect().right)])
+			}));
+			assert.equal(overflow.width, width, path + ' at ' + width + ' ' + JSON.stringify(overflow.nodes));
+			const name = await form.locator('#displayName').boundingBox();
+			const headline = await form.locator('#headline').boundingBox();
+			assert.ok(Math.abs(name.x - headline.x) < 1 && headline.y > name.y);
+		}
+	}
+
+	// Closed optional fields must still submit, and Publish includes unsaved edits.
 	await tab.goto(base + '/profile');
 	await tab.getByLabel('Public name', { exact: true }).fill('Edited Mark');
 	await tab.getByRole('button', { name: 'Publish profile', exact: true }).click();
 	assert.equal(lastProfile.get('publishNow'), 'yes');
 	assert.equal(lastProfile.get('displayName'), 'Edited Mark');
+	assert.equal(lastProfile.get('extra_linkedin'), 'https://www.linkedin.com/in/mark-test');
+	await tab.goto(base + '/profile?new=1');
+	await tab.getByLabel('Public name', { exact: true }).fill('New profile');
+	await tab.getByLabel('Profile label (only you see this)', { exact: true }).fill('Networking');
+	await tab.getByText('Website and social links', { exact: true }).click();
+	await tab.getByLabel('LinkedIn', { exact: true }).fill('https://www.linkedin.com/in/new-profile');
+	await tab.getByRole('button', { name: 'Save profile', exact: true }).click();
+	assert.equal(lastProfile.get('createNewProfile'), '1');
+	assert.equal(lastProfile.get('extra_linkedin'), 'https://www.linkedin.com/in/new-profile');
 	console.log(
-		'PASS: reproduced null Origin; corrected native Send, Continue later and six-digit code submission; publish submits current editor fields.'
+		'PASS: reproduced null Origin; corrected native Send, Continue later and six-digit code submission; phone-width profile editors save and publish current fields.'
 	);
 } finally {
 	if (browser) await browser.close();

@@ -19,6 +19,8 @@ Stage register, 2026-11-09. `feature/production-base-onboarding` is implemented 
 
 Local evidence on Node 22 includes the isolated Foundation/route suites, 36 PostgreSQL 18.6 schema/provisioning checks and 23 PostgreSQL exchange checks. The production build, Chromium native-form checks and Svelte diagnostics passed. A Chromium smoke run against the built app exercised password signup, unpublished denial, publication, QR capture, a simulated microphone, transcript processing, editable summary, logout and private retrieval. Six older source assertions in the Dorian, Network and capability suites also fail on the unchanged development baseline. Provider calls were simulated and database checks used disposable local stores.
 
+Follow-up on `feature/production-account-exchange` from Development `ff3b4066`. PB-003 adds self-service password recovery and public vCard URLs. PB-004 adds an explicit production path for verified v2 exchange. One additive password-reset migration, with no backfill. Isolated service tests use synthetic providers. Live email/SMS, iPhone and Android import, and hosted production readiness checks remain pending. See [rollout and recovery](PRODUCTION_EXCHANGE_AND_RECOVERY.md).
+
 ## Release sequence and evidence gates
 
 | Stage | User outcome | Engineering work | Release gate |

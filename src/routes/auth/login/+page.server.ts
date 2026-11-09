@@ -11,7 +11,7 @@ import { EXCHANGE_RETURN, startExchangeAfterAuth } from '$lib/server/exchangeOnb
 import type { Actions, PageServerLoad } from './$types';
 import { fail, redirect } from '@sveltejs/kit';
 import { prisma } from '$lib/db';
-import { verifyPassword, createSession, setSessionCookie } from '$lib/auth';
+import { verifyPassword, createSession, destroySession, setSessionCookie } from '$lib/auth';
 import { linkLeadsForUser } from '$lib/leads/link';
 import { accountDomain } from '$lib/server/foundation/provisioning';
 import { consumePasswordLoginAttempt, clearSuccessfulLoginAccountBucket } from '$lib/server/loginThrottle';
@@ -66,6 +66,12 @@ export const actions: Actions = {
 
     // 6 - create session and set env-aware cookie
     const { cookie, expiresAt, sessionId } = await createSession(user.id);
+    // A reset can finish while Argon2 checks an old password. Recheck before
+    // exposing the cookie. Any reset after this read revokes the issued session.
+    if ((await findUserByEmail(emailInput))?.passwordHash !== user.passwordHash) {
+      await destroySession(sessionId);
+      return fail(400, { error: 'Invalid email or password' });
+    }
     setSessionCookie(cookies, locals, cookie, expiresAt);
     await startExchangeAfterAuth(cookies, url, locals, next, user.id, sessionId);
 

@@ -18,7 +18,7 @@ On `feature/production-base-onboarding`, password and Google registration commit
 
 My People, capture and notes continue to select their writer from enrollment and enforce vault, lifecycle, consent and provenance checks. Prepared accounts retain legacy public profile behavior. Active and suspended Foundation accounts cannot fall through to the old public lead or Network writer. Legacy Brokerage remains a separate workflow using existing ContextSpace and capability checks. The legacy default ContextSpace database trigger is retained for compatibility.
 
-Core signup, publication and private capture work independently of DEV test setup. Reciprocal exchange and channel delivery still use their explicit DEV guard and provider protections. The standard public card omits pilot tracking and Dorian initiation for Foundation accounts. The [production-base backlog](foundation/IMPLEMENTATION_PLAN.md#production-base-backlog-d-029) records the release evidence and remaining boundaries.
+Core signup, publication and private capture work independently of DEV test setup. The production exchange branch adds a production origin and database gate for v2 exchange. It keeps DEV destination restrictions and provider protections. Password recovery uses a separate credential-bound reset token and revokes sessions atomically on completion. The standard public card omits pilot tracking and Dorian initiation for Foundation accounts. The [production-base backlog](foundation/IMPLEMENTATION_PLAN.md#production-base-backlog-d-029) records the release evidence and remaining boundaries.
 
 ## Accepted target and transition
 

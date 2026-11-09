@@ -10,6 +10,7 @@
 // - All IT code is commented and uses hyphens only
 
 import type { RequestHandler } from './$types';
+import { publicContactUrl } from '$lib/publicProfile';
 import { absoluteUrlFromOrigin } from '$lib/url';
 
 // Basic vCard escaping for commas, semicolons, and newlines
@@ -82,7 +83,10 @@ export const GET: RequestHandler = async ({ url, locals }) => {
   if (title) lines.push(`TITLE:${esc(title)}`);
   if (phone) lines.push(`TEL;TYPE=CELL:${esc(phone)}`);
   if (email) lines.push(`EMAIL;TYPE=INTERNET:${esc(email)}`);
-  if (absoluteLink) lines.push(`URL:${esc(absoluteLink)}`);
+  const links = new Set([absoluteLink, ...url.searchParams.getAll('url').slice(0, 10)]
+    .map(value => value && publicContactUrl(value)).filter(Boolean));
+  // Ordinary URL properties let phone contact apps import the links as websites.
+  for (const link of links) lines.push(`URL:${esc(link)}`);
 
   lines.push('END:VCARD');
 

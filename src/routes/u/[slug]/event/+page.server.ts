@@ -15,7 +15,7 @@ async function publishedBusinessProfile(slug: string) {
     select: {
       id: true, userId: true, slug: true, kind: true, isPublished: true,
       displayName: true, headline: true, avatarUrl: true,
-      company: true, title: true, emailPublic: true, phonePublic: true, websiteUrl: true
+      company: true, title: true, emailPublic: true, phonePublic: true, websiteUrl: true, publicMeta: true
     }
   });
   // SECURITY: This founder-specific event offer must not appear on another user's

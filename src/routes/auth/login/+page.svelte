@@ -25,6 +25,7 @@
         </div>
         <button class="btn primary" type="submit" style="width:100%;  justify-content:center;">Sign in</button>
       </form>
+      <p><a href="/auth/reset-password">Forgot password?</a></p>
   
       <div style="display:flex; align-items:center; gap:10px; margin:16px 0;">
         <div style="height:1px; background:var(--border); flex:1;"></div>

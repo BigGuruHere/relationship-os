@@ -66,6 +66,7 @@ model User {
 
   // Owned data - tenant boundaries
   sessions      Session[]
+  passwordResetTokens PasswordResetToken[]
   contacts      Contact[]
   interactions  Interaction[]
   tags          Tag[]
@@ -325,6 +326,19 @@ model MagicToken {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+}
+
+// Password reset tokens are separate from sign-in tokens and bound to existing credentials.
+model PasswordResetToken {
+  tokenHash   String   @id
+  userId      String
+  credential  String
+  expiresAt   DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
 }
 
 // IT: short lived token that binds a public profile page to the owner

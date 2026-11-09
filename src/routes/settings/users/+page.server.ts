@@ -3,6 +3,7 @@
 import { error, fail, isHttpError, redirect } from '@sveltejs/kit';
 import { randomUUID } from 'node:crypto';
 import type { Actions, PageServerLoad } from './$types';
+import { brokerageEnabled } from '$lib/server/core/capabilities';
 import { prisma } from '$lib/db';
 import { hashPassword } from '$lib/auth';
 import { devPilotEnabled, DEV_PILOT_ID_PREFIX } from '$lib/server/foundation/devPilotGate';
@@ -10,7 +11,7 @@ import { createDevPilotAccount } from '$lib/server/foundation/provisioning';
 import { captureFailureMetadata } from '$lib/server/core/contactCaptureDiagnostics';
 import { decryptUserEmail } from '$lib/server/userEmail';
 
-const grantsAllowed = new Set(['OPERATOR', 'ADMIN', 'BROKER']);
+const availableGrants = () => brokerageEnabled() ? ['OPERATOR', 'ADMIN', 'BROKER'] : ['OPERATOR', 'ADMIN'];
 
 function assertOwner(locals: App.Locals): string {
   if (!locals.user) throw redirect(303, '/auth/login');
@@ -33,7 +34,7 @@ export const load: PageServerLoad = async ({ locals, url, setHeaders }) => {
     where: { id: { startsWith: DEV_PILOT_ID_PREFIX } },
     select: { email_Enc: true }
   }) : [];
-  return { pilotEnabled, pilotEmail: pilots[0] ? decryptUserEmail(pilots[0].email_Enc) : null, pilotEmails: pilots.map(p=>decryptUserEmail(p.email_Enc)),
+  return { availableGrants: availableGrants(), pilotEnabled, pilotEmail: pilots[0] ? decryptUserEmail(pilots[0].email_Enc) : null, pilotEmails: pilots.map(p=>decryptUserEmail(p.email_Enc)),
     users: users.map(user => ({ id: user.id, role: user.role,
     email: decryptUserEmail(user.email_Enc) ?? '(no email)',
     createdAt: user.createdAt.toISOString(),
@@ -68,7 +69,8 @@ export const actions: Actions = {
     const userId = String(form.get('userId') ?? '');
     const role = String(form.get('role') ?? '');
     const grants = [...new Set(form.getAll('capability').map(String))];
-    if (!['owner', 'member', 'guest'].includes(role) || grants.some(grant => !grantsAllowed.has(grant))) {
+    const allowed = availableGrants();
+    if (!['owner', 'member', 'guest'].includes(role) || grants.some(grant => !allowed.includes(grant))) {
       return fail(400, { error: 'Invalid role or capability.' });
     }
     // SECURITY: Avoid a lost administrator due to self-demotion or concurrent updates.
@@ -84,7 +86,8 @@ export const actions: Actions = {
           if (count < 2) throw new Error('At least one owner account must remain.');
         }
         await tx.user.update({ where: { id: userId }, data: { role: role as 'owner' | 'member' | 'guest' } });
-        await tx.userCapabilityGrant.deleteMany({ where: { userId } });
+        // Do not remove dormant grants when saving other permissions on Relish.
+        await tx.userCapabilityGrant.deleteMany({ where: { userId, capability: { in: allowed } } });
         if (role === 'member' && grants.length) {
           await tx.userCapabilityGrant.createMany({ data: grants.map(capability => ({
             id: randomUUID(), userId, capability, grantedByUserId: actorId

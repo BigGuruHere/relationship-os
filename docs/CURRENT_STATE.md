@@ -2,20 +2,24 @@
 
 Status: updated **2026-11-09**. The production-base feature branch starts at remote development `61e3356` (PR #41) and incorporates direction commit `9cccfb6`. Environment observations below are separately attributed.
 
+## Brokerage cutover
+
+The operator reports that broker-relish has a separate deployment and database. [D-030](DECISION_LOG.md#d-030-separate-brokerage-deployment-and-relish-design) removes Brokerage from Relish architecture requirements. On `feature/disable-brokerage-in-relish` from Development `5da72d4a`, Relish hides the Brokerage entry points and returns 404 for its legacy CRM routes, including commercial Contacts, Tasks and Projects screens and guest lead intake. Automatic lead claiming is disabled. My People, notes, QR capture, sign-in and operator tools retain their boundaries. The code, grants, schema and records are retained. There is no migration. A Brokerage service that adopts this revision must explicitly set `RELISH_BROKERAGE_ENABLED=YES` to keep its CRM enabled. Hosted cutover and production release checks remain pending. Local checks covered disabled and enabled Brokerage behavior, owner navigation, real Chromium 404 responses and isolated My People access. The existing capability test for /general still fails on the unchanged Development baseline.
+
 ## Ordinary production onboarding
 
 [D-029](DECISION_LOG.md#d-029-ordinary-onboarding-and-an-incremental-production-launch) replaces the invited-cohort launch approach. Implementation commit `fb0d3d5` and direction commit `9cccfb6` are bundled in the Development integration PR. Hosted DEV acceptance and production promotion are pending.
 
 - New password and Google accounts receive an ACTIVE private vault, encrypted self reference and unpublished profile in the account transaction. Ordinary signup uses neither exchange admission nor operator-created logins. A matching credential email alone cannot attach a new Google login to an enrolled account. Existing accounts keep their storage domain and profile state.
 - After sign-up, the existing editor offers owner review and publication. The public card offers one primary action, Save contact. QR capture keeps visitor consent and writes to the published card owner's storage. My People, manual capture and private voice-note draft processing and retrieval reuse their existing guarded Foundation routes.
-- Reciprocal exchange and channel delivery retain their existing explicit DEV acceptance configuration. Foundation members use neutral navigation, and legacy-only Network, lead and profile Dorian entry points cannot write for the Foundation journey. Existing legacy Brokerage, profiles and configured events keep their established routes. Legacy-to-legacy Network behavior is preserved.
-- Password self-service recovery has no working request/delivery flow. The existing magic-link sender is a legacy stub. Password signup does not verify mailbox ownership. Recovery requires a reviewed proof and delivery flow before general password onboarding is promoted. The existing Privacy and support page is reachable from the account menu.
+- Reciprocal exchange and channel delivery are available in DEV and have a separate production activation gate. Foundation members use neutral navigation, and legacy-only Network, lead and profile Dorian entry points cannot write for the Foundation journey. Published profiles and configured events keep their established routes. Legacy-to-legacy Network behavior is preserved.
+- Password self-service recovery merged into Development via PR #48. Hosted email delivery remains to be confirmed. Ordinary password signup does not verify mailbox ownership. The existing Privacy and support page is reachable from the account menu.
 
-The [production-base register](foundation/IMPLEMENTATION_PLAN.md#production-base-backlog-d-029) records verification, provider and recovery gaps. There is no new Prisma migration. The Git diff from `master` at `b58ba02` contains five existing Foundation migrations; this does not establish the deployed production SHA or migration history.
+The [production-base register](foundation/IMPLEMENTATION_PLAN.md#production-base-backlog-d-029) records verification, provider and recovery gaps. Production promotion must reconcile the pending migration list against the actual target database.
 
 ## Production exchange, password recovery and contact download
 
-Implemented on `feature/production-account-exchange` from Development `ff3b4066`. Password reset uses Resend and revokes existing sessions after a single-use link succeeds. Verified v2 exchange supports an explicitly enabled, database-bound production runtime. Phone contact downloads add public URLs alongside Relish. The password reset migration is additive. Hosted provider and device acceptance are pending. See [rollout and recovery](foundation/PRODUCTION_EXCHANGE_AND_RECOVERY.md).
+Merged into Development via PR #48 at `5da72d4a`. Password reset uses Resend and revokes existing sessions after a single-use link succeeds. Verified v2 exchange supports an explicitly enabled, database-bound production runtime. Phone contact downloads add public URLs alongside Relish. The password reset migration is additive. Hosted provider and device acceptance are pending. See [rollout and recovery](foundation/PRODUCTION_EXCHANGE_AND_RECOVERY.md).
 
 ## Guest sharing and account verification
 

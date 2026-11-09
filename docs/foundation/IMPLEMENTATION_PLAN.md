@@ -21,6 +21,8 @@ Local evidence on Node 22 includes the isolated Foundation/route suites, 36 Post
 
 Follow-up on `feature/production-account-exchange` from Development `ff3b4066`. PB-003 adds self-service password recovery and public vCard URLs. PB-004 adds an explicit production path for verified v2 exchange. One additive password-reset migration, with no backfill. Isolated service tests use synthetic providers. Live email/SMS, iPhone and Android import, and hosted production readiness checks remain pending. See [rollout and recovery](PRODUCTION_EXCHANGE_AND_RECOVERY.md).
 
+Brokerage cutover follow-up on `feature/disable-brokerage-in-relish` from Development `5da72d4a`. The Relish release disables legacy CRM entry points and lead claiming. The separate service and database are operator-reported. No migration or data rewrite. Preserve the existing database and defer cleanup until the separate service has been verified. PB-004 still requires hosted provider/device checks and target migration and rollback review.
+
 ## Release sequence and evidence gates
 
 | Stage | User outcome | Engineering work | Release gate |

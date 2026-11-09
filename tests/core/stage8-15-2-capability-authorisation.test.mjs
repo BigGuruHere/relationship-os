@@ -2,7 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { effectiveCapabilities, hasCapability, requiredCapabilityForPath } from '../../src/lib/server/core/capabilities.ts';
+import { effectiveCapabilities, hasCapability, isBrokeragePath, requiredCapabilityForPath } from '../../src/lib/server/core/capabilities.ts';
 
 const read = path => readFileSync(new URL(path, import.meta.url), 'utf8');
 
@@ -31,9 +31,20 @@ test('privileged paths deny without grants; segment boundaries do not over-match
 test('enforcement is in server hook before route resolution, not only navigation', () => {
   const hook = read('../../src/hooks.server.ts');
   const prisma = read('../../prisma/schema.prisma');
-  assert.match(hook, /requiredCapabilityForPath\(event\.url\.pathname\)/);
+  assert.match(hook, /requiredCapabilityForPath\(route\)/);
   assert.match(hook, /throw error\(403/);
   assert.match(hook, /capabilityGrants: \{ select:/);
   assert.match(prisma, /model UserCapabilityGrant/);
   assert.match(prisma, /@@unique\(\[userId, capability\]\)/);
+});
+
+test('retired CRM routes include legacy lead entry points and leave Foundation paths open', () => {
+  for (const path of ['/broker/contacts', '/tasks/[id]/edit', '/contacts/[id]', '/api/task-commercial-links',
+    '/projects/[id]/workstreams/[workstreamId]', '/u/[slug]/lead', '/api/guest/start', '/api/guest/claim-linkedin']) {
+    assert.equal(isBrokeragePath(path), true, path);
+  }
+  for (const path of ['/people/[id]/notes/new', '/u/[slug]/share-details', '/exchange/claim', '/auth/reset-password',
+    '/settings/agents', '/space/business/people', '/dating/introductions', '/api/vcard', '/deals-archive']) {
+    assert.equal(isBrokeragePath(path), false, path);
+  }
 });

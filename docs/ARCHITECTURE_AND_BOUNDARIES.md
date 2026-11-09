@@ -6,11 +6,11 @@ Status: living technical overview. Checked against the RelationshipOS `developme
 
 | Repository | Responsibility |
 | --- | --- |
-| `BigGuruHere/relationship-os` | SvelteKit Relish application and domain Core: users, profiles, private Contacts, Interactions, ContextSpaces, permissioned knowledge/understanding, participation and brokerage workflows |
+| `BigGuruHere/relationship-os` | SvelteKit Relish application and domain Core: users, profiles, private Contacts, Interactions, ContextSpaces, permissioned knowledge/understanding, and participation. Historical Brokerage code is still in the repository. |
 | `BigGuruHere/relish-agent-management` | Manage provider-facing agents, configuration, versions and environment assignments |
 | `BigGuruHere/relish-proxy-server` | Route telephone/provider requests to the appropriate Relish environment and session based on managed routing |
 
-The current implementation shares Core primitives across application experiences. The accepted target now separates the new Relish domain from legacy Brokerage persistence where semantics conflict, while retaining useful infrastructure. This is a planned transition, not an implemented split.
+Brokerage runs as a separate service with its own database, as reported by the operator. Relish design can proceed independently. The retired CRM screens and lead-linking side effects default off in the Relish build. The separate service can keep its existing release or explicitly enable the legacy surfaces if it adopts this build.
 
 ## Ordinary signup boundary
 
@@ -24,7 +24,7 @@ Core signup, publication and private capture work independently of DEV test setu
 
 The [foundation architecture](foundation/ARCHITECTURE.md), [policy contract](foundation/POLICY_AND_PROVENANCE.md) and [decisions D-019 through D-023](foundation/DECISIONS.md) define the new direction. People, relationships and groups are understanding subjects; perspective is independent. Contextual meaning, custody and permissions are separate. New persistence may replace Contact-bound understanding through additive migrations and one authoritative writer per enrolled cohort/capability.
 
-Keep Brokerage on its current model. Preserve its data and current security boundaries; do not reinterpret ContextSpace labels as grants. Reuse credential/session primitives but isolate legacy Lead-linking side effects. Restricted profile sharing must be distinct from public publication. None of these new capabilities is implemented by the documentation package.
+Keep existing data and security boundaries during the deployment split. Brokerage compatibility is no longer a design requirement for new Relish features. Restricted profile sharing must be distinct from public publication. None of these new capabilities is implemented by the documentation package.
 
 See the [stage-2/3 backlog and migration gates](foundation/IMPLEMENTATION_PLAN.md). F-201 now specifies the [physical schema and transaction contracts](foundation/PHYSICAL_MODEL.md), with [source dependency and data inventory](foundation/DEPENDENCY_INVENTORY.md). F-202 adds the custody root and typed subjects to Prisma and an additive migration on its feature branch; [invariants and rehearsal](foundation/F202_INVARIANTS.md) document coverage. Target migration, auth isolation, access services and user-facing activation remain pending. The sections below describe current implementation, not the target schema.
 
@@ -62,7 +62,7 @@ Profile `kind` remains a compatibility input for the existing Business/Friendshi
 - `src/lib/recording/ContactNoteForm.svelte`: reused voice-note recording/transcription/edit/save interface.
 - `/u/[slug]`: existing published profile and QR destination; `/u/[slug]/share-details`: opt-in owner-private Contact capture; existing event page can link to the same capture experience.
 - `src/lib/server/core/contactCapture.ts`: token, permission, provenance and abuse-protected intake without automatic identity linking.
-- `/broker` and existing business routes: retained specialist Brokerage workflows using shared records.
+- `/broker` and existing business routes: legacy Brokerage routes available only with the separate deployment opt-in.
 - `/space/[context]`: legacy participant context-specific surfaces. Do not delete them just because a neutral Home screen is introduced.
 - Consent-controlled Dorian voice/session routes and operator review/inspection exist, but their live configuration must be confirmed separately.
 

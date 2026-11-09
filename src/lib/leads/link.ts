@@ -1,3 +1,4 @@
+import { brokerageEnabled } from '$lib/server/core/capabilities';
 // src/lib/leads/link.ts
 // PURPOSE: Link pending leads to a newly authenticated user by deterministic indexes
 // - Supports email, phone, and LinkedIn equality matching
@@ -44,6 +45,8 @@ export async function linkLeadsForUserFlexible(
   userId: string,
   opts: { email?: string; phone?: string; linkedinUrl?: string }
 ): Promise<{ claimedLeadIds: string[]; touchedContactIds: string[]; owners: string[] }> {
+  // Sign-in is shared. On Relish it must not claim old leads or create reciprocal CRM contacts.
+  if (!brokerageEnabled()) return { claimedLeadIds: [], touchedContactIds: [], owners: [] };
   // SECURITY: Authentication callbacks can begin without request custody and only establish the
   // user during the request. Enter the claimant's current/default ContextSpace explicitly here.
   return withLegacyAccountClaims(userId, async tx => {

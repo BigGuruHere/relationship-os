@@ -16,6 +16,10 @@ Implementation is recorded on `feature/production-base-onboarding`. New accounts
 
 Follow-up accepted 2026-11-09. Include verified reciprocal exchange in the production rollout once the migration and provider checks pass. Production must use its own origin, database binding and verification realm. The first release also includes self-service password recovery and public social links in contact downloads. See [rollout and recovery](foundation/PRODUCTION_EXCHANGE_AND_RECOVERY.md).
 
+## D-030 Separate Brokerage deployment and Relish design
+
+Accepted 2026-11-09. The operator reports a dedicated broker-relish service and database. Retire the commercial CRM surfaces and automatic lead claiming on Relish. Brokerage is outside Relish's architecture and product requirements. Keep shared code needed by Relish and leave existing data and schema in place until a separately approved cleanup after the cutover has been verified.
+
 | ID | Decision | Status and rationale |
 | --- | --- | --- |
 | D-001 | Relish is a person-first Relationship OS; Dorian enriches human-to-human relationships instead of substituting for them. | Accepted direction. Product meaning and quality of relationships govern architecture. |

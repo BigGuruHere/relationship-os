@@ -105,7 +105,7 @@ const server = httpServer(async (req, res) => {
 			res.end(profileClient);
 			return;
 		}
-		if (url.pathname === '/profiles') {
+		if (url.pathname.startsWith('/people/') || url.pathname === '/profiles') {
 			res.end('My Profiles');
 			return;
 		}
@@ -252,7 +252,7 @@ try {
 		true
 	);
 	await tab.getByRole('button', { name: 'Verify my account', exact: true }).click();
-	await tab.waitForURL(base + '/people');
+	await tab.waitForURL(base + '/people/private-person?afterExchange=1');
 	assert.equal(globalThis.verifyArgs[3], '012345');
 
 	// Real native owned-profile form submits the preview without a code or typed contact fields.
@@ -274,7 +274,7 @@ try {
     flow.saveExchange(c,new URL('https://dev.relish.live'),'b'.repeat(64),'profile',2);
     await tab.goto(base);
     await tab.getByRole('button',{name:'Continue',exact:true}).click();
-    await tab.getByRole('status').filter({hasText:'Your account details are verified.'}).waitFor();
+    await tab.waitForURL(base + '/people/private-person?afterExchange=1');
     // A guest with both channels sees the sign-in email check first.
     globalThis.guestNeedsProof = true;
     globalThis.guestCompleted = false;
@@ -285,7 +285,7 @@ try {
     await tab.getByRole('button',{name:'Send verification code',exact:true}).click();
     await tab.getByLabel('Verification code',{exact:true}).fill('005321');
     await tab.getByRole('button',{name:'Verify my email',exact:true}).click();
-    await tab.getByRole('status').filter({hasText:'Your account details are verified.'}).waitFor();
+    await tab.waitForURL(base + '/people/private-person?afterExchange=1');
     assert.equal(globalThis.accountVerifyArgs[2],'005321');
 
 	// Exercise both editor entry points at phone widths, with their compiled scoped CSS.

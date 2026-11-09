@@ -19,7 +19,7 @@
 	><title>Verify your account - Relish</title><meta name="robots" content="noindex" /></svelte:head
 >
 <main>
-	<h1>Verify your account</h1>
+	<h1>{data.accountClaim?.canComplete ? 'Finish sharing' : 'Verify your account'}</h1>
 	{#if !data.available}<p>
 			This exchange has expired or is unavailable. You can share your details again.
 		</p>
@@ -29,10 +29,7 @@
 		</p>
 		<a href="/settings/profile?onboarding=1">Continue to my profile</a>
 	{:else if data.version === 2}
-		{#if form?.completed || data.accountClaim?.settled}
-			<p role="status">Your account details are verified.</p>
-			<a href="/people">Open My People</a>
-		{:else if data.accountClaim?.canComplete}
+		{#if data.accountClaim?.canComplete}
 			<form id="complete-exchange" method="POST">
 				<input type="hidden" name="intent" value="complete" />
 				<button>Continue</button>

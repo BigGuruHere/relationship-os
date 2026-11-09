@@ -95,3 +95,29 @@ export async function startExchangeAfterAuth(
 		// Auth succeeded independently. The verification action can retry the claim.
 	}
 }
+
+// Use the person saved by the exchange, never a client-supplied contact identity.
+export function exchangeFollowup(personId: string | null) {
+	return personId ? '/people/' + encodeURIComponent(personId) + '?afterExchange=1' : '/people';
+}
+
+export async function finishVerifiedExchange(
+	cookies: Cookies, url: URL, locals: Pick<App.Locals, 'env' | 'appOrigin'>,
+	next: string | null, accountId: string, sessionId: string
+) {
+	const claim = readExchange(cookies);
+	if (next !== EXCHANGE_RETURN || !sessionId || claim?.version !== 2) return;
+	const { exchangeBrowserEnabled } = await import('./foundation/devPilotGate');
+	if (!exchangeBrowserEnabled(locals, url.origin)) return;
+	const actor = { ...locals, user: { id: accountId }, sessionId };
+	try {
+		const { accountClaimState, completeAccountClaim } = await import('./foundation/exchangeClaims');
+		const state = await accountClaimState(actor, claim.token);
+		if (!state.canComplete && !state.settled) return;
+		const result = await completeAccountClaim(actor, claim.token);
+		clearExchange(cookies);
+		return exchangeFollowup(result.personId);
+	} catch {
+		// Keep sign-in independent of exchange availability and retain the retry continuation.
+	}
+}

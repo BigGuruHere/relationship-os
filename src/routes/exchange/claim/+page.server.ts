@@ -4,13 +4,14 @@ import { profileExchangeReturn, clearProfileExchangeReturn } from '$lib/server/p
 import { reportExchangeFailure, ExchangeDenied } from '$lib/server/foundation/exchangeDiagnostics';
 import { exchangeBrowserEnabled } from '$lib/server/foundation/devPilotGate';
 // Same-origin forms are the only browser entry to proof consumption. No capability appears in URLs.
-import { fail, redirect } from '@sveltejs/kit';
+import { fail, redirect, isRedirect } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import { randomUUID } from 'node:crypto';
 import {
 	readExchange,
 	bindExchangeChallenge,
 	clearExchange,
+	exchangeFollowup,
 	EXCHANGE_RETURN
 } from '$lib/server/exchangeOnboarding';
 import {
@@ -38,6 +39,10 @@ export const load: PageServerLoad = async ({ locals, cookies, setHeaders, url })
     if(claim?.version===2 && locals.user && enabled) {
       try{accountClaim=await accountClaimState(locals,claim.token);}catch{/* Keep pending account proof usable even if the source was withdrawn. */}
     }
+	if (accountClaim?.settled) {
+		clearExchange(cookies);
+		throw redirect(303, exchangeFollowup(accountClaim.personId));
+	}
 	return {version:claim?.version || 1,accountClaim,
 		available: Boolean(claim && enabled),
 		ready: Boolean(locals.user && (await accountDomain(locals.user.id)) === 'ACTIVE'),
@@ -77,8 +82,9 @@ export const actions: Actions = {
 				intent === 'complete' ? 'settle' : intent === 'verify' ? 'verify' : 'request';
 			try {
 				if (intent === 'complete') {
-					await completeAccountClaim(locals, claim.token);
-					return { completed: true };
+					const result = await completeAccountClaim(locals, claim.token);
+					clearExchange(cookies);
+					throw redirect(303, exchangeFollowup(result.personId));
 				}
 				if (intent === 'send' || intent === 'resend') {
 					const step = form.get('channelType') || '';
@@ -110,9 +116,11 @@ export const actions: Actions = {
 				try {
 					const state = await accountClaimState(locals, claim.token);
 					if (!state.canComplete) return { verified: true };
-					await completeAccountClaim(locals, claim.token);
-					return { completed: true };
+					const result = await completeAccountClaim(locals, claim.token);
+					clearExchange(cookies);
+					throw redirect(303, exchangeFollowup(result.personId));
 				} catch (e) {
+				if (isRedirect(e)) throw e;
 					return fail(409, {
 						verified: true,
 						reference: reportExchangeFailure('settle', e),
@@ -120,6 +128,7 @@ export const actions: Actions = {
 					});
 				}
 			} catch (e) {
+				if (isRedirect(e)) throw e;
 				const reference = reportExchangeFailure(operation, e);
 				if (e instanceof ChannelDenied && e.reason === 'CHANNEL_ALREADY_VERIFIED')
 					return fail(409, { reference, error: channelFailureMessage(e.reason) });
@@ -143,7 +152,10 @@ export const actions: Actions = {
 				);
 				if (issued.status === 'LIMITED')
 					return fail(429, { error: 'Please wait before requesting another code.' });
-				if (issued.status === 'SETTLED') throw redirect(303, '/people');
+				if (issued.status === 'SETTLED') {
+					clearExchange(cookies);
+					throw redirect(303, exchangeFollowup(issued.personId));
+				}
 				bindExchangeChallenge(
 					cookies,
 					url,
@@ -187,6 +199,8 @@ export const actions: Actions = {
 							? 'Please wait before trying again.'
 							: 'That code did not match. Please try again.'
 				});
+			clearExchange(cookies);
+			throw redirect(303, exchangeFollowup(result.personId));
 		} catch (e) {
 			if (typeof e === 'object' && e && 'status' in e && (e as { status: number }).status === 303)
 				throw e;
@@ -197,7 +211,5 @@ export const actions: Actions = {
 					'This exchange cannot be verified now. Check your account or share your details again. Your saved contact is kept.'
 			});
 		}
-		clearExchange(cookies);
-		throw redirect(303, '/people');
 	}
 };

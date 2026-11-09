@@ -1,3 +1,4 @@
+import { exchangeFollowup } from '$lib/server/exchangeOnboarding';
 import { saveProfileExchangeReturn } from '$lib/server/profileExchangeReturn';
 import { saveExchange, readExchange, clearExchange, EXCHANGE_RETURN } from '$lib/server/exchangeOnboarding';
 import { ownedExchangeChoices, confirmOwnedProfileExchange } from '$lib/server/foundation/exchangeClaims';
@@ -42,13 +43,14 @@ export const actions: Actions = {
     if (form.get('intent') === 'confirm-profile') {
       if (!exchangeBrowserEnabled(locals,url.origin) || !locals.user) return fail(403,{error:'Sign in to exchange profiles.'});
       const target=await publishedCaptureProfile(params.slug);
+      let personId;
       try {
         // Bind the route target too, rather than accepting a preview copied from another card.
         const choicesToken=String(form.get('confirmation') || '');
-        await confirmOwnedProfileExchange(locals,choicesToken,cookies.get(CAPTURE_COOKIE) || '',target.id);
+        ({ personId } = await confirmOwnedProfileExchange(locals,choicesToken,cookies.get(CAPTURE_COOKIE) || '',target.id));
       } catch { return fail(409,{error:'This exchange could not be completed. Reload to review current details. Archived or revoked contacts need recovery.'}); }
       rememberContactShare(cookies,url,target.id);
-      throw redirect(303,'/people');
+      throw redirect(303,exchangeFollowup(personId));
     }
     if(form.get('intent')==='signin-exchange') {
       const target=await publishedCaptureProfile(params.slug);

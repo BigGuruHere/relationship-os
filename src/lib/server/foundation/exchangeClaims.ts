@@ -1,4 +1,5 @@
 import { budget } from './exchangeBudget';
+import { decryptUserEmail } from '$lib/server/userEmail';
 import { emailVerificationConfigured } from '$lib/server/integrations/resend/verification';
 import { ensureSubmittedChannel, currentSubmittedProof } from './accountChannels';
 import { ExchangeDenied } from './exchangeDiagnostics';
@@ -15,7 +16,7 @@ import {
 	exchangeScope,
 	requireClaimSession
 } from './exchangeAuthority';
-import { claimMac, sameMac, seal, open, verificationPhone } from './exchangeCrypto';
+import { claimMac, sameMac, seal, open, verificationPhone, verificationEmail } from './exchangeCrypto';
 import { insertExchangeReceipt } from './exchangeReceipt';
 import { insertPrivatePerson } from './subjects';
 import { sendTelnyxSms } from '$lib/server/integrations/telnyx/messaging';
@@ -650,57 +651,59 @@ function submittedChannels(e:FoundationExchange):{type:'PHONE'|'EMAIL';value:str
  if(e.claimVersion!==2 || !e.submittedChannelsEnc) throw new FoundationDenied();
  return open('FoundationExchange','submittedChannelsEnc',e,e.id,e.submittedChannelsEnc);
 }
-// Resolve the required channel from the original submission, never from form input.
-function requiredSubmittedChannel(channels: ReturnType<typeof submittedChannels>) {
-	const required = channels.find(c => c.type === 'PHONE') ?? channels.find(c => c.type === 'EMAIL');
-	if (!required) throw new FoundationDenied();
-	return required;
+// Resolve both destinations from server-owned records. The sign-in email is
+// private and can settle the exchange only if it was also shared.
+async function claimProgress(tx: AppTransactionClient, e: FoundationExchange, accountId: string) {
+	const channels = submittedChannels(e);
+	const user = await tx.user.findUnique({ where: { id: accountId }, select: { email_Enc: true } });
+	const email = decryptUserEmail(user?.email_Enc);
+	const loginEmail = email ? verificationEmail(email) : null;
+	const loginVerified = !loginEmail || Boolean(await currentSubmittedProof(tx, accountId, 'EMAIL', loginEmail));
+	const statuses = await Promise.all(channels.map(async (channel) => ({
+		...channel,
+		verified: Boolean(await currentSubmittedProof(tx, accountId, channel.type, channel.value))
+	})));
+	const sharedEmail = statuses.find(c => c.type === 'EMAIL');
+	const sharedPhone = statuses.find(c => c.type === 'PHONE');
+	const verified = sharedEmail?.verified ? sharedEmail : sharedPhone?.verified ? sharedPhone : null;
+	const shared = sharedEmail ?? sharedPhone;
+	if (!shared) throw new FoundationDenied();
+	const required = loginEmail && !loginVerified
+		? { type: 'EMAIL' as const, value: loginEmail, step: 'LOGIN_EMAIL' }
+		: { ...shared, step: shared.type };
+	return { required, verified: loginVerified ? verified : null, statuses };
 }
 
 export async function accountClaimState(locals: Actor, token: string) {
 	return withClaim(locals, token, async (tx, e, actor) => {
-		const channels = submittedChannels(e);
-		const required = requiredSubmittedChannel(channels);
-		const statuses = [];
-		for (const channel of channels) {
-			statuses.push({ type: channel.type, verified: Boolean(
-				await currentSubmittedProof(tx, actor.accountId, channel.type, channel.value)
-			) });
-		}
-		const verified = statuses.some(channel => channel.type === required.type && channel.verified);
+		const { required, verified, statuses } = await claimProgress(tx, e, actor.accountId);
 		const masked = required.type === 'PHONE'
 			? '•••• ' + required.value.slice(-4)
 			: required.value[0] + '•••@' + required.value.split('@')[1];
 		return {
 			settled: e.status === 'SETTLED',
-			canComplete: verified,
-			channels: statuses,
+			canComplete: Boolean(verified),
+			channels: statuses.map(({ type, verified }) => ({ type, verified })),
 			channel: {
-				type: required.type, masked, available: required.type === 'PHONE' || emailVerificationConfigured()
+				type: required.type, step: required.step, masked,
+				available: required.type === 'PHONE' || emailVerificationConfigured()
 			}
 		};
 	});
 }
 
 async function bindSubmittedClaim(
-	tx: AppTransactionClient, e: FoundationExchange, accountId: string, recipient: Root,
-	requestedType?: string
+	tx: AppTransactionClient, e: FoundationExchange, accountId: string, recipient: Root
 ) {
 	const channels = submittedChannels(e);
-	const required = requiredSubmittedChannel(channels);
-	if (requestedType && requestedType !== required.type) throw new FoundationDenied();
 	if (e.status !== 'SETTLED') {
 		await tx.foundationExchange.updateMany({
 			where: { id: e.id }, data: { beneficiaryUserId: accountId, status: 'BOUND' }
 		});
 		await saveSharedCard(tx, e, recipient, true);
 	}
-	let channelId = '';
-	for (const channel of channels) {
-		const saved = await ensureSubmittedChannel(tx, accountId, channel.type, channel.value);
-		if (channel.type === required.type) channelId = saved.id;
-	}
-	return { channelId, type: required.type };
+	for (const channel of channels)
+		await ensureSubmittedChannel(tx, accountId, channel.type, channel.value);
 }
 
 // Authenticated onboarding saves the published card and pending channels without sending a code.
@@ -710,22 +713,23 @@ export async function startAccountClaim(locals: Actor, token: string) {
 	);
 }
 
-export async function prepareAccountClaim(locals: Actor, token: string, type: string) {
-	return withClaim(locals, token, async (tx, e, actor, recipient) =>
-		(await bindSubmittedClaim(tx, e, actor.accountId, recipient, type)).channelId
-	);
+export async function prepareAccountClaim(locals: Actor, token: string, step: string) {
+	return withClaim(locals, token, async (tx, e, actor, recipient) => {
+		const { required, verified } = await claimProgress(tx, e, actor.accountId);
+		if (step !== required.step || verified || e.status === 'SETTLED') throw new FoundationDenied();
+		await bindSubmittedClaim(tx, e, actor.accountId, recipient);
+		return (await ensureSubmittedChannel(tx, actor.accountId, required.type, required.value)).id;
+	});
 }
 
 export async function completeAccountClaim(locals: Actor, token: string) {
 	return withClaim(locals, token, async (tx, e, actor, recipient) => {
-		if (e.claimVersion !== 2) throw new FoundationDenied();
-		const required = requiredSubmittedChannel(submittedChannels(e));
-		// Resolve proof while holding the same account and exchange locks used for revocation.
-		if (!await currentSubmittedProof(tx, actor.accountId, required.type, required.value))
-			throw new FoundationDenied();
+		// Recheck both proof and exact submission under the same locks as revocation.
+		const { verified } = await claimProgress(tx, e, actor.accountId);
+		if (!verified) throw new FoundationDenied();
 		if (e.status === 'SETTLED') return { status: 'SETTLED' as const, personId: e.settledSubjectId };
 		await bindSubmittedClaim(tx, e, actor.accountId, recipient);
 		return settleClaim(tx, e, actor.accountId, recipient,
-			claimMac(required.type + ':' + required.value, 'channel'), 'ACCOUNT_CHANNEL');
+			claimMac(verified.type + ':' + verified.value, 'channel'), 'ACCOUNT_CHANNEL');
 	});
 }

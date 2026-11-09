@@ -640,6 +640,11 @@ test('Internal DEV setup and ordinary Foundation signup on an isolated database'
 			const shared = await capturePage.actions.default({ ...event(guest, path, values), params });
 			assert.equal(shared.canClaim, true);
 			const register = '/auth/register?next=%2Fexchange%2Fclaim';
+			await assert.rejects(capturePage.actions.default({
+				...event(guest, path, { ...values, intent: 'create-profile' }), params
+			}), at(register));
+			const registration = await registerPage.load(event(guest, register));
+			assert.equal(registration.draft.email, email);
 			await assert.rejects(registerPage.actions.default(event(guest, register, { email, password })), at('/exchange/claim'));
 			const session = await sessionFor(guest);
 			authAs(guest, session);
@@ -647,7 +652,7 @@ test('Internal DEV setup and ordinary Foundation signup on an isolated database'
 			assert.deepEqual(directory.people.map(person => person.name), [publicName]);
 			const claimPage = await load('routes/exchange/claim/+page.server');
 			const claim = await claimPage.load(event(guest, '/exchange/claim'));
-			assert.equal(claim.accountClaim.channel.type, 'PHONE');
+			assert.equal(claim.accountClaim.channel.step, 'LOGIN_EMAIL');
 			assert.equal(claim.accountClaim.canComplete, false);
 			const links = (await db.query(
 				'SELECT channel FROM "FoundationAccountAssociation" WHERE "ownerUserId"=$1 AND "accountId"=$2',

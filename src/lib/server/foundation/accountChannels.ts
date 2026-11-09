@@ -1,3 +1,4 @@
+import { googleControlsMailbox } from '$lib/server/googleEmailAuthority';
 import { ChannelDenied, reportChannelFailure } from './channelDiagnostics';
 import {
 	sendVerificationEmail,
@@ -71,6 +72,19 @@ async function cancel(tx: AppTransactionClient, channelId: string) {
 		data: { status: 'REVOKED' }
 	});
 }
+// Old Google proofs did not record hosted-domain authority. Gmail can be
+// recognized from the address; other old Google proofs need a fresh check.
+function usableProof(proof: { method: string } | null, value: string) {
+	return Boolean(proof && (proof.method !== 'GOOGLE_OIDC' || googleControlsMailbox(value)));
+}
+
+async function retireOldGoogleProof(tx: AppTransactionClient, id: string) {
+	await tx.foundationAccountChannelVerification.updateMany({
+		where: { channelId: id, method: 'GOOGLE_OIDC', revokedAt: null },
+		data: { revokedAt: new Date(), revokeReason: 'MAILBOX_RECHECK' }
+	});
+}
+
 export async function listAccountChannels(locals: Actor) {
 	return scope(locals, async (tx, account) => {
 		await expire(tx);
@@ -85,15 +99,16 @@ export async function listAccountChannels(locals: Actor) {
 				where: { channelId: c.id, generation: c.generation, revokedAt: null },
 				select: { verifiedAt: true, method: true }
 			});
+			const current = usableProof(proof, value) ? proof : null;
 			// Only masked values and proof metadata leave this account service.
 			out.push({
 				id: c.id,
 				type: c.type,
-				status: c.status,
+				status: c.status === 'VERIFIED' && !current ? 'PENDING' : c.status,
 				masked:
 					c.type === 'PHONE' ? '•••• ' + value.slice(-4) : value[0] + '•••@' + value.split('@')[1],
-				verifiedAt: proof?.verifiedAt.toISOString() ?? null,
-				method: proof?.method ?? null
+				verifiedAt: current?.verifiedAt.toISOString() ?? null,
+				method: current?.method ?? null
 			});
 		}
 		return out;
@@ -131,7 +146,13 @@ export async function requestAccountChannelCode(
 		await expire(tx);
 		let c = await channel(tx, id);
 		if (c.type === 'EMAIL' && !emailVerificationConfigured()) throw new ChannelDenied('EMAIL_NOT_CONFIGURED');
-		if (c.status === 'VERIFIED') return { status: 'VERIFIED' as const };
+		const destination = canonical(c.type, decrypt(c.valueEnc, aad(account, id, 'value')));
+		if (c.status === 'VERIFIED') {
+			const proof = await tx.foundationAccountChannelVerification.findFirst({
+				where: { channelId: id, generation: c.generation, revokedAt: null }
+			});
+			if (usableProof(proof, destination)) return { status: 'VERIFIED' as const };
+		}
 		const prior = await tx.foundationAccountChannelChallenge.findFirst({
 			where: { id: requestId }
 		});
@@ -160,7 +181,7 @@ export async function requestAccountChannelCode(
 			c = await channel(tx, id);
 		}
 		if (c.failedAttempts >= 5 || c.sendCount >= 5) return { status: 'LIMITED' as const };
-		const phone = canonical(c.type, decrypt(c.valueEnc, aad(account, id, 'value')));
+		const phone = destination;
 		if (
 			!(await budget(tx, account, [
 				['send:account:' + account, 10],
@@ -171,6 +192,7 @@ export async function requestAccountChannelCode(
 		)
 			return { status: 'LIMITED' as const };
 		await cancel(tx, id);
+		if (c.status === 'VERIFIED') await retireOldGoogleProof(tx, id);
 		const code = String(randomInt(0, 1000000)).padStart(6, '0'),
 			expiresAt = new Date(Date.now() + 900000);
 		await tx.foundationAccountChannel.updateMany({
@@ -321,11 +343,18 @@ export async function verifyAccountChannelCode(
 			where: { challengeId: ch.id, status: { in: ['QUEUED', 'FAILED'] } },
 			data: { status: 'CANCELLED', payloadEnc: null }
 		});
-		// The partial unique index refuses a competing verified claim without revealing its owner.
-		await tx.foundationAccountChannel.updateMany({
-			where: { id: c.id },
-			data: { status: 'VERIFIED' }
-		});
+		// This status-only update can collide with the verified-channel unique index.
+		// Throw out of the transaction so a conflict cannot consume the code or create proof.
+		try {
+			await tx.foundationAccountChannel.updateMany({
+				where: { id: c.id },
+				data: { status: 'VERIFIED' }
+			});
+		} catch (failure) {
+			if ((failure as { code?: unknown })?.code === 'P2002')
+				throw new ChannelDenied('CHANNEL_ALREADY_VERIFIED');
+			throw failure;
+		}
 		return 'VERIFIED';
 	});
 }
@@ -414,10 +443,11 @@ export async function currentSubmittedProof(
 			where: { type, valueHash: hash(type, canonical(type, value)), status: 'VERIFIED' }
 		});
 		if (!c) return null;
-		return tx.foundationAccountChannelVerification.findFirst({
+		const proof = await tx.foundationAccountChannelVerification.findFirst({
 			where: { channelId: c.id, generation: c.generation, revokedAt: null },
-			select: { id: true }
+			select: { id: true, method: true }
 		});
+		return usableProof(proof, canonical(type, value)) ? proof : null;
 	});
 }
 // Only the validated Google callback may call this adapter; it never revives revoked assurance.
@@ -425,7 +455,13 @@ export async function recordGoogleEmailProof(locals: Actor, email: string) {
 	return scope(locals, async (tx, account) => {
 		const c = await ensureSubmittedChannel(tx, account, 'EMAIL', email);
 		if (c.status === 'REVOKED') return 'REVOKED';
-		if (c.status === 'VERIFIED') return 'VERIFIED';
+		if (c.status === 'VERIFIED') {
+			const proof = await tx.foundationAccountChannelVerification.findFirst({
+				where: { channelId: c.id, generation: c.generation, revokedAt: null }
+			});
+			if (usableProof(proof, email)) return 'VERIFIED';
+			await retireOldGoogleProof(tx, c.id);
+		}
 		await cancel(tx, c.id);
 		const generation = c.generation + 1;
 		await tx.foundationAccountChannelVerification.create({
@@ -433,7 +469,7 @@ export async function recordGoogleEmailProof(locals: Actor, email: string) {
 				ownerUserId: account,
 				channelId: c.id,
 				generation,
-				method: 'GOOGLE_OIDC',
+				method: 'GOOGLE_MAILBOX',
 				proofRef: randomUUID()
 			}
 		});

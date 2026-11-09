@@ -24,6 +24,7 @@ const reasons = [
 	'SCHEMA_NOT_READY',
 	'DATABASE_UNAVAILABLE',
 	'CHANNEL_CONFLICT',
+	'CHANNEL_ALREADY_VERIFIED',
 	'UNEXPECTED_FAILURE'
 ] as const;
 type Reason = (typeof reasons)[number];
@@ -81,6 +82,8 @@ export function channelFailureMessage(reason: Reason) {
 			return 'Verification is not enabled for this DEV configuration.';
 		case 'ACCOUNT_INACTIVE':
 			return 'Verification requires an active admitted DEV test account.';
+		case 'CHANNEL_ALREADY_VERIFIED':
+			return 'These details are already verified on another Relish account. If that account is yours, sign in there and choose Revoke verification in Phone and email settings, then try again here.';
 		case 'SESSION_INVALID':
 			return 'Please sign in again before verifying your details.';
 		default:

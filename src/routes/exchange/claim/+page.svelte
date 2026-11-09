@@ -24,11 +24,6 @@
 			This exchange has expired or is unavailable. You can share your details again.
 		</p>
 		<a href="/profiles">My Profiles</a>
-	{:else if !data.signedIn}<p>
-			Create an account or sign in to verify the contact details you shared.
-		</p>
-		<a href="/auth/register?next=%2Fexchange%2Fclaim">Create my Relish account</a>
-		<p><a href="/auth/login?next=%2Fexchange%2Fclaim">Sign in</a></p>
 	{:else if !data.ready}<p>
 			Account verification is unavailable for this account. You can continue to your profile.
 		</p>
@@ -44,13 +39,17 @@
 			</form>
 		{:else if data.accountClaim}
 			{@const channel = data.accountClaim.channel}
-			<p>Confirm the {channel.type === 'PHONE' ? 'mobile number' : 'email address'} you shared to verify your account.</p>
+			<p>{channel.step === 'LOGIN_EMAIL'
+				? 'Verify your sign-in email to confirm your Relish account.'
+				: channel.type === 'PHONE'
+					? 'Verify the mobile number you shared to confirm the exchange.'
+					: 'Verify the email address you shared to confirm the exchange.'}</p>
 			<p>{channel.masked}</p>
 
 			{#if channel.available}
 				<form method="POST">
 					<input type="hidden" name="intent" value={data.codeRequested ? 'resend' : 'send'} />
-					<input type="hidden" name="channelType" value={channel.type} />
+					<input type="hidden" name="channelType" value={channel.step} />
 					<button class:later={data.codeRequested}>
 						{data.codeRequested ? 'Request a new code' : 'Send verification code'}
 					</button>
@@ -68,7 +67,7 @@
 					<input name="code" inputmode="numeric" autocomplete="one-time-code"
 						pattern={'[0-9]{6}'} maxlength="6" required />
 				</label>
-				<button>Verify my account</button>
+				<button>{data.accountClaim?.channel.step === 'LOGIN_EMAIL' ? 'Verify my email' : 'Verify code'}</button>
 			</form>
 		{/if}
 		{#if form?.error}<p role="alert">{form.error}</p>{/if}
@@ -108,7 +107,7 @@
 				/><button>Verify my account</button>
 			</form>{/if}
 	{/if}
-	{#if data.version !== 2}
+	{#if data.version !== 2 || (data.accountClaim && data.accountClaim.channel.step !== 'LOGIN_EMAIL' && !data.accountClaim.canComplete && !data.accountClaim.settled && !form?.completed)}
 		<form method="POST">
 			<input type="hidden" name="intent" value="later" /><button class="later">Continue later</button>
 		</form>

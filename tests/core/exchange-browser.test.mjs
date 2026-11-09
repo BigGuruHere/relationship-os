@@ -24,11 +24,11 @@ const vite = await createServer({
 			},
 			load(id) {
 				if (id === '\0capture') return `export async function publishedCaptureProfile(){return {id:'target',userId:'mark',slug:'mark',displayName:'Mark'};} export async function capturePrivateContact(){throw Error('unexpected guest capture');}`;
-                if(id==='\0channels') return `export async function listAccountChannels(){return [{id:'phone',type:'PHONE',masked:'•••• 0000',status:globalThis.channelVerified?'VERIFIED':'PENDING'}];} export async function addAccountChannel(){return 'phone';} export async function requestAccountChannelCode(){return {status:'QUEUED',challengeId:'account-challenge'};} export async function dispatchAccountChannelCode(){return 'SENT';} export async function verifyAccountChannelCode(...a){globalThis.accountVerifyArgs=a;globalThis.channelVerified=true;return 'VERIFIED';} export async function revokeAccountChannel(){} export async function eraseRevokedAccountChannel(){}`;
+                if(id==='\0channels') return `export async function listAccountChannels(){return [{id:'phone',type:'PHONE',masked:'•••• 0000',status:globalThis.channelVerified?'VERIFIED':'PENDING'}];} export async function addAccountChannel(){return 'phone';} export async function requestAccountChannelCode(){return {status:'QUEUED',challengeId:'account-challenge'};} export async function dispatchAccountChannelCode(){return 'SENT';} export async function verifyAccountChannelCode(...a){globalThis.accountVerifyArgs=a;if(globalThis.accountVerifyFailure)throw globalThis.accountVerifyFailure;globalThis.channelVerified=true;return 'VERIFIED';} export async function revokeAccountChannel(){} export async function eraseRevokedAccountChannel(){}`;
                 if (id === '\0gate') return `export function exchangeBrowserEnabled(){return true;}`;
 				if (id === '\0domain') return `export async function accountDomain(){return 'ACTIVE';}`;
 				if (id === '\0claims')
-					return `export async function accountClaimState(){return {canComplete:true,settled:Boolean(globalThis.guestCompleted),channel:{type:'PHONE',available:true,masked:'•••• 0000'}};} export async function prepareAccountClaim(){return 'phone';} export async function completeAccountClaim(){globalThis.guestCompleted=true;return {status:'SETTLED',personId:'private-person'};} export async function ownedExchangeChoices(){return [];} export async function confirmOwnedProfileExchange(...a){globalThis.ownedArgs=a;} export async function requestExchangeCode(...a){globalThis.claimArgs=a;if(globalThis.claimFailure)throw globalThis.claimFailure;return {status:'QUEUED',challengeId:'challenge'};} export async function dispatchExchangeCode(){return {status:'SENT'};} export async function verifyExchangeCode(...a){globalThis.verifyArgs=a;return {status:'SETTLED',personId:'private-person'};}`;
+					return `export async function accountClaimState(){return {canComplete:true,settled:Boolean(globalThis.guestCompleted),channel:{type:'PHONE',step:'PHONE',available:true,masked:'•••• 0000'}};} export async function prepareAccountClaim(){return 'phone';} export async function completeAccountClaim(){globalThis.guestCompleted=true;return {status:'SETTLED',personId:'private-person'};} export async function ownedExchangeChoices(){return [];} export async function confirmOwnedProfileExchange(...a){globalThis.ownedArgs=a;} export async function requestExchangeCode(...a){globalThis.claimArgs=a;if(globalThis.claimFailure)throw globalThis.claimFailure;return {status:'QUEUED',challengeId:'challenge'};} export async function dispatchExchangeCode(){return {status:'SENT'};} export async function verifyExchangeCode(...a){globalThis.verifyArgs=a;return {status:'SETTLED',personId:'private-person'};}`;
 			}
 		}
 	]
@@ -78,6 +78,37 @@ try {
       assert.equal(sent.challengeId,'account-challenge');
       const checked=await settings.actions.default(event(c,{intent:'verify',channelId:'phone',challengeId:sent.challengeId,code:'005321'}));
       assert.equal(checked.message,'Channel verified.');assert.equal(globalThis.accountVerifyArgs[2],'005321');
+    });
+    await test('signed-out claim URLs go directly to registration and preserve the continuation', async () => {
+      const c = cookies();
+      const url = new URL('https://dev.relish.live/exchange/claim');
+      flow.saveExchange(c, url, 'a'.repeat(64), 'profile', 2);
+      await assert.rejects(page.load({ ...event(c, {}), locals: {} }),
+        failure => failure.status === 303 && failure.location === '/auth/register?next=%2Fexchange%2Fclaim');
+      assert.equal(flow.readExchange(c).token, 'a'.repeat(64));
+    });
+    await test('guest verification reports a competing channel without settling the exchange', async () => {
+      const { ChannelDenied } = await vite.ssrLoadModule('/src/lib/server/foundation/channelDiagnostics.ts');
+      const c = cookies();
+      const url = new URL('https://dev.relish.live/exchange/claim');
+      flow.saveExchange(c, url, 'a'.repeat(64), 'profile', 2);
+      flow.bindExchangeChallenge(c, url, flow.readExchange(c), 'challenge', 'betty', 'session', 'PHONE');
+      globalThis.accountVerifyFailure = new ChannelDenied('CHANNEL_ALREADY_VERIFIED');
+      globalThis.guestCompleted = false;
+      const logs = [];
+      const original = console.error;
+      try {
+        console.error = message => logs.push(message);
+        const result = await page.actions.default(event(c, { intent: 'verify', code: '005321' }));
+        assert.equal(result.status, 409);
+        assert.match(result.data.error, /already verified on another Relish account/);
+        assert.equal(globalThis.guestCompleted, false);
+        assert.equal(JSON.parse(logs[0]).reason, 'CHANNEL_ALREADY_VERIFIED');
+        assert.doesNotMatch(logs[0], /005321|betty/);
+      } finally {
+        console.error = original;
+        delete globalThis.accountVerifyFailure;
+      }
     });
     await test('v2 retained-assurance confirmation saves without a code and keeps other verification separate',async()=>{
       const c=cookies();flow.saveExchange(c,new URL('https://dev.relish.live'),'a'.repeat(64),'profile',2);

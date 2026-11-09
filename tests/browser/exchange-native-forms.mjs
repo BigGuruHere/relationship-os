@@ -24,11 +24,11 @@ const vite = await createServer({
 				if (id.endsWith('/foundation/provisioning')) return '\0domain';
 			},
 			load(id) {
-				if(id==='\0channels') return `export async function listAccountChannels(){return [{id:'phone',type:'PHONE',masked:'•••• 0000',status:globalThis.channelVerified?'VERIFIED':'PENDING'}];} export async function addAccountChannel(){return 'phone';} export async function requestAccountChannelCode(){return {status:'QUEUED',challengeId:'account-challenge'};} export async function dispatchAccountChannelCode(){return 'SENT';} export async function verifyAccountChannelCode(...a){globalThis.accountVerifyArgs=a;globalThis.channelVerified=true;return 'VERIFIED';} export async function revokeAccountChannel(){} export async function eraseRevokedAccountChannel(){}`;
+				if(id==='\0channels') return `export async function listAccountChannels(){return [{id:'phone',type:'PHONE',masked:'•••• 0000',status:globalThis.channelVerified?'VERIFIED':'PENDING'}];} export async function addAccountChannel(){return 'phone';} export async function requestAccountChannelCode(){return {status:'QUEUED',challengeId:'account-challenge'};} export async function dispatchAccountChannelCode(){return 'SENT';} export async function verifyAccountChannelCode(...a){globalThis.accountVerifyArgs=a;globalThis.channelVerified=true;if(globalThis.guestNeedsProof)globalThis.guestNeedsProof=false;return 'VERIFIED';} export async function revokeAccountChannel(){} export async function eraseRevokedAccountChannel(){}`;
                 if (id === '\0gate') return `export function exchangeBrowserEnabled(){return true;}`;
 				if (id === '\0domain') return `export async function accountDomain(){return 'ACTIVE';}`;
 				if (id === '\0claims')
-					return `export async function accountClaimState(){return {canComplete:!globalThis.guestNeedsProof,settled:Boolean(globalThis.guestCompleted),channel:{type:'PHONE',available:true,masked:'•••• 0000'}};} export async function prepareAccountClaim(){return 'phone';} export async function completeAccountClaim(){globalThis.guestCompleted=true;return {status:'SETTLED',personId:'private-person'};} export async function requestExchangeCode(...a){globalThis.claimArgs=a;return {status:'QUEUED',challengeId:'challenge'};} export async function dispatchExchangeCode(){return {status:'SENT'};} export async function verifyExchangeCode(...a){globalThis.verifyArgs=a;return {status:'SETTLED',personId:'private-person'};}`;
+					return `export async function accountClaimState(){return {canComplete:!globalThis.guestNeedsProof,settled:Boolean(globalThis.guestCompleted),channel:{type:'EMAIL',step:'LOGIN_EMAIL',available:true,masked:'g•••@example.test'}};} export async function prepareAccountClaim(){return 'phone';} export async function completeAccountClaim(){globalThis.guestCompleted=true;return {status:'SETTLED',personId:'private-person'};} export async function requestExchangeCode(...a){globalThis.claimArgs=a;return {status:'QUEUED',challengeId:'challenge'};} export async function dispatchExchangeCode(){return {status:'SENT'};} export async function verifyExchangeCode(...a){globalThis.verifyArgs=a;return {status:'SETTLED',personId:'private-person'};}`;
 			}
 		}
 	]
@@ -246,16 +246,16 @@ try {
     await tab.goto(base);
     await tab.getByRole('button',{name:'Continue',exact:true}).click();
     await tab.getByRole('status').filter({hasText:'Your account details are verified.'}).waitFor();
-    // A guest with both channels sees only the required mobile verification task.
+    // A guest with both channels sees the sign-in email check first.
     globalThis.guestNeedsProof = true;
     globalThis.guestCompleted = false;
     flow.saveExchange(c,new URL('https://dev.relish.live'),'c'.repeat(64),'profile',2);
     await tab.goto(base);
     await tab.getByRole('heading',{name:'Verify your account'}).waitFor();
-    assert.deepEqual(await tab.locator('input[name="channelType"]').evaluateAll(inputs => inputs.map(input => input.value)), ['PHONE']);
+    assert.deepEqual(await tab.locator('input[name="channelType"]').evaluateAll(inputs => inputs.map(input => input.value)), ['LOGIN_EMAIL']);
     await tab.getByRole('button',{name:'Send verification code',exact:true}).click();
     await tab.getByLabel('Verification code',{exact:true}).fill('005321');
-    await tab.getByRole('button',{name:'Verify my account',exact:true}).click();
+    await tab.getByRole('button',{name:'Verify my email',exact:true}).click();
     await tab.getByRole('status').filter({hasText:'Your account details are verified.'}).waitFor();
     assert.equal(globalThis.accountVerifyArgs[2],'005321');
 

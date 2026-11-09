@@ -42,7 +42,8 @@ export function devPilotEnabled(locals: Pick<App.Locals, 'env'>, requestOrigin: 
 	}
 }
 
-// Browser activation is an explicit DEV-only operator choice, separate from creating a test login.
+// Reciprocal exchange and verification delivery are still in DEV acceptance.
+// This gate controls those features only. Ordinary signup and private capture work without it.
 export function exchangeBrowserEnabled(locals: Pick<App.Locals, 'env'>, origin: string) {
 	return (
 		process.env.RELISH_EXCHANGE_BROWSER_ENABLED === 'YES' &&

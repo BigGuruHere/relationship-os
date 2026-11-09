@@ -1,8 +1,18 @@
 # Relish: Decision Log
 
-Status: living record of product and architecture choices. Updated 2026-11-03. Links point to detailed earlier rationale where available.
+Status: living record of product and architecture choices. Updated 2026-11-09. Links point to detailed earlier rationale where available.
 
 These entries preserve **why**, not every implementation detail. If a decision is reconsidered, add a dated supersession note instead of deleting the earlier record. An implemented feature can lag an agreed direction.
+
+## D-029 Ordinary onboarding and an incremental production launch
+
+Accepted 2026-11-08. Establish the actual production app for ordinary new users with a small, complete feature set, then add features in stages. Develop and verify in DEV before promoting the same code. Product onboarding must not depend on generated test accounts, invitation cohorts, signup-email allowlists or a separate sandbox for selected users. Automated fixtures and isolated development databases remain engineering tools, not the onboarding mechanism.
+
+This supersedes the invited-pilot rollout sequence in D-023 and the earlier operator decision to defer production. Custody, consent, identity assurance, abuse prevention, legacy compatibility and recovery requirements remain. Normal new-user activation does not authorize automatic migration of existing legacy accounts or Contacts.
+
+Adapt existing registration/Google signup, foundation provisioning and DEV-only capability gates into ordinary onboarding with private defaults and explicit profile publication. Reuse People, QR capture and private notes. The recommended initial scope is in [the roadmap](ROADMAP.md#next-delivery-production-base) and [production-base backlog](foundation/IMPLEMENTATION_PLAN.md#production-base-backlog-d-029). Configure feature availability per environment without granting private-data authority. Unfinished features can remain disabled while development continues.
+
+Implementation is recorded on `feature/production-base-onboarding`. New accounts are enrolled in the private domain by normal signup; existing accounts stay in their current domains. Reciprocal exchange and advanced voice experiences remain outside the initial Foundation release. The core branch and the separately approved promotion gates are tracked in [Current State](CURRENT_STATE.md). Earlier stage notes retain historical evidence.
 
 | ID | Decision | Status and rationale |
 | --- | --- | --- |

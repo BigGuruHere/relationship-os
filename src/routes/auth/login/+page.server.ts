@@ -13,6 +13,7 @@ import { fail, redirect } from '@sveltejs/kit';
 import { prisma } from '$lib/db';
 import { verifyPassword, createSession, setSessionCookie } from '$lib/auth';
 import { linkLeadsForUser } from '$lib/leads/link';
+import { accountDomain } from '$lib/server/foundation/provisioning';
 import { consumePasswordLoginAttempt, clearSuccessfulLoginAccountBucket } from '$lib/server/loginThrottle';
 
 // IT - encrypted email helpers
@@ -70,8 +71,11 @@ export const actions: Actions = {
     // Repair old partial registrations without blocking an otherwise valid login.
     // New registrations create the profile atomically, so this is a legacy recovery path.
     try {
-      await ensureDefaultProfile(user.id, { displayName: emailInput.split('@')[0],
-        ...((next === PROFILE_ONBOARDING_RETURN || next === EXCHANGE_RETURN) ? { isPublished: false } : {}) });
+      const privateDefault = next === PROFILE_ONBOARDING_RETURN || next === EXCHANGE_RETURN ||
+        await accountDomain(user.id) !== 'LEGACY';
+      await ensureDefaultProfile(user.id, privateDefault
+        ? { isPublished: false }
+        : { displayName: emailInput.split('@')[0] });
     } catch (e) {
       console.warn('Could not provision missing default profile after login:', e);
     }

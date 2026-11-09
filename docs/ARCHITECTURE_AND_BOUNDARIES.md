@@ -12,6 +12,14 @@ Status: living technical overview. Checked against the RelationshipOS `developme
 
 The current implementation shares Core primitives across application experiences. The accepted target now separates the new Relish domain from legacy Brokerage persistence where semantics conflict, while retaining useful infrastructure. This is a planned transition, not an implemented split.
 
+## Ordinary signup boundary
+
+On `feature/production-base-onboarding`, password and Google registration commit the User, unpublished Profile, ACTIVE FoundationEnrollment, private Vault and encrypted self Subject together. Google signup also commits the stable provider subject in that transaction. The shared session issuer validates existing roots; sign-in does not enroll or reactivate an account. Password signup records a credential email without channel assurance. A Google callback cannot use an email match alone to sign into an enrolled account.
+
+My People, capture and notes continue to select their writer from enrollment and enforce vault, lifecycle, consent and provenance checks. Prepared accounts retain legacy public profile behavior. Active and suspended Foundation accounts cannot fall through to the old public lead or Network writer. Legacy Brokerage remains a separate workflow using existing ContextSpace and capability checks. The legacy default ContextSpace database trigger is retained for compatibility.
+
+Core signup, publication and private capture work independently of DEV test setup. Reciprocal exchange and channel delivery still use their explicit DEV guard and provider protections. The standard public card omits pilot tracking and Dorian initiation for Foundation accounts. The [production-base backlog](foundation/IMPLEMENTATION_PLAN.md#production-base-backlog-d-029) records the release evidence and remaining boundaries.
+
 ## Accepted target and transition
 
 The [foundation architecture](foundation/ARCHITECTURE.md), [policy contract](foundation/POLICY_AND_PROVENANCE.md) and [decisions D-019 through D-023](foundation/DECISIONS.md) define the new direction. People, relationships and groups are understanding subjects; perspective is independent. Contextual meaning, custody and permissions are separate. New persistence may replace Contact-bound understanding through additive migrations and one authoritative writer per enrolled cohort/capability.
@@ -88,7 +96,7 @@ Auth accepts the existing strict Network invite paths plus exactly `/settings/pr
 
 ## F-203 provisioning boundary (merged, DEV operator-confirmed)
 
-See [account provisioning isolation](foundation/F203_PROVISIONING.md) for transaction locks, enrollment-state behavior and acceptance evidence. All auth paths reuse `createSession`; no automatic enrollment is enabled. Future enrollment transitions must use the same account advisory lock. PREPARED suppresses automatic legacy claims while retaining legacy public routing. ACTIVE/SUSPENDED private routes fail closed until the foundation adapters are available. F-204 must add repository authorization and transactional state/epoch checks before activation.
+See [account provisioning isolation](foundation/F203_PROVISIONING.md) for transaction locks, enrollment-state behavior and acceptance evidence. All auth paths reuse `createSession`. F-203 introduced session-time validation without automatic enrollment; D-029 adds enrollment only inside ordinary signup. Future enrollment transitions must use the same account advisory lock. PREPARED suppresses automatic legacy claims while retaining legacy public routing. ACTIVE/SUSPENDED private routes fail closed until the foundation adapters are available. F-204 must add repository authorization and transactional state/epoch checks before activation.
 
 ## F-204 owner access boundary (merged, 2026-11-05)
 

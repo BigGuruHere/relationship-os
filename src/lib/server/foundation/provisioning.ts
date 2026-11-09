@@ -1,10 +1,10 @@
 // F-203: shared account identity stays separate from private-domain provisioning.
-// No route, cookie, redirect or automatic signup policy creates an enrollment here.
+// Only the new-account transaction or the internal DEV fixture tool activates a fresh account.
 import { randomUUID } from 'node:crypto';
 import type { AppTransactionClient } from '$lib/db';
 import { prisma } from '$lib/db';
 import { encrypt } from '$lib/crypto';
-import { devPilotEnabled, exchangeBrowserEnabled, DEV_PILOT_ID_PREFIX } from './devPilotGate';
+import { devPilotEnabled, DEV_PILOT_ID_PREFIX } from './devPilotGate';
 import { encryptedUserEmailFields } from '$lib/server/userEmail';
 import { defaultProfileData } from '$lib/server/profiles';
 import { error } from '@sveltejs/kit';
@@ -23,6 +23,12 @@ export async function accountDomain(
 		})
 	);
 	return row?.state ?? 'LEGACY';
+}
+
+// PREPARED accounts still use the legacy public routes until their writer handoff.
+export async function usesLegacyProfileServices(userId: string) {
+	const domain = await accountDomain(userId);
+	return domain === 'LEGACY' || domain === 'PREPARED';
 }
 
 // Serialize preparation and automatic claims, including the first enrollment insert.
@@ -128,14 +134,7 @@ export async function createDevPilotAccount(
 				},
 				select: { id: true }
 			});
-			await runFoundationBoundary({ ownerUserId: id, mode: 'PROVISION' }, async () => {
-				await lockFoundationAccount(tx, id);
-				await provisionPrivateHome(tx, id);
-				await tx.foundationEnrollment.create({
-					data: { userId: id, state: 'ACTIVE' },
-					select: { userId: true }
-				});
-			});
+			await provisionNewFoundationAccount(tx, id);
 			return { email };
 		},
 		{ isolationLevel: 'ReadCommitted', timeout: 15000 }
@@ -197,8 +196,8 @@ export async function withLegacyAccountClaims<T>(
 	);
 }
 
-// Legacy adapters must reject ACTIVE/SUSPENDED owners. P-301 dispatches eligible
-// directory routes separately; capture and notes remain gated until their adapters ship.
+// Legacy People adapters must reject ACTIVE/SUSPENDED owners. The shipped directory,
+// capture and notes select their Foundation services independently.
 export async function requireLegacyPeopleDomain(
 	userId: string,
 	transaction?: AppTransactionClient
@@ -212,24 +211,11 @@ export async function requireLegacyPeopleDomain(
 	}
 }
 
-// New-account-only DEV admission. A claim cookie alone cannot enroll an account.
-// The operator must explicitly configure at most two credential emails on the bound DEV target.
-export async function admitDevExchangeSignup(
-	tx: AppTransactionClient,
-	locals: Pick<App.Locals, 'env'>,
-	origin: string,
-	email: string,
-	userId: string
-) {
-	if (!exchangeBrowserEnabled(locals, origin)) return;
-	const allowed = (process.env.RELISH_EXCHANGE_SIGNUP_EMAILS ?? '')
-		.split(',')
-		.map((x) => x.trim().toLowerCase())
-		.filter(Boolean);
-	if (!allowed.length || allowed.length > 2 || !allowed.includes(email.toLowerCase())) return;
+// Call only inside the transaction that inserts this new User. A pre-existing
+// enrollment cannot be replaced, and any failure rolls back the whole signup.
+export async function provisionNewFoundationAccount(tx: AppTransactionClient, userId: string) {
 	await runFoundationBoundary({ ownerUserId: userId, mode: 'PROVISION' }, async () => {
 		await lockFoundationAccount(tx, userId);
-		// Called only inside the transaction that inserts this new credential account.
 		await provisionPrivateHome(tx, userId);
 		await tx.foundationEnrollment.create({ data: { userId, state: 'ACTIVE' } });
 	});

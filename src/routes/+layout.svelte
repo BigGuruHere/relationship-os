@@ -17,8 +17,8 @@
   $: isHome = path === '/';
   $: isPeople = path === '/people' || path.startsWith('/people/');
   // IT: Profiles and Share operate on user-owned profiles, not ContextSpace selection.
-  $: isProfileManagement = path === '/profiles' || path === '/share' || path === '/settings/profile';
-  $: isNeutralNavigation = isHome || isPeople || isProfileManagement;
+  $: isProfileManagement = path === '/profiles' || path === '/share' || path === '/settings/profile' || path.startsWith('/share/');
+  $: isNeutralNavigation = isHome || isPeople || isProfileManagement || spaces.length === 0;
   $: isPublic = path.startsWith('/u/') || path.startsWith('/pilot/dorian/') || path.startsWith('/network/join/') || path === '/legal' || path.startsWith('/legal/');
   $: isBroker = ['/broker', '/leads', '/deals', '/companies', '/agents', '/workstreams', '/contacts', '/wants', '/offers', '/introductions', '/projects', '/tasks', '/actions', '/search'].some(prefix => path === prefix || path.startsWith(prefix + '/'));
   $: isOperator = path === '/operator' || path.startsWith('/operator/') || path === '/general' || path.startsWith('/general/');
@@ -87,6 +87,7 @@
           <div class="relish-more-menu">
             <a href="/people" on:click={closeMoreMenu}>My People</a>
             <a href="/" on:click={closeMoreMenu}>Relish home</a>
+            <a href="/legal/privacy" on:click={closeMoreMenu}>Privacy and support</a>
             {#if data.capabilities?.includes('BROKER')}<a href="/broker" on:click={closeMoreMenu}>Business broker</a>{/if}
             {#if data.capabilities?.includes('OPERATOR')}<a href="/operator" on:click={closeMoreMenu}>Operator tools</a>{/if}
             {#if data.accountRole === 'owner'}<a href="/event-signups" on:click={closeMoreMenu}>Event testers</a>{/if}
@@ -102,9 +103,9 @@
     {#if data.user}
       <aside class="relish-sidebar" aria-label="Application navigation">
         {#if specialist}<a class="relish-nav-item" href="/people">My People</a>{/if}
-        <div class="relish-sidebar-title">{isHome ? 'Relish' : isPeople ? 'My People' : specialist === 'broker' ? 'Business broker' : specialist === 'operator' ? 'Operator tools' : activeSpace.label}</div>
+        <div class="relish-sidebar-title">{isPeople ? 'My People' : specialist === 'broker' ? 'Business broker' : specialist === 'operator' ? 'Operator tools' : isNeutralNavigation ? 'Relish' : activeSpace.label}</div>
         {#if specialist}
-          <a class="relish-nav-item" href={activeBase}>← Back to Relish</a>
+          <a class="relish-nav-item" href={isNeutralNavigation ? '/' : activeBase}>← Back to Relish</a>
           {#if specialist === 'broker'}<a class:current={path === '/broker'} class="relish-nav-item" href="/broker">Broker workspace</a>{/if}
           {#if specialist === 'operator'}<a class:current={path === '/operator'} class="relish-nav-item" href="/operator">Operator tools</a>{/if}
         {:else}

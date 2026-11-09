@@ -50,6 +50,11 @@ export async function consumePasswordLoginAttempt(ip: string, email: string): Pr
   return ipAllowed && emailAllowed;
 }
 
+export async function consumePasswordSignupAttempt(ip: string): Promise<boolean> {
+  // Keep signup abuse from exhausting the separate login budget for this IP.
+  return consumeBucket('ip', loginThrottleKey('ip', 'signup:' + ip, throttleSecret()), 10);
+}
+
 export async function clearSuccessfulLoginAccountBucket(email: string): Promise<void> {
   // A successful login clears only the account budget, never the IP budget.
   // This avoids penalizing the account after the owner successfully authenticates.

@@ -24,7 +24,7 @@
   $: isFirstContact = prof.isPublished && !data?.isOwner && !editing;
   // Visibility is counted after browser render, not on server prefetch. No identity tracking on landing.
   onMount(() => {
-    if (!data?.profile?.isPublished || !isPilotKind || data?.isOwner) return;
+    if (!data?.legacyProfile || !data?.profile?.isPublished || !isPilotKind || data?.isOwner) return;
     void fetch('/api/pilot/visit', { method: 'POST', headers: { 'Content-Type': 'application/json' },
       credentials: 'same-origin', body: JSON.stringify({ slug: prof.slug,
         via: new URLSearchParams(window.location.search).get('via') }) }).catch(() => {});
@@ -161,7 +161,6 @@
     {/each}
     <!-- IT: One action starts the vCard download and continues to optional detail sharing. -->
     <a class="fc-primary" href={vcardUrl} download on:click|preventDefault={saveThenShare}>Save contact</a>
-    {#if data.canExchangeProfile}<a class="fc-primary" href={captureUrl}>Share my details back</a>{/if}
   </section>
   <p class="fc-footer">Relish helps people develop and enrich their relationships. A scan or call does not share your private understanding with someone else.</p>
 </main>

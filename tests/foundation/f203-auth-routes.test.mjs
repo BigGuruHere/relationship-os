@@ -12,11 +12,11 @@ let state;
 globalThis.__f203routes = {};
 const mocks = {
 	db: `export const prisma = new Proxy({}, {get:(_,k)=>k==='$transaction'?async fn=>fn(globalThis.__f203routes.db):globalThis.__f203routes.db[k]});`,
-	'server/foundation/provisioning': `export async function admitDevExchangeSignup(){throw Error('Unexpected DEV admission');} export async function provisionAccountForSession(id){globalThis.__f203routes.calls.push('provision:'+id); if(globalThis.__f203routes.fail) throw Error('provisioning failed');}`,
+	'server/foundation/provisioning': `export async function accountDomain(){return 'LEGACY';} export async function provisionNewFoundationAccount(_tx,id){globalThis.__f203routes.calls.push('activate:'+id);} export async function provisionAccountForSession(id){globalThis.__f203routes.calls.push('provision:'+id); if(globalThis.__f203routes.fail) throw Error('provisioning failed');}`,
 	'leads/link': `export async function linkLeadsForUser(id){globalThis.__f203routes.calls.push('claim:'+id);} export const linkLeadsForUserFlexible=linkLeadsForUser;`,
 	'server/userEmail': `export async function findUserByEmail(){return globalThis.__f203routes.register?null:{id:'account',passwordHash:globalThis.__f203routes.hash};} export const decryptUserEmail=()=> 'test@example.test'; export const encryptedUserEmailFields=()=>({}); export async function setUserEmail(){}`,
-	'server/profiles': `export async function ensureDefaultProfile(){}`,
-	'server/loginThrottle': `export async function consumePasswordLoginAttempt(){return true;} export async function clearSuccessfulLoginAccountBucket(){}`,
+	'server/profiles': `export async function ensureDefaultProfile(){} export function defaultProfileData(seed){return seed;}`,
+	'server/loginThrottle': `export async function consumePasswordSignupAttempt(){return true;} export async function consumePasswordLoginAttempt(){return true;} export async function clearSuccessfulLoginAccountBucket(){}`,
 	'server/tokens': `export async function verifyMagicToken(){if(globalThis.__f203routes.invalid) throw Error('invalid'); return {id:'token',userId:'account'};} export async function markMagicTokenUsed(){globalThis.__f203routes.calls.push('consume');}`
 };
 const vite = await createServer({
@@ -59,7 +59,7 @@ try {
 			hash,
 			db: {
 				user: {
-					create: async () => ({ id: 'account' }),
+					create: async () => ({ id: 'account', profiles: [{ id: 'card' }] }),
 					findUnique: async () => ({ id: 'account', email_Enc: 'enc', email_Idx: 'idx' }),
 					findFirst: async () => ({ id: 'account' })
 				},
@@ -69,7 +69,7 @@ try {
 						return { id: 'session' };
 					}
 				},
-				oAuthAccount: { findFirst: async () => null, create: async () => ({}) }
+				oAuthAccount: { upsert: async () => ({userId:'account'}), update: async () => ({}) }
 			}
 		};
 		globalThis.__f203routes = state;
@@ -119,7 +119,9 @@ try {
 				}
 				assert.deepEqual(
 					state.calls.filter((c) => c !== 'consume'),
-					['provision:account', 'session', 'cookie', 'claim:account']
+					name === 'register'
+						? ['activate:account', 'provision:account', 'session', 'cookie']
+						: ['provision:account', 'session', 'cookie', 'claim:account']
 				);
 			}
 		);
@@ -130,7 +132,7 @@ try {
 			await assert.rejects(run(event(name)), /provisioning failed/);
 			assert.deepEqual(
 				state.calls.filter((c) => c !== 'consume'),
-				['provision:account']
+				name === 'register' ? ['activate:account', 'provision:account'] : ['provision:account']
 			);
 		});
 	}

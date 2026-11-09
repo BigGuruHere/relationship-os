@@ -1,6 +1,7 @@
 // Fixed operational classifications only. Never attach private identifiers or raw errors.
 import { randomUUID } from 'node:crypto';
 import { FoundationDenied } from './internal';
+import { ChannelDenied } from './channelDiagnostics';
 import { captureFailureMetadata } from '$lib/server/core/contactCaptureDiagnostics';
 const reasons = [
 	'SESSION_INVALID',
@@ -30,13 +31,14 @@ export class ExchangeDenied extends FoundationDenied {
 	}
 }
 export function reportExchangeFailure(
-	operation: 'request' | 'dispatch' | 'verify',
+	operation: 'request' | 'dispatch' | 'verify' | 'settle',
 	failure: unknown
 ) {
 	const reference = randomUUID();
 	// Validate again at the logging boundary. Provider/SQL messages and arbitrary properties are excluded.
 	const reason =
-		failure instanceof ExchangeDenied && reasons.includes(failure.reason)
+		(failure instanceof ExchangeDenied && reasons.includes(failure.reason)) ||
+		(failure instanceof ChannelDenied && failure.reason === 'CHANNEL_ALREADY_VERIFIED')
 			? failure.reason
 			: failure instanceof FoundationDenied
 				? 'ACCESS_DENIED'

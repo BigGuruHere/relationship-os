@@ -1,3 +1,4 @@
+import { ChannelDenied, channelFailureMessage } from '$lib/server/foundation/channelDiagnostics';
 import { requestAccountChannelCode,dispatchAccountChannelCode,verifyAccountChannelCode } from '$lib/server/foundation/accountChannels';
 import { profileExchangeReturn, clearProfileExchangeReturn } from '$lib/server/profileExchangeReturn';
 import { reportExchangeFailure, ExchangeDenied } from '$lib/server/foundation/exchangeDiagnostics';
@@ -29,13 +30,16 @@ export const load: PageServerLoad = async ({ locals, cookies, setHeaders, url })
 	const profileReturn = locals.user && exchangeBrowserEnabled(locals,url.origin) ? profileExchangeReturn(cookies,'visitor') : null;
 	if(profileReturn){ clearProfileExchangeReturn(cookies); throw redirect(303,profileReturn); }
 	const claim = readExchange(cookies);
+	const enabled = exchangeBrowserEnabled(locals, url.origin);
+	// Old links can still arrive here, but signed-out guests use the existing registration screen.
+	if (claim && enabled && !locals.user)
+		throw redirect(303, '/auth/register?next=' + encodeURIComponent(EXCHANGE_RETURN));
     let accountClaim=null;
-    if(claim?.version===2 && locals.user && exchangeBrowserEnabled(locals,url.origin)) {
+    if(claim?.version===2 && locals.user && enabled) {
       try{accountClaim=await accountClaimState(locals,claim.token);}catch{/* Keep pending account proof usable even if the source was withdrawn. */}
     }
 	return {version:claim?.version || 1,accountClaim,
-		available: Boolean(claim && exchangeBrowserEnabled(locals, url.origin)),
-		signedIn: Boolean(locals.user),
+		available: Boolean(claim && enabled),
 		ready: Boolean(locals.user && (await accountDomain(locals.user.id)) === 'ACTIVE'),
 		codeRequested: Boolean(
 			claim?.challengeId &&
@@ -68,19 +72,22 @@ export const actions: Actions = {
 				error: 'This exchange has expired. Share your details again to continue.'
 			});
         if(claim.version===2){
+          const intent = form.get('intent');
+          let operation: 'request' | 'dispatch' | 'verify' | 'settle' =
+            intent === 'complete' ? 'settle' : intent === 'verify' ? 'verify' : 'request';
           try{
-            const intent=form.get('intent');
             if(intent==='complete'){await completeAccountClaim(locals,claim.token);return {completed:true};}
             if(intent==='send' || intent==='resend'){
               const type=form.get('channelType') || '';
               const channelId=await prepareAccountClaim(locals,claim.token,type);
               const requestId=intent==='send' && claim.channelType===type && claim.sessionId===locals.sessionId && claim.challengeId ? claim.challengeId:randomUUID();
               const issued=await requestAccountChannelCode(locals,channelId,requestId,getClientAddress());
-              if(issued.status==='VERIFIED'){await completeAccountClaim(locals,claim.token);return {completed:true};}
+              if(issued.status==='VERIFIED'){operation='settle';await completeAccountClaim(locals,claim.token);return {completed:true};}
               if(issued.status==='LIMITED') return fail(429,{error:'Please wait before requesting another code.'});
               bindExchangeChallenge(cookies,url,claim,issued.challengeId,locals.user.id,locals.sessionId,type);
+              operation = 'dispatch';
               const delivery=await dispatchAccountChannelCode(locals,issued.challengeId);
-              return delivery==='SENT'?{sent:true}:fail(503,{error:'Delivery failed. You can retry or continue later.'});
+              return delivery==='SENT'?{sent:true}:fail(503,{error:'Delivery failed. Please request a new code.'});
             }
             if(intent!=='verify' || !claim.challengeId || claim.accountId!==locals.user.id || claim.sessionId!==locals.sessionId)
               return fail(400,{error:'Request a code from this session first.'});
@@ -88,8 +95,14 @@ export const actions: Actions = {
             if(result!=='VERIFIED') return fail(400,{error:result==='LIMITED'?'Please wait before trying again.':'That code did not match. Please try again.'});
             // Proof commits first. Withdrawal/archiving can block settlement without losing channel assurance.
             try{await completeAccountClaim(locals,claim.token);return {completed:true};}
-            catch{return fail(409,{verified:true,error:'Your account details are verified. We couldn’t finish this step. Please try again.'});}
-          }catch(e){return fail(400,{reference:reportExchangeFailure('verify',e),error:'We couldn’t complete this step. Please try again.'});}
+            catch(e){return fail(409,{verified:true,reference:reportExchangeFailure('settle',e),error:'Your account details are verified. We couldn’t finish this step. Please try again.'});}
+          } catch (e) {
+            const reference = reportExchangeFailure(operation, e);
+            if (e instanceof ChannelDenied && e.reason === 'CHANNEL_ALREADY_VERIFIED') {
+              return fail(409, { reference, error: channelFailureMessage(e.reason) });
+            }
+            return fail(400, { reference, error: 'We couldn’t complete this step. Please try again.' });
+          }
         }
 		let operation: 'request' | 'dispatch' | 'verify' = 'request';
 		try {

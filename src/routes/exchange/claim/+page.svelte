@@ -24,11 +24,6 @@
 			This exchange has expired or is unavailable. You can share your details again.
 		</p>
 		<a href="/profiles">My Profiles</a>
-	{:else if !data.signedIn}<p>
-			Create an account or sign in to verify the contact details you shared.
-		</p>
-		<a href="/auth/register?next=%2Fexchange%2Fclaim">Create my Relish account</a>
-		<p><a href="/auth/login?next=%2Fexchange%2Fclaim">Sign in</a></p>
 	{:else if !data.ready}<p>
 			Account verification is unavailable for this account. You can continue to your profile.
 		</p>

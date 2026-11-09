@@ -321,11 +321,18 @@ export async function verifyAccountChannelCode(
 			where: { challengeId: ch.id, status: { in: ['QUEUED', 'FAILED'] } },
 			data: { status: 'CANCELLED', payloadEnc: null }
 		});
-		// The partial unique index refuses a competing verified claim without revealing its owner.
-		await tx.foundationAccountChannel.updateMany({
-			where: { id: c.id },
-			data: { status: 'VERIFIED' }
-		});
+		// This status-only update can collide with the verified-channel unique index.
+		// Throw out of the transaction so a conflict cannot consume the code or create proof.
+		try {
+			await tx.foundationAccountChannel.updateMany({
+				where: { id: c.id },
+				data: { status: 'VERIFIED' }
+			});
+		} catch (failure) {
+			if ((failure as { code?: unknown })?.code === 'P2002')
+				throw new ChannelDenied('CHANNEL_ALREADY_VERIFIED');
+			throw failure;
+		}
 		return 'VERIFIED';
 	});
 }

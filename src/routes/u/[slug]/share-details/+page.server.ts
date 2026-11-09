@@ -68,7 +68,7 @@ export const actions: Actions = {
       const claim = readExchange(cookies);
       if(exchangeBrowserEnabled(locals, url.origin) && claim?.profileId===selected.id) {
         saveProfileDraft(cookies,url,profileDraft({name:form.get('name')||'',email:form.get('email')||'',phone:form.get('phone')||''}));
-        throw redirect(303, EXCHANGE_RETURN);
+        throw redirect(303, locals.user ? EXCHANGE_RETURN : '/auth/register?next=' + encodeURIComponent(EXCHANGE_RETURN));
       }
       if (locals.user) throw redirect(303, '/profiles');
       saveProfileDraft(cookies, url, profileDraft({ name: form.get('name') || '', email: form.get('email') || '', phone: form.get('phone') || '' }));

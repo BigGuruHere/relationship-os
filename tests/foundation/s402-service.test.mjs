@@ -612,7 +612,21 @@ CREATE TRIGGER s402_fail_settlement BEFORE UPDATE ON "FoundationExchange" FOR EA
           assert.equal(results.filter(r=>r.status==='fulfilled').length,1);
           assert.equal((await db.query(`SELECT count(*)::int n FROM "FoundationAccountChannel" WHERE id IN ($1,$2) AND status='VERIFIED'`,[a,b])).rows[0].n,1);
           assert.equal((await privacy.reviewFoundationPrivacy(first.a)).associations.length,0);
-          await assert.rejects(db.query(`UPDATE "FoundationAccountChannel" SET status='VERIFIED' WHERE id=$1`,[results[0].status==='fulfilled'?b:a]));
+          const firstWon = results[0].status === 'fulfilled';
+          const conflict = results[firstWon ? 1 : 0];
+          assert.equal(conflict.status, 'rejected');
+          assert.equal(conflict.reason.reason, 'CHANNEL_ALREADY_VERIFIED');
+          const blocked = firstWon ? b : a;
+          const blockedChallenge = firstWon ? c2 : c1;
+          const blockedAccount = firstWon ? second : first;
+          assert.equal((await db.query('SELECT status FROM "FoundationAccountChannelChallenge" WHERE id=$1',
+            [blockedChallenge.challengeId])).rows[0].status, 'PENDING');
+          assert.equal((await db.query('SELECT count(*)::int n FROM "FoundationAccountChannelVerification" WHERE "channelId"=$1',
+            [blocked])).rows[0].n, 0);
+          await assert.rejects(db.query(`UPDATE "FoundationAccountChannel" SET status='VERIFIED' WHERE id=$1`,[blocked]));
+          await service.revokeAccountChannel(firstWon ? first.locals : second.locals, firstWon ? a : b);
+          assert.equal(await service.verifyAccountChannelCode(blockedAccount.locals, blockedChallenge.challengeId,
+            firstWon ? code2 : code1, 'compete-ip'), 'VERIFIED');
         });
 
         await t.test('S405c delivery retry caps, resend invalidation and aggregate failures remain bounded',async()=>{

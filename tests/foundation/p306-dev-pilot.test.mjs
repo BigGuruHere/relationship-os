@@ -640,6 +640,11 @@ test('Internal DEV setup and ordinary Foundation signup on an isolated database'
 			const shared = await capturePage.actions.default({ ...event(guest, path, values), params });
 			assert.equal(shared.canClaim, true);
 			const register = '/auth/register?next=%2Fexchange%2Fclaim';
+			await assert.rejects(capturePage.actions.default({
+				...event(guest, path, { ...values, intent: 'create-profile' }), params
+			}), at(register));
+			const registration = await registerPage.load(event(guest, register));
+			assert.equal(registration.draft.email, email);
 			await assert.rejects(registerPage.actions.default(event(guest, register, { email, password })), at('/exchange/claim'));
 			const session = await sessionFor(guest);
 			authAs(guest, session);

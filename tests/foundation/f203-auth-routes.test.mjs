@@ -13,7 +13,6 @@ globalThis.__f203routes = {};
 const mocks = {
 	db: `export const prisma = new Proxy({}, {get:(_,k)=>k==='$transaction'?async fn=>fn(globalThis.__f203routes.db):globalThis.__f203routes.db[k]});`,
 	'server/foundation/provisioning': `export async function accountDomain(){return 'LEGACY';} export async function provisionNewFoundationAccount(_tx,id){globalThis.__f203routes.calls.push('activate:'+id);} export async function provisionAccountForSession(id){globalThis.__f203routes.calls.push('provision:'+id); if(globalThis.__f203routes.fail) throw Error('provisioning failed');}`,
-	'leads/link': `export async function linkLeadsForUser(id){globalThis.__f203routes.calls.push('claim:'+id);} export const linkLeadsForUserFlexible=linkLeadsForUser;`,
 	'server/userEmail': `export async function findUserByEmail(){return globalThis.__f203routes.register?null:{id:'account',passwordHash:globalThis.__f203routes.hash};} export const decryptUserEmail=()=> 'test@example.test'; export const encryptedUserEmailFields=()=>({}); export async function setUserEmail(){}`,
 	'server/profiles': `export async function ensureDefaultProfile(){} export function defaultProfileData(seed){return seed;}`,
 	'server/loginThrottle': `export async function consumePasswordSignupAttempt(){return true;} export async function consumePasswordLoginAttempt(){return true;} export async function clearSuccessfulLoginAccountBucket(){}`,
@@ -51,7 +50,6 @@ try {
 	const login = await vite.ssrLoadModule('/src/routes/auth/login/+page.server.ts');
 	const google = await vite.ssrLoadModule('/src/routes/auth/google/callback/+server.ts');
 	const magic = await vite.ssrLoadModule('/src/routes/api/auth/magic-link/+server.ts');
-	const linkedin = await vite.ssrLoadModule('/src/routes/api/guest/claim-linkedin/+server.ts');
 	let ip = 0;
 	function reset() {
 		state = {
@@ -121,7 +119,7 @@ try {
 					state.calls.filter((c) => c !== 'consume'),
 					name === 'register'
 						? ['activate:account', 'provision:account', 'session', 'cookie']
-						: ['provision:account', 'session', 'cookie', 'claim:account']
+						: ['provision:account', 'session', 'cookie']
 				);
 			}
 		);
@@ -150,15 +148,7 @@ try {
 			assert.deepEqual(state.calls, []);
 		}
 	});
-	await test('LinkedIn uses authenticated account and anonymous callers cannot claim', async () => {
-		reset();
-		const e = event('linkedin');
-		assert.equal((await linkedin.POST(e)).status, 401);
-		assert.deepEqual(state.calls, []);
-		e.locals.user = { id: 'account' };
-		assert.equal((await linkedin.POST(e)).status, 303);
-		assert.deepEqual(state.calls, ['claim:account']);
-	});
+
 } finally {
 	await vite.close();
 	delete globalThis.__f203routes;

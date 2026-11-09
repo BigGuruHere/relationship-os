@@ -9,8 +9,8 @@ const read = path => readFileSync(new URL(path, import.meta.url), 'utf8');
 test('member privilege defaults are deny-by-default and grants compose independently', () => {
   assert.deepEqual(effectiveCapabilities('member'), ['MEMBER']);
   assert.deepEqual(effectiveCapabilities('guest', ['ADMIN']), []);
-  assert.deepEqual(effectiveCapabilities('member', ['BROKER', 'OPERATOR', 'UNKNOWN', 'BROKER']), ['MEMBER', 'BROKER', 'OPERATOR']);
-  assert.deepEqual(effectiveCapabilities('owner'), ['MEMBER', 'OPERATOR', 'ADMIN', 'BROKER']);
+  assert.deepEqual(effectiveCapabilities('member', ['BROKER', 'OPERATOR', 'UNKNOWN', 'BROKER']), ['MEMBER', 'OPERATOR']);
+  assert.deepEqual(effectiveCapabilities('owner'), ['MEMBER', 'OPERATOR', 'ADMIN']);
   assert.equal(hasCapability(effectiveCapabilities('member'), 'OPERATOR'), false);
 });
 
@@ -20,12 +20,13 @@ test('privileged paths deny without grants; segment boundaries do not over-match
   }
   assert.equal(requiredCapabilityForPath('/settings/agents'), 'ADMIN');
   for (const route of ['/leads', '/api/leads/123', '/companies/123', '/deals/new', '/agents/scoring']) {
-    assert.equal(requiredCapabilityForPath(route), 'BROKER');
+    assert.equal(isBrokeragePath(route), true);
+    assert.equal(requiredCapabilityForPath(route), null);
   }
-  assert.equal(requiredCapabilityForPath('/general'), null);
+  assert.equal(requiredCapabilityForPath('/general'), 'OPERATOR');
   assert.equal(requiredCapabilityForPath('/contacts/123'), null);
   assert.equal(requiredCapabilityForPath('/leaders'), null);
-  assert.equal(requiredCapabilityForPath('/general/people-else'), null);
+  assert.equal(requiredCapabilityForPath('/general/people-else'), 'OPERATOR');
 });
 
 test('enforcement is in server hook before route resolution, not only navigation', () => {

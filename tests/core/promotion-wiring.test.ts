@@ -14,10 +14,3 @@ test('agent tool registry checks approval before tool execution', () => {
   assert.ok(execution >= 0, 'tool execution branch must exist');
   assert.ok(approvalBranch < execution, 'approval check must happen before tool execution');
 });
-
-test('candidate import and enrichment apply use approved-only staging repository lookups', () => {
-  const source = readFileSync('src/routes/agents/runs/[id]/+page.server.ts', 'utf8');
-
-  assert.match(source, /getApprovedResearchCandidateForPromotion\(locals\.user\.id, candidateId, params\.id\)/);
-  assert.match(source, /getApprovedContactEnrichmentForPromotion\(locals\.user\.id, enrichmentId, params\.id\)/);
-});

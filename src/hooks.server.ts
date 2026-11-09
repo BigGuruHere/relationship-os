@@ -12,7 +12,7 @@
 
 import type { Handle } from '@sveltejs/kit';
 import { error, redirect } from '@sveltejs/kit';
-import { brokerageEnabled, effectiveCapabilities, hasCapability, isBrokeragePath, requiredCapabilityForPath } from '$lib/server/core/capabilities';
+import { effectiveCapabilities, hasCapability, isBrokeragePath, requiredCapabilityForPath } from '$lib/server/core/capabilities';
 import { inferEnvFromHost, resolveOrigin } from '$lib/env';
 import { sessionCookieConfig } from '$lib/cookies';
 import { readSessionToken, getSessionFromCookie } from '$lib/auth';
@@ -27,9 +27,8 @@ import {
 
 export const handle: Handle = async ({ event, resolve }) => {
   // Use SvelteKit's matched route so encoded URLs cannot bypass the deployment boundary.
-  const brokerEnabled = brokerageEnabled();
   const route = event.route.id ?? event.url.pathname;
-  if (!brokerEnabled && isBrokeragePath(route))
+  if (isBrokeragePath(route))
     throw error(404, 'Not found.');
 
   // 1 - infer environment from Host header
@@ -70,8 +69,6 @@ export const handle: Handle = async ({ event, resolve }) => {
       if (!account) throw error(401, 'Account no longer exists.');
       event.locals.user = { id: result.user.id, role: account.role };
       event.locals.capabilities = effectiveCapabilities(account.role, account.capabilityGrants.map(g => g.capability));
-      // A stored grant alone cannot expose Brokerage navigation on the Relish deployment.
-      if (!brokerEnabled) event.locals.capabilities = event.locals.capabilities.filter(capability => capability !== 'BROKER');
       // Foundation People resolves its own authority and must never inherit a legacy workspace.
       const foundationPeople = event.locals.contextDomainKey === 'private' &&
         await peopleRouteDomain(result.user.id, event.url.pathname) === 'FOUNDATION';

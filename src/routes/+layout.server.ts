@@ -6,7 +6,6 @@
 // MULTI TENANT: All queries are scoped by userId.
 
 import type { LayoutServerLoad } from './$types';
-import { brokerageEnabled } from '$lib/server/core/capabilities';
 import { prisma } from '$lib/db';
 import { decryptUserEmail } from '$lib/server/userEmail'; // IT - server-only decrypt helper
 import { decryptContextSpaceDisplayName } from '$lib/server/core/contextSpaceDirectory';
@@ -59,45 +58,6 @@ export const load: LayoutServerLoad = async ({ locals, url }) => {
 		}
 	}
 
-	// IT - counts for actions in the top bar
-	let reconnectDue = 0;
-	let remindersOpenCount = 0;
-	let tasksOpenCount = 0;
-
-	// SECURITY: Never let a route without a resolved app ContextSpace fall back to userId-only Business reads.
-	if (brokerageEnabled() && locals.user?.id && locals.contextSpaceId) {
-		// IT - compute reconnects due from cadence fields
-		const rows = await prisma.contact.findMany({
-			where: { userId: locals.user.id, contextSpaceId: locals.contextSpaceId, reconnectEveryDays: { not: null } },
-			select: { createdAt: true, lastContactedAt: true, reconnectEveryDays: true }
-		});
-
-		const now = Date.now();
-		reconnectDue = rows.reduce((acc, c) => {
-			const days = c.reconnectEveryDays ?? 0;
-			if (days <= 0) return acc;
-			const baseline = (c.lastContactedAt ?? c.createdAt).getTime();
-			const nextDue = baseline + days * 24 * 60 * 60 * 1000;
-			return acc + (now >= nextDue ? 1 : 0);
-		}, 0);
-
-		// IT - open reminders count
-		remindersOpenCount = await prisma.reminder.count({
-			where: { userId: locals.user.id, contextSpaceId: locals.contextSpaceId, completedAt: null }
-		});
-
-		// IT - open task count for the new unified task layer.
-		tasksOpenCount = await prisma.task.count({
-			where: {
-				userId: locals.user.id,
-				contextSpaceId: locals.contextSpaceId,
-				status: { in: ['OPEN', 'IN_PROGRESS', 'WAITING', 'SNOOZED'] as any }
-			}
-		});
-	}
-
-	const actionsCount = (reconnectDue || 0) + (remindersOpenCount || 0) + (tasksOpenCount || 0);
-
 	return {
 		user, // { id, emailRedacted } or null
 		activeContext,
@@ -110,9 +70,5 @@ export const load: LayoutServerLoad = async ({ locals, url }) => {
 		visibleSpaces,
 		capabilities: locals.capabilities ?? [],
 		accountRole: locals.user?.role ?? null,
-		reconnectDue,
-		remindersOpenCount,
-		tasksOpenCount,
-		actionsCount
 	};
 };

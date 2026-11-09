@@ -14,47 +14,17 @@ test('8.14.0.4 closes the remaining initial-route and Living Understanding check
 
 test('8.14.0.4 removes the reported accessibility and autofocus warnings without disabling interaction', () => {
   const guard = read('src/lib/recording/RecordingGuard.svelte');
-  const lead = read('src/routes/leads/[id]/+page.svelte');
   assert.doesNotMatch(guard, /rg-content[^>]*on:click/);
   assert.doesNotMatch(guard, /rg-content[^>]*on:pointerdown/);
-  assert.doesNotMatch(lead, /\sautofocus(?:\s|\/?>)/);
-  assert.match(lead, /use:focusOnMount/);
 });
 
 test('8.14.0.4 removes the exact unused selectors reported by svelte-check', () => {
-  const files = {
-    tasksPanel: read('src/lib/TasksPanel.svelte'),
-    layout: read('src/routes/+layout.svelte'),
-    interaction: read('src/routes/contacts/[id]/interactions/[iid]/+page.svelte'),
-    dealEdit: read('src/routes/deals/[id]/edit/+page.svelte'),
-    dealNew: read('src/routes/deals/new/+page.svelte'),
-    leads: read('src/routes/leads/+page.svelte'),
-    offers: read('src/routes/offers/[id]/+page.svelte'),
-    project: read('src/routes/projects/[id]/+page.svelte'),
-    workstream: read('src/routes/projects/[id]/workstreams/[workstreamId]/+page.svelte'),
-    profile: read('src/routes/settings/profile/+page.svelte'),
-    taskEdit: read('src/routes/tasks/[id]/edit/+page.svelte'),
-    publicProfile: read('src/routes/u/[slug]/+page.svelte'),
-    wants: read('src/routes/wants/[id]/+page.svelte')
-  };
-  assert.doesNotMatch(files.tasksPanel, /\.field input, \.field select, \.field textarea/);
-  assert.doesNotMatch(files.layout, /\n\s*\.icon-btn\s*\{/);
-  assert.doesNotMatch(files.interaction, /\.area,\.field input,/);
-  assert.doesNotMatch(files.dealEdit, /\n\s*textarea \{ resize: vertical; \}/);
-  assert.doesNotMatch(files.dealNew, /\n\s*textarea \{ resize: vertical; \}/);
-  assert.doesNotMatch(files.leads, /\.grid\.four/);
-  for (const key of ['offers', 'wants']) {
-    assert.doesNotMatch(files[key], /\.note-head/);
-    assert.doesNotMatch(files[key], /\.actions/);
-    assert.doesNotMatch(files[key], /\.preline/);
-    assert.doesNotMatch(files[key], /\.note-card/);
-  }
-  assert.doesNotMatch(files.project, /\.mini-list/);
-  assert.doesNotMatch(files.project, /\.mini-row/);
-  assert.doesNotMatch(files.workstream, /\.btn\.danger/);
-  assert.doesNotMatch(files.profile, /\n\s*\.note \{/);
-  assert.doesNotMatch(files.taskEdit, /\.grid\.four/);
-  assert.doesNotMatch(files.publicProfile, /\.topbar \.note/);
+  const layout = read('src/routes/+layout.svelte');
+  const profile = read('src/routes/settings/profile/+page.svelte');
+  const publicProfile = read('src/routes/u/[slug]/+page.svelte');
+  assert.doesNotMatch(layout, /\n\s*\.icon-btn\s*\{/);
+  assert.doesNotMatch(profile, /\n\s*\.note \{/);
+  assert.doesNotMatch(publicProfile, /\.topbar \.note/);
 });
 
 test('8.14.0.4 intentionally consumes the RelationshipIntelligencePanel contact id prop', () => {

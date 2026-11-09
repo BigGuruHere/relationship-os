@@ -71,7 +71,6 @@ try {
 	const service = await vite.ssrLoadModule('/src/lib/server/foundation/provisioning.ts');
 	const auth = await vite.ssrLoadModule('/src/lib/auth.ts');
 	const crypto = await vite.ssrLoadModule('/src/lib/crypto.ts');
-	const linker = await vite.ssrLoadModule('/src/lib/leads/link.ts');
 
 	await test('legacy session creates no enrollment, vault or self subject', async () => {
 		await auth.createSession('legacy');
@@ -141,19 +140,7 @@ try {
 		await assert.rejects(service.prepareFoundationAccount('active'), /not prepared/);
 		await assert.rejects(service.prepareFoundationAccount('suspended'), /not prepared/);
 	});
-	await test('all enrollment states skip the real email/phone/LinkedIn linker before legacy reads', async () => {
-		// There are deliberately no Lead or ContextSpace tables: any accidental legacy call fails.
-		for (const id of ['prepared', 'active', 'suspended']) {
-			assert.deepEqual(
-				await linker.linkLeadsForUserFlexible(id, {
-					email: 'synthetic@example.test',
-					phone: '123',
-					linkedinUrl: 'https://linkedin.com/in/test'
-				}),
-				{ claimedLeadIds: [], touchedContactIds: [], owners: [] }
-			);
-			await linker.linkLeadsForUser(id, 'synthetic@example.test');
-		}
+	await test('legacy claim guard retains transactional custody for shared connection services', async () => {
 		const result = await service.withLegacyAccountClaims(
 			'legacy',
 			async (tx) => {

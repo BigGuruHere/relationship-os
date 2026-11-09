@@ -3,7 +3,6 @@
 import { error, fail, isHttpError, redirect } from '@sveltejs/kit';
 import { randomUUID } from 'node:crypto';
 import type { Actions, PageServerLoad } from './$types';
-import { brokerageEnabled } from '$lib/server/core/capabilities';
 import { prisma } from '$lib/db';
 import { hashPassword } from '$lib/auth';
 import { devPilotEnabled, DEV_PILOT_ID_PREFIX } from '$lib/server/foundation/devPilotGate';
@@ -11,7 +10,7 @@ import { createDevPilotAccount } from '$lib/server/foundation/provisioning';
 import { captureFailureMetadata } from '$lib/server/core/contactCaptureDiagnostics';
 import { decryptUserEmail } from '$lib/server/userEmail';
 
-const availableGrants = () => brokerageEnabled() ? ['OPERATOR', 'ADMIN', 'BROKER'] : ['OPERATOR', 'ADMIN'];
+const availableGrants = () => ['OPERATOR', 'ADMIN'];
 
 function assertOwner(locals: App.Locals): string {
   if (!locals.user) throw redirect(303, '/auth/login');

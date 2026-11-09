@@ -33,7 +33,7 @@ The authoritative detailed backlog and stage register are in [foundation impleme
 | 6 | Relationship understanding from separately governed perspectives | Future gated release |
 | 7 | Cross-account discovery and approved introductions | Future gated release |
 
-Do not implement all later intelligence capabilities in stage 2. Relationship subjects and independent perspectives belong in the base design; shared relationship analysis can follow the first production release. Brokerage is maintained separately and does not drive Relish architecture. After the cutover is verified, inventory and remove unused Brokerage code in a separate change. Any removal of database data or schema needs its own review and approval.
+Do not implement all later intelligence capabilities in stage 2. Relationship subjects and independent perspectives belong in the base design; shared relationship analysis can follow the first production release. Brokerage is maintained separately and does not drive Relish architecture. The operator has verified the separate Brokerage service and authorised disposable-account cleanup. The account-reset branch removes retired screens and writers and supplies a guarded reset. Complete hosted DEV reset/re-signup acceptance before repeating on production; then remove remaining inert tables and shared commercial dependencies only after their consumers are adapted. Full individual account closure remains separate work.
 
 ## Exchange follow-up
 

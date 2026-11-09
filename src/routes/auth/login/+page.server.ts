@@ -12,12 +12,11 @@ import type { Actions, PageServerLoad } from './$types';
 import { fail, redirect } from '@sveltejs/kit';
 import { prisma } from '$lib/db';
 import { verifyPassword, createSession, destroySession, setSessionCookie } from '$lib/auth';
-import { linkLeadsForUser } from '$lib/leads/link';
 import { accountDomain } from '$lib/server/foundation/provisioning';
 import { consumePasswordLoginAttempt, clearSuccessfulLoginAccountBucket } from '$lib/server/loginThrottle';
 
 // IT - encrypted email helpers
-import { findUserByEmail, decryptUserEmail } from '$lib/server/userEmail';
+import { findUserByEmail } from '$lib/server/userEmail';
 import { ensureDefaultProfile } from '$lib/server/profiles';
 import { finishProfileAuth, profileReturnForAccount, PROFILE_ONBOARDING_RETURN } from '$lib/server/profileOnboarding';
 import { safeAuthReturn } from '$lib/server/networkJoinReturn';
@@ -95,24 +94,9 @@ export const actions: Actions = {
       console.warn('Could not clear successful-login throttle bucket:', e);
     }
 
-    // Profile continuation skips legacy claims. Existing Network and ordinary login keep their flow.
+    // Continue an explicit profile or exchange journey after authenticated session issuance.
     if ((next === PROFILE_ONBOARDING_RETURN || next === EXCHANGE_RETURN)) {
       throw redirect(303, finishProfileAuth(cookies, url, next, user.id));
-    }
-
-    // 7 - post auth linking - decrypt server-side to pass a string email only to the linker
-    try {
-      const u = await prisma.user.findUnique({
-        where: { id: user.id },
-        select: { email_Enc: true }
-      });
-      const emailPlain = decryptUserEmail(u?.email_Enc ?? null);
-      if (emailPlain) {
-        await linkLeadsForUser(user.id, emailPlain);
-      }
-    } catch (e) {
-      // Never block login on lead linking - log and continue
-      console.warn('linkLeadsForUser failed after password login:', e);
     }
 
     // 8 - done

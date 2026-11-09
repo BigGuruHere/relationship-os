@@ -17,12 +17,3 @@ test('corrections inherit note LU admission rather than silently opt in', () => 
   assert.match(source, /admission\?\.luAdmission === 'ELIGIBLE'/);
   assert.match(source, /luAdmission: admission/);
 });
-test('current note displays prior evidence with its original version and status', () => {
-  const server = read('src/routes/contacts/[id]/interactions/[iid]/+page.server.ts');
-  const page = read('src/routes/contacts/[id]/interactions/[iid]/+page.svelte');
-  assert.match(server, /versionEvidence/);
-  assert.match(server, /loadClaimsForInteraction\(context, version\.id\)/);
-  assert.match(page, /Knowledge evidence across note versions/);
-  assert.match(page, /claim\.statusLabel/);
-  assert.match(page, /changeLuAdmission/);
-});

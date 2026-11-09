@@ -100,3 +100,9 @@ Supersedes the fresh-per-exchange verification expectation and manual details fo
 ## D-028 Configurable verification email and trusted callback proof
 
 Accepted implementation choice, 2026-11-08, for [S-405d](foundation/S405D_GUEST_ASSURANCE.md): use a default-disabled Resend adapter because the repository has no functioning email transport, retaining the existing encrypted dispatch/budget contract. Operator sender/provider configuration and authorised delivery remain pending. Newly validated Google callbacks may establish exact email assurance after strict issuer/audience/time/nonce/boolean checks; old OAuth rows and revoked channels are never silently promoted. Proof commits independently of an exchange's later settlement. No changes to credential matching, private custody or production approval.
+
+## D-031 Disposable-account reset and permanent Brokerage retirement
+
+Accepted 2026-11-09. The operator confirms broker-relish is tested on a separate branch/deployment/database and reports snapshots for both Relish environments. Authorise clearing all disposable DEV accounts and their data, then repeating on production after DEV acceptance with a fresh target inventory. Prefer full account/credential cleanup to blanking email/phone fields. Fresh signup uses ordinary ACTIVE provisioning; owner access can be restored by an exact-account role change in Neon.
+
+Remove Brokerage route implementations, authentication lead claims, commercial agents and opt-in compatibility from Relish. Preserve shared Core/Dorian dependencies until they are actually removed or adapted, and preserve migration history. This supersedes D-030's preservation hold for the explicitly authorised test data and retired code. It does not authorise wiping future real users or the separate Brokerage deployment. The reset is an offline whole-database operation, not self-service account closure. [Procedure and implementation](foundation/ACCOUNT_RESET_AND_BROKERAGE_RETIREMENT.md).

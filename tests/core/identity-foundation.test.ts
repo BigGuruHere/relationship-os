@@ -28,9 +28,7 @@ test('migration preserves existing users and maps linked contacts through User.p
 test('all current User creation paths create a Person at the same time', () => {
   const files = [
     'src/routes/auth/register/+page.server.ts',
-    'src/routes/auth/google/callback/+server.ts',
-    'src/routes/api/auth/magic-link/+server.ts',
-    'src/routes/api/leads/+server.ts'
+    'src/routes/auth/google/callback/+server.ts'
   ];
 
   for (const file of files) {
@@ -39,12 +37,9 @@ test('all current User creation paths create a Person at the same time', () => {
   }
 });
 
-test('account connection and lead-claim paths write personId as well as linkedUserId', () => {
+test('account connection writes personId as well as linkedUserId', () => {
   const connections = readFileSync('src/lib/connections.ts', 'utf8');
-  const leadLink = readFileSync('src/lib/leads/link.ts', 'utf8');
-  const reciprocal = readFileSync('src/lib/leads/reciprocal.ts', 'utf8');
 
   assert.match(connections, /linkedUserId:\s*otherUserId,[\s\S]*personId:\s*otherPersonId/);
-  assert.match(leadLink, /data:\s*\{\s*linkedUserId:\s*userId,\s*personId\s*\}/);
-  assert.match(reciprocal, /linkedUserId:\s*ownerUserId,[\s\S]*personId:\s*ownerPersonId/);
+
 });

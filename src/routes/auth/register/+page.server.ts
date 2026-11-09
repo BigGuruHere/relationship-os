@@ -72,7 +72,7 @@ export const actions: Actions = {
       return fail(503, { error: 'Could not create your account. Please try again.' });
     }
 
-    // A credential email and a draft do not authorize a legacy Lead claim or publication.
+    // A credential email and an optional draft do not authorize profile publication.
     const { cookie, expiresAt, sessionId } = await createSession(created.id);
     setSessionCookie(cookies, locals, cookie, expiresAt);
     await startExchangeAfterAuth(cookies, url, locals, next, created.id, sessionId);

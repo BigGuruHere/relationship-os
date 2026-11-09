@@ -9,6 +9,7 @@ import { PGlite } from '@electric-sql/pglite';
 import { vector } from '@electric-sql/pglite-pgvector';
 import { PGLiteSocketServer } from '@electric-sql/pglite-socket';
 import { createServer } from 'vite';
+import { accountResetCases } from './account-reset-cases.mjs';
 import { legacySchemaFixture } from './legacy-schema-fixture.mjs';
 
 test('Internal DEV setup and ordinary Foundation signup on an isolated database', { timeout: 120000 }, async (t) => {
@@ -448,7 +449,6 @@ test('Internal DEV setup and ordinary Foundation signup on an isolated database'
 		const registerPage = await load('routes/auth/register/+page.server');
 		const google = await load('routes/auth/google/callback/+server');
 		const publicPage = await load('routes/u/[slug]/+page.server');
-		const leadPage = await load('routes/u/[slug]/lead/+page.server');
 		const qr = await load('routes/api/qr/+server');
 		const people = await load('routes/people/+page.server');
 		const addPerson = await load('routes/people/new/+page.server');
@@ -547,7 +547,6 @@ test('Internal DEV setup and ordinary Foundation signup on an isolated database'
 			const slug = ordinaryProfile.slug;
 			const guest = { ...event(duplicate, '/u/' + slug), params: { slug } };
 			await assert.rejects(publicPage.load(guest), (error) => error.status === 404);
-			await assert.rejects(leadPage.load(guest), (error) => error.status === 404);
 			assert.equal((await qr.GET(event(duplicate, '/api/qr?slug=' + slug))).status, 404);
 			assert.deepEqual((await people.load(event(browser, '/people'))).people, []);
 		});
@@ -715,6 +714,42 @@ test('Internal DEV setup and ordinary Foundation signup on an isolated database'
 				globalThis.fetch = originalFetch;
 			}
 		});
+
+    await accountResetCases(t, db, async () => {
+      await t.test('old sessions are rejected and the same email can register as a fresh private member', async () => {
+        assert.equal(await sessionFor(browser), null);
+        const fresh = newBrowser('prod', browser.locals.appOrigin);
+        await assert.rejects(registerPage.actions.default(event(fresh, '/auth/register', {
+          email: passwordEmail, password
+        })), at(editor));
+        const session = await sessionFor(fresh);
+        assert.notEqual(session.user.id, ordinaryId);
+        assert.equal(session.user.role, 'member');
+        assert.equal(await provision.accountDomain(session.user.id), 'ACTIVE');
+        assert.equal((await profileFor(session.user.id)).isPublished, false);
+        authAs(fresh, session);
+        assert.deepEqual((await people.load(event(fresh, '/people'))).people, []);
+        // The public registration route never elevates the first registrant.
+        const ownerSql = (await readFile('scripts/maintenance/restore-owner.sql', 'utf8'))
+          .replace('REPLACE_NEW_USER_ID', session.user.id);
+        await db.exec(ownerSql);
+        assert.equal((await prisma.user.findUniqueOrThrow({ where: { id: session.user.id } })).role, 'member');
+        await db.exec(ownerSql.replace(/ROLLBACK;\s*$/, 'COMMIT;'));
+        assert.equal((await prisma.user.findUniqueOrThrow({ where: { id: session.user.id } })).role, 'owner');
+        assert.equal(await provision.accountDomain(session.user.id), 'ACTIVE');
+        await assert.rejects(db.exec(ownerSql), /owner already exists/);
+        await db.exec('ROLLBACK');
+      });
+      await t.test('Google can create a new account with the previously used provider subject and email', async () => {
+        const fresh = newBrowser('dev', origin);
+        await assert.rejects(google.GET(googleEvent(fresh, googleEmail, 'ordinary-sub')), at(editor));
+        const session = await sessionFor(fresh);
+        assert.equal(session.user.role, 'member');
+        assert.equal(await provision.accountDomain(session.user.id), 'ACTIVE');
+        assert.equal(await prisma.oAuthAccount.count({ where: { userId: session.user.id } }), 1);
+        assert.equal((await profileFor(session.user.id)).isPublished, false);
+      });
+    });
 
 	} finally {
 		if (prisma) await prisma.$disconnect();

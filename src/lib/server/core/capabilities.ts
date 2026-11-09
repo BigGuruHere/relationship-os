@@ -1,8 +1,8 @@
 // PURPOSE: Account privilege policy, separate from ContextSpace data custody.
 // SECURITY: Default deny on missing grants; owner compatibility is explicit.
-export type Capability = 'MEMBER' | 'OPERATOR' | 'ADMIN' | 'BROKER';
+export type Capability = 'MEMBER' | 'OPERATOR' | 'ADMIN';
 export type AccountRole = 'owner' | 'member' | 'guest';
-const privileged: Capability[] = ['OPERATOR', 'ADMIN', 'BROKER'];
+const privileged: Capability[] = ['OPERATOR', 'ADMIN'];
 
 // IT: A legacy owner retains management access. Guest never inherits member rights.
 export function effectiveCapabilities(role: AccountRole, grants: readonly string[] = []): Capability[] {
@@ -33,10 +33,6 @@ const retiredCrmPaths = [
   '/guest/welcome', '/thank-you'
 ];
 
-export function brokerageEnabled() {
-  return process.env.RELISH_BROKERAGE_ENABLED === 'YES';
-}
-
 export function isBrokeragePath(route: string) {
   return [...brokerCapabilityPaths, ...retiredCrmPaths].some(prefix => within(route, prefix)) ||
     /^\/u\/[^/]+\/lead(?:\/|$)/.test(route);
@@ -49,6 +45,5 @@ export function requiredCapabilityForPath(pathname: string): Capability | null {
   if (['/settings/users', '/settings/context-spaces', '/settings/agents'].some(prefix => within(path, prefix))) return 'ADMIN';
   if (within(path, '/operator')) return 'OPERATOR';
   if (within(path, '/general') && !within(path, '/general/public')) return 'OPERATOR';
-  if (brokerCapabilityPaths.some(prefix => within(path, prefix))) return 'BROKER';
   return null;
 }

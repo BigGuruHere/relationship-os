@@ -10,13 +10,15 @@ Status: living technical overview. Checked against the RelationshipOS `developme
 | `BigGuruHere/relish-agent-management` | Manage provider-facing agents, configuration, versions and environment assignments |
 | `BigGuruHere/relish-proxy-server` | Route telephone/provider requests to the appropriate Relish environment and session based on managed routing |
 
-Brokerage runs as a separate service with its own database, as reported by the operator. Relish design can proceed independently. The retired CRM screens and lead-linking side effects default off in the Relish build. The separate service can keep its existing release or explicitly enable the legacy surfaces if it adopts this build.
+Brokerage runs on its own branch/service/database, verified by the operator. The account-reset cleanup removes its CRM routes, authentication lead claims, navigation and built-in commercial agents permanently. An old environment flag cannot enable them. Shared agent/interaction/provenance/custody services and their database models remain; removing a screen alone does not make those tables safe to drop. No source migrations are removed. See [cleanup boundaries](foundation/ACCOUNT_RESET_AND_BROKERAGE_RETIREMENT.md).
+
+The disposable-account reset is an explicit offline transaction across a fixed table allowlist. It removes local application data while preserving schema and migration history; it is not a route, startup migration or single-user deletion mechanism. Normal registration remains member-only and provisions ACTIVE private storage. Exact-account owner promotion is a separate offline role update.
 
 ## Ordinary signup boundary
 
 On `feature/production-base-onboarding`, password and Google registration commit the User, unpublished Profile, ACTIVE FoundationEnrollment, private Vault and encrypted self Subject together. Google signup also commits the stable provider subject in that transaction. The shared session issuer validates existing roots; sign-in does not enroll or reactivate an account. Password signup records a credential email without channel assurance. A Google callback cannot use an email match alone to sign into an enrolled account.
 
-My People, capture and notes continue to select their writer from enrollment and enforce vault, lifecycle, consent and provenance checks. Prepared accounts retain legacy public profile behavior. Active and suspended Foundation accounts cannot fall through to the old public lead or Network writer. Legacy Brokerage remains a separate workflow using existing ContextSpace and capability checks. The legacy default ContextSpace database trigger is retained for compatibility.
+My People, capture and notes continue to select their writer from enrollment and enforce vault, lifecycle, consent and provenance checks. Prepared accounts retain legacy public profile behavior. Active and suspended Foundation accounts cannot fall through to the old public lead or Network writer. Brokerage runs only on its separate branch. The legacy default ContextSpace database trigger is retained for compatibility.
 
 Core signup, publication and private capture work independently of DEV test setup. The production exchange branch adds a production origin and database gate for v2 exchange. It keeps DEV destination restrictions and provider protections. Password recovery uses a separate credential-bound reset token and revokes sessions atomically on completion. The standard public card omits pilot tracking and Dorian initiation for Foundation accounts. The [production-base backlog](foundation/IMPLEMENTATION_PLAN.md#production-base-backlog-d-029) records the release evidence and remaining boundaries.
 
@@ -62,7 +64,7 @@ Profile `kind` remains a compatibility input for the existing Business/Friendshi
 - `src/lib/recording/ContactNoteForm.svelte`: reused voice-note recording/transcription/edit/save interface.
 - `/u/[slug]`: existing published profile and QR destination; `/u/[slug]/share-details`: opt-in owner-private Contact capture; existing event page can link to the same capture experience.
 - `src/lib/server/core/contactCapture.ts`: token, permission, provenance and abuse-protected intake without automatic identity linking.
-- `/broker` and existing business routes: legacy Brokerage routes available only with the separate deployment opt-in.
+- Retired `/broker` and CRM route families return 404; contextual `/space/business` and Dorian routes remain.
 - `/space/[context]`: legacy participant context-specific surfaces. Do not delete them just because a neutral Home screen is introduced.
 - Consent-controlled Dorian voice/session routes and operator review/inspection exist, but their live configuration must be confirmed separately.
 

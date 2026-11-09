@@ -2,9 +2,13 @@
 
 Status: updated **2026-11-09**. The production-base feature branch starts at remote development `61e3356` (PR #41) and incorporates direction commit `9cccfb6`. Environment observations below are separately attributed.
 
-## Brokerage cutover
+## Account reset and Brokerage retirement
 
-The operator reports that broker-relish has a separate deployment and database. [D-030](DECISION_LOG.md#d-030-separate-brokerage-deployment-and-relish-design) removes Brokerage from Relish architecture requirements. On `feature/disable-brokerage-in-relish` from Development `5da72d4a`, Relish hides the Brokerage entry points and returns 404 for its legacy CRM routes, including commercial Contacts, Tasks and Projects screens and guest lead intake. Automatic lead claiming is disabled. My People, notes, QR capture, sign-in and operator tools retain their boundaries. The code, grants, schema and records are retained. There is no migration. A Brokerage service that adopts this revision must explicitly set `RELISH_BROKERAGE_ENABLED=YES` to keep its CRM enabled. Hosted cutover and production release checks remain pending. Local checks covered disabled and enabled Brokerage behavior, owner navigation, real Chromium 404 responses and isolated My People access. The existing capability test for /general still fails on the unchanged Development baseline.
+The operator reports a working production deployment, a tested Brokerage service on a separate branch/database, and Neon snapshots of DEV and PROD. Those are operator observations, not live checks by this change. Development inventory: 1 LEGACY owner, 9 LEGACY members, 8 ACTIVE test members.
+
+`feature/account-reset-brokerage-cleanup` starts from latest Development `7e4b3259`. It removes 107 retired CRM route files, automatic lead claims, commercial agent runners/seeds and Brokerage navigation/grants. Old paths remain permanently closed even with the old environment flag. Shared Relish/Dorian services and the current schema remain; no Prisma migration. The branch supplies a guarded SQL empty-install reset and exact-account owner restoration. It clears all local application data only when explicitly executed, preserving schema and migrations. No live database reset, merge or deployment has occurred. Production follows DEV acceptance with its own inventory. See [scope, procedure and validation](foundation/ACCOUNT_RESET_AND_BROKERAGE_RETIREMENT.md).
+
+This supersedes PR #49's temporary opt-in Brokerage compatibility. Do not run this release on broker-relish. Removing shared commercial schema dependencies is separate from deleting the now-retired screens; the inert Lead table is retained in this slice.
 
 ## Ordinary production onboarding
 

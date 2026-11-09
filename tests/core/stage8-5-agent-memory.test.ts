@@ -14,8 +14,6 @@ const readContext = readFileSync('src/lib/server/agents/tools/readEntityContext.
 const readMemory = readFileSync('src/lib/server/agents/tools/readAgentMemory.ts', 'utf8');
 const registry = readFileSync('src/lib/server/agents/toolRegistry.ts', 'utf8');
 const intentCommon = readFileSync('src/lib/server/intentCommon.ts', 'utf8');
-const previewServer = readFileSync('src/routes/agents/memory/+page.server.ts', 'utf8');
-const previewPage = readFileSync('src/routes/agents/memory/+page.svelte', 'utf8');
 
 function modelBlock(name: string) {
   return schema.match(new RegExp(`model ${name} \\{[\\s\\S]*?\\n\\}`))?.[0] || '';
@@ -95,18 +93,12 @@ test('read_agent_memory is a registered audited tool that produces a derived pro
   assert.match(readMemory, /buildAgentMemoryProjection/);
   assert.match(readMemory, /role: 'memory_input'/);
   assert.match(registry, /registerAgentTool\(readAgentMemoryTool\)/);
-  assert.match(setup, /key: 'read_agent_memory'/);
+  // The shared tool remains audited, but retired commercial agents receive no seed grants.
+  assert.doesNotMatch(setup, /key: 'read_agent_memory'/);
 });
 
 test('canonical Person continuity can resolve Wants and Offers without requiring a Contact-only link', () => {
   assert.match(intentCommon, /if \(links\.personId\) where\.personId = links\.personId/);
   assert.match(intentCommon, /if \(links\.personId\) data\.personId = null/);
   assert.match(memory, /if \(personId\) OR\.push\(\{ personId \}\)/);
-});
-
-test('Workspace includes a read-only memory preview to inspect what each agent is permitted to see', () => {
-  assert.match(previewServer, /buildAgentMemoryProjection/);
-  assert.match(previewServer, /purpose: 'workspace_memory_preview'/);
-  assert.match(previewPage, /Derived, not stored/);
-  assert.match(previewPage, /Inspect permitted projection/);
 });

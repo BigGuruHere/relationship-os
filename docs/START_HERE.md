@@ -15,6 +15,8 @@ Relish is a person-first Relationship Operating System. Dorian is a conversation
 
 For a quick visual or text change, read only the relevant sections and inspect the affected source files. For a cross-cutting change, read all six and inspect the current code. Avoid an unnecessarily lengthy audit of an obvious fix.
 
+See [account reset and Brokerage retirement](foundation/ACCOUNT_RESET_AND_BROKERAGE_RETIREMENT.md) for the authorised disposable-data cleanup, Neon SQL procedure, owner restoration and shared-dependency boundary. No live reset has been performed by that branch.
+
 ## Current production direction
 
 [D-029](DECISION_LOG.md#d-029-ordinary-onboarding-and-an-incremental-production-launch) supersedes invited-cohort rollout and the prior production deferral: prepare the actual production app for ordinary new users with a small complete feature set, validate in DEV and add features incrementally. No special test-account or allowlist onboarding. The [production-base roadmap](ROADMAP.md#next-delivery-production-base) and [backlog](foundation/IMPLEMENTATION_PLAN.md#production-base-backlog-d-029) take priority. Core onboarding is implemented. The production exchange and recovery branch adds password reset, production exchange activation and richer phone contact export. Hosted DEV acceptance and promotion remain pending. See [rollout and recovery](foundation/PRODUCTION_EXCHANGE_AND_RECOVERY.md). Older pilot/stage notes preserve history, not current launch policy.

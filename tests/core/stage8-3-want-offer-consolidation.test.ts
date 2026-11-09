@@ -11,7 +11,6 @@ const wants = readFileSync('src/lib/server/wants.ts', 'utf8');
 const offers = readFileSync('src/lib/server/offers.ts', 'utf8');
 const common = readFileSync('src/lib/server/intentCommon.ts', 'utf8');
 const browserCommon = readFileSync('src/lib/intents.ts', 'utf8');
-const marketLeads = readFileSync('src/lib/server/marketLeads.ts', 'utf8');
 
 function modelBlock(name: string) {
   const match = schema.match(new RegExp(`model ${name} \\{[\\s\\S]*?\\n\\}`));
@@ -71,23 +70,4 @@ test('Want and Offer share common intent plumbing instead of duplicating it', ()
   }
   assert.match(common, /table: 'Want' \| 'Offer'/);
   assert.match(browserCommon, /INTENT_STATUSES/);
-});
-
-test('MarketLead conversion now targets canonical Want/Offer directly', () => {
-  assert.match(marketLeads, /export async function convertLeadToIntent/);
-  assert.doesNotMatch(marketLeads, /exchangeItemId|exchangeItem:/);
-});
-
-test('runtime source has no legacy ExchangeItem Prisma model access', () => {
-  const runtimeFiles = [
-    'src/routes/contacts/[id]/+page.server.ts',
-    'src/routes/companies/[id]/+page.server.ts',
-    'src/routes/deals/[id]/+page.server.ts',
-    'src/routes/projects/[id]/+page.server.ts',
-    'src/routes/companies/[id]/contacts/[linkId]/+page.server.ts'
-  ];
-  for (const file of runtimeFiles) {
-    const source = readFileSync(file, 'utf8');
-    assert.doesNotMatch(source, /server\/exchange|prisma\.exchangeItem|tx\.exchangeItem|createExchangeItem|deleteExchangeItem|loadExchangeItems/);
-  }
 });

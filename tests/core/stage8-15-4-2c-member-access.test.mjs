@@ -19,8 +19,6 @@ test('General operator workspace and broker API use request-time capability gate
   assert.match(policy, /'\/api\/task-commercial-links'/);
   assert.match(hook, /effectiveCapabilities\(account\.role, account\.capabilityGrants/);
 });
-test('Shared layout counts are scoped to the selected context', () => {
-  assert.match(layout, /userId: locals\.user\.id, contextSpaceId: locals\.contextSpaceId, reconnectEveryDays/);
-  assert.match(layout, /userId: locals\.user\.id, contextSpaceId: locals\.contextSpaceId, completedAt/);
-  assert.match(layout, /contextSpaceId: locals\.contextSpaceId,\s*status:/);
+test('Shared layout no longer queries retired CRM counters', () => {
+  assert.doesNotMatch(layout, /prisma\.(contact|reminder|task)\./);
 });

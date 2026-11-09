@@ -9,10 +9,6 @@ test('legacy data receives an unspecified perspective, not an invented attributi
   assert.match(schema, /perspective KnowledgePerspective @default\(UNSPECIFIED_LEGACY\)/);
   assert.match(migration, /DEFAULT 'UNSPECIFIED_LEGACY'/);
 });
-test('the note form submits a perspective with the claim', () => {
-  assert.match(read('src/routes/contacts/[id]/interactions/[iid]/+page.svelte'), /name="perspective" bind:value=\{capturePerspective\}/);
-  assert.match(read('src/routes/contacts/[id]/interactions/[iid]/+page.server.ts'), /perspective: form\.get\('perspective'\)/);
-});
 test('claim reconciliation treats two perspectives as distinct', () => {
   const core = read('src/lib/server/core/knowledge.ts');
   assert.match(core, /perspective: perspective as any,[\s\S]*?status: 'ACTIVE'/);

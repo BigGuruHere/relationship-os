@@ -22,10 +22,8 @@ test('TypeScript check accepts explicit .ts imports used by Node strip-types tes
 test('public profile pages explicitly type dynamic page/form payloads', async () => {
   const settings = await read('src/routes/settings/profile/+page.svelte');
   const publicProfile = await read('src/routes/u/[slug]/+page.svelte');
-  const publicLead = await read('src/routes/u/[slug]/lead/+page.svelte');
   assert.match(settings, /const p: any = data\?\.profile \|\| \{\};/);
   assert.match(publicProfile, /const prof: any = data\?\.profile \|\| \{\};/);
-  assert.match(publicLead, /const v: any = form\?\.values \|\| \{\};/);
 });
 
 test('interaction recorder no longer treats beforeNavigate as unsubscribe and uses fetch BodyInit', async () => {
@@ -37,7 +35,5 @@ test('interaction recorder no longer treats beforeNavigate as unsubscribe and us
 
 test('public profile server narrows visitor id before Prisma and lead token call matches helper contract', async () => {
   const publicServer = await read('src/routes/u/[slug]/+page.server.ts');
-  const leadServer = await read('src/routes/u/[slug]/lead/+page.server.ts');
   assert.match(publicServer, /if \(visitorUserId && visitorUserId !== ownerId\)/);
-  assert.doesNotMatch(leadServer, /createInviteToken\([\s\S]*?meta:/);
 });

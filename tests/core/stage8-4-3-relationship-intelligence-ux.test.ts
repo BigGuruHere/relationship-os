@@ -8,13 +8,11 @@ import test from 'node:test';
 const schema = readFileSync('prisma/schema.prisma', 'utf8');
 const migration = readFileSync('prisma/migrations/20260831201500_stage8_4_3_relationship_intelligence_ux/migration.sql', 'utf8');
 const coreKnowledge = readFileSync('src/lib/server/core/knowledge.ts', 'utf8');
-const interactionServer = readFileSync('src/routes/contacts/[id]/interactions/[iid]/+page.server.ts', 'utf8');
-const interactionPage = readFileSync('src/routes/contacts/[id]/interactions/[iid]/+page.svelte', 'utf8');
+
 const claimServer = readFileSync('src/routes/knowledge/[id]/+page.server.ts', 'utf8');
 const claimPage = readFileSync('src/routes/knowledge/[id]/+page.svelte', 'utf8');
 const relationshipPanel = readFileSync('src/lib/RelationshipIntelligencePanel.svelte', 'utf8');
 const objectivePage = readFileSync('src/routes/objectives/[id]/+page.svelte', 'utf8');
-const contactServer = readFileSync('src/routes/contacts/[id]/+page.server.ts', 'utf8');
 
 function modelBlock(name: string) {
   const match = schema.match(new RegExp(`model ${name} \\{[\\s\\S]*?\\n\\}`));
@@ -38,19 +36,7 @@ test('structured relationship intelligence is captured and promoted with one rev
   assert.match(coreKnowledge, /captureAndPromoteKnowledgeFromInteraction/);
   assert.match(coreKnowledge, /captureKnowledgeFromInteraction/);
   assert.match(coreKnowledge, /promoteKnowledgeClaim/);
-  assert.match(interactionServer, /captureAndPromoteKnowledgeFromInteraction/);
-});
 
-test('interaction capture pre-fills from source evidence and no longer requires a second title entry', () => {
-  assert.match(interactionPage, /interaction\.summary \|\| interaction\.text/);
-  assert.match(interactionPage, /bind:value=\{statementDraft\}/);
-  assert.match(interactionPage, /Create offer/);
-  assert.doesNotMatch(interactionPage, /Short \$\{claim\.kind\.toLowerCase\(\)\} title/);
-});
-
-test('provenance remains available but is collapsed out of the normal capture path', () => {
-  assert.match(interactionPage, /<details class="advanced">/);
-  assert.match(interactionPage, /Advanced provenance/);
 });
 
 test('every claim has a universal detail route with claim status controls', () => {
@@ -89,10 +75,9 @@ test('Objectives show when linked claims have been retired instead of appearing 
   assert.match(objectivePage, /href=\{`\/knowledge\/\$\{claim\.id\}`\}/);
 });
 
-
 test('superseded and rejected claims remain reachable from Contact knowledge history', () => {
   assert.match(coreKnowledge, /loadContactKnowledgeHistory/);
-  assert.match(contactServer, /loadContactKnowledgeHistory/);
+
   assert.match(relationshipPanel, /Knowledge history/);
   assert.match(relationshipPanel, /Superseded and rejected claims remain available/);
 });

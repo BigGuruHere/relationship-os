@@ -16,10 +16,8 @@ import {
 } from '../../src/lib/server/core/contextSpace.ts';
 
 const connectionsSource = readFileSync('src/lib/connections.ts', 'utf8');
-const leadLinkSource = readFileSync('src/lib/leads/link.ts', 'utf8');
+
 const publicProfileSource = readFileSync('src/routes/u/[slug]/+page.server.ts', 'utf8');
-const publicLeadSource = readFileSync('src/routes/u/[slug]/lead/+page.server.ts', 'utf8');
-const inviteLeadSource = readFileSync('src/routes/api/leads/+server.ts', 'utf8');
 
 const source = { userId: 'user-a', contextSpaceId: 'context-a' };
 const target = { userId: 'user-b', contextSpaceId: 'context-b' };
@@ -197,7 +195,6 @@ test('compatibility destination resolution fails closed unless the owner has exa
   );
 });
 
-
 test('public profile already-connected check stays in the visitors own custody', () => {
   assert.match(publicProfileSource, /userId:\s*visitorUserId,[\s\S]{0,120}linkedUserId:\s*ownerId/);
   assert.doesNotMatch(publicProfileSource, /userId:\s*ownerId,[\s\S]{0,120}linkedUserId:\s*visitorUserId/);
@@ -208,13 +205,4 @@ test('every known legacy cross-owner or public-ingress flow uses the named Stage
   assert.match(connectionsSource, /reason:\s*'PUBLIC_PROFILE_CONNECTION'/);
   assert.match(connectionsSource, /requireSingleContextSpaceIdForOwner/);
 
-  assert.match(leadLinkSource, /runWithCrossOwnerWorkspaceCustody/);
-  assert.match(leadLinkSource, /reason:\s*'LEAD_CLAIM'/);
-  assert.match(leadLinkSource, /requireSingleContextSpaceIdForOwner/);
-
-  for (const sourceText of [publicLeadSource, inviteLeadSource]) {
-    assert.match(sourceText, /runWithExternalWorkspaceCustody/);
-    assert.match(sourceText, /reason:\s*'PUBLIC_LEAD_CAPTURE'/);
-    assert.match(sourceText, /requireSingleContextSpaceIdForOwner/);
-  }
 });

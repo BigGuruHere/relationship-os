@@ -65,7 +65,6 @@ test(
 			const custody = await load('lib/server/core/contextSpace');
 			const contacts = await load('lib/server/core/contacts');
 			const { createWorkspaceCoreAccess } = await load('lib/server/core/accessPolicy');
-			const brokerage = await load('routes/broker/contacts/+page.server');
 			const directory = await load('routes/people/+page.server');
 			const homes = await load('lib/server/core/myPeople');
 			async function signIn(id) {
@@ -115,13 +114,13 @@ test(
 					name: 'Brokerage contact'
 				})
 			);
-			async function checkBrokerage() {
-				const result = await inBusiness(() => brokerage.load({ locals: pilot }));
-				assert.deepEqual(
-					result.contacts.map(({ id, name }) => ({ id, name })),
-					[{ id: business.id, name: 'Brokerage contact' }]
-				);
-			}
+            // The commercial screen is retired; shared custody/data preservation still matters.
+            async function checkBrokerage() {
+              const rows = await inBusiness(() => prisma.contact.findMany({
+                where: { userId: 'pilot', contextSpaceId: 'pilot' }, select: { id: true }
+              }));
+              assert.deepEqual(rows, [{ id: business.id }]);
+            }
 			async function legacyDirectory(locals) {
 				const space = await homes.privatePeopleSpace(locals.user.id);
 				return custody.runWithWorkspaceCustody(

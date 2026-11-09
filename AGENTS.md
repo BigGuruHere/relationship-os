@@ -22,7 +22,7 @@ A request to add a user-facing step is **not** automatically a request to build 
 - **People do not belong exclusively to contexts. Information and interactions have contexts.** Aim for one owner-private People experience, with appropriately scoped relationship information.
 - A private Contact, a Person identity reference, a Relish User account, and a mutually acknowledged Connection are distinct. Do not equate or automatically create them.
 - Contacts may exist without a specialised relationship classification or Relish account. Preserve capture origin separately from relationship context.
-- Brokerage is maintained on the separate broker-relish deployment. Design Relish without Brokerage requirements. Before removing old Brokerage code or schema from Relish, confirm the separate deployment and the dependencies of shared Relish features. Preserve data until a separate authorised cleanup.
+- Brokerage is maintained on the separate broker-relish deployment. Design Relish without Brokerage requirements. The operator confirmed the separate branch/deployment and authorised disposable-account cleanup on 2026-11-09. Retired Brokerage code need not be preserved in Relish. Inspect shared Relish/Dorian dependencies before dropping schema; preserve historical migrations. Use the guarded reset runbook for empty test installations, never as individual account deletion.
 - Manual Contact capture, QR detail sharing, voice notes, and Dorian are interfaces to reusable relationship capabilities, not competing data systems.
 - Each participant controls their self-understanding, observations about others, and views of relationships. Linking identities or connections must not automatically merge or share private information.
 - Dorian's permission to reason over relevant information is distinct from permission to disclose that information to another person.
@@ -31,7 +31,7 @@ A request to add a user-facing step is **not** automatically a request to build 
 ## 3. Security, data and compatibility
 
 - Preserve owner, ContextSpace custody, access, consent, encryption, provenance, and disclosure restrictions. Never use a client-provided context or owner identifier as authority.
-- Preserve existing Contact IDs, notes, interactions, legacy Brokerage workflows, and functioning QR/profile flows unless the task explicitly authorises a change.
+- Preserve existing Contact IDs, notes, interactions and functioning QR/profile flows unless the task explicitly authorises a change. Brokerage workflows belong to the separate branch.
 - Avoid automatic identity matching or merging based solely on names, email addresses, or phone numbers.
 - Do not log raw private audio, transcripts, personal data, credentials, or sensitive request payloads.
 - Do not perform production writes, deployments, schema migrations, destructive operations, or changes to external services without explicit approval.

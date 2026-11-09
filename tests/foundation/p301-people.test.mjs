@@ -105,10 +105,6 @@ test('P-301 private People routes and cohort isolation', { timeout: 120000 }, as
 				await assert.rejects(hooks.handle({ event: blocked, resolve: () => assert.fail('unexpected handler') }),
 					error => error.status === 404);
 
-				const { linkLeadsForUserFlexible } = await load('lib/leads/link');
-				assert.deepEqual(await linkLeadsForUserFlexible('absent-user', { email: 'fixture@example.invalid' }),
-					{ claimedLeadIds: [], touchedContactIds: [], owners: [] });
-
 				await db.query(`UPDATE "User" SET role='owner' WHERE id='pilot'`);
 				try {
 					const capabilities = () => throughHook('/people', async e => (await layout.load(e)).capabilities);
@@ -116,9 +112,9 @@ test('P-301 private People routes and cohort isolation', { timeout: 120000 }, as
 					await assert.rejects(throughHook('/broker', () => assert.fail('unexpected handler')),
 						error => error.status === 404);
 					process.env.RELISH_BROKERAGE_ENABLED = 'YES';
-					assert.deepEqual(await capabilities(), ['MEMBER', 'OPERATOR', 'ADMIN', 'BROKER']);
-					assert.equal(await throughHook('/broker', () => 'available'), 'available');
-					assert.equal(await throughHook('/tasks', () => 'available'), 'available');
+					assert.deepEqual(await capabilities(), ['MEMBER', 'OPERATOR', 'ADMIN']);
+					await assert.rejects(throughHook('/broker', () => assert.fail('retired route')), error => error.status === 404);
+					await assert.rejects(throughHook('/tasks', () => assert.fail('retired route')), error => error.status === 404);
 				} finally {
 					await db.query(`UPDATE "User" SET role='member' WHERE id='pilot'`);
 				}

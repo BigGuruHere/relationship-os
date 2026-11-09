@@ -18,7 +18,7 @@ Dorian is the warm, distinctive, clearly disclosed AI conversational partner tha
 - **My People** is the simple personal entry point: remember someone, capture contact details, record a note, find them again, and choose what happens next.
 - **Public profiles and QR sharing** let someone share contact information privately without creating a Relish account, mutual connection or automatic Dorian conversation.
 - **Dorian** is a conversational interface into permitted Core information, capable eventually of exploring potential value between people and supporting introductions.
-- **Brokerage** is retained as a legacy business workflow on its existing model. New Relish architecture is free to replace incompatible domain structures without forcing Brokerage migration or eventual consolidation.
+- **Brokerage** is maintained on its separate branch, deployment and database. Its commercial screens and agents are retired from Relish; shared services are retained only where current Relish features still need them.
 - Business, Friendship, Dating and future experiences may add relevant language, flows and information boundaries without making the person belong exclusively to any one category.
 
 ## Distinctions that must survive implementation

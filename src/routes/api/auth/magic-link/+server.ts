@@ -20,11 +20,9 @@ import type { RequestHandler } from './$types';
 import { json, error } from '@sveltejs/kit';
 import { prisma } from '$lib/db';
 import { createSession, setSessionCookie } from '$lib/auth';
-import { linkLeadsForUser } from '$lib/leads/link';
 import { verifyMagicToken, markMagicTokenUsed } from '$lib/server/tokens';
 
 // IT: encrypted email helpers
-import { decryptUserEmail } from '$lib/server/userEmail';
 
 export const POST: RequestHandler = async ({ request, cookies, locals }) => {
   // 1 - parse body
@@ -59,23 +57,6 @@ export const POST: RequestHandler = async ({ request, cookies, locals }) => {
   // 4 - create a first party session and set the env aware cookie
   const { cookie, expiresAt } = await createSession(userId);
   setSessionCookie(cookies, locals, cookie, expiresAt);
-
-  // 5 - post auth hook - link any pending leads captured via public forms
-  // - linkLeadsForUser currently expects an email string
-  // - decrypt on the server, never expose to client
-  try {
-    const u = await prisma.user.findUnique({
-      where: { id: userId },
-      select: { email_Enc: true }
-    });
-    const emailPlain = decryptUserEmail(u?.email_Enc ?? null);
-    if (emailPlain) {
-      await linkLeadsForUser(userId, emailPlain);
-    }
-  } catch (e) {
-    // Never block auth on linking - log and continue
-    console.warn('linkLeadsForUser failed after magic link:', e);
-  }
 
   // 6 - done
   return new Response(null, { status: 204 });

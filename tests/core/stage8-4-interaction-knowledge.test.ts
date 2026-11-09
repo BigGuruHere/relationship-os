@@ -9,10 +9,8 @@ const schema = readFileSync('prisma/schema.prisma', 'utf8');
 const migration = readFileSync('prisma/migrations/20260831193000_stage8_4_interaction_knowledge_pipeline/migration.sql', 'utf8');
 const coreInteractions = readFileSync('src/lib/server/core/interactions.ts', 'utf8');
 const coreKnowledge = readFileSync('src/lib/server/core/knowledge.ts', 'utf8');
-const contactInteractionCreate = readFileSync('src/routes/contacts/[id]/interactions/new/+page.server.ts', 'utf8');
-const interactionDetail = readFileSync('src/routes/contacts/[id]/interactions/[iid]/+page.server.ts', 'utf8');
+
 const knowledgeDetail = readFileSync('src/routes/knowledge/[id]/+page.server.ts', 'utf8');
-const contactPage = readFileSync('src/routes/contacts/[id]/+page.server.ts', 'utf8');
 
 function modelBlock(name: string) {
   const match = schema.match(new RegExp(`model ${name} \\{[\\s\\S]*?\\n\\}`));
@@ -81,12 +79,6 @@ test('structured promotion is reviewed and type-safe', () => {
   assert.match(migration, /KnowledgeClaim_one_structured_target/);
 });
 
-test('existing contact note creation now uses the common Core ingestion seam', () => {
-  assert.match(contactInteractionCreate, /createCoreInteraction/);
-  assert.match(contactInteractionCreate, /createWorkspaceCoreAccess/);
-  assert.doesNotMatch(contactInteractionCreate, /prisma\.interaction\.create/);
-});
-
 test('Core interaction ingestion validates canonical subjects before creating a record', () => {
   assert.match(coreInteractions, /findCoreContact/);
   assert.match(coreInteractions, /findCoreCompany/);
@@ -100,14 +92,8 @@ test('private Interaction embedding is explicitly not treated as a network-match
 });
 
 test('Interaction detail provides one-step reviewed capture while Claim status is managed on the universal Claim detail surface', () => {
-  assert.match(interactionDetail, /captureAndPromoteKnowledgeFromInteraction/);
-  assert.match(interactionDetail, /promoteKnowledgeClaim/);
-  assert.match(knowledgeDetail, /setKnowledgeClaimStatus/);
-});
 
-test('Contact Workspace surfaces structured Objectives and active KnowledgeClaims separately from notes', () => {
-  assert.match(contactPage, /loadContactObjectives/);
-  assert.match(contactPage, /loadContactKnowledge/);
+  assert.match(knowledgeDetail, /setKnowledgeClaimStatus/);
 });
 
 test('Want and Offer carry canonical Person subject identity without weakening workspace custody', () => {

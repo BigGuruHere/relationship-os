@@ -23,6 +23,8 @@ Follow-up on `feature/production-account-exchange` from Development `ff3b4066`. 
 
 Brokerage cutover follow-up on `feature/disable-brokerage-in-relish` from Development `5da72d4a`. The Relish release disables legacy CRM entry points and lead claiming. The separate service and database are operator-reported. No migration or data rewrite. Preserve the existing database and defer cleanup until the separate service has been verified. PB-004 still requires hosted provider/device checks and target migration and rollback review.
 
+Account-reset follow-up, 2026-11-09: implemented on `feature/account-reset-brokerage-cleanup` from Development `7e4b3259`, supporting PB-001 ordinary re-registration and PB-004 operations. Permanent Brokerage route/claim/agent retirement replaces the temporary opt-in. The operator confirms the separate service and snapshots; no hosted database was accessed. No migration; the offline reset preserves schema and migration history. Reset rollback/failure/re-registration/owner cases run within the isolated P-306 suite. The [runbook](ACCOUNT_RESET_AND_BROKERAGE_RETIREMENT.md) records impact and recovery. Hosted DEV reset and acceptance, followed by separate production inventory/execution, remain pending. This does not implement single-user account deletion.
+
 ## Release sequence and evidence gates
 
 | Stage | User outcome | Engineering work | Release gate |

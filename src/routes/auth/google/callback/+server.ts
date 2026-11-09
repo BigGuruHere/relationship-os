@@ -23,11 +23,10 @@ import { finishProfileAuth, readProfileDraft, PROFILE_ONBOARDING_RETURN } from '
 import { prisma } from '$lib/db';
 import { createSession, setSessionCookie } from '$lib/auth';
 import * as jose from 'jose';
-import { linkLeadsForUser } from '$lib/leads/link';
 import { defaultProfileData, ensureDefaultProfile } from '$lib/server/profiles';
 
 // IT: encrypted email helpers - equality lookup and write
-import { findUserByEmail, setUserEmail, decryptUserEmail, encryptedUserEmailFields } from '$lib/server/userEmail';
+import { findUserByEmail, setUserEmail, encryptedUserEmailFields } from '$lib/server/userEmail';
 
 // Google endpoints
 const TOKEN_ENDPOINT = 'https://oauth2.googleapis.com/token';
@@ -278,23 +277,6 @@ export const GET: RequestHandler = async ({ url, cookies, locals, getClientAddre
   if (onboarding || newProfileId) {
     const destination = onboarding ? next : PROFILE_ONBOARDING_RETURN;
     throw redirect(303, finishProfileAuth(cookies, url, destination, user.id, newProfileId));
-  }
-
-  if (!legacy) throw redirect(303, next || '/');
-
-  // 15 - post auth linking - decrypt server-side to pass a string email to the linker
-  try {
-    const u = await prisma.user.findUnique({
-      where: { id: user.id },
-      select: { email_Enc: true }
-    });
-    const emailPlain = decryptUserEmail(u?.email_Enc ?? null);
-    if (emailPlain) {
-      await linkLeadsForUser(user.id, emailPlain);
-    }
-  } catch (e) {
-    // Never block login on lead linking - log and continue
-    console.warn('linkLeadsForUser failed after Google OAuth:', e);
   }
 
   // 16 - home sweet home

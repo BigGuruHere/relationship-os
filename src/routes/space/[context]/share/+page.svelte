@@ -11,13 +11,13 @@
     catch { copied = false; }
   }
 </script>
-<svelte:head><title>Share - {data.workspace.label} - Relish</title></svelte:head>
+<svelte:head><title>Share - Relish</title></svelte:head>
 <div class="workspace-page">
-  <p class="workspace-kicker">{data.workspace.label.toUpperCase()} / SHARE</p><h1>Share my profile</h1>
+  <h1>Share my profile</h1>
   <p class="workspace-intro">Introduce someone to Dorian through this QR code. This workspace determines the private starting context, not what they must discuss.</p>
   {#if data.qrSvg}
     <section class="workspace-panel workspace-share">
-      <h2>{data.profile.displayName || data.workspace.label}</h2>
+      <h2>{data.profile.displayName || 'My profile'}</h2>
       <div class="workspace-qr">{@html data.qrSvg}</div>
       <label for="relish-link">Public profile link</label>
       <input id="relish-link" readonly value={data.publicUrl} on:focus={selectLink} />
@@ -27,7 +27,7 @@
     </section>
   {:else}
     <section class="workspace-panel"><h2>Your QR code isn't public yet</h2>
-      <p>Create and publish your {data.workspace.label.toLowerCase()} profile first.</p>
+      <p>Create and publish your profile first.</p>
       <a class="btn primary" href={'/space/' + data.workspace.name + '/profile'}>Go to my profile</a>
     </section>
   {/if}

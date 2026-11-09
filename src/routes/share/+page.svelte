@@ -6,12 +6,10 @@
   export let data: any;
 
   // IT: Only the signed-in user's profiles are returned by the server.
-  const profileOptions: Array<{ id: string; slug: string; label: string; displayName: string | null; kind: string; isPublished: boolean }> = data.profileOptions || [];
-  const profileKindLabels: Record<string, string> = { business: 'Business', personal: 'Friendship', dating: 'Dating', custom: 'Custom' };
+  const profileOptions: Array<{ id: string; slug: string; label: string; displayName: string | null; isPublished: boolean }> = data.profileOptions || [];
   function optionLabel(option: (typeof profileOptions)[number]) {
     // IT: Older profiles may have only the generic default label.
-    const label = option.label && option.label !== 'My profile' ? option.label : option.displayName || 'My profile';
-    return label + ' (' + (profileKindLabels[option.kind] || option.kind) + ')';
+    return option.label && option.label !== 'My profile' ? option.label : option.displayName || 'My profile';
   }
 
   function selectProfile(event: Event) {

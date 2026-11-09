@@ -16,6 +16,12 @@ Share resolves explicit selections within the signed-in owner's profile list. Mu
 
 An unpublished profile can be edited and previewed by its owner. Its Share page displays edit and preview links until publication enables copy, messaging and QR controls. Public lookup, capture and QR continue enforcing publication. Both canonical profile slugs and legacy public aliases retain their existing destinations.
 
+## Profile publishing cleanup (2026-11-10)
+
+Implemented on `feature/profile-publishing-cleanup`. My Profiles and public preview use the same owner editor. New profiles have no publication banner. Existing profiles show a compact status and offer an explicit visibility action for the saved profile. Editing reveals Publish and Save for later. Save for later stores edits privately and unpublishes a previously published profile. Public links and QR codes stop working while unpublished. Previously captured contacts and exchange records stay intact.
+
+My Profiles no longer surfaces pilot connection requests or the Product Intelligence link. Share and ordinary profile management omit profile type labels. The stored kind remains available for legacy context routing and provenance. No Prisma migration. Hard deletion is deferred because exchange records can reference the profile and need a separate lifecycle policy.
+
 ## Acceptance and rollout
 
 [PR #23](https://github.com/BigGuruHere/relationship-os/pull/23) is merged into development. [CI run 42148654526](https://github.com/BigGuruHere/relationship-os/actions/runs/42148654526) passed 160 checks on implementation commit `6208c95` with zero failures/skips. This includes 29 profile checks and 131 existing foundation checks, including PostgreSQL 18.6 concurrency. Local focused tests passed 43 checks and Svelte reported zero errors/warnings. Additional local regressions passed 13 checks; two older Dorian consent source assertions also failed on the unchanged development base and were left untouched.

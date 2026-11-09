@@ -223,6 +223,36 @@ try {
     assert.equal(updates.length,1);assert.equal(updates[0].data.isPublished,true);
     assert.equal(e.cookies.get(draft.PROFILE_DRAFT_COOKIE),undefined);
   });
+  await test('Save for later keeps edits private and publication-only actions enforce ownership', async () => {
+    const editor = await server.ssrLoadModule('/src/routes/settings/profile/+page.server.ts');
+    const updates = [];
+    globalThis.__onboardingDb = { profile: {
+      findFirst: async ({ where }) => where.userId === 'new-user' && where.id === 'owned'
+        ? { id: 'owned', kind: 'business', slug: 'mine', displayName: 'Owner', isPublished: true, publicMeta: {} }
+        : null,
+      update: async (args) => updates.push(args)
+    } };
+    const save = event({ profileId: 'owned', displayName: 'Draft edits', kind: 'business', isPublished: 'on' });
+    save.locals.user = { id: 'new-user' };
+    await assert.rejects(editor.actions.save(save), (r) => r.status === 303 && r.location === '/profiles');
+    assert.equal(updates[0].data.isPublished, false);
+    assert.equal(updates[0].data.displayName, 'Draft edits');
+
+    const foreign = event({ profileId: 'owned', publication: 'unpublish' });
+    foreign.locals.user = { id: 'other-user' };
+    assert.equal((await editor.actions.publication(foreign)).status, 404);
+    assert.equal(updates.length, 1);
+
+    for (const publication of ['unpublish', 'publish']) {
+      const owned = event({ profileId: 'owned', publication });
+      owned.locals.user = { id: 'new-user' };
+      await assert.rejects(editor.actions.publication(owned), (r) => r.status === 303);
+      assert.deepEqual(updates.at(-1), {
+        where: { id: 'owned', userId: 'new-user' },
+        data: { isPublished: publication === 'publish' }
+      });
+    }
+  });
   await test('expired sessions retain the allowlisted review destination and logout clears the draft', async () => {
     const editor=await server.ssrLoadModule('/src/routes/settings/profile/+page.server.ts');
     const logout=await server.ssrLoadModule('/src/routes/auth/logout/+server.ts');

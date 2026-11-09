@@ -1,6 +1,8 @@
 # Relish: Current State and Open Work
 
-Status: updated **2026-11-09**. The production-base feature branch starts at remote development `61e3356` (PR #41) and incorporates direction commit `9cccfb6`. Environment observations below are separately attributed.
+Status: updated **2026-11-10**. The production-base feature branch starts at remote development `61e3356` (PR #41) and incorporates direction commit `9cccfb6`. Environment observations below are separately attributed.
+
+Profile publishing cleanup is implemented on `feature/profile-publishing-cleanup` for Development review. The owner editor has explicit publish/private-save actions, existing-card visibility controls, and a shared entry from public preview. My Profiles drops pilot content and Share omits type labels. See [profile continuity](foundation/P304_PROFILE_CONTINUITY.md#profile-publishing-cleanup-2026-11-10). No migration or deployment.
 
 ## Brokerage cutover
 

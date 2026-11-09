@@ -21,7 +21,7 @@ test('My Profiles lists all records owned by current account, not one per kind',
 });
 
 test('explicit additional profile is created without looking up a same-kind existing one', () => {
-  assert.match(page, /mode=new&kind=business/);
+  assert.match(page, /mode=new/);
   assert.match(editor, /const creatingNew = fd\.get\('createNewProfile'\) === '1'/);
   assert.match(editor, /: creatingNew \? null : await prisma\.profile\.findFirst/);
   assert.match(editor, /label: label \|\| displayName/);
@@ -33,11 +33,11 @@ test('explicit additional profile is created without looking up a same-kind exis
 test('owner-facing label remains separate from public name and kind', () => {
   assert.match(form, /name="label" bind:value=\{profileLabel\}/);
   assert.match(form, /name="displayName" bind:value=\{displayName\}/);
-  assert.match(form, /name="kind" bind:value=\{kind\}/);
+  assert.match(form, /type="hidden" name="kind" value=\{kind\}/);
   assert.match(page, /profile\.label/);
-  assert.match(page, /profile\.kind/);
+  assert.doesNotMatch(page, /profile\.kind|Connection requests|Product Intelligence/);
   assert.match(page, /share\?profile=/);
-  assert.match(form, /p\?\.id \? p\.isPublished !== false : !data\?\.creatingNew/);
+  assert.doesNotMatch(form, /name="isPublished"/);
 });
 
 test('legacy contextual profile views keep the established profile on same-kind creation', () => {

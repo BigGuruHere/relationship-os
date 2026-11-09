@@ -1,8 +1,24 @@
 # Relish: Decision Log
 
-Status: living record of product and architecture choices. Updated 2026-11-02. Links point to detailed earlier rationale where available.
+Status: living record of product and architecture choices. Updated 2026-11-09. Links point to detailed earlier rationale where available.
 
 These entries preserve **why**, not every implementation detail. If a decision is reconsidered, add a dated supersession note instead of deleting the earlier record. An implemented feature can lag an agreed direction.
+
+## D-029 Ordinary onboarding and an incremental production launch
+
+Accepted 2026-11-08. Establish the actual production app for ordinary new users with a small, complete feature set, then add features in stages. Develop and verify in DEV before promoting the same code. Product onboarding must not depend on generated test accounts, invitation cohorts, signup-email allowlists or a separate sandbox for selected users. Automated fixtures and isolated development databases remain engineering tools, not the onboarding mechanism.
+
+This supersedes the invited-pilot rollout sequence in D-023 and the earlier operator decision to defer production. Custody, consent, identity assurance, abuse prevention, legacy compatibility and recovery requirements remain. Normal new-user activation does not authorize automatic migration of existing legacy accounts or Contacts.
+
+Adapt existing registration/Google signup, foundation provisioning and DEV-only capability gates into ordinary onboarding with private defaults and explicit profile publication. Reuse People, QR capture and private notes. The recommended initial scope is in [the roadmap](ROADMAP.md#next-delivery-production-base) and [production-base backlog](foundation/IMPLEMENTATION_PLAN.md#production-base-backlog-d-029). Configure feature availability per environment without granting private-data authority. Unfinished features can remain disabled while development continues.
+
+Implementation is recorded on `feature/production-base-onboarding`. New accounts are enrolled in the private domain by normal signup; existing accounts stay in their current domains. Reciprocal exchange and advanced voice experiences remain outside the initial Foundation release. The core branch and the separately approved promotion gates are tracked in [Current State](CURRENT_STATE.md). Earlier stage notes retain historical evidence.
+
+Follow-up accepted 2026-11-09. Include verified reciprocal exchange in the production rollout once the migration and provider checks pass. Production must use its own origin, database binding and verification realm. The first release also includes self-service password recovery and public social links in contact downloads. See [rollout and recovery](foundation/PRODUCTION_EXCHANGE_AND_RECOVERY.md).
+
+## D-030 Separate Brokerage deployment and Relish design
+
+Accepted 2026-11-09. The operator reports a dedicated broker-relish service and database. Retire the commercial CRM surfaces and automatic lead claiming on Relish. Brokerage is outside Relish's architecture and product requirements. Keep shared code needed by Relish and leave existing data and schema in place until a separately approved cleanup after the cutover has been verified.
 
 | ID | Decision | Status and rationale |
 | --- | --- | --- |
@@ -24,9 +40,29 @@ These entries preserve **why**, not every implementation detail. If a decision i
 | D-015 | For the present owner-only pilot, classify legacy Business Contacts as Personal using existing context-local tags and display selected Contacts in My People without moving or duplicating them. | Superseded by D-016 on 2026-11-03. This temporary solution reached Development but is being reversed; it never moved Contacts or changed custody. |
 | D-016 | Do not maintain the temporary Personal-tag bridge from legacy Brokerage to My People. For the current small pilot, add desired personal Contacts afresh while retaining old Brokerage records. | Accepted 2026-11-03. Restore My People private-only listing, remove the owner organiser feature, and leave historical Brokerage data and tags untouched. The long-term cross-context relationship architecture remains open. |
 
+| D-017 | A Relish User may create multiple independently labelled public profiles, including more than one Business, Friendship or Dating profile. Type is a secondary classification, and origin profile remains provenance rather than a permanent relationship category. | Accepted for pilot 2026-11-03. Reuses `Profile.label`, slug, kind and existing capture provenance. Context-specific legacy workflows remain compatible. Implementation on `feature/multi-labelled-profiles-20261103` pending tests and merge. |
+
+| D-018 | Use three visitor-facing screens: public profile/Save contact, optional private detail sharing, then optional creation of the visitor's own Relish profile. | Accepted 2026-11-03; merged into `development` via PR #10 (`841e59c`) on 2026-11-03. Deployment unverified. Reuses existing public profiles, vCard, capture, auth and editor. Replaces the capture-first visitor presentation in D-012, while Dorian invitations remain hidden. Saving a contact and sharing details require no account. Signup drafts are temporary and unverified; no identity linking or private-data sharing is implied. New signup profiles stay unpublished until owner review. |
+
+## Foundation direction accepted 2026-11-03
+
+Detailed rationale, alternatives, consequences and supersession are in [foundation decisions](foundation/DECISIONS.md). These are accepted design choices; runtime implementation is pending.
+
+| ID | Decision | Status and rationale |
+| --- | --- | --- |
+| D-019 | Separate new Relish domain semantics from legacy Brokerage; selectively reuse infrastructure and interfaces. | Supersedes the shared-persistence requirement in D-002, blanket replacement-model restriction in D-007 and consolidation expectation in D-008. Legacy preservation and reuse-before-build remain mandatory. |
+| D-020 | Contextual meaning, custody and authorisation are independent. | Refines D-003/D-005. Existing ContextSpace enforcement remains until deliberately replaced. |
+| D-021 | Relationships are durable understanding subjects; perspectives and acknowledgement remain distinct. | Refines D-004/D-006. No global shared narrative or access follows from participation. |
+| D-022 | Reusable understanding retains evidence, versioned derivation and operation-specific permissions. | Refines D-005/D-006/D-011. Public profiles differ from restricted recipient sharing. |
+| D-023 | Build the foundation, then onboard through gated useful releases and update documentation in every material change. | Extends D-013/D-014; replaces the earlier roadmap priority order. No implicit production approval. |
+
+D-024 (2026-11-04) fixes the first physical schema design: explicit foundation vault/enrolment, typed subjects, separate perspectives and versioned evidence, while retaining shared User and legacy Person. See [the decision](foundation/DECISIONS.md) and [physical specification](foundation/PHYSICAL_MODEL.md). Status: implementation design on F-201 branch, not implemented schema.
+
+Earlier entries above preserve the historical decisions; D-019 controls their explicitly superseded portions.
+
 ## Deferred questions
 
-- How to present a genuinely unified owner People list across current private and legacy business custody without accidental sharing or migration.
+- Whether future user evidence justifies optional legacy Brokerage directory integration; it is not a foundation requirement.
 - When and how to link a Contact to verified Person/User identity, including consent and assurance level.
 - How Dorian should select contextual procedures/instructions while preserving one relationship memory and permissioned disclosure.
 - Which relationship opportunities should be surfaced first, and what approval/withdrawal flow makes introductions safe and useful.
@@ -35,3 +71,32 @@ These entries preserve **why**, not every implementation detail. If a decision i
 ## How to add a decision
 
 Record the date, choice, reason, what it supersedes, affected code/interfaces, security/data implications, and whether it is merely approved or also implemented and validated. For a major schema or custody choice, use an additional focused architecture-decision document and link it here.
+
+## 2026-11-05: Foundation preparation isolates automatic legacy claims
+
+F-203 implements the accepted separation of account identity from private-domain enrollment. PREPARED is already an internal foundation cohort for automatic identity-claim side effects: it suppresses legacy lead/reciprocal-contact claims even though its public People/capture routing remains legacy until activation. This avoids acquiring legacy identity links while testing the new domain. No signup automatically prepares or activates an account. See [F-203](foundation/F203_PROVISIONING.md) for implementation status and transaction/rollback obligations.
+
+## 2026-11-05: Foundation access is an expiring server capability
+
+F-204 implements the accepted owner-private boundary with runtime-issued handles and transaction-time state/epoch checks. Relationship membership, attributed perspectives, semantic contexts and serialized job data cannot grant access. All new-domain services use the shared guarded Prisma client; legacy custody remains separate. Prepared rehearsal has no route caller. Evidence/AI/disclosure capabilities stay denied until implemented and tested in their own stages. See [F-204](foundation/F204_ACCESS.md).
+
+## D-025 Reciprocal saving after exchange
+
+Accepted product direction on 2026-11-07. After Mark and Betty exchange details, each should receive the shared details in their own My People. Signup through that exchange completes the visitor's automatic saving. A future automatic-add preference defaults to enabled and applies to future additions. Account association requires verified claim proof. Ongoing updates use separate permission. Private notes retain owner custody. D-004 and D-018 remain applicable to identity and private access, with reciprocal saving now explicitly designed in [S-401](foundation/S401_EXCHANGE_DESIGN.md).
+
+## D-026 Phone or email assurance for an exchange
+
+Accepted 2026-11-07. Support either phone or email verification using a channel actually supplied in the exchange. Implement SMS first through the existing Telnyx transport. Add email to the same challenge service afterward. A successful claim records channel, method and verification time. Caller-ID recognition remains provisional and sensitive actions may require fresh assurance. This revises S-401's initial email-first proposal.
+
+## D-027 Reusable account channels and explicit profile exchange
+
+Accepted 2026-11-07. Existing authenticated users choose an owned profile and explicitly confirm reciprocal sharing without a fresh SMS. New visitors retain immediate capture and claim the exact earlier submission through its continuation plus a matching verified account channel. Each phone/email has its own status, proof method/time and revocation history; replacement requires fresh proof. Both supplied channels each need their own successful check to both be verified, while one matching verified channel can complete the exchange and leave the other pending. Profile ownership does not certify its contact fields. Caller ID alone grants no sensitive access.
+
+Supersedes the fresh-per-exchange verification expectation and manual details form for existing users in S-401. Refines D-025 account-association authority to include authenticated profile confirmation. D-026's either-channel claim rule remains, but neither successful channel verifies the other; its planned extension of exchange-owned challenges is replaced by account-owned assurance. Private custody, exact continuation binding, existing associations and legacy Brokerage remain intact. See [S-405](foundation/S405_ACCOUNT_CHANNELS_AND_EXCHANGE.md) for source assessment, migration boundaries and S-405a-e stages. Status: accepted design on feature branch, no runtime implementation in S-405a.
+
+
+2026-11-09 guest flow refinement. Save the published card in the authenticated guest's My People before channel proof. Confirm the guest's association to the original private entry only after proof of the submitted mobile, or email for an email-only submission. This replaces the either-channel choice for guests who submitted both. Channel status and proof remain independent. Verification of fields for public profile publication is deferred. See the [updated exchange contract](foundation/S405_ACCOUNT_CHANNELS_AND_EXCHANGE.md).
+
+## D-028 Configurable verification email and trusted callback proof
+
+Accepted implementation choice, 2026-11-08, for [S-405d](foundation/S405D_GUEST_ASSURANCE.md): use a default-disabled Resend adapter because the repository has no functioning email transport, retaining the existing encrypted dispatch/budget contract. Operator sender/provider configuration and authorised delivery remain pending. Newly validated Google callbacks may establish exact email assurance after strict issuer/audience/time/nonce/boolean checks; old OAuth rows and revoked channels are never silently promoted. Proof commits independently of an exchange's later settlement. No changes to credential matching, private custody or production approval.

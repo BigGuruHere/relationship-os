@@ -1,31 +1,31 @@
 <!-- PURPOSE: simple register form that immediately signs in -->
 <script lang="ts">
-    export let data: { next: string | null };
+    export let data: { next: string | null; draft?: { email: string } | null };
     export let form;
   </script>
-  
+
   <div class="container" style="max-width:480px;">
     <div class="card" style="padding:22px;">
       <h1 style="margin:0 0 14px 0;">Create account</h1>
-  
+
       {#if form?.error}
         <div class="card" style="padding:10px; margin-bottom:12px; border-color: var(--danger);">
           <div style="color:#ffdada;">{form.error}</div>
         </div>
       {/if}
-  
+
       <form method="POST" action={data.next ? `?next=${encodeURIComponent(data.next)}` : undefined}>
         <div class="field">
           <label for="email">Email</label>
-          <input id="email" name="email" type="email" autocomplete="email" required />
+          <input id="email" name="email" type="email" autocomplete="email" required value={data.draft?.email || ''} />
         </div>
         <div class="field">
           <label for="password">Password</label>
-          <input id="password" name="password" type="password" autocomplete="new-password" required />
+          <input id="password" name="password" type="password" autocomplete="new-password" minlength="8" maxlength="128" required />
         </div>
         <button class="btn primary" type="submit" style="width:100%;">Create account</button>
       </form>
-  
+
       <div style="display:flex; align-items:center; gap:10px; margin:16px 0;">
         <div style="height:1px; background:var(--border); flex:1;"></div>
         <span style="color:var(--muted);">or</span>
@@ -37,4 +37,4 @@
       </p>
     </div>
   </div>
-  
+

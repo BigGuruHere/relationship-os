@@ -8,17 +8,19 @@
 
   // IT: working profile from loader or defaults
   const p: any = data?.profile || {};
+  // IT: Label is an owner-facing name, separate from the profile's public display name.
+  let profileLabel = p.label && p.label !== 'My profile' ? p.label : (p.displayName || '');
 
   // IT: core public fields
-  let displayName = p.displayName || '';
+  let displayName = p.displayName || data?.draft?.name || '';
   let headline    = p.headline || '';
   let bio         = p.bio || '';
   let avatarUrl   = p.avatarUrl || '';
   let company     = p.company || '';
   let title       = p.title || '';
   let websiteUrl  = p.websiteUrl || '';
-  let emailPublic = p.emailPublic || '';
-  let phonePublic = p.phonePublic || '';
+  let emailPublic = p.emailPublic || data?.draft?.email || '';
+  let phonePublic = p.phonePublic || data?.draft?.phone || '';
   let kind        = p.kind || data?.requestedProfileKind || 'business';
 
   // IT: extra inputs - one per EXTRA_KEYS entry
@@ -69,6 +71,16 @@
 <div class="container">
   <div class="card" style="padding:16px; max-width:720px; margin:0 auto;">
     <h1 style="margin:0 0 12px 0;">{p?.id ? 'Edit profile' : 'Create profile'}</h1>
+    {#if p.isPublished === false || !p.id}
+      <!-- Submit the existing editor, including unsaved fields and its normal validation. -->
+      <aside class="publication-banner" aria-label="Profile publication status">
+        <div><strong>Your profile is unpublished</strong><p>Publish it to make your profile link and QR code available.</p></div>
+        <button class="btn primary" type="submit" form="profile-editor" name="publishNow" value="yes">Publish profile</button>
+      </aside>
+    {/if}
+    {#if data?.onboarding}
+      <p>Review your details and choose whether to publish. Your QR code becomes available after publication.</p>
+    {/if}
 
     {#if isFirstTime}
       <div style="margin:0 0 12px 0; padding:8px 10px; border:1px solid #e6e6e6; border-radius:10px; background:#fafafa;">
@@ -77,7 +89,8 @@
     {/if}
 
     <!-- IT: main editor form - named action `save` -->
-    <form method="post" action="?/save" style="display:grid; grid-template-columns: 1fr 1fr; gap:12px;">
+    <form id="profile-editor" method="post" action={data?.onboarding ? "?/save&onboarding=1" : "?/save"} style="display:grid; grid-template-columns: 1fr 1fr; gap:12px;">
+      {#if data?.exchangeReturn}<input type="hidden" name="returnToExchange" value="1" />{/if}
       {#if data?.returnContext}
         <!-- IT: Return to the same context after editing, never to a mismatched profile. -->
         <input type="hidden" name="returnContext" value={data.returnContext} />
@@ -86,13 +99,28 @@
         <!-- IT: explicit Network workflow flag, checked by the server. -->
         <input type="hidden" name="entry" value="network" />
       {/if}
+      {#if data?.fromProfiles}
+        <!-- IT: Editing from the manager returns to the manager, not an unrelated context. -->
+        <input type="hidden" name="returnToProfiles" value="1" />
+      {/if}
+      {#if data?.creatingNew}
+        <!-- IT: Explicitly create another profile even if this account has one of the same type. -->
+        <input type="hidden" name="createNewProfile" value="1" />
+        <input type="hidden" name="returnToProfiles" value="1" />
+      {/if}
       {#if p?.id}
         <!-- IT: include for update path -->
         <input type="hidden" name="profileId" value={p.id} />
       {/if}
 
       <div class="field">
-        <label for="displayName">Name</label>
+        <label for="profileLabel">Profile label (only you see this)</label>
+        <input id="profileLabel" name="label" bind:value={profileLabel} maxlength="120" required={data?.creatingNew} placeholder="e.g. Thursday Networking" />
+        <small>Use this name to choose which profile to share. Visitors see your public name below.</small>
+      </div>
+
+      <div class="field">
+        <label for="displayName">Public name</label>
         <input id="displayName" name="displayName" bind:value={displayName} required />
       </div>
 
@@ -142,7 +170,7 @@
       </div>
 
       <div class="field span2">
-        <label><input type="checkbox" name="isPublished" checked={p.isPublished !== false} /> Published publicly</label>
+        <label><input type="checkbox" name="isPublished" checked={p?.id ? p.isPublished !== false : !data?.creatingNew && !data?.onboarding} /> Published publicly</label>
         <small>Uncheck to hide this profile and disable its public QR destination.</small>
       </div>
       <div class="field">
@@ -165,8 +193,9 @@
         </div>
       {/each}
 
-      <div style="grid-column: 1 / span 2; display:flex; gap:8px; margin-top:8px;">
+      <div style="grid-column: 1 / span 2; display:flex; gap:8px; margin-top:8px; flex-wrap:wrap; align-items:center;">
         <button class="btn primary" type="submit">Save</button>
+        <a class="btn" href={data?.exchangeReturn || "/profiles"}>{data?.exchangeReturn ? "Cancel and return to exchange" : "Back to My Profiles"}</a>
       </div>
 
       {#if form?.error}
@@ -179,6 +208,9 @@
 </div>
 
 <style>
+  .publication-banner{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;padding:18px;margin:16px 0 22px;border:2px solid #256457;border-radius:12px;background:#edf7f2;}
+  .publication-banner p{margin:6px 0 0;line-height:1.5;}
+  .publication-banner button{min-height:48px;font-weight:700;padding:12px 20px;}
   .profile-photo-preview { width:76px; height:76px; border-radius:50%; object-fit:cover; }
   @media(max-width:540px){form{grid-template-columns:minmax(0,1fr)!important;} .span2{grid-column:1!important;} input,textarea,select{min-width:0;max-width:100%;box-sizing:border-box;} }
   .field { display:flex; flex-direction:column; gap:6px; }

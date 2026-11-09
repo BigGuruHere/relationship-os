@@ -165,7 +165,8 @@ test('Dating recording uses Dating endpoints and transcript jobs are custody-bou
 	assert.match(recordingPage, /uploadEndpoint="\/dating\/api\/upload-chunk"/);
 	assert.match(recordingPage, /resultEndpoint="\/dating\/api\/transcribe-result"/);
 	assert.match(upload, /job\.userId !== userId/);
-	assert.match(upload, /job\.contextSpaceId !== contextSpaceId/);
+	assert.match(upload, /job\.scopeKey !== scopeKey/);
+	assert.match(upload, /'legacy:' \+ locals\.contextSpaceId/);
 	assert.match(upload, /Invalid upload key/);
 	assert.match(upload, /Audio chunks must arrive in order/);
 	assert.match(upload, /MAX_AUDIO_BYTES/);

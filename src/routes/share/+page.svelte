@@ -5,22 +5,36 @@
 
   export let data: any;
 
+  // IT: Only the signed-in user's profiles are returned by the server.
+  const profileOptions: Array<{ id: string; slug: string; label: string; displayName: string | null; kind: string; isPublished: boolean }> = data.profileOptions || [];
+  const profileKindLabels: Record<string, string> = { business: 'Business', personal: 'Friendship', dating: 'Dating', custom: 'Custom' };
+  function optionLabel(option: (typeof profileOptions)[number]) {
+    // IT: Older profiles may have only the generic default label.
+    const label = option.label && option.label !== 'My profile' ? option.label : option.displayName || 'My profile';
+    return label + ' (' + (profileKindLabels[option.kind] || option.kind) + ')';
+  }
+
+  function selectProfile(event: Event) {
+    const slug = (event.currentTarget as HTMLSelectElement).value;
+    // IT: Full navigation guarantees the QR/link/title all update together, even when
+    // SvelteKit reuses a page component for a new query string.
+    if (profileOptions.some((option) => option.slug === slug)) {
+      window.location.assign('/share?profile=' + encodeURIComponent(slug));
+    }
+  }
+
   // IT: The server redirects when no usable profile exists. Keep a local typed alias so the page
   // can express that invariant without weakening the server-side guard.
   const profile: any = data.profile;
 
   // IT: prefer server-provided origin to avoid SSR mismatch - fall back to window at runtime
-  const relPath = '/u/' + profile.slug;
+  const relPath = '/u/' + encodeURIComponent(profile.slug);
   let profileUrl = (data.origin || '') + relPath;
 
   if (typeof window !== 'undefined' && (!profileUrl || profileUrl.startsWith('/'))) {
     // IT: build absolute URL in the browser if needed
     profileUrl = `${window.location.origin}${relPath}`;
   }
-
-  // IT: stored SVG markup for the QR if available
-  const svg = ''; // Legacy stored SVG may encode the wrong deployment origin.
-  const hasSvg = typeof svg === 'string' && svg.trim().startsWith('<svg');
 
   // IT: derive a friendly owner name with safe fallbacks
   // 1) profile.displayName
@@ -65,19 +79,24 @@
 <div class="container">
   <div class="card" style="padding:20px; max-width:720px; margin:0 auto;">
     <h1 style="margin-top:0;">{heading}</h1>
-    {#if !profile.isPublished}<p role="status">This profile is unpublished. Publish it before sharing.</p>{/if}
+    <div class="profile-selection">
+      <label for="share-profile-select">Profile to share</label>
+      <select id="share-profile-select" value={profile.slug} on:change={selectProfile}>
+        {#each profileOptions as option (option.id)}
+          <option value={option.slug}>{optionLabel(option)}</option>
+        {/each}
+      </select>
+      <a href="/profiles">Manage profiles</a>
+    </div>
+    {#if !profile.isPublished}
+      <p role="status">This profile is unpublished. Publish it to enable sharing.</p>
+      <p><a class="btn" href={'/settings/profile?profile=' + encodeURIComponent(profile.slug)}>Edit profile</a>
+        <a class="btn" href={relPath}>Preview profile</a></p>
+    {:else}
 
     <div style="display:flex; gap:20px; align-items:flex-start; flex-wrap:wrap;">
       <div style="min-width:220px;">
-        {#if profile.isPublished}
-          <img class="qr-live" src={'/api/qr?slug=' + encodeURIComponent(profile.slug)} alt="Scan this profile QR code" width="220" height="220" />
-        {:else}
-          <div
-            style="width:220px;height:220px;border:1px solid #eee;border-radius:10px;display:flex;align-items:center;justify-content:center;"
-          >
-            QR not generated
-          </div>
-        {/if}
+        <img class="qr-live" src={'/api/qr?slug=' + encodeURIComponent(profile.slug)} alt="Scan this profile QR code" width="220" height="220" />
       </div>
 
       <div style="flex:1; min-width:260px;">
@@ -104,10 +123,16 @@
         </div>
       </div>
     </div>
+    {/if}
   </div>
 </div>
 
 <style lang="postcss">
+  /* IT: Profiles are chosen by private owner label, not by ContextSpace. */
+  .profile-selection { display:grid; gap:8px; margin:0 0 20px; max-width:440px; }
+  .profile-selection label { font-weight:650; }
+  .profile-selection select { width:100%; min-height:44px; border:1px solid #c4d0ce; border-radius:10px; background:white; padding:10px; font:inherit; }
+  .profile-selection a { font-size:.9rem; }
   /* IT: compact button and QR styling */
   .btn {
     padding: 8px 12px;

@@ -17,6 +17,7 @@
   export let contactBase = '/contacts';
   export let audioBase = '/api';
 
+  import { enhance } from '$app/forms';
   import { onMount, onDestroy } from 'svelte';
   import { browser } from '$app/environment';
   import { goto, beforeNavigate } from '$app/navigation';
@@ -183,6 +184,7 @@
     if (!jobId) throw new Error('No jobId to poll');
 
     for (let i = 0; i < 60; i++) {
+      if (disposed) throw new Error('Recording page closed');
       const res = await fetch(`${audioBase}/transcribe-result?jobId=${encodeURIComponent(jobId)}&correlationId=${encodeURIComponent(uploadKey)}`);
       let data: any = {};
       try {
@@ -190,6 +192,7 @@
       } catch {}
       if (res.ok && data?.status === 'done') {
         const result = String(data.transcript || '');
+        if (!result.trim()) throw new Error('Empty transcription');
         diagnose('browser.result_received', { httpStatus: res.status, characterCount: result.length, emptyContent: !result.length });
         return result;
       }
@@ -340,6 +343,20 @@
     recording = false;
   }
 
+  // Keep a private draft visible when navigation/save fails, including a lost network response.
+  function enhancePrivate(node: HTMLFormElement) {
+    if (!privateMode || !data.foundation) return;
+    return enhance(node, () => {
+      saving = true;
+      return async ({ result, update }) => {
+        try {
+          if (result.type === 'error') {
+            form = { error: 'Could not save your note. Your text is still here; please retry.', draft: { text, summary, channel, saveKey: form?.draft?.saveKey ?? data.saveKey } };
+          } else await update({ reset: false });
+        } finally { saving = false; }
+      };
+    });
+  }
   function handleSubmit() {
     saving = true;
   }
@@ -358,7 +375,8 @@
       for <a href={contactBase + "/" + data.contact.id} class="link">{data.contact.name}</a>
     </div>
     {#if data.transcriptionDebug && uploadKey}<p class="muted">Transcription diagnostic reference: {uploadKey}</p>{/if}
-    <form method="post" on:submit={handleSubmit}>
+    <form method="post" use:enhancePrivate on:submit={handleSubmit}>
+      {#if data.foundation}<input type="hidden" name="saveKey" value={form?.draft?.saveKey ?? data.saveKey}/>{/if}
       <input type="hidden" name="summary" value={summary} />
       <input type="hidden" name="tags" value={tags} />
       <input type="hidden" name="tagsSource" value="ai" />
@@ -454,7 +472,7 @@
           class="btn primary"
           formaction="?/save"
           formmethod="post"
-          disabled={saving || transcribing || recording || summarizing}
+          disabled={saving || starting || transcribing || recording || summarizing}
         >
           {#if saving}
             <span class="spinner" aria-hidden="true"></span>
@@ -471,6 +489,7 @@
 
     {#if form?.error}
       <p style="color:var(--danger); margin-top:12px;">{form.error}</p>
+      {#if form.reference}<p class="muted">Support reference: {form.reference}</p>{/if}
     {/if}
   </div>
 </div>

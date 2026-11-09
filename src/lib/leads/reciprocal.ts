@@ -2,32 +2,33 @@
 // PRIVACY: uses only the owner's public Profile fields - no private data
 // SECURITY: encrypts PII, uses deterministic indexes, and preserves tenant ownership by recipient userId
 
+import type { AppTransactionClient } from '$lib/db';
 import { prisma } from '$lib/db';
 import { encrypt, buildIndexToken } from '$lib/crypto';
 import { requireUserPersonId } from '$lib/server/core/identity';
 import { contextSpaceIdForOwner } from '$lib/server/core/contextSpace';
 
-export async function createReciprocalContactIfMissing(recipientUserId: string, ownerUserId: string) {
+export async function createReciprocalContactIfMissing(recipientUserId: string, ownerUserId: string, client: AppTransactionClient = prisma) {
   // IT: Stage 8.1 canonical identity for the account being represented in this workspace.
-  const ownerPersonId = await requireUserPersonId(ownerUserId);
+  const ownerPersonId = await requireUserPersonId(ownerUserId, client);
   // SECURITY: Stage 8.7 requires this helper to run in the recipient's active custody. The other
   // user's Profile is account-level public data, while all Contact reads/writes stay with the recipient.
   const recipientContextSpaceId = contextSpaceIdForOwner(recipientUserId);
 
   // IT: if the explicit account link already exists, make sure its Person bridge is also populated.
-  const linked = await prisma.contact.findFirst({
+  const linked = await client.contact.findFirst({
     where: { userId: recipientUserId, contextSpaceId: recipientContextSpaceId, linkedUserId: ownerUserId },
     select: { id: true, personId: true }
   });
   if (linked) {
     if (linked.personId !== ownerPersonId) {
-      await prisma.contact.update({ where: { id: linked.id, userId: recipientUserId, contextSpaceId: recipientContextSpaceId }, data: { personId: ownerPersonId } });
+      await client.contact.update({ where: { id: linked.id, userId: recipientUserId, contextSpaceId: recipientContextSpaceId }, data: { personId: ownerPersonId } });
     }
     return;
   }
 
   // IT: fetch owner's default or most recent profile to get public fields
-  const prof = await prisma.profile.findFirst({
+  const prof = await client.profile.findFirst({
     where: { userId: ownerUserId },
     select: {
       displayName: true,
@@ -52,14 +53,14 @@ export async function createReciprocalContactIfMissing(recipientUserId: string, 
   // IT: try to find an existing contact in recipient tenant by deterministic email or phone.
   // If found, reuse that workspace Contact and attach the canonical Person instead of creating a duplicate.
   const byEmail = email
-    ? await prisma.contact.findFirst({
+    ? await client.contact.findFirst({
         where: { userId: recipientUserId, contextSpaceId: recipientContextSpaceId, emailIdx: buildIndexToken(email) },
         select: { id: true }
       })
     : null;
 
   const byPhone = !byEmail && phone
-    ? await prisma.contact.findFirst({
+    ? await client.contact.findFirst({
         where: { userId: recipientUserId, contextSpaceId: recipientContextSpaceId, phoneIdx: buildIndexToken(phone) },
         select: { id: true }
       })
@@ -67,7 +68,7 @@ export async function createReciprocalContactIfMissing(recipientUserId: string, 
 
   const existing = byEmail ?? byPhone;
   if (existing) {
-    await prisma.contact.update({
+    await client.contact.update({
       where: { id: existing.id, userId: recipientUserId, contextSpaceId: recipientContextSpaceId },
       data: { linkedUserId: ownerUserId, personId: ownerPersonId }
     });
@@ -101,8 +102,9 @@ export async function createReciprocalContactIfMissing(recipientUserId: string, 
 
   // IT: best effort create - ignore unique collisions silently
   try {
-    await prisma.contact.create({ data });
+    await client.contact.create({ data });
   } catch (e: any) {
-    if (!(e?.code === 'P2002')) throw e;
+    // A caller transaction needs its savepoint rollback before continuing after SQL errors.
+    if (client !== prisma || !(e?.code === 'P2002')) throw e;
   }
 }

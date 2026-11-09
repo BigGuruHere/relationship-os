@@ -1,3 +1,4 @@
+import { EXCHANGE_RETURN, startExchangeAfterAuth } from '$lib/server/exchangeOnboarding';
 // src/routes/auth/login/+page.server.ts
 // PURPOSE: verify credentials and set a new session cookie
 // SECURITY:
@@ -10,25 +11,27 @@
 import type { Actions, PageServerLoad } from './$types';
 import { fail, redirect } from '@sveltejs/kit';
 import { prisma } from '$lib/db';
-import { verifyPassword, createSession, setSessionCookie } from '$lib/auth';
+import { verifyPassword, createSession, destroySession, setSessionCookie } from '$lib/auth';
 import { linkLeadsForUser } from '$lib/leads/link';
+import { accountDomain } from '$lib/server/foundation/provisioning';
 import { consumePasswordLoginAttempt, clearSuccessfulLoginAccountBucket } from '$lib/server/loginThrottle';
 
 // IT - encrypted email helpers
 import { findUserByEmail, decryptUserEmail } from '$lib/server/userEmail';
 import { ensureDefaultProfile } from '$lib/server/profiles';
-import { safeNetworkJoinReturn } from '$lib/server/networkJoinReturn';
+import { finishProfileAuth, profileReturnForAccount, PROFILE_ONBOARDING_RETURN } from '$lib/server/profileOnboarding';
+import { safeAuthReturn } from '$lib/server/networkJoinReturn';
 
-export const load: PageServerLoad = async ({ locals, url }) => {
-  const next = safeNetworkJoinReturn(url.searchParams.get('next'));
+export const load: PageServerLoad = async ({ locals, url, cookies }) => {
+  const next = safeAuthReturn(url.searchParams.get('next'));
   // If already signed in, redirect home
-  if (locals.user) throw redirect(303, next || '/');
+  if (locals.user) throw redirect(303, profileReturnForAccount(cookies, next, locals.user.id));
   return { next };
 };
 
 export const actions: Actions = {
   default: async ({ request, cookies, locals, getClientAddress, url }) => {
-    const next = safeNetworkJoinReturn(url.searchParams.get('next'));
+    const next = safeAuthReturn(url.searchParams.get('next'));
     // 1 - parse form
     const form = await request.formData();
     const emailInput = String(form.get('email') || '').trim();
@@ -62,13 +65,24 @@ export const actions: Actions = {
     }
 
     // 6 - create session and set env-aware cookie
-    const { cookie, expiresAt } = await createSession(user.id);
+    const { cookie, expiresAt, sessionId } = await createSession(user.id);
+    // A reset can finish while Argon2 checks an old password. Recheck before
+    // exposing the cookie. Any reset after this read revokes the issued session.
+    if ((await findUserByEmail(emailInput))?.passwordHash !== user.passwordHash) {
+      await destroySession(sessionId);
+      return fail(400, { error: 'Invalid email or password' });
+    }
     setSessionCookie(cookies, locals, cookie, expiresAt);
+    await startExchangeAfterAuth(cookies, url, locals, next, user.id, sessionId);
 
     // Repair old partial registrations without blocking an otherwise valid login.
     // New registrations create the profile atomically, so this is a legacy recovery path.
     try {
-      await ensureDefaultProfile(user.id, { displayName: emailInput.split('@')[0] });
+      const privateDefault = next === PROFILE_ONBOARDING_RETURN || next === EXCHANGE_RETURN ||
+        await accountDomain(user.id) !== 'LEGACY';
+      await ensureDefaultProfile(user.id, privateDefault
+        ? { isPublished: false }
+        : { displayName: emailInput.split('@')[0] });
     } catch (e) {
       console.warn('Could not provision missing default profile after login:', e);
     }
@@ -79,6 +93,11 @@ export const actions: Actions = {
       await clearSuccessfulLoginAccountBucket(emailInput);
     } catch (e) {
       console.warn('Could not clear successful-login throttle bucket:', e);
+    }
+
+    // Profile continuation skips legacy claims. Existing Network and ordinary login keep their flow.
+    if ((next === PROFILE_ONBOARDING_RETURN || next === EXCHANGE_RETURN)) {
+      throw redirect(303, finishProfileAuth(cookies, url, next, user.id));
     }
 
     // 7 - post auth linking - decrypt server-side to pass a string email only to the linker

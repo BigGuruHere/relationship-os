@@ -50,9 +50,28 @@ export async function consumePasswordLoginAttempt(ip: string, email: string): Pr
   return ipAllowed && emailAllowed;
 }
 
+export async function consumePasswordSignupAttempt(ip: string): Promise<boolean> {
+  // Keep signup abuse from exhausting the separate login budget for this IP.
+  return consumeBucket('ip', loginThrottleKey('ip', 'signup:' + ip, throttleSecret()), 10);
+}
+
 export async function clearSuccessfulLoginAccountBucket(email: string): Promise<void> {
   // A successful login clears only the account budget, never the IP budget.
   // This avoids penalizing the account after the owner successfully authenticates.
   const key = loginThrottleKey('account', normalizeLoginEmail(email), throttleSecret());
   await prisma.$executeRaw`DELETE FROM "PasswordLoginThrottle" WHERE "key" = ${key}`;
+}
+
+
+// Separate recovery limits from sign-in and signup so one flow cannot lock out another.
+export async function consumePasswordResetRequest(ip: string, email: string): Promise<boolean> {
+  const secret = throttleSecret();
+  const address = await consumeBucket('ip', loginThrottleKey('ip', 'reset:' + ip, secret), 8);
+  const recipient = await consumeBucket('account', loginThrottleKey('account', 'reset:' + normalizeLoginEmail(email), secret), 3);
+  const global = address && recipient && await consumeBucket('ip', loginThrottleKey('ip', 'reset:global', secret), 100);
+  return global;
+}
+
+export async function consumePasswordResetCompletion(ip: string): Promise<boolean> {
+  return consumeBucket('ip', loginThrottleKey('ip', 'reset-complete:' + ip, throttleSecret()), 15);
 }

@@ -8,11 +8,13 @@
 //   - if next=preview, redirect to /u/<slug>
 //   - else redirect to /share?profile=<slug>
 
-import { fail, redirect } from '@sveltejs/kit';
+import { error, fail, redirect } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
+import { profileExchangeReturn } from '$lib/server/profileExchangeReturn';
 import { prisma } from '$lib/db';
 import { absoluteUrlFromOrigin } from '$lib/url';
 import { mergeExtras } from '$lib/publicProfile'; // IT: merges extra_* into existing publicMeta
+import { readOwnedProfileDraft, PROFILE_DRAFT_COOKIE, PROFILE_ONBOARDING_RETURN } from '$lib/server/profileOnboarding';
 
 // IT: simple slugify helper
 function slugify(input: string): string {
@@ -39,19 +41,23 @@ async function ensureUniqueSlugGlobal(wanted: string): Promise<string> {
   return `${wanted}-${crypto.randomUUID().slice(0, 8)}`;
 }
 
-export const load: PageServerLoad = async ({ locals, url }) => {
+export const load: PageServerLoad = async ({ locals, url, cookies, setHeaders }) => {
   // IT: require auth
   if (!locals.user) {
-    throw redirect(303, absoluteUrlFromOrigin(locals.appOrigin, '/auth/login'));
+    throw redirect(303, absoluteUrlFromOrigin(locals.appOrigin, '/auth/login', {
+      next: url.searchParams.get('onboarding') === '1' ? PROFILE_ONBOARDING_RETURN : undefined
+    }));
   }
 
   // IT: pick most relevant profile - default first, then most recently updated
   const requestedProfileSlug = url.searchParams.get('profile');
+  // IT: An explicit new-profile intent must not silently load and overwrite the first profile of the same kind.
+  const creatingNew = url.searchParams.get('mode') === 'new' && !requestedProfileSlug;
   const networkEntry = url.searchParams.get('entry') === 'network';
   const requestedProfileKind = networkEntry ? 'personal' : url.searchParams.get('kind');
   const safeRequestedKind = ['business', 'personal', 'dating', 'custom'].includes(requestedProfileKind || '') ? requestedProfileKind : null;
   // IT: Do not load an unrelated default Business profile when creating a Network profile.
-  const profile = await prisma.profile.findFirst({
+  const profile = creatingNew ? null : await prisma.profile.findFirst({
     where: { userId: locals.user.id, ...(requestedProfileSlug ? { slug: requestedProfileSlug, ...(safeRequestedKind ? { kind: safeRequestedKind as any } : {}) } : safeRequestedKind ? { kind: safeRequestedKind as any } : {}) },
     select: {
       id: true,
@@ -59,6 +65,7 @@ export const load: PageServerLoad = async ({ locals, url }) => {
       slug: true,
       isDefault: true,
       displayName: true,
+      label: true,
       headline: true,
       bio: true,
       avatarUrl: true,
@@ -73,8 +80,12 @@ export const load: PageServerLoad = async ({ locals, url }) => {
       isPublished: true,
       updatedAt: true
     },
-    orderBy: [{ isDefault: 'desc' }, { updatedAt: 'desc' }]
+    // IT: Pick the established same-kind profile rather than a newly created profile.
+    orderBy: [{ isDefault: 'desc' }, { createdAt: 'asc' }]
   });
+
+  // SECURITY: An invalid explicit profile URL must never fall back to another existing profile.
+  if (requestedProfileSlug && !profile) throw error(404, 'Profile not found.');
 
   const mode = url.searchParams.get('mode') || 'edit';
   const first = url.searchParams.get('first') === '1';
@@ -84,20 +95,34 @@ export const load: PageServerLoad = async ({ locals, url }) => {
   const requestedReturn = url.searchParams.get('returnContext');
   const returnKinds: Record<string, string> = { business: 'business', friendship: 'personal', dating: 'dating' };
   const returnContext = requestedReturn && returnKinds[requestedReturn] === (profile?.kind || safeRequestedKind) ? requestedReturn : null;
-  return { profile: profile || null, requestedProfileKind, networkEntry, mode, first, next, returnContext };
+  // IT: Prefill is shown only to the signed-in browser that explicitly chose onboarding.
+  // Nothing is persisted publicly until the owner reviews and saves the existing editor.
+  const onboarding = url.searchParams.get('onboarding') === '1';
+  // Only the account and profile bound after signup may receive these unverified prefills.
+  const draft = onboarding && profile ? readOwnedProfileDraft(cookies, locals.user.id, profile.id) : null;
+  if (onboarding) setHeaders({ 'cache-control': 'private, no-store', 'referrer-policy': 'same-origin' });
+  const exchangeReturn = url.searchParams.get('exchange')==='1' ? profileExchangeReturn(cookies,locals.user.id) : null;
+  return { exchangeReturn, profile: profile || null, requestedProfileKind, networkEntry, creatingNew,
+    onboarding, draft,
+    fromProfiles: url.searchParams.get('from') === 'profiles', mode, first, next, returnContext };
 };
 
 export const actions: Actions = {
-  save: async ({ request, locals, url }) => {
+  save: async ({ request, locals, url, cookies }) => {
     // IT: require auth
     if (!locals.user) {
-      throw redirect(303, absoluteUrlFromOrigin(locals.appOrigin, '/auth/login'));
+      throw redirect(303, absoluteUrlFromOrigin(locals.appOrigin, '/auth/login', {
+        next: url.searchParams.get('onboarding') === '1' ? PROFILE_ONBOARDING_RETURN : undefined
+      }));
     }
 
     const fd = await request.formData();
 
     // IT: core fields
     const profileId   = String(fd.get('profileId') || '').trim();
+    const creatingNew = fd.get('createNewProfile') === '1';
+    // IT: This owner-private label identifies a profile in the manager; public display name is separate.
+    const label = String(fd.get('label') || '').trim();
     const displayName = String(fd.get('displayName') || '').trim();
     const headline    = String(fd.get('headline') || '').trim();
     const bio         = String(fd.get('bio') || '').trim();
@@ -108,7 +133,8 @@ export const actions: Actions = {
     const emailPublic = String(fd.get('emailPublic') || '').trim();
     const phonePublic = String(fd.get('phonePublic') || '').trim();
     // SECURITY: Publication is an explicit owner decision, not inferred from QR generation.
-    const isPublished = fd.get('isPublished') === 'on';
+    // The prominent publish button submits the same editor and all its validation.
+    const isPublished = fd.get('publishNow') === 'yes' || fd.get('isPublished') === 'on';
     // IT: Network entry never permits changing another profile kind through form tampering.
     const networkEntry = String(fd.get('entry') || '') === 'network';
     const requestedKind = networkEntry ? 'personal' : String(fd.get('kind') || 'business').trim();
@@ -123,6 +149,9 @@ export const actions: Actions = {
       (/^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(avatarUrl) && avatarUrl.length <= 320000);
     if (!avatarAllowed) return fail(400, { error: 'Use a HTTPS image URL or upload a supported photo.' });
     if (!displayName) return fail(400, { error: 'Display name is required' });
+    if (label.length > 120 || (creatingNew && !label)) return fail(400, { error: 'Enter a profile label up to 120 characters.' });
+    if (creatingNew && profileId) return fail(400, { error: 'A new profile cannot also update an existing profile.' });
+    if (creatingNew && networkEntry) return fail(400, { error: 'Network onboarding cannot create unrelated profiles.' });
 
     // IT: collect extras from inputs named extra_<key>
     const extras: Record<string, string> = {};
@@ -134,17 +163,19 @@ export const actions: Actions = {
       }
     }
 
-    // IT: A profile-specific create must not overwrite a default profile of another kind.
+    // IT: An explicitly new profile skips kind-based lookup; legacy contextual routes still
+    // update their previously selected profile until those flows are intentionally redesigned.
     // IT: read existing profile if any
     const existing = profileId
       ? await prisma.profile.findFirst({
           where: { id: profileId, userId: locals.user.id },
           select: { id: true, slug: true, isDefault: true, publicMeta: true, kind: true }
         })
-      : await prisma.profile.findFirst({
+      : creatingNew ? null : await prisma.profile.findFirst({
           where: { userId: locals.user.id, kind },
           select: { id: true, slug: true, isDefault: true, publicMeta: true, kind: true },
-          orderBy: [{ isDefault: 'desc' }, { updatedAt: 'desc' }]
+          // IT: Pick the established same-kind profile rather than a newly created profile.
+    orderBy: [{ isDefault: 'desc' }, { createdAt: 'asc' }]
         });
 
     // SECURITY: A Network request cannot overwrite a Business or Dating profile by supplying its id.
@@ -165,6 +196,8 @@ export const actions: Actions = {
           where: { id: existing.id },
           data: {
             slug: nextSlug,
+            // IT: Preserve legacy label when an old edit form doesn't supply one.
+            ...(label ? { label } : {}),
             kind,
             isPublished,
             displayName: displayName || null,
@@ -197,6 +230,7 @@ export const actions: Actions = {
           data: {
             userId: locals.user.id,
             slug: uniqueSlug,
+            label: label || displayName,
             isDefault: hasDefault ? false : true,
             kind,
             isPublished,
@@ -230,7 +264,16 @@ export const actions: Actions = {
     }
 
     // IT: after DB work - perform redirects OUTSIDE the try/catch
+    // IT: Retain the draft on validation failure, clear it only after a successful save.
+    if (existing && readOwnedProfileDraft(cookies, locals.user.id, existing.id)) {
+      cookies.delete(PROFILE_DRAFT_COOKIE, { path: '/' });
+    }
 
+    // A new private card can return to confirmation without being published.
+    if(fd.get('returnToExchange')==='1') {
+      const back=profileExchangeReturn(cookies,locals.user.id);
+      if(back) throw redirect(303,back);
+    }
     // IT: stay in the Network experience after create and edit.
     if (networkEntry) throw redirect(303, '/network');
 
@@ -257,6 +300,9 @@ export const actions: Actions = {
 
       throw redirect(303, absoluteUrlFromOrigin(locals.appOrigin, `/u/${encodeURIComponent(slug)}`));
     }
+
+    // IT: Return independently created profiles to their manager; preserve old editor destinations.
+    if (fd.get('returnToProfiles') === '1') throw redirect(303, '/profiles');
 
     // Normal flow - go back to Share focused on this profile
     const slug = targetSlug || 'profile';

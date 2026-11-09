@@ -1,3 +1,8 @@
+import { googleControlsMailbox } from '$lib/server/googleEmailAuthority';
+import { recordGoogleEmailProof } from '$lib/server/foundation/accountChannels';
+import { exchangeBrowserEnabled } from '$lib/server/foundation/devPilotGate';
+import { accountDomain, provisionNewFoundationAccount } from '$lib/server/foundation/provisioning';
+import { EXCHANGE_RETURN, startExchangeAfterAuth } from '$lib/server/exchangeOnboarding';
 import { requiredEnv } from '$lib/server/config/requiredEnv';
 // src/routes/auth/google/callback/+server.ts
 // PURPOSE: exchange code for tokens, verify ID token, upsert OAuthAccount, create first party session
@@ -13,15 +18,16 @@ import { requiredEnv } from '$lib/server/config/requiredEnv';
 
 import type { RequestHandler } from './$types';
 import { redirect, error } from '@sveltejs/kit';
-import { safeNetworkJoinReturn } from '$lib/server/networkJoinReturn';
+import { safeAuthReturn } from '$lib/server/networkJoinReturn';
+import { finishProfileAuth, readProfileDraft, PROFILE_ONBOARDING_RETURN } from '$lib/server/profileOnboarding';
 import { prisma } from '$lib/db';
 import { createSession, setSessionCookie } from '$lib/auth';
 import * as jose from 'jose';
 import { linkLeadsForUser } from '$lib/leads/link';
-import { ensureDefaultProfile } from '$lib/server/profiles';
+import { defaultProfileData, ensureDefaultProfile } from '$lib/server/profiles';
 
 // IT: encrypted email helpers - equality lookup and write
-import { findUserByEmail, setUserEmail, decryptUserEmail } from '$lib/server/userEmail';
+import { findUserByEmail, setUserEmail, decryptUserEmail, encryptedUserEmailFields } from '$lib/server/userEmail';
 
 // Google endpoints
 const TOKEN_ENDPOINT = 'https://oauth2.googleapis.com/token';
@@ -55,6 +61,16 @@ function clearTempCookies(
   cookies.set('oauth_network_next', '', base);
 }
 
+// Existing legacy accounts retain their optional workspace login restrictions.
+function legacyGoogleEmailAllowed(email: string) {
+  const domain = email.split('@')[1];
+  const legacyDomain = process.env.ALLOWED_GOOGLE_DOMAIN?.toLowerCase();
+  const legacyList = process.env.ALLOWED_EMAIL_DOMAINS;
+  const legacyEntries = legacyList?.split(',').map(entry => entry.trim().toLowerCase()).filter(Boolean);
+  return (!legacyDomain && !legacyList) || Boolean(legacyDomain && domain === legacyDomain) ||
+    Boolean(legacyEntries?.some(entry => entry === domain || entry === email));
+}
+
 export const GET: RequestHandler = async ({ url, cookies, locals, getClientAddress, fetch }) => {
   // 1 - rate limit by IP
   const ip = getClientAddress?.() || 'unknown';
@@ -62,7 +78,7 @@ export const GET: RequestHandler = async ({ url, cookies, locals, getClientAddre
 
   // 2 - required query params
   // IT: Read before clearing temporary OAuth cookies; never trust an arbitrary redirect.
-  const next = safeNetworkJoinReturn(cookies.get('oauth_network_next'));
+  const next = safeAuthReturn(cookies.get('oauth_network_next'));
   const code = url.searchParams.get('code') || '';
   const state = url.searchParams.get('state') || '';
 
@@ -102,9 +118,8 @@ export const GET: RequestHandler = async ({ url, cookies, locals, getClientAddre
   });
 
   if (!tokenRes.ok) {
-    const body = await tokenRes.text().catch(() => '');
     clearTempCookies(cookies, locals.sessionCookie.options.secure);
-    throw error(400, `Token exchange failed: ${body.slice(0, 200)}`);
+    throw error(400, 'Google sign-in could not be completed.');
   }
 
   const token = await tokenRes.json();
@@ -117,134 +132,128 @@ export const GET: RequestHandler = async ({ url, cookies, locals, getClientAddre
   }
 
   const jwks = jose.createRemoteJWKSet(new URL(JWKS_URI));
-  const { payload } = await jose.jwtVerify(idToken, jwks, { audience: clientId });
+  const { payload } = await jose.jwtVerify(idToken, jwks, { audience: clientId, issuer:['https://accounts.google.com','accounts.google.com'], requiredClaims:['exp','iat','sub','email','email_verified','nonce'], maxTokenAge:'10 minutes' });
 
   // 7 - optional nonce binding if you set one during start
-  if (nonceCookie && payload.nonce && payload.nonce !== nonceCookie) {
+  if (!nonceCookie || payload.nonce !== nonceCookie) {
     clearTempCookies(cookies, locals.sessionCookie.options.secure);
     throw error(400, 'Nonce mismatch');
   }
 
   // 8 - extract identity from the ID token
-  const sub = String(payload.sub);
-  const emailRaw = String(payload.email || '');
-  const emailVerified = Boolean(payload.email_verified);
-  if (!emailRaw || !emailVerified) {
+  const sub = typeof payload.sub==='string'?payload.sub:'';
+  const emailRaw = typeof payload.email==='string'?payload.email:'';
+  const emailVerified = payload.email_verified === true;
+  if (!sub || !emailRaw || !emailVerified) {
     clearTempCookies(cookies, locals.sessionCookie.options.secure);
     throw error(400, 'Email not verified with Google');
   }
 
-  // 9 - optional email domain guard for early testing
-  function isEmailAllowed(emailAddr: string): boolean {
-    const one = process.env.ALLOWED_GOOGLE_DOMAIN || '';
-    const many = process.env.ALLOWED_EMAIL_DOMAINS || '';
-    if (!one && !many) return true;
-    const domain = emailAddr.split('@')[1]?.toLowerCase() || '';
-    if (one && domain === one.toLowerCase()) return true;
-    if (many) {
-      const set = new Set(
-        many
-          .split(',')
-          .map((s) => s.trim().toLowerCase())
-          .filter(Boolean)
-      );
-      if (set.has(domain) || set.has(emailAddr.toLowerCase())) return true;
-    }
-    return false;
-  }
-
-  if (!isEmailAllowed(emailRaw)) {
-    clearTempCookies(cookies, locals.sessionCookie.options.secure);
-    throw error(403, 'This email is not allowed for login');
-  }
-
-  // 10 - normalize email for deterministic indexing
   const email = emailRaw.trim().toLowerCase();
-
-  // 11 - resolve or create user
   const provider = 'google' as const;
+  const providerIdentity = { provider, providerAccountId: sub };
+  const tokenFields = {
+    accessToken: token.access_token || null,
+    refreshToken: token.refresh_token || null,
+    expiresAt: token.expires_in ? new Date(Date.now() + Number(token.expires_in) * 1000) : null
+  };
 
-  // 11a - first try find by existing OAuth link
-  let user = await prisma.user.findFirst({
-    where: {
-      oauthAccounts: { some: { provider, providerAccountId: sub } }
-    },
+  // A previously linked Google subject is authoritative. Preserve the legacy email
+  // lookup for legacy accounts only; a matching address must not open a private vault.
+  const findLinkedUser = () => prisma.user.findFirst({
+    where: { oauthAccounts: { some: providerIdentity } },
     select: { id: true }
   });
-
-  // 11b - else try by encrypted email index via helper
+  let user = await findLinkedUser();
   if (!user) {
-    const existingByEmail = await findUserByEmail(email);
-    if (existingByEmail) {
-      user = { id: existingByEmail.id };
+    const existing = await findUserByEmail(email);
+    if (existing) {
+      // A concurrent callback may have completed the same Google link after our first lookup.
+      user = await findLinkedUser();
+      if (!user && await accountDomain(existing.id) !== 'LEGACY') {
+        clearTempCookies(cookies, locals.sessionCookie.options.secure);
+        throw error(409, 'Sign in with the method you used to create your Relish account.');
+      }
+      user ??= { id: existing.id };
     }
   }
 
-  // 11c - create user if none found, then set encrypted email fields
+  const onboarding = next === PROFILE_ONBOARDING_RETURN || next === EXCHANGE_RETURN;
+  const seed = {
+    displayName: typeof payload.name === 'string' ? payload.name.trim().slice(0, 200) : null,
+    avatarUrl: typeof payload.picture === 'string' ? payload.picture.trim() : null
+  };
+  let newProfileId: string | undefined;
+  let legacy = false;
   if (!user) {
-    const created = await prisma.user.create({
-      data: { person: { create: {} } },
-      select: { id: true }
-    });
-    await setUserEmail(created.id, email);
-    user = created;
+    const draft = onboarding ? readProfileDraft(cookies) : null;
+    try {
+      // The provider link, encrypted credentials, private card and vault commit together.
+      const created = await prisma.$transaction(async tx => {
+        const account = await tx.user.create({
+          data: {
+            ...encryptedUserEmailFields(email),
+            person: { create: {} },
+            profiles: { create: defaultProfileData({
+              ...seed, displayName: draft?.name || seed.displayName, isPublished: false
+            }) },
+            // The provider subject is enough for sign-in. Foundation does not retain OAuth bearer tokens.
+            oauthAccounts: { create: providerIdentity }
+          },
+          select: { id: true, profiles: { select: { id: true } } }
+        });
+        await provisionNewFoundationAccount(tx, account.id);
+        return account;
+      });
+      user = created;
+      newProfileId = created.profiles[0].id;
+    } catch (failure) {
+      if ((failure as { code?: string })?.code !== 'P2002') {
+        clearTempCookies(cookies, locals.sessionCookie.options.secure);
+        throw error(503, 'Could not create your account. Please try again.');
+      }
+      // A duplicate provider callback can resume. A different identity racing
+      // for the same email gets no session and must use the original sign-in.
+      user = await findLinkedUser();
+      if (!user) {
+        clearTempCookies(cookies, locals.sessionCookie.options.secure);
+        throw error(409, 'Sign in with the method you used to create your Relish account.');
+      }
+    }
   } else {
-    // IT: ensure legacy users get encrypted email fields backfilled
+    legacy = await accountDomain(user.id) === 'LEGACY';
+    if (legacy && !legacyGoogleEmailAllowed(email)) {
+      clearTempCookies(cookies, locals.sessionCookie.options.secure);
+      throw error(403, 'This email is not allowed for login');
+    }
+    // Existing profiles keep their publication state. Missing Foundation cards
+    // must be recreated privately, even when the login has no onboarding return.
     const u = await prisma.user.findUnique({
       where: { id: user.id },
       select: { email_Enc: true, email_Idx: true }
     });
-    if (!u?.email_Enc || !u?.email_Idx) {
-      await setUserEmail(user.id, email);
+    if (!u?.email_Enc || !u?.email_Idx) await setUserEmail(user.id, email);
+    try {
+      const privateDefault = onboarding || !legacy;
+      await ensureDefaultProfile(user.id, { ...seed, ...(privateDefault ? { isPublished: false } : {}) });
+    } catch {
+      console.warn('ensureDefaultProfile failed after Google OAuth.');
     }
-  }
 
-  // 11d - ensure a default profile exists for this user using friendly seeds from Google
-  // - prefer Google's name, fall back to the email local part
-  // - avatar is optional and safe to set here
-  try {
-    const seedName =
-      typeof payload.name === 'string' && payload.name.trim()
-        ? payload.name.trim()
-        : email.split('@')[0];
-    const seedAvatar =
-      typeof payload.picture === 'string' && payload.picture.trim()
-        ? payload.picture.trim()
-        : null;
-    await ensureDefaultProfile(user.id, { displayName: seedName, avatarUrl: seedAvatar });
-  } catch (e) {
-    // IT: do not block login if profile creation fails
-    console.warn('ensureDefaultProfile failed after Google OAuth:', e);
-  }
-
-  // 12 - upsert the OAuth account record for this user
-  const existingAcct = await prisma.oAuthAccount.findFirst({
-    where: { userId: user.id, provider, providerAccountId: sub }
-  });
-
-  const expiresAt =
-    token.expires_in ? new Date(Date.now() + Number(token.expires_in) * 1000) : null;
-
-  if (!existingAcct) {
-    await prisma.oAuthAccount.create({
-      data: {
-        userId: user.id,
-        provider,
-        providerAccountId: sub,
-        accessToken: token.access_token || null,
-        refreshToken: token.refresh_token || null,
-        expiresAt
-      }
-    });
-  } else {
-    await prisma.oAuthAccount.update({
-      where: { id: existingAcct.id },
-      data: {
-        accessToken: token.access_token || null,
-        refreshToken: token.refresh_token || null,
-        expiresAt
-      }
-    });
+    if (legacy) {
+      const link = await prisma.oAuthAccount.upsert({
+        where: { provider_providerAccountId: providerIdentity },
+        create: { userId: user.id, ...providerIdentity, ...tokenFields },
+        update: {},
+        select: { userId: true }
+      });
+      // Never overwrite another account's provider credentials during a link race.
+      if (link.userId !== user.id) throw error(409, 'Google sign-in could not be completed.');
+      await prisma.oAuthAccount.update({
+        where: { provider_providerAccountId: providerIdentity },
+        data: tokenFields
+      });
+    }
   }
 
   // 13 - clear temp cookies after successful verification
@@ -253,6 +262,25 @@ export const GET: RequestHandler = async ({ url, cookies, locals, getClientAddre
   // 14 - create a first party session cookie using env aware helpers
   const sess = await createSession(user.id);
   setSessionCookie(cookies, locals, sess.cookie, sess.expiresAt);
+  await startExchangeAfterAuth(cookies, url, locals, next, user.id, sess.sessionId);
+
+  // Only newly validated callbacks can establish account email assurance. This never blocks login
+  // or reactivates revoked channels; credentials and private domain enrollment remain independent.
+  if (googleControlsMailbox(email, payload.hd) && exchangeBrowserEnabled(locals, url.origin)) {
+    try {
+      if (await accountDomain(user.id) === 'ACTIVE') {
+        await recordGoogleEmailProof({ ...locals, user: { id: user.id }, sessionId: sess.sessionId }, email);
+      }
+    } catch {
+      console.warn('Google account-channel proof could not be recorded.');
+    }
+  }
+  if (onboarding || newProfileId) {
+    const destination = onboarding ? next : PROFILE_ONBOARDING_RETURN;
+    throw redirect(303, finishProfileAuth(cookies, url, destination, user.id, newProfileId));
+  }
+
+  if (!legacy) throw redirect(303, next || '/');
 
   // 15 - post auth linking - decrypt server-side to pass a string email to the linker
   try {

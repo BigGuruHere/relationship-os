@@ -40,7 +40,23 @@ export const EXTRA_KEYS: Array<{ key: string; label: string }> = [
 // vCard builder and header view
 // -----------------------------
 
-// Build the vCard URL from a profile and a public link - core fields only
+// Share only browser-safe public web links, including platform-specific handles.
+export function publicContactUrl(value: string): string | null {
+  if (!value || value.length > 1024 || /[\s\u0000-\u001f\u007f]/.test(value)) return null;
+  try {
+    const url = new URL(value);
+    if (!['https:', 'http:'].includes(url.protocol) || url.username || url.password) return null;
+    return url.href;
+  } catch {
+    return null;
+  }
+}
+
+const socialHandleHosts: Record<string, string> = {
+  twitter: 'x.com', x: 'x.com', instagram: 'instagram.com', github: 'github.com', youtube: 'youtube.com'
+};
+
+// Build the vCard URL from a profile and its public link.
 export function buildVcardUrl(profile: PublicProfile, publicLink: string): string {
   const params = new URLSearchParams();
   params.set('name', nonEmpty(profile.displayName) ? profile.displayName!.trim() : 'Contact');
@@ -49,6 +65,24 @@ export function buildVcardUrl(profile: PublicProfile, publicLink: string): strin
   if (nonEmpty(profile.emailPublic)) params.set('email', profile.emailPublic!.trim());
   if (nonEmpty(profile.phonePublic)) params.set('phone', profile.phonePublic!.trim());
   params.set('link', publicLink);
+  const links = new Set<string>();
+  for (const row of publicRows(profile)) {
+    if (!row.href) continue;
+    const raw = row.href.trim();
+    const link = publicContactUrl(row.label === 'Website' && /^[a-z0-9-]+\.[a-z0-9]/i.test(raw)
+      ? 'https://' + raw : raw);
+    if (link) links.add(link);
+  }
+  for (const [key, host] of Object.entries(socialHandleHosts)) {
+    const raw = profile.publicMeta?.[key];
+    if (typeof raw !== 'string') continue;
+    const handle = raw.trim();
+    const username = handle.replace(/^@/, '');
+    if (/^@[a-z0-9_][a-z0-9_.-]{0,99}$/i.test(handle) ||
+        ((key === 'x' || key === 'twitter') && /^[a-z0-9_]{1,15}$/i.test(handle)))
+      links.add('https://' + host + '/' + (key === 'youtube' ? '@' + username : username));
+  }
+  for (const link of [...links].slice(0, 10)) params.append('url', link);
   return `/api/vcard?${params.toString()}`;
 }
 

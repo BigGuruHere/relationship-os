@@ -8,7 +8,9 @@ export async function loadContextProfile(ownerUserId: string, name: WorkspaceNam
   return prisma.profile.findFirst({
     where: { userId: ownerUserId, kind: WORKSPACE_CONFIG[name].kind },
     select: { id: true, slug: true, displayName: true, headline: true, avatarUrl: true, isPublished: true, qrSvg: true },
-    orderBy: [{ isDefault: 'desc' }, { updatedAt: 'desc' }]
+    // IT: Keep the established contextual profile stable when the user creates another
+    // independently labelled profile of the same kind in My Profiles.
+    orderBy: [{ isDefault: 'desc' }, { createdAt: 'asc' }]
   });
 }
 

@@ -3,6 +3,7 @@
 // and ContextSpace scoping, and workspace routes re-check the allowed context on every request.
 import { error, redirect } from '@sveltejs/kit';
 import { prisma } from '$lib/db';
+import { usesLegacyProfileServices } from '$lib/server/foundation/provisioning';
 
 export const WORKSPACE_CONFIG = {
   business: { domain: 'business', kind: 'business', label: 'Business', color: '#3276b8', description: 'Professional relationships and connections' },
@@ -29,6 +30,10 @@ export async function visibleRelishWorkspaces(userId: string, role: string) {
     });
     return WORKSPACE_NAMES.map(name => ({ name, ...WORKSPACE_CONFIG[name], configured: owned.some(s => s.domainKey === WORKSPACE_CONFIG[name].domain) }));
   }
+
+  // Foundation members use the neutral Home and People routes. Legacy ContextSpace
+  // navigation and its matching server guard remain available to existing users.
+  if (!await usesLegacyProfileServices(userId)) return [];
 
   // IT: During the limited pilot, a member sees only the first QR relationship context.
   // This does not merge unrelated contexts or grant them access to other scopes.

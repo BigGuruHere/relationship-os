@@ -12,12 +12,13 @@
 
 import type { Handle } from '@sveltejs/kit';
 import { error, redirect } from '@sveltejs/kit';
-import { effectiveCapabilities, hasCapability, requiredCapabilityForPath } from '$lib/server/core/capabilities';
+import { brokerageEnabled, effectiveCapabilities, hasCapability, isBrokeragePath, requiredCapabilityForPath } from '$lib/server/core/capabilities';
 import { inferEnvFromHost, resolveOrigin } from '$lib/env';
 import { sessionCookieConfig } from '$lib/cookies';
 import { readSessionToken, getSessionFromCookie } from '$lib/auth';
 import { runWithWorkspaceCustody } from '$lib/server/core/contextSpace';
 import { prisma } from '$lib/db';
+import { peopleRouteDomain } from '$lib/server/foundation/peopleRouting';
 import {
   contextDomainForPathname,
   contextSelectionCookieName,
@@ -25,6 +26,12 @@ import {
 } from '$lib/server/core/contextDomain';
 
 export const handle: Handle = async ({ event, resolve }) => {
+  // Use SvelteKit's matched route so encoded URLs cannot bypass the deployment boundary.
+  const brokerEnabled = brokerageEnabled();
+  const route = event.route.id ?? event.url.pathname;
+  if (!brokerEnabled && isBrokeragePath(route))
+    throw error(404, 'Not found.');
+
   // 1 - infer environment from Host header
   const hostHeader = event.request.headers.get('host') ?? '';
   const runtimeEnv = inferEnvFromHost(hostHeader);
@@ -63,14 +70,21 @@ export const handle: Handle = async ({ event, resolve }) => {
       if (!account) throw error(401, 'Account no longer exists.');
       event.locals.user = { id: result.user.id, role: account.role };
       event.locals.capabilities = effectiveCapabilities(account.role, account.capabilityGrants.map(g => g.capability));
-      // SECURITY: The cookie is only a preference. The resolver rechecks owner and route domain.
-      const preferredContextSpaceId = event.cookies.get(contextSelectionCookieName(event.locals.contextDomainKey));
-      const resolvedContext = await resolveContextSpaceForDomain(prisma, {
-        ownerUserId: result.user.id,
-        domainKey: event.locals.contextDomainKey,
-        preferredContextSpaceId
-      });
-      event.locals.contextSpaceId = resolvedContext?.id;
+      // A stored grant alone cannot expose Brokerage navigation on the Relish deployment.
+      if (!brokerEnabled) event.locals.capabilities = event.locals.capabilities.filter(capability => capability !== 'BROKER');
+      // Foundation People resolves its own authority and must never inherit a legacy workspace.
+      const foundationPeople = event.locals.contextDomainKey === 'private' &&
+        await peopleRouteDomain(result.user.id, event.url.pathname) === 'FOUNDATION';
+      if (!foundationPeople) {
+        // SECURITY: The cookie is only a preference. The resolver rechecks owner and route domain.
+        const preferredContextSpaceId = event.cookies.get(contextSelectionCookieName(event.locals.contextDomainKey));
+        const resolvedContext = await resolveContextSpaceForDomain(prisma, {
+          ownerUserId: result.user.id,
+          domainKey: event.locals.contextDomainKey,
+          preferredContextSpaceId
+        });
+        event.locals.contextSpaceId = resolvedContext?.id;
+      }
       sessionId = result.session.id;
     }
   }
@@ -81,7 +95,7 @@ export const handle: Handle = async ({ event, resolve }) => {
   event.locals.sessionId = sessionId;
 
   // SECURITY: Gate privileged page loads, actions and API handlers before route code runs.
-  const required = requiredCapabilityForPath(event.url.pathname);
+  const required = requiredCapabilityForPath(route);
   if (required && !hasCapability(event.locals.capabilities, required)) {
     if (!event.locals.user) {
       if (event.url.pathname.startsWith('/api/')) throw error(401, 'Authentication required.');

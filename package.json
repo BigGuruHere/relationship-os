@@ -186,13 +186,24 @@
     "sync:dorian-config:dev": "node --env-file=.env --import tsx scripts/sync-stage8-22-4-dorian-config.ts",
     "policy-sms:once:dev": "node --env-file=.env --import tsx scripts/process-stage8-22-4-policy-sms.ts",
     "policy-sms:watch:dev": "node --env-file=.env --import tsx scripts/process-stage8-22-4-policy-sms.ts --watch",
-    "check:stage8.22.5": "node --test tests/core/stage8-22-5-event-landing-and-mobile-navigation.test.mjs"
+    "check:stage8.22.5": "node --test tests/core/stage8-22-5-event-landing-and-mobile-navigation.test.mjs",
+    "check:foundation:privacy": "node --test tests/foundation/p305-privacy.test.mjs",
+    "check:foundation:notes": "node --test tests/foundation/p303-notes.test.mjs",
+    "check:foundation:capture": "node --test tests/foundation/p302-capture.test.mjs",
+    "check:foundation:people": "node --test tests/foundation/p301-people.test.mjs",
+    "check:foundation:rehearsal": "node --test tests/foundation/f206-transition.test.mjs",
+    "check:foundation:access": "node --test tests/foundation/f204-*.test.mjs",
+    "check:foundation:provisioning": "node --test tests/foundation/f203-*.test.mjs",
+    "check:foundation:schema": "node --test tests/foundation/f202-schema.test.mjs"
   },
   "engines": {
     "node": ">=22.13.1 <23"
   },
   "engineStrict": false,
   "devDependencies": {
+    "@electric-sql/pglite": "0.5.15",
+    "@electric-sql/pglite-pgvector": "0.0.16",
+    "@electric-sql/pglite-socket": "0.2.18",
     "@eslint/compat": "^1.2.5",
     "@eslint/js": "^9.18.0",
     "@sveltejs/adapter-node": "^5.3.2",
@@ -219,7 +230,7 @@
     "jose": "^6.1.0",
     "openai": "^6.2.0",
     "qrcode": "^1.5.4",
-    "zod": "^4.1.5",
-    "tsx": "^4.20.6"
+    "tsx": "^4.20.6",
+    "zod": "^4.1.5"
   }
 }

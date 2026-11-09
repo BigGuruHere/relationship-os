@@ -27,7 +27,8 @@ import { randomUUID } from 'node:crypto';
 type Job = {
 	status: 'queued' | 'processing' | 'done' | 'error';
 	userId: string;
-	contextSpaceId: string;
+	scopeKey: string;
+	expiresAt: number;
 	transcript?: string;
 	error?: string;
 	correlationId: string;
@@ -37,8 +38,10 @@ const assemblies = new Map<
 	string,
 	{
 		userId: string;
-		contextSpaceId: string;
+		scopeKey: string;
+		expiresAt: number;
 		nextIndex: number;
+		finalized: boolean;
 		totalBytes: number;
 		mime: 'audio/webm' | 'audio/mp4';
 	}
@@ -47,12 +50,18 @@ const MAX_AUDIO_BYTES = 25 * 1024 * 1024;
 const STALE_AUDIO_MS = 60 * 60 * 1000;
 
 // Exported so /api/transcribe-result can read job state
-export function _getJob(jobId: string, userId: string, contextSpaceId: string): Job | undefined {
+export function _getJob(
+	jobId: string,
+	userId: string,
+	scopeKey: string,
+	retain = false
+): Job | undefined {
 	const job = jobs.get(jobId);
-	// SECURITY: A transcript job belongs to the exact user and ContextSpace that uploaded it.
-	if (!job || job.userId !== userId || job.contextSpaceId !== contextSpaceId) return undefined;
-	// IT: Completed transcript text is returned once and then removed from process memory.
-	if (job.status === 'done' || job.status === 'error') jobs.delete(jobId);
+	// SECURITY: A transcript job belongs to the exact user and server-issued domain scope that uploaded it.
+	if (!job || job.userId !== userId || job.scopeKey !== scopeKey || job.expiresAt <= Date.now())
+		return undefined;
+	// IT: Legacy results are consumed once. Foundation polling permits retries until expiry.
+	if (!retain && (job.status === 'done' || job.status === 'error')) jobs.delete(jobId);
 	return job;
 }
 
@@ -77,7 +86,28 @@ async function cleanupStaleAudio() {
 	);
 }
 
-export const POST: RequestHandler = async ({ request, url, locals }) => {
+// Shared transient transport accepts a server-issued scope, never a browser-selected vault.
+export type _AudioScope = { key: string; authorize: () => Promise<void> };
+const inFlight = new Set<string>();
+export const POST: RequestHandler = (event) => _upload(event);
+export async function _upload(event: Parameters<RequestHandler>[0], scope?: _AudioScope) {
+	await scope?.authorize();
+	const key = event.url.searchParams.get('key') || '';
+	if (inFlight.has(key))
+		return json({ error: 'Audio chunk is already being processed' }, { status: 409 });
+	inFlight.add(key);
+	try {
+		return await upload(event, scope);
+	} finally {
+		inFlight.delete(key);
+	}
+}
+async function upload(
+	{ request, url, locals }: Parameters<RequestHandler>[0],
+	scope?: _AudioScope
+) {
+	const scopeKey =
+		scope?.key ?? (locals.contextSpaceId ? 'legacy:' + locals.contextSpaceId : undefined);
 	const correlationId = transcriptionCorrelationId(url.searchParams.get('key'));
 	const reject = (status: number) =>
 		transcriptionEvent(
@@ -93,7 +123,7 @@ export const POST: RequestHandler = async ({ request, url, locals }) => {
 		reject(401);
 		throw redirect(303, '/auth/login');
 	}
-	if (!locals.contextSpaceId) {
+	if (!scopeKey) {
 		reject(400);
 		return json({ error: 'ContextSpace required' }, { status: 400 });
 	}
@@ -119,11 +149,13 @@ export const POST: RequestHandler = async ({ request, url, locals }) => {
 			return json({ error: 'Invalid upload key' }, { status: 400 });
 		}
 
+		for (const [id, job] of jobs) if (job.expiresAt <= Date.now()) jobs.delete(id);
+		for (const [id, assembly] of assemblies)
+			if (assembly.expiresAt <= Date.now()) assemblies.delete(id);
 		const existingAssembly = assemblies.get(key);
 		if (
 			existingAssembly &&
-			(existingAssembly.userId !== locals.user.id ||
-				existingAssembly.contextSpaceId !== locals.contextSpaceId)
+			(existingAssembly.userId !== locals.user.id || existingAssembly.scopeKey !== scopeKey)
 		) {
 			reject(409);
 			return json({ error: 'Upload key is not available' }, { status: 409 });
@@ -131,15 +163,22 @@ export const POST: RequestHandler = async ({ request, url, locals }) => {
 		if (!existingAssembly) {
 			assemblies.set(key, {
 				userId: locals.user.id,
-				contextSpaceId: locals.contextSpaceId,
+				scopeKey,
+				expiresAt: Date.now() + STALE_AUDIO_MS,
 				nextIndex: 0,
+				finalized: false,
 				totalBytes: 0,
 				mime: mimeParam
 			});
 		}
 
-		const index = Number.parseInt(indexStr, 10) || 0;
+		const index = Number(indexStr);
+		if (!Number.isSafeInteger(index) || index < 0)
+			return json({ error: 'Invalid chunk index' }, { status: 400 });
 		const assembly = assemblies.get(key)!;
+		// Once queued, no later chunk may mutate the provider input.
+		if (assembly.finalized)
+			return json({ error: 'Audio upload is already complete' }, { status: 409 });
 		if (assembly.mime !== mimeParam) {
 			reject(409);
 			return json({ error: 'Audio format changed during upload' }, { status: 409 });
@@ -171,7 +210,9 @@ export const POST: RequestHandler = async ({ request, url, locals }) => {
 		}
 
 		try {
-			await fs.appendFile(tmpFilePath, bytes);
+			// A new process or expired assembly must never append to an abandoned file.
+			if (index === 0) await fs.writeFile(tmpFilePath, bytes);
+			else await fs.appendFile(tmpFilePath, bytes);
 			assembly.nextIndex += 1;
 			assembly.totalBytes += bytes.length;
 			transcriptionEvent('upload.accepted', correlationId, {
@@ -192,10 +233,12 @@ export const POST: RequestHandler = async ({ request, url, locals }) => {
 			return json({ ok: true, appended: bytes.length });
 		}
 
+		assembly.finalized = true;
 		const jobId = randomUUID();
 		const jobOwner = {
 			userId: locals.user.id,
-			contextSpaceId: locals.contextSpaceId,
+			scopeKey,
+			expiresAt: Date.now() + STALE_AUDIO_MS,
 			correlationId
 		};
 		transcriptionEvent('job.queued', correlationId, {
@@ -222,7 +265,10 @@ export const POST: RequestHandler = async ({ request, url, locals }) => {
 				const { transcribeAudio } = await import('$lib/ai');
 
 				// Call the transcriber - it should accept a Buffer and return a string
+				await scope?.authorize();
 				const text = await transcribeAudio(assembled, assembly.mime, { correlationId });
+				await scope?.authorize();
+				if (!text.trim()) throw new Error('Empty transcription');
 
 				transcriptionEvent('job.complete', correlationId, {
 					characterCount: text.length,
@@ -252,4 +298,13 @@ export const POST: RequestHandler = async ({ request, url, locals }) => {
 		reject(500);
 		return json({ error: 'Internal error' }, { status: 500 });
 	}
-};
+}
+
+// Best-effort process cleanup. Durable queue/storage is a separate rollout gate.
+const cleanupTimer = setInterval(() => {
+	const now = Date.now();
+	for (const [id, job] of jobs) if (job.expiresAt <= now) jobs.delete(id);
+	for (const [id, assembly] of assemblies) if (assembly.expiresAt <= now) assemblies.delete(id);
+	void cleanupStaleAudio();
+}, 60000);
+cleanupTimer.unref();

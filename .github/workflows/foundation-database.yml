@@ -1,0 +1,129 @@
+# No application secrets or target database connection are used by this workflow.
+name: Foundation database checks
+on:
+  pull_request:
+    branches: [development]
+    paths:
+      - 'prisma/**'
+      - 'src/lib/**'
+      - 'src/routes/people/**'
+      - 'src/routes/profiles/**'
+      - 'src/routes/settings/profile/**'
+      - 'src/routes/settings/channels/**'
+      - 'src/routes/settings/users/**'
+      - 'src/routes/share/**'
+      - 'src/routes/api/qr/**'
+      - 'src/routes/api/profile/generate-qr/**'
+      - 'tests/core/profile-onboarding.test.mjs'
+      - 'tests/core/profile-share-selector.test.mjs'
+      - 'tests/core/multi-profiles.test.mjs'
+      - 'tests/core/exchange-browser.test.mjs'
+      - 'src/routes/u/**'
+      - 'src/routes/exchange/**'
+      - 'src/routes/api/upload-chunk/**'
+      - 'src/routes/api/transcribe-result/**'
+      - 'src/routes/auth/**'
+      - 'src/routes/api/auth/**'
+      - 'src/routes/api/guest/claim-linkedin/**'
+      - 'src/hooks.server.ts'
+      - 'tests/foundation/**'
+      - 'tests/browser/**'
+      - 'scripts/foundation-privacy.ts'
+      - 'scripts/foundation-restore-rehearsal.ts'
+      - 'scripts/foundation-dev-pilot-replay.ts'
+      - 'scripts/foundation/operator-target.ts'
+      - 'package*.json'
+      - '.github/workflows/foundation-database.yml'
+permissions:
+  contents: read
+concurrency:
+  group: foundation-db-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+jobs:
+  postgres:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        # Match the operator-reported Neon PostgreSQL version.
+        image: postgres:18.6
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: f202-disposable-test-only
+          POSTGRES_DB: relish_f202_ci
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres -d relish_f202_ci"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: node --test tests/core/profile-onboarding.test.mjs tests/core/profile-share-selector.test.mjs tests/core/multi-profiles.test.mjs tests/core/exchange-browser.test.mjs
+      - run: node --test tests/foundation/p306-dev-pilot.test.mjs
+      - run: npm run check:foundation:privacy
+      - run: npm run check:foundation:notes
+      - run: npm run check:foundation:capture
+      - run: npm run check:foundation:people
+      - run: npm run check:foundation:rehearsal
+      - run: node --test tests/foundation/s402-schema.test.mjs tests/foundation/s402-service.test.mjs
+      - run: npm run check:foundation:schema
+      # CI-only driver installation leaves the application dependency lock unchanged.
+      - run: npm install --no-save --package-lock=false pg@8.16.3
+      - run: node --test tests/foundation/f202-concurrency.test.mjs
+        env:
+          F202_TEST_DATABASE_URL: postgresql://postgres:f202-disposable-test-only@127.0.0.1:5432/relish_f202_ci
+
+      # Use a separate empty database so F-202 fixtures cannot mask provisioning errors.
+      - run: node --input-type=module -e 'import {Client} from "pg"; const c=new Client({connectionString:process.env.F202_TEST_DATABASE_URL}); await c.connect(); await c.query("CREATE DATABASE relish_f203_ci"); await c.end();'
+        env:
+          F202_TEST_DATABASE_URL: postgresql://postgres:f202-disposable-test-only@127.0.0.1:5432/relish_f202_ci
+      - run: npm run check:foundation:provisioning
+        env:
+          F203_TEST_DATABASE_URL: postgresql://postgres:f202-disposable-test-only@127.0.0.1:5432/relish_f203_ci
+
+      # F-204 uses the actual guarded application client on another empty fixture database.
+      - run: node --input-type=module -e 'import {Client} from "pg"; const c=new Client({connectionString:process.env.F202_TEST_DATABASE_URL}); await c.connect(); await c.query("CREATE DATABASE relish_f204_ci"); await c.end();'
+        env:
+          F202_TEST_DATABASE_URL: postgresql://postgres:f202-disposable-test-only@127.0.0.1:5432/relish_f202_ci
+      - run: npm run check:foundation:access
+        env:
+          F204_TEST_DATABASE_URL: postgresql://postgres:f202-disposable-test-only@127.0.0.1:5432/relish_f204_ci
+
+      # Recheck erasure and the standalone operator command against standard PostgreSQL.
+      - run: node --input-type=module -e 'import {Client} from "pg"; const c=new Client({connectionString:process.env.F202_TEST_DATABASE_URL}); await c.connect(); await c.query("CREATE DATABASE relish_p305_ci"); await c.end();'
+        env:
+          F202_TEST_DATABASE_URL: postgresql://postgres:f202-disposable-test-only@127.0.0.1:5432/relish_f202_ci
+      - run: npm run check:foundation:privacy
+        env:
+          P305_TEST_DATABASE_URL: postgresql://postgres:f202-disposable-test-only@127.0.0.1:5432/relish_p305_ci
+
+      # Real concurrent connections exercise settlement, suspension and duplicate requests.
+      - run: node --input-type=module -e 'import {Client} from "pg"; const c=new Client({connectionString:process.env.F202_TEST_DATABASE_URL}); await c.connect(); await c.query("CREATE DATABASE relish_s402_ci"); await c.end();'
+        env:
+          F202_TEST_DATABASE_URL: postgresql://postgres:f202-disposable-test-only@127.0.0.1:5432/relish_f202_ci
+      - run: node --test tests/foundation/s402-service.test.mjs
+        env:
+          S402_TEST_DATABASE_URL: postgresql://postgres:f202-disposable-test-only@127.0.0.1:5432/relish_s402_ci
+
+  browser:
+    # Real native forms catch policy/header bugs that synthetic Request objects miss.
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npm install --no-save --package-lock=false playwright@1.61.1
+      - run: npx playwright install --with-deps chromium
+      - run: node tests/browser/exchange-native-forms.mjs

@@ -1,31 +1,35 @@
 // My People is deliberately private-home-only in Stage 1. No aggregation or record relocation.
 import { createHash } from 'node:crypto';
 import { error, redirect } from '@sveltejs/kit';
-import { prisma } from '$lib/db';
+import { prisma, type AppTransactionClient } from '$lib/db';
+import { requireLegacyPeopleDomain } from '$lib/server/foundation/provisioning';
 import { encryptContextSpaceDisplayName } from './contextSpaceDirectory';
 import { createWorkspaceCoreAccess } from './accessPolicy';
 import { PRIVATE_DOMAIN_KEY } from './contextDomain';
 import { runWithWorkspaceCustody } from './contextSpace';
 import { findCoreContact } from './relationshipRepository';
 
-export async function privatePeopleSpace(userId: string) {
-  const rows = await prisma.contextSpace.findMany({ where: { ownerUserId: userId, domainKey: PRIVATE_DOMAIN_KEY, kind: 'WORKSPACE' }, select: { id: true }, take: 2 });
+export async function privatePeopleSpace(userId: string, transaction?: AppTransactionClient) {
+  // Includes anonymous capture: the caller supplies the server-resolved profile owner.
+  await requireLegacyPeopleDomain(userId, transaction);
+  const rows = await (transaction ?? prisma).contextSpace.findMany({ where: { ownerUserId: userId, domainKey: PRIVATE_DOMAIN_KEY, kind: 'WORKSPACE' }, select: { id: true }, take: 2 });
   if (rows.length > 1) throw error(409, 'Multiple private storage homes require review.');
   return rows[0] ?? null;
 }
 
-export async function ensurePrivatePeopleSpace(userId: string) {
-  const existing = await privatePeopleSpace(userId);
+export async function ensurePrivatePeopleSpace(userId: string, transaction?: AppTransactionClient) {
+  const client = transaction ?? prisma;
+  const existing = await privatePeopleSpace(userId, transaction);
   if (existing) return existing;
   // Stable UUID makes concurrent first saves idempotent without a schema change or changing the user's default.
   const hash = createHash('sha256').update('relish:private-people:v1:' + userId).digest('hex');
   const id = `${hash.slice(0,8)}-${hash.slice(8,12)}-5${hash.slice(13,16)}-a${hash.slice(17,20)}-${hash.slice(20,32)}`;
   // createMany uses INSERT ... ON CONFLICT; an empty-update Prisma upsert can race.
-  await prisma.contextSpace.createMany({ skipDuplicates: true, data: [{
+  await client.contextSpace.createMany({ skipDuplicates: true, data: [{
     id, ownerUserId: userId, domainKey: PRIVATE_DOMAIN_KEY, kind: 'WORKSPACE', isDefault: false,
     displayNameEnc: encryptContextSpaceDisplayName('My People')
   }] });
-  const row = await prisma.contextSpace.findUniqueOrThrow({ where: { id }, select: { id: true, ownerUserId: true, domainKey: true, kind: true } });
+  const row = await client.contextSpace.findUniqueOrThrow({ where: { id }, select: { id: true, ownerUserId: true, domainKey: true, kind: true } });
   if (row.ownerUserId !== userId || row.domainKey !== PRIVATE_DOMAIN_KEY || row.kind !== 'WORKSPACE') throw error(403, 'Private storage unavailable.');
   return { id: row.id };
 }

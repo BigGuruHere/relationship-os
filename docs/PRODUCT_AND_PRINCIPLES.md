@@ -1,6 +1,6 @@
 # Relish: Product Vision and Principles
 
-Status: living product charter. Updated 2026-11-02. Describes agreed direction, not a claim that every future capability is implemented.
+Status: living product charter. Updated 2026-11-09. Describes agreed direction, not a claim that every future capability is implemented.
 
 ## Why Relish exists
 
@@ -18,7 +18,7 @@ Dorian is the warm, distinctive, clearly disclosed AI conversational partner tha
 - **My People** is the simple personal entry point: remember someone, capture contact details, record a note, find them again, and choose what happens next.
 - **Public profiles and QR sharing** let someone share contact information privately without creating a Relish account, mutual connection or automatic Dorian conversation.
 - **Dorian** is a conversational interface into permitted Core information, capable eventually of exploring potential value between people and supporting introductions.
-- **Brokerage** is a specialist business and commercial workflow, not a separate source of truth for the underlying human Contact/Interaction primitives.
+- **Brokerage** is retained as a legacy business workflow on its existing model. New Relish architecture is free to replace incompatible domain structures without forcing Brokerage migration or eventual consolidation.
 - Business, Friendship, Dating and future experiences may add relevant language, flows and information boundaries without making the person belong exclusively to any one category.
 
 ## Distinctions that must survive implementation
@@ -33,15 +33,23 @@ Dorian is the warm, distinctive, clearly disclosed AI conversational partner tha
 8. People authorise disclosure and introductions. Being a possible match is not itself evidence of a mutual relationship, commitment or permission to contact.
 9. The simplest useful experience should come first. **Reuse before building** is a product principle as well as an engineering rule.
 
+## Relationships as subjects of understanding
+
+Mark, Betty and their relationship are distinct subjects. A relationship may have patterns, commitments, tensions, direction and conditions for flourishing that cannot be reduced to either individual's wants. Relish must support understanding the relationship itself and, with permission, influences across relationships.
+
+Keep subject separate from perspective: Mark's private view, Betty's private view, explicitly acknowledged joint statements and Dorian's hypotheses remain distinguishable. Relationship identity or participation never creates shared access. Contextual meaning, custody and permission are independent; the original ContextSpace boundary idea does not require people or entire relationships to belong to one context.
+
+Relationship support can involve changing its form, creating distance or ending it. Dorian must not treat preserving a relationship as an objective overriding its participants. The [foundation design](foundation/ARCHITECTURE.md) supports these future capabilities while implementation begins with private people and notes.
+
 ## Typical near-term experience
 
 Meet someone -> share an existing QR/profile -> visitor elects to share contact details -> an owner-private Contact appears in My People -> the owner records a voice note -> the owner can retrieve the record. No involuntary signup, mutual connection, Brokerage Lead or Dorian invitation is implied.
 
-The immediate goal is to make that experience frictionless and dependable with a small pilot group. The broader goal is to understand and facilitate value through durable, consent-governed relationships.
+The first production release makes this experience available through ordinary signup. The account and its data start private. Users review their profile and choose when to publish it. The broader goal is to understand and facilitate value through durable, consent-governed relationships.
 
 ## Longer-term opportunities (not current implementation commitments)
 
-- A unified People experience that can present existing Brokerage and personal Contacts appropriately without violating custody or silently merging records.
+- One coherent owner-private People experience in new Relish. Legacy Brokerage consolidation is optional future work, not a foundation requirement.
 - Dorian operating across relevant contexts, with controlled access, memory, identity assurance and disclosure.
 - Permissioned opportunities, introductions, reciprocity and human-confirmed outcomes.
 - External AI access through explicit governed interfaces (MCP is a possible transport, not a replacement for Relish's domain trust model).
@@ -51,4 +59,12 @@ The immediate goal is to make that experience frictionless and dependable with a
 
 Product language should be human, welcoming and not overly technical. Public legal and marketing copy should generally say **data** or **personal information** rather than exposing the internal term **Living Understanding**. Dorian must be clearly identified as AI.
 
-Privacy and custody are product features, not afterthoughts. Expand the service only as consent, access control, deletion/access processes and the operational pilot are verified.
+Privacy and custody are product features, not afterthoughts. Expand the service only as consent, access control, deletion/access processes and the enabled production workflows are verified.
+
+## Reciprocal exchange experience
+
+After two people exchange details, each receives those shared details in their own My People, including when the visitor joins through the exchange. A future automatic-add preference defaults to enabled. Continuing updates require separate permission. See the [exchange design](foundation/S401_EXCHANGE_DESIGN.md).
+
+## Account channels and profile exchange
+
+Accepted 2026-11-07; runtime work is staged in [S-405](foundation/S405_ACCOUNT_CHANNELS_AND_EXCHANGE.md). Existing users select an owned profile or create one, then confirm reciprocal saving without retyping or an SMS solely for profile sharing. New visitors can submit details immediately and later claim that exact submission using a verified supplied channel. Each account phone and email has independent pending/verified/revoked assurance. Adding a channel does not verify it, and proving one never verifies another. One matching proof can finish an exchange while the other supplied channel remains pending. Ordinary exchanges reuse current proof. Caller ID remains a recognition signal, with stronger checks for sensitive actions.

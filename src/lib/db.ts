@@ -4,6 +4,7 @@ import { requiredPositiveIntEnv } from '$lib/server/config/requiredEnv';
 // SECURITY: Context-scoped model reads/writes are narrowed before Prisma executes the query.
 
 import { PrismaClient } from '@prisma/client';
+import { guardFoundationQuery } from '$lib/server/foundation/internal';
 import { currentWorkspaceCustody, scopeContextPrismaArgs } from '$lib/server/core/contextSpace';
 
 function createPrismaClient() {
@@ -14,17 +15,18 @@ function createPrismaClient() {
   return base.$extends({
     name: 'relish-context-space-scope',
     query: {
-      $allModels: {
-        async $allOperations({ model, operation, args, query }) {
-          const scopedArgs = scopeContextPrismaArgs(model, operation, args, currentWorkspaceCustody());
-          return query(scopedArgs);
-        }
+      async $allOperations({ model, operation, args, query }) {
+        const checked = guardFoundationQuery(model, operation, args);
+        const scopedArgs = model ? scopeContextPrismaArgs(model, operation, checked, currentWorkspaceCustody()) : checked;
+        return query(scopedArgs);
       }
     }
   });
 }
 
 type AppPrismaClient = ReturnType<typeof createPrismaClient>;
+// Preserve the custody extension's types inside shared interactive transactions.
+export type AppTransactionClient = Omit<AppPrismaClient, '$connect' | '$disconnect' | '$on' | '$transaction' | '$use' | '$extends'>;
 
 const globalForPrisma = globalThis as unknown as {
   prisma?: AppPrismaClient;

@@ -1,6 +1,8 @@
 // A short-lived form receipt, not an identity or invitation to create a participant account.
 import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
 import { requiredEnv } from '$lib/server/config/requiredEnv';
+// Shared consent receipt version for both storage domains.
+export const CAPTURE_CONSENT_VERSION = 'private-contact-share-v1';
 const TTL = 30 * 60 * 1000;
 export const CAPTURE_COOKIE = 'relish_contact_capture';
 const mac = (text: string) => createHmac('sha256', requiredEnv('SESSION_COOKIE_SECRET', 24)).update('contact-capture:v1:' + text).digest('base64url');

@@ -7,9 +7,10 @@
 import type { Actions, PageServerLoad } from './$types';
 import { prisma } from '$lib/db';
 import { encrypt, buildIndexToken } from '$lib/crypto';
-import { fail, redirect } from '@sveltejs/kit';
+import { error, fail, redirect } from '@sveltejs/kit';
 import { createInviteToken } from '$lib/server/tokens';
 import { resolveOwnerFromSlug } from '$lib/server/owner';
+import { usesLegacyProfileServices } from '$lib/server/foundation/provisioning';
 import {
   requireConfiguredDefaultContextSpaceIdForOwner,
   runWithExternalWorkspaceCustody
@@ -21,7 +22,8 @@ import {
 
 export const load: PageServerLoad = async ({ params }) => {
   const owner = await resolveOwnerFromSlug(params.slug);
-  if (!owner) return { status: 404 };
+  // Only legacy profiles can use this old form, including its unpublished aliases.
+  if (!owner || !await usesLegacyProfileServices(owner.id)) throw error(404, 'Owner not found');
 
   return {
     owner: {
@@ -35,7 +37,7 @@ export const load: PageServerLoad = async ({ params }) => {
 export const actions: Actions = {
   create: async ({ request, params }) => {
     const owner = await resolveOwnerFromSlug(params.slug);
-    if (!owner) {
+    if (!owner || !await usesLegacyProfileServices(owner.id)) {
       return fail(404, { error: 'Owner not found' });
     }
 

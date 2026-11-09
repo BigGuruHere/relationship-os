@@ -17,7 +17,7 @@
       <h1 style="margin:0 0 12px 0;">Share</h1>
   
       <div class="qrwrap">
-        {@html data.qrSvg}
+        <img src={data.qrUrl} alt="Scan this profile QR code" width="220" height="220" />
       </div>
   
       <div class="row">

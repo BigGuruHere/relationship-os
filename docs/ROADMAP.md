@@ -1,79 +1,65 @@
 # Relish: Forward Plan
 
-Status: living, outcome-based roadmap. Updated 2026-11-02. This is the working priority order, not an irreversible commitment to numbered stages or delivery dates.
+Status: updated 2026-11-09. D-029 makes ordinary onboarding and a small production release the next priority. These are dependency gates, not committed dates or claims of implementation.
 
 ## North star
 
-Make it easy for someone to understand themselves and the people around them, preserve what matters in those relationships, and create valuable human connections with appropriate participation and permission.
+Help people understand themselves, other people, relationships and influences across relationships, and create valuable human connections with permission. Preserve independent perspectives and useful legacy workflows.
 
-## Priority 1 - A usable, simple Relish pilot experience
+## Next delivery: production base
 
-**Outcome:** At a real meeting, someone scans an existing QR, shares their details voluntarily, and the owner can recall and deepen the relationship without managing multiple applications.
+Accepted direction: [D-029](DECISION_LOG.md#d-029-ordinary-onboarding-and-an-incremental-production-launch). Recommended implementation model: GPT-6.1 Sol High, because signup, atomic provisioning and private-data routing cross authentication and custody boundaries.
 
-Current implementation foundation: My People Stage 1 and Stage 2 are merged into Development.
+1. **Implemented.** Password and Google signup atomically provision the account, private home, self reference and unpublished profile. Existing legacy accounts keep their custody and routing.
+2. **Implemented.** The core runs without any exchange or DEV fixture flag. The production exchange branch adds a separate opt-in for verified reciprocal exchange and channel delivery. DEV keeps its existing configuration. Foundation navigation focuses on the core and the server rejects legacy-only writes through public lead, Network and profile call routes.
+3. **Core path implemented.** Profile review and publication, QR/manual capture, My People, private voice-note transcription, editable summaries and retrieval reuse the existing services. Self-service password recovery is implemented on the production exchange branch using a single-use mailbox link. Hosted recovery, provider/device acceptance and privacy/support readiness remain promotion gates.
+4. **Promotion preparation pending.** Run the complete ordinary-user journey on an authorized DEV deployment, reconcile target migration history and rehearse hosted backup/restore and compatible rollback. Separately approve and execute production promotion after reviewing the evidence.
 
-Work:
+See the [production-base backlog](foundation/IMPLEMENTATION_PLAN.md#production-base-backlog-d-029) and [Current State](CURRENT_STATE.md#ordinary-production-onboarding).
+
+## Active programme
+
+The production base above takes priority over the earlier invited-pilot sequence. Historical stages retain delivery evidence and future capability boundaries; completing every exchange/intelligence feature is not required before releasing the core app.
+
+The authoritative detailed backlog and stage register are in [foundation implementation and rollout](foundation/IMPLEMENTATION_PLAN.md). Architecture is in [the design](foundation/ARCHITECTURE.md); rationale is in [D-019 through D-023](foundation/DECISIONS.md).
+
+| Stage | Outcome | Current status |
+| --- | --- | --- |
+| 1 | Architecture, decisions, policy, developer guide and implementation backlog | Merged via PR #13, `d789464` |
+| 2 | New-domain primitives, auth isolation, custody and evidence proof | F-202/F-203 merged and DEV operator-confirmed; F-204 merged; F-205 merged; F-206 internal rehearsal merged through PR #19. Stage 2 DEV verification is pending. P-301 directory and person details merged through PR #20 |
+| 3 | Ordinary users onboard, keep people and retrieve notes in production | P-301 through P-305 merged; P-306 internal DEV test operator-confirmed. Hosted DEV and launch acceptance for production-base onboarding are pending under D-029. No invited-cohort prerequisite; privacy, recovery and enabled-provider/device readiness remain. |
+| 4 | Secure exchange claiming and directional continuing sharing | S-403 and fixes merged through PR #36. S-405a corrects exchange/account-assurance design on feature branch; S-405b-e implementation and S-404 recovery/acceptance remain planned. |
+| 5 | Private understanding across people and relationships | Planned after evidence/correction readiness |
+| 6 | Relationship understanding from separately governed perspectives | Future gated release |
+| 7 | Cross-account discovery and approved introductions | Future gated release |
+
+Do not implement all later intelligence capabilities in stage 2. Relationship subjects and independent perspectives belong in the base design; shared relationship analysis can follow the first production release. Brokerage is maintained separately and does not drive Relish architecture. After the cutover is verified, inventory and remove unused Brokerage code in a separate change. Any removal of database data or schema needs its own review and approval.
+
+## Exchange follow-up
+
+[S-405](foundation/S405_ACCOUNT_CHANNELS_AND_EXCHANGE.md) remains the design for exchange functionality, subordinate to the production-base priority above: S-405a architecture/documentation, S-405b owned-profile confirmation, S-405c account-channel persistence and SMS lifecycle, S-405d guest reuse/email and trusted Google proof, then S-405e combined DEV acceptance. S-405a recommends Astra Medium; runtime slices recommend 6.1 Sol High. S-405b signed-in profile exchange is implemented on its feature branch; S-405c account-channel/SMS settings are implemented on their feature branch; S-405d guest reuse/email is implemented on its feature branch; sender setup, live DEV and S-405e combined acceptance remain pending. S-404 recovery obligations remain and are incorporated in the acceptance work. The current baseline includes PR #36 at `4a4ddb2`; deployment requires separate verification.
+
+## Parallel maintenance and validation lane
+
+Existing pilot and Dorian infrastructure can be maintained while the new foundation is built. Keep cohorts and authoritative data paths explicit; do not claim the existing experience already uses the new architecture.
+
+- Validate the new three-screen contact exchange merged into Development via PR #10 (`841e59c`): Save contact on iOS/Android, Send and Skip, optional signup, draft prefill through password/Google auth, owner review/publication, then working Share/QR. It is merged into Development; deployment remains unverified. Test the configured event redirect separately.
 - Verify the merged neutral Home / hidden Dorian invite / simplified navigation changes on Development before pilot deployment.
 - Confirm a new user lands on context-neutral Relish Home without destroying access to existing context-specific operations.
 - Complete a real-device DEV pass of existing public QR and event redirect -> Share your details -> owner-private Contact -> voice note -> save/retrieve.
-- Check that Brokerage, public profiles, event signup and authenticated participant flows still work.
-- Refine interaction points only from observed pilot friction. Do not invent another QR form, Contact model or note recorder.
+- Check public profiles, event signup and authenticated participant flows on Relish. Verify the owner’s workflows on the separate Brokerage service independently.
+- Verify a user can independently label, publish and share several profiles of the same type; the multi-profile manager is present in the reviewed source; deployment remains unverified.
+- Refine interaction points only from observed pilot friction. Reuse QR and note UI; change persistence only through the foundation transition.
 - Track the Windows-specific recording issue separately; do not hold all mobile-first work hostage to one device without evidence of a shared defect.
 
-**Exit gate:** one end-to-end real-device flow demonstrated on DEV, no custody regression, clear error behavior and operator confidence to invite a small number of participants.
+- Verify Dorian call initiation, consent, routing and next-call retrieval independently of new-domain implementation. Do not silently switch legacy conversation ingestion.
+- Preserve provider recording settings and strengthen channel identity before sensitive disclosure.
+- Establish backup/restore, access/removal support and redacted operational diagnostics before expanding participation.
 
-## Priority 2 - Make the People experience coherent
+## Delivery and documentation rules
 
-**Outcome:** People experience one coherent relationship system rather than a collection of context-specific CRMs.
+For each material change update the relevant living docs, backlog item and stage register in the same implementation PR. Record tests actually run, migration/rollback requirements, cohort scope and limitations. Update CURRENT_STATE at merge and again at deployment with actual commit/environment evidence. Never infer deployment from a merge.
 
-Potential work, subject to product decisions and pilot evidence:
-- Review how legacy Brokerage Contacts can be presented from a unified owner perspective **without moving their underlying storage or sharing their private information**. The temporary owner Personal-tag bridge is being reverted by decision D-016. No replacement bridge is planned for the current small pilot; users can add private Contacts directly. Revisit a unified directory only when real pilot needs justify it.
-- Clarify how one real person may have multiple contact perspectives and multiple context associations; keep provenance and permissions distinct.
-- Simplify redundant profile/context UI only after mapping current functionality and users.
-- Decide if and when unverified Contact -> Person -> User linking is necessary, with robust identity and disclosure boundaries.
+Select the next task from the earliest unmet gate. New capability replaces existing code only through a demonstrated gap and explicit compatibility plan. No production writes, migration execution or deployment follow automatically from this roadmap.
 
-**Exit gate:** tested, documented model and migration/compatibility strategy before changing contact authority or custody. No automatic legacy data migration by default.
-
-## Priority 3 - Make Dorian a dependable relationship companion
-
-**Outcome:** A person can speak naturally to Dorian, be understood over time, and see that understanding create better human relationships.
-
-Work:
-- Confirm reliable call initiation, consent, session routing and follow-up across DEV/PROD using existing Agent Management and Proxy capabilities.
-- Validate correct next-call understanding, source provenance, privacy constraints, operator audit and correction mechanisms.
-- Decide how contextual conversation instructions differ (Business/Friendship/Dating/etc.) without duplicating all agents and data unless necessary.
-- Introduce invitations back into public profiles when the onboarding experience is appropriate, tested and wanted.
-- Strengthen channel-appropriate identity verification before sensitive disclosures.
-
-**Exit gate:** repeatable, privacy-safe call loop with visible operator evidence and successful real participant tests.
-
-## Priority 4 - Permissioned network value creation
-
-**Outcome:** Relish helps bridge gaps between what people need, can contribute, and are willing to offer, without making assumptions or sharing private information.
-
-Explore:
-- Context- and purpose-scoped opportunity recognition.
-- Offers/wants/capabilities/willingness as distinct participant perspectives.
-- Permission-controlled introduction proposals and reciprocal participation.
-- Outcome tracking and learning from what actually created value.
-- Future interfaces for other AI agents through a governed Relish domain API; MCP is one possible access mechanism.
-
-**Gate:** permissions, identity assurance, review and real-world usefulness are established before broad automation.
-
-## Principles for selecting the next task
-
-1. Prefer a verified user benefit over speculative infrastructure.
-2. Reuse existing flows. Classify each request as connecting, improving or genuinely new capability.
-3. Keep source evidence, custody, relationship status and disclosure permissions distinct.
-4. Preserve existing production behavior and historical data; use Development -> feature branch -> review -> merge -> deliberate DEV/PROD validation.
-5. Avoid multiplying agents, profile flows or context pages to solve what is primarily a domain-integration problem.
-6. Update `CURRENT_STATE.md` when work moves between planned, committed, merged, DEV-verified and PROD-verified.
-
-## Not part of the immediate pilot
-
-- Automatic mutual connections based on QR/phone/email capture.
-- Silent merging of Brokerage and My People Contacts.
-- Automatic broad cross-context sharing or public Living Understanding.
-- Building entire new Dating, event or enterprise product lines before the core meeting-to-follow-up journey is proven.
-
-The next roadmap review should follow evidence from real user testing, not another arbitrary stage number.
+The 2026-11-05 production deferral and invited-cohort launch policy are superseded by D-029. Prepare an ordinary production release with the full target diff/migration review, DEV evidence, recovery readiness and privacy controls appropriate to the enabled scope. Production execution still requires separate authorization; this roadmap is not a deployment record.

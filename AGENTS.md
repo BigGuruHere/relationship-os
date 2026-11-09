@@ -22,10 +22,11 @@ A request to add a user-facing step is **not** automatically a request to build 
 - **People do not belong exclusively to contexts. Information and interactions have contexts.** Aim for one owner-private People experience, with appropriately scoped relationship information.
 - A private Contact, a Person identity reference, a Relish User account, and a mutually acknowledged Connection are distinct. Do not equate or automatically create them.
 - Contacts may exist without a specialised relationship classification or Relish account. Preserve capture origin separately from relationship context.
-- Brokerage is a specialised application using shared Contact and Interaction capabilities, not the owner of the underlying CRM.
+- Brokerage is maintained on the separate broker-relish deployment. Design Relish without Brokerage requirements. Before removing old Brokerage code or schema from Relish, confirm the separate deployment and the dependencies of shared Relish features. Preserve data until a separate authorised cleanup.
 - Manual Contact capture, QR detail sharing, voice notes, and Dorian are interfaces to reusable relationship capabilities, not competing data systems.
 - Each participant controls their self-understanding, observations about others, and views of relationships. Linking identities or connections must not automatically merge or share private information.
 - Dorian's permission to reason over relevant information is distinct from permission to disclose that information to another person.
+- People, relationships and groups can be subjects of understanding. Keep subject, perspective, custody and permission distinct; a relationship reference or participation does not imply mutual acknowledgement or shared access.
 
 ## 3. Security, data and compatibility
 
@@ -37,13 +38,15 @@ A request to add a user-facing step is **not** automatically a request to build 
 
 ## 4. Working practice
 
+- Lead each next-stage proposal with a recommendation of GPT-6.1 Sol Medium, GPT-6.1 Sol High or GPT-6 Astra Medium and a short reason tied to the work.
+
 - For nontrivial changes, report briefly **Existing capability → Actual gap → Minimum proposed change → Behaviour to preserve** before broad implementation.
 - Prioritise the next verified user benefit over speculative future features. Keep architecture extensible without implementing unneeded features.
 - **Default Git branch workflow for Codex (unless explicitly instructed otherwise):**
   1. Identify the repository's actual Development branch name and fetch its latest remote state. Do not assume the GitHub default branch is Development.
   2. Create a **new feature branch from the latest remote Development branch** before making code changes. Do not branch from Production or an older feature branch by default.
   3. When the assigned implementation is complete, **automatically commit all intended source, test, and documentation changes to that feature branch and push it to the remote repository**. Do not require a separate instruction to commit or push.
-  4. Report the feature branch name, base branch, commit hash, push status, validation results, and any outstanding issues. Do not claim changes are on GitHub until the push succeeds.
+  4. For each delivered implementation stage, open or reuse a pull request into the Development branch after pushing. Include a clickable pull request link in the chat handoff, along with the branch, base, commit hash, validation results and outstanding issues. Do not claim changes are on GitHub until publication succeeds.
   5. **Do not automatically merge** the feature branch into Development or Production, open a production deployment, or change live databases/services. Those steps require separate approval.
   6. Never force-push, discard another person's work, or commit secrets, `.env` files, database exports, or generated local environment artifacts. If branch identity, push access, or a working-tree conflict prevents safe completion, stop the unsafe action and report the blocker.
   7. Read-only investigations and planning tasks must remain read-only: do not create branches, commits, or pushes unless the user specifically requests a persistent artifact or code change.
@@ -81,6 +84,8 @@ Do not rewrite living documents unnecessarily for minor UI changes or straightfo
 Distinguish **planned**, **implemented on a feature branch**, **tested**, **merged into Development**, **deployed to DEV**, and **deployed to PROD**. Never claim that unverified behavior is working, or that a branch was merged or deployed when it was only committed.
 
 Include the relevant documentation changes in the same feature branch and push them with its implementation. If later merge or deployment changes the status, update `docs/CURRENT_STATE.md` as part of that subsequent integration or deployment workflow.
+
+For foundation work, update the relevant backlog item and stage register in `docs/foundation/IMPLEMENTATION_PLAN.md` in the same PR. Include acceptance evidence, migration/rollback implications and actual cohort/environment status. Update the integration status on merge and the deployed commit and verification evidence on deployment. A stage is not complete merely because its code is committed.
 
 Keep historical development notes available for reference. They must not override current living documentation or verified code behavior.
 

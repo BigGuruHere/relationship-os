@@ -34,6 +34,15 @@ enum UserRole {
 // - Primary account for a single tenant
 // - Email is stored encrypted at rest with a deterministic HMAC index for equality
 model User {
+  accountChannels FoundationAccountChannel[]
+  s402Association FoundationAccountAssociation[]
+
+  s402Exchange FoundationExchange[]
+
+  // IT: Additive foundation references; no enrolment or data backfill is implied.
+  f202EnrollmentUser FoundationEnrollment? @relation("F202_Enrollment_user")
+  f202VaultOwner FoundationVault[] @relation("F202_Vault_owner")
+  f202SubjectSelfUser FoundationSubject? @relation("F202_Subject_selfUser")
   governedUnderstandingScopes GovernedUnderstandingScope[]
   id           String   @id @default(uuid()) // pk stored as text uuid
   passwordHash String?
@@ -57,6 +66,7 @@ model User {
 
   // Owned data - tenant boundaries
   sessions      Session[]
+  passwordResetTokens PasswordResetToken[]
   contacts      Contact[]
   interactions  Interaction[]
   tags          Tag[]
@@ -316,6 +326,19 @@ model MagicToken {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+}
+
+// Password reset tokens are separate from sign-in tokens and bound to existing credentials.
+model PasswordResetToken {
+  tokenHash   String   @id
+  userId      String
+  credential  String
+  expiresAt   DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
 }
 
 // IT: short lived token that binds a public profile page to the owner
@@ -773,6 +796,8 @@ enum ProfileKind {
 
 // IT: public shareable profile owned by a user
 model Profile {
+  s402Exchange FoundationExchange[]
+
   id        String      @id @default(uuid())
   userId    String
   kind      ProfileKind @default(business)
@@ -809,6 +834,7 @@ model Profile {
   publicMeta Json?
 
   @@index([userId, isDefault])
+  @@unique([id, userId], map: "s402_profile_scope")
 }
 
 // IT: flexible many-to-many relationships between contacts
@@ -4068,4 +4094,579 @@ model RelishEventPilotSignup {
   @@unique([profileId, contactKey])
   @@index([ownerUserId, createdAt])
   @@index([ownerUserId, interestGroup, createdAt])
+}
+
+
+// F-202: additive private foundation. SQL-only checks/triggers are documented in
+// docs/foundation/F202_INVARIANTS.md. No routes may use these before F-203/F-204.
+
+enum FoundationEnrollmentState {
+  PREPARED
+  ACTIVE
+  SUSPENDED
+}
+
+enum FoundationVaultKind {
+  PRIVATE_HOME
+}
+
+enum FoundationVaultState {
+  ACTIVE
+  LOCKED
+  DELETING
+}
+
+enum FoundationSubjectKind {
+  PERSON
+  RELATIONSHIP
+  GROUP
+}
+
+enum FoundationSubjectState {
+  ACTIVE
+  ARCHIVED
+  DELETING
+}
+
+enum FoundationPerspectiveKind {
+  OWNER_RECORDED
+  ATTRIBUTED_PERSON
+  AI_INTERPRETATION
+}
+
+enum FoundationSourceKind {
+  OWNER_NOTE
+  VOICE_NOTE
+  CONTACT_EXCHANGE
+  IMPORTED_CONVERSATION
+}
+
+enum FoundationRecordState {
+  ACTIVE
+  DISABLED
+  DELETING
+}
+
+enum FoundationAdmission {
+  STORED_ONLY
+  PRIVATE_ANALYSIS
+}
+
+enum FoundationRecorderKind {
+  OWNER
+  VISITOR
+  SERVICE
+}
+
+enum FoundationStatementMode {
+  DECLARED
+  OBSERVED
+  INFERRED
+}
+
+enum FoundationConfidence {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum FoundationSupportRelation {
+  SUPPORTS
+  QUALIFIES
+  CONTRADICTS
+}
+
+enum FoundationContextState {
+  ACTIVE
+  ARCHIVED
+}
+
+// IT: Custody references restrict deletion; services must explicitly erase dependencies.
+model FoundationEnrollment {
+  userId String @id
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  state FoundationEnrollmentState @default(PREPARED)
+  epoch Int @default(1)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+  user User @relation("F202_Enrollment_user", fields: [userId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "f202_fk_1")
+}
+
+// IT: Custody references restrict deletion; services must explicitly erase dependencies.
+model FoundationVault {
+  s402Association FoundationAccountAssociation[]
+
+  s402Exchange FoundationExchange[]
+
+  id String @id @default(uuid())
+  ownerUserId String
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  kind FoundationVaultKind @default(PRIVATE_HOME)
+  state FoundationVaultState @default(ACTIVE)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+  owner User @relation("F202_Vault_owner", fields: [ownerUserId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "f202_fk_2")
+  f202SubjectVault FoundationSubject[] @relation("F202_Subject_vault")
+  f202MembershipVault FoundationMembership[] @relation("F202_Membership_vault")
+  f202PerspectiveVault FoundationPerspective[] @relation("F202_Perspective_vault")
+  f202SourceVault FoundationSource[] @relation("F202_Source_vault")
+  f202SourceVersionVault FoundationSourceVersion[] @relation("F202_SourceVersion_vault")
+  f202EvidenceSegmentVault FoundationEvidenceSegment[] @relation("F202_EvidenceSegment_vault")
+  f202EvidenceSubjectVault FoundationEvidenceSubject[] @relation("F202_EvidenceSubject_vault")
+  f202StatementVault FoundationStatement[] @relation("F202_Statement_vault")
+  f202StatementVersionVault FoundationStatementVersion[] @relation("F202_StatementVersion_vault")
+  f202StatementSubjectVault FoundationStatementSubject[] @relation("F202_StatementSubject_vault")
+  f202SupportVault FoundationSupport[] @relation("F202_Support_vault")
+  f202ContextVault FoundationContext[] @relation("F202_Context_vault")
+  f202ContextAssociationVault FoundationContextAssociation[] @relation("F202_ContextAssociation_vault")
+  @@unique([id, ownerUserId], map: "f202_vault_scope")
+  @@unique([ownerUserId, kind], map: "f202_vault_owner_kind")
+}
+
+// IT: Custody references restrict deletion; services must explicitly erase dependencies.
+model FoundationSubject {
+  s402SettledExchange FoundationExchange[] @relation("ExchangeSettlement")
+  s402Association FoundationAccountAssociation[]
+
+  s402Exchange FoundationExchange[]
+
+  id String @id @default(uuid())
+  ownerUserId String
+  vaultId String
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  kind FoundationSubjectKind
+  displayNameEnc String
+  detailsEnc String?
+  selfUserId String? @unique(map: "f202_subject_self")
+  state FoundationSubjectState @default(ACTIVE)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+  vault FoundationVault @relation("F202_Subject_vault", fields: [vaultId, ownerUserId], references: [id, ownerUserId], onDelete: Restrict, onUpdate: Restrict, map: "f202_fk_3")
+  selfUser User? @relation("F202_Subject_selfUser", fields: [selfUserId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "f202_fk_16")
+  f202MembershipContainer FoundationMembership[] @relation("F202_Membership_container")
+  f202MembershipPerson FoundationMembership[] @relation("F202_Membership_person")
+  f202PerspectiveHolder FoundationPerspective[] @relation("F202_Perspective_holder")
+  f202EvidenceSegmentSpeaker FoundationEvidenceSegment[] @relation("F202_EvidenceSegment_speaker")
+  f202EvidenceSubjectSubject FoundationEvidenceSubject[] @relation("F202_EvidenceSubject_subject")
+  f202StatementSubjectSubject FoundationStatementSubject[] @relation("F202_StatementSubject_subject")
+  @@unique([id, ownerUserId, vaultId], map: "f202_subject_scope")
+  @@unique([id, ownerUserId, vaultId, kind], map: "f202_subject_typed")
+  @@index([ownerUserId, vaultId, kind, state], map: "f202_subject_listing")
+}
+
+// IT: Custody references restrict deletion; services must explicitly erase dependencies.
+model FoundationMembership {
+  id String @id @default(uuid())
+  ownerUserId String
+  vaultId String
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  containerSubjectId String
+  containerKind FoundationSubjectKind
+  personSubjectId String
+  personKind FoundationSubjectKind @default(PERSON)
+  roleEnc String?
+  joinedAt DateTime @default(now()) @db.Timestamptz(3)
+  leftAt DateTime? @db.Timestamptz(3)
+  vault FoundationVault @relation("F202_Membership_vault", fields: [vaultId, ownerUserId], references: [id, ownerUserId], onDelete: Restrict, onUpdate: Restrict, map: "f202_fk_4")
+  container FoundationSubject @relation("F202_Membership_container", fields: [containerSubjectId, ownerUserId, vaultId, containerKind], references: [id, ownerUserId, vaultId, kind], onDelete: Restrict, onUpdate: Restrict, map: "f202_fk_17")
+  person FoundationSubject @relation("F202_Membership_person", fields: [personSubjectId, ownerUserId, vaultId, personKind], references: [id, ownerUserId, vaultId, kind], onDelete: Restrict, onUpdate: Restrict, map: "f202_fk_18")
+  @@unique([id, ownerUserId, vaultId], map: "f202_membership_scope")
+  @@index([ownerUserId, vaultId, containerSubjectId], map: "f202_membersh_containersubject")
+  @@index([ownerUserId, vaultId, personSubjectId], map: "f202_membersh_personsubjectid")
+}
+
+// IT: Custody references restrict deletion; services must explicitly erase dependencies.
+model FoundationPerspective {
+  id String @id @default(uuid())
+  ownerUserId String
+  vaultId String
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  kind FoundationPerspectiveKind
+  holderSubjectId String?
+  holderKind FoundationSubjectKind?
+  descriptionEnc String?
+  vault FoundationVault @relation("F202_Perspective_vault", fields: [vaultId, ownerUserId], references: [id, ownerUserId], onDelete: Restrict, onUpdate: Restrict, map: "f202_fk_5")
+  holder FoundationSubject? @relation("F202_Perspective_holder", fields: [holderSubjectId, ownerUserId, vaultId, holderKind], references: [id, ownerUserId, vaultId, kind], onDelete: Restrict, onUpdate: Restrict, map: "f202_fk_19")
+  f202StatementPerspective FoundationStatement[] @relation("F202_Statement_perspective")
+  @@unique([id, ownerUserId, vaultId], map: "f202_perspective_scope")
+  @@index([ownerUserId, vaultId, holderSubjectId], map: "f202_perspect_holdersubjectid")
+}
+
+// IT: Custody references restrict deletion; services must explicitly erase dependencies.
+model FoundationSource {
+  s402Exchange FoundationExchange[]
+
+  id String @id @default(uuid())
+  ownerUserId String
+  vaultId String
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  kind FoundationSourceKind
+  ingestKey String
+  state FoundationRecordState @default(ACTIVE)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+  vault FoundationVault @relation("F202_Source_vault", fields: [vaultId, ownerUserId], references: [id, ownerUserId], onDelete: Restrict, onUpdate: Restrict, map: "f202_fk_6")
+  f202SourceVersionParent FoundationSourceVersion[] @relation("F202_SourceVersion_parent")
+  @@unique([id, ownerUserId, vaultId], map: "f202_source_scope")
+  @@unique([vaultId, ingestKey], map: "f202_source_ingest")
+  @@index([ownerUserId, vaultId, kind, createdAt], map: "f202_source_listing")
+  @@unique([id, ownerUserId, vaultId, kind], map: "s402_source_typed")
+}
+
+// IT: Custody references restrict deletion; services must explicitly erase dependencies.
+model FoundationSourceVersion {
+  id String @id @default(uuid())
+  ownerUserId String
+  vaultId String
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  sourceId String
+  version Int
+  previousVersionId String?
+  previousVersionNumber Int?
+  payloadEnc String
+  contentMac String
+  processingAdmission FoundationAdmission @default(STORED_ONLY)
+  occurredAt DateTime? @db.Timestamptz(3)
+  recordedByKind FoundationRecorderKind
+  provenanceEnc String
+  vault FoundationVault @relation("F202_SourceVersion_vault", fields: [vaultId, ownerUserId], references: [id, ownerUserId], onDelete: Restrict, onUpdate: Restrict, map: "f202_fk_7")
+  parent FoundationSource @relation("F202_SourceVersion_parent", fields: [sourceId, ownerUserId, vaultId], references: [id, ownerUserId, vaultId], onDelete: Restrict, onUpdate: Restrict, map: "f202_fk_20")
+  previous FoundationSourceVersion? @relation("F202_SourceVersion_previous", fields: [previousVersionId, sourceId, previousVersionNumber, ownerUserId, vaultId], references: [id, sourceId, version, ownerUserId, vaultId], onDelete: Restrict, onUpdate: Restrict, map: "f202_fk_21")
+  f202SourceVersionPrevious FoundationSourceVersion[] @relation("F202_SourceVersion_previous")
+  f202EvidenceSegmentSourceVersion FoundationEvidenceSegment[] @relation("F202_EvidenceSegment_sourceVersion")
+  @@unique([id, ownerUserId, vaultId], map: "f202_sourceversion_scope")
+  @@unique([sourceId, version], map: "f202_sourceversion_number")
+  @@unique([id, sourceId, version, ownerUserId, vaultId], map: "f202_sourceversion_lineage")
+}
+
+// IT: Custody references restrict deletion; services must explicitly erase dependencies.
+model FoundationEvidenceSegment {
+  id String @id @default(uuid())
+  ownerUserId String
+  vaultId String
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  sourceVersionId String
+  speakerSubjectId String?
+  speakerKind FoundationSubjectKind?
+  anchorEnc String
+  excerptEnc String
+  anchorMac String
+  vault FoundationVault @relation("F202_EvidenceSegment_vault", fields: [vaultId, ownerUserId], references: [id, ownerUserId], onDelete: Restrict, onUpdate: Restrict, map: "f202_fk_8")
+  sourceVersion FoundationSourceVersion @relation("F202_EvidenceSegment_sourceVersion", fields: [sourceVersionId, ownerUserId, vaultId], references: [id, ownerUserId, vaultId], onDelete: Restrict, onUpdate: Restrict, map: "f202_fk_24")
+  speaker FoundationSubject? @relation("F202_EvidenceSegment_speaker", fields: [speakerSubjectId, ownerUserId, vaultId, speakerKind], references: [id, ownerUserId, vaultId, kind], onDelete: Restrict, onUpdate: Restrict, map: "f202_fk_25")
+  f202EvidenceSubjectSegment FoundationEvidenceSubject[] @relation("F202_EvidenceSubject_segment")
+  f202SupportSegment FoundationSupport[] @relation("F202_Support_segment")
+  f202ContextAssociationSegment FoundationContextAssociation[] @relation("F202_ContextAssociation_segment")
+  @@unique([id, ownerUserId, vaultId], map: "f202_evidencesegment_scope")
+  @@unique([vaultId, sourceVersionId, anchorMac], map: "f202_segment_anchor")
+  @@index([ownerUserId, vaultId, sourceVersionId], map: "f202_evidence_sourceversionid")
+  @@index([ownerUserId, vaultId, speakerSubjectId], map: "f202_evidence_speakersubjectid")
+}
+
+// IT: Custody references restrict deletion; services must explicitly erase dependencies.
+model FoundationEvidenceSubject {
+  id String @id @default(uuid())
+  ownerUserId String
+  vaultId String
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  segmentId String
+  subjectId String
+  vault FoundationVault @relation("F202_EvidenceSubject_vault", fields: [vaultId, ownerUserId], references: [id, ownerUserId], onDelete: Restrict, onUpdate: Restrict, map: "f202_fk_9")
+  segment FoundationEvidenceSegment @relation("F202_EvidenceSubject_segment", fields: [segmentId, ownerUserId, vaultId], references: [id, ownerUserId, vaultId], onDelete: Restrict, onUpdate: Restrict, map: "f202_fk_26")
+  subject FoundationSubject @relation("F202_EvidenceSubject_subject", fields: [subjectId, ownerUserId, vaultId], references: [id, ownerUserId, vaultId], onDelete: Restrict, onUpdate: Restrict, map: "f202_fk_27")
+  @@unique([id, ownerUserId, vaultId], map: "f202_evidencesubject_scope")
+  @@unique([segmentId, subjectId], map: "f202_evidence_subject")
+  @@index([ownerUserId, vaultId, subjectId], map: "f202_evidence_subjectid")
+}
+
+// IT: Custody references restrict deletion; services must explicitly erase dependencies.
+model FoundationStatement {
+  id String @id @default(uuid())
+  ownerUserId String
+  vaultId String
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  perspectiveId String
+  state FoundationRecordState @default(ACTIVE)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+  vault FoundationVault @relation("F202_Statement_vault", fields: [vaultId, ownerUserId], references: [id, ownerUserId], onDelete: Restrict, onUpdate: Restrict, map: "f202_fk_10")
+  perspective FoundationPerspective @relation("F202_Statement_perspective", fields: [perspectiveId, ownerUserId, vaultId], references: [id, ownerUserId, vaultId], onDelete: Restrict, onUpdate: Restrict, map: "f202_fk_28")
+  f202StatementVersionParent FoundationStatementVersion[] @relation("F202_StatementVersion_parent")
+  @@unique([id, ownerUserId, vaultId], map: "f202_statement_scope")
+  @@index([ownerUserId, vaultId, state, perspectiveId], map: "f202_statement_listing")
+}
+
+// IT: Custody references restrict deletion; services must explicitly erase dependencies.
+model FoundationStatementVersion {
+  id String @id @default(uuid())
+  ownerUserId String
+  vaultId String
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  statementId String
+  version Int
+  previousVersionId String?
+  previousVersionNumber Int?
+  textEnc String
+  mode FoundationStatementMode
+  confidence FoundationConfidence
+  observedAt DateTime? @db.Timestamptz(3)
+  validFrom DateTime? @db.Timestamptz(3)
+  validUntil DateTime? @db.Timestamptz(3)
+  provenanceEnc String
+  vault FoundationVault @relation("F202_StatementVersion_vault", fields: [vaultId, ownerUserId], references: [id, ownerUserId], onDelete: Restrict, onUpdate: Restrict, map: "f202_fk_11")
+  parent FoundationStatement @relation("F202_StatementVersion_parent", fields: [statementId, ownerUserId, vaultId], references: [id, ownerUserId, vaultId], onDelete: Restrict, onUpdate: Restrict, map: "f202_fk_22")
+  previous FoundationStatementVersion? @relation("F202_StatementVersion_previous", fields: [previousVersionId, statementId, previousVersionNumber, ownerUserId, vaultId], references: [id, statementId, version, ownerUserId, vaultId], onDelete: Restrict, onUpdate: Restrict, map: "f202_fk_23")
+  f202StatementVersionPrevious FoundationStatementVersion[] @relation("F202_StatementVersion_previous")
+  f202StatementSubjectVersion FoundationStatementSubject[] @relation("F202_StatementSubject_version")
+  f202SupportOutput FoundationSupport[] @relation("F202_Support_output")
+  f202SupportInput FoundationSupport[] @relation("F202_Support_input")
+  f202ContextAssociationVersion FoundationContextAssociation[] @relation("F202_ContextAssociation_version")
+  @@unique([id, ownerUserId, vaultId], map: "f202_statementversion_scope")
+  @@unique([statementId, version], map: "f202_statementversion_number")
+  @@unique([id, statementId, version, ownerUserId, vaultId], map: "f202_statementversion_lineage")
+}
+
+// IT: Custody references restrict deletion; services must explicitly erase dependencies.
+model FoundationStatementSubject {
+  id String @id @default(uuid())
+  ownerUserId String
+  vaultId String
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  statementVersionId String
+  subjectId String
+  vault FoundationVault @relation("F202_StatementSubject_vault", fields: [vaultId, ownerUserId], references: [id, ownerUserId], onDelete: Restrict, onUpdate: Restrict, map: "f202_fk_12")
+  version FoundationStatementVersion @relation("F202_StatementSubject_version", fields: [statementVersionId, ownerUserId, vaultId], references: [id, ownerUserId, vaultId], onDelete: Restrict, onUpdate: Restrict, map: "f202_fk_29")
+  subject FoundationSubject @relation("F202_StatementSubject_subject", fields: [subjectId, ownerUserId, vaultId], references: [id, ownerUserId, vaultId], onDelete: Restrict, onUpdate: Restrict, map: "f202_fk_30")
+  @@unique([id, ownerUserId, vaultId], map: "f202_statementsubject_scope")
+  @@unique([statementVersionId, subjectId], map: "f202_statement_subject")
+  @@index([ownerUserId, vaultId, subjectId], map: "f202_statemen_subjectid")
+}
+
+// IT: Custody references restrict deletion; services must explicitly erase dependencies.
+model FoundationSupport {
+  id String @id @default(uuid())
+  ownerUserId String
+  vaultId String
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  outputVersionId String
+  segmentId String?
+  inputVersionId String?
+  relation FoundationSupportRelation
+  vault FoundationVault @relation("F202_Support_vault", fields: [vaultId, ownerUserId], references: [id, ownerUserId], onDelete: Restrict, onUpdate: Restrict, map: "f202_fk_13")
+  output FoundationStatementVersion @relation("F202_Support_output", fields: [outputVersionId, ownerUserId, vaultId], references: [id, ownerUserId, vaultId], onDelete: Restrict, onUpdate: Restrict, map: "f202_fk_31")
+  segment FoundationEvidenceSegment? @relation("F202_Support_segment", fields: [segmentId, ownerUserId, vaultId], references: [id, ownerUserId, vaultId], onDelete: Restrict, onUpdate: Restrict, map: "f202_fk_32")
+  input FoundationStatementVersion? @relation("F202_Support_input", fields: [inputVersionId, ownerUserId, vaultId], references: [id, ownerUserId, vaultId], onDelete: Restrict, onUpdate: Restrict, map: "f202_fk_33")
+  @@unique([id, ownerUserId, vaultId], map: "f202_support_scope")
+  @@index([ownerUserId, vaultId, outputVersionId], map: "f202_support_outputversionid")
+  @@index([ownerUserId, vaultId, segmentId], map: "f202_support_segmentid")
+  @@index([ownerUserId, vaultId, inputVersionId], map: "f202_support_inputversionid")
+}
+
+// IT: Custody references restrict deletion; services must explicitly erase dependencies.
+model FoundationContext {
+  id String @id @default(uuid())
+  ownerUserId String
+  vaultId String
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  labelEnc String
+  descriptionEnc String?
+  state FoundationContextState @default(ACTIVE)
+  vault FoundationVault @relation("F202_Context_vault", fields: [vaultId, ownerUserId], references: [id, ownerUserId], onDelete: Restrict, onUpdate: Restrict, map: "f202_fk_14")
+  f202ContextAssociationContext FoundationContextAssociation[] @relation("F202_ContextAssociation_context")
+  @@unique([id, ownerUserId, vaultId], map: "f202_context_scope")
+}
+
+// IT: Custody references restrict deletion; services must explicitly erase dependencies.
+model FoundationContextAssociation {
+  id String @id @default(uuid())
+  ownerUserId String
+  vaultId String
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  contextId String
+  segmentId String?
+  statementVersionId String?
+  vault FoundationVault @relation("F202_ContextAssociation_vault", fields: [vaultId, ownerUserId], references: [id, ownerUserId], onDelete: Restrict, onUpdate: Restrict, map: "f202_fk_15")
+  context FoundationContext @relation("F202_ContextAssociation_context", fields: [contextId, ownerUserId, vaultId], references: [id, ownerUserId, vaultId], onDelete: Restrict, onUpdate: Restrict, map: "f202_fk_34")
+  segment FoundationEvidenceSegment? @relation("F202_ContextAssociation_segment", fields: [segmentId, ownerUserId, vaultId], references: [id, ownerUserId, vaultId], onDelete: Restrict, onUpdate: Restrict, map: "f202_fk_35")
+  version FoundationStatementVersion? @relation("F202_ContextAssociation_version", fields: [statementVersionId, ownerUserId, vaultId], references: [id, ownerUserId, vaultId], onDelete: Restrict, onUpdate: Restrict, map: "f202_fk_36")
+  @@unique([id, ownerUserId, vaultId], map: "f202_contextassociation_scope")
+  @@index([ownerUserId, vaultId, contextId], map: "f202_contexta_contextid")
+  @@index([ownerUserId, vaultId, segmentId], map: "f202_contexta_segmentid")
+  @@index([ownerUserId, vaultId, statementVersionId], map: "f202_contexta_statementversion")
+}
+
+// IT: Durable exchange state. Request writers are gated until S-402b adds scoped services.
+model FoundationExchange {
+  // Version 2 claims retain exact submitted channel snapshots; old claims keep version 1.
+  claimVersion Int @default(1)
+  submittedChannelsEnc String?
+  id String @id @default(uuid())
+  ownerUserId String
+  vaultId String
+  profileId String
+  subjectId String
+  subjectKind FoundationSubjectKind @default(PERSON)
+  sourceId String
+  sourceKind FoundationSourceKind @default(CONTACT_EXCHANGE)
+  snapshotEnc String
+  destinationEnc String?
+  continuationHash String @unique
+  beneficiaryUserId String?
+  settledSubjectId String?
+  settledVaultId String?
+  status String @default("PENDING")
+  generation Int @default(0)
+  failedAttempts Int @default(0)
+  sendCount Int @default(0)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  expiresAt DateTime @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+  vault FoundationVault @relation(fields: [vaultId, ownerUserId], references: [id, ownerUserId], onDelete: Restrict, onUpdate: Restrict)
+  profile Profile @relation(fields: [profileId, ownerUserId], references: [id, userId], onDelete: Restrict, onUpdate: Restrict)
+  subject FoundationSubject @relation(fields: [subjectId, ownerUserId, vaultId, subjectKind], references: [id, ownerUserId, vaultId, kind], onDelete: Restrict, onUpdate: Restrict)
+  source FoundationSource @relation(fields: [sourceId, ownerUserId, vaultId, sourceKind], references: [id, ownerUserId, vaultId, kind], onDelete: Restrict, onUpdate: Restrict)
+  beneficiary User? @relation(fields: [beneficiaryUserId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  settledSubject FoundationSubject? @relation("ExchangeSettlement", fields:[settledSubjectId,beneficiaryUserId,settledVaultId], references:[id,ownerUserId,vaultId], onDelete:Restrict, onUpdate:Restrict)
+  challenges FoundationExchangeChallenge[]
+  @@unique([sourceId, ownerUserId, vaultId])
+  @@unique([id, ownerUserId, vaultId, beneficiaryUserId])
+  @@index([ownerUserId, vaultId, status, expiresAt])
+}
+
+// IT: Channel is persisted so the same service can later deliver email challenges.
+model FoundationExchangeChallenge {
+  id String @id @default(uuid())
+  ownerUserId String
+  vaultId String
+  exchangeId String
+  beneficiaryUserId String
+  sessionHash String
+  channel String
+  destinationEnc String
+  codeMac String
+  generation Int
+  attempts Int @default(0)
+  status String @default("PENDING")
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  expiresAt DateTime @db.Timestamptz(3)
+  verifiedAt DateTime? @db.Timestamptz(3)
+  consumedAt DateTime? @db.Timestamptz(3)
+  exchange FoundationExchange @relation(fields: [exchangeId, ownerUserId, vaultId, beneficiaryUserId], references: [id, ownerUserId, vaultId, beneficiaryUserId], onDelete: Restrict, onUpdate: Restrict)
+  dispatch FoundationExchangeDispatch?
+  @@unique([exchangeId, generation])
+  @@unique([id, ownerUserId, vaultId])
+  @@index([beneficiaryUserId, status, expiresAt])
+}
+
+// IT: Only encrypted retryable delivery content is retained while the message is pending.
+model FoundationExchangeDispatch {
+  id String @id @default(uuid())
+  ownerUserId String
+  vaultId String
+  challengeId String @unique
+  payloadEnc String?
+  status String @default("QUEUED")
+  attempts Int @default(0)
+  leaseUntil DateTime? @db.Timestamptz(3)
+  leaseToken String?
+  lastErrorCode String?
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  expiresAt DateTime @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+  challenge FoundationExchangeChallenge @relation(fields: [challengeId, ownerUserId, vaultId], references: [id, ownerUserId, vaultId], onDelete: Restrict, onUpdate: Restrict)
+  @@unique([challengeId, ownerUserId, vaultId])
+  @@index([status, expiresAt, leaseUntil])
+}
+
+
+// IT: Private account associations confer no access to the other participant's vault.
+model FoundationAccountAssociation {
+ id String @id @default(uuid())
+ ownerUserId String
+ vaultId String
+ subjectId String
+ subjectKind FoundationSubjectKind @default(PERSON)
+ accountId String
+ channel String
+ channelHash String
+ verifiedAt DateTime @db.Timestamptz(3)
+ state String @default("ACTIVE")
+ exchangeRef String
+ vault FoundationVault @relation(fields:[vaultId,ownerUserId], references:[id,ownerUserId], onDelete:Restrict, onUpdate:Restrict)
+ subject FoundationSubject @relation(fields:[subjectId,ownerUserId,vaultId,subjectKind], references:[id,ownerUserId,vaultId,kind], onDelete:Restrict, onUpdate:Restrict)
+ account User @relation(fields:[accountId], references:[id], onDelete:Restrict, onUpdate:Restrict)
+ @@unique([ownerUserId,vaultId,accountId])
+ @@unique([ownerUserId,vaultId,subjectId])
+ @@index([channelHash,accountId])
+}
+
+// IT: Opaque, expiring abuse counters shared across replicas and exchange attempts.
+model FoundationClaimBudget {
+ id String @id
+ count Int
+ expiresAt DateTime @db.Timestamptz(3)
+ @@index([expiresAt])
+}
+
+// Account-owned channel assurance is independent of private relationship vault custody.
+model FoundationAccountChannel {
+ id String @id @default(uuid())
+ ownerUserId String
+ type String
+ valueEnc String
+ valueHash String
+ normalizationVersion Int @default(1)
+ status String @default("PENDING")
+ generation Int @default(0)
+ failedAttempts Int @default(0)
+ sendCount Int @default(0)
+ windowAt DateTime @default(now()) @db.Timestamptz(3)
+ createdAt DateTime @default(now()) @db.Timestamptz(3)
+ updatedAt DateTime @updatedAt @db.Timestamptz(3)
+ owner User @relation(fields:[ownerUserId],references:[id],onDelete:Restrict,onUpdate:Restrict)
+ proofs FoundationAccountChannelVerification[]
+ challenges FoundationAccountChannelChallenge[]
+ @@unique([id,ownerUserId])
+ @@unique([ownerUserId,type,valueHash])
+}
+// Proof history is immutable except for explicit monotonic revocation metadata.
+model FoundationAccountChannelVerification {
+ id String @id @default(uuid())
+ ownerUserId String
+ channelId String
+ generation Int
+ method String
+ proofRef String
+ verifiedAt DateTime @default(now()) @db.Timestamptz(3)
+ revokedAt DateTime? @db.Timestamptz(3)
+ revokeReason String?
+ channel FoundationAccountChannel @relation(fields:[channelId,ownerUserId],references:[id,ownerUserId],onDelete:Restrict,onUpdate:Restrict)
+ @@unique([channelId,generation])
+}
+// New challenge generations invalidate old codes; session and purpose are immutable bindings.
+model FoundationAccountChannelChallenge {
+ id String @id @default(uuid())
+ ownerUserId String
+ channelId String
+ generation Int
+ sessionHash String
+ codeMac String
+ purpose String @default("VERIFY_CHANNEL")
+ status String @default("PENDING")
+ attempts Int @default(0)
+ createdAt DateTime @default(now()) @db.Timestamptz(3)
+ expiresAt DateTime @db.Timestamptz(3)
+ consumedAt DateTime? @db.Timestamptz(3)
+ channel FoundationAccountChannel @relation(fields:[channelId,ownerUserId],references:[id,ownerUserId],onDelete:Restrict,onUpdate:Restrict)
+ dispatch FoundationAccountChannelDispatch?
+ @@unique([id,ownerUserId])
+ @@unique([channelId,generation])
+}
+// Durable encrypted payloads exist only while delivery is retryable.
+model FoundationAccountChannelDispatch {
+ id String @id @default(uuid())
+ ownerUserId String
+ challengeId String @unique
+ payloadEnc String?
+ status String @default("QUEUED")
+ attempts Int @default(0)
+ createdAt DateTime @default(now()) @db.Timestamptz(3)
+ expiresAt DateTime @db.Timestamptz(3)
+ @@unique([challengeId,ownerUserId])
+ challenge FoundationAccountChannelChallenge @relation(fields:[challengeId,ownerUserId],references:[id,ownerUserId],onDelete:Restrict,onUpdate:Restrict)
 }

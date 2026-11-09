@@ -1,24 +1,27 @@
-// Stage 8.16: explicit owner hub, with strict per-kind profile selection.
+// Profile manager: list every owned profile instead of collapsing to one record per kind.
 import { redirect } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
 import { prisma } from '$lib/db';
 import { decrypt } from '$lib/crypto';
-export const load: PageServerLoad = async ({ locals }) => {
+import { exchangeBrowserEnabled } from '$lib/server/foundation/devPilotGate';
+import { accountDomain } from '$lib/server/foundation/provisioning';
+export const load: PageServerLoad = async ({ locals, url }) => {
   if (!locals.user) throw redirect(303, '/auth/login');
   const profiles = await prisma.profile.findMany({ where: {
-    userId: locals.user.id, kind: { in: ['business', 'personal', 'dating'] }
-  }, select: { id: true, kind: true, slug: true, displayName: true, headline: true, isPublished: true },
+    userId: locals.user.id
+  }, select: { id: true, kind: true, label: true, slug: true, displayName: true, headline: true, isPublished: true, isDefault: true },
   orderBy: { updatedAt: 'desc' } });
   // Only the owner can read explicitly offered contact details. Never read private LU.
   const requests = await prisma.pilotConnectionRequest.findMany({ where: {
     ownerUserId: locals.user.id, status: 'REQUESTED'
   }, orderBy: { createdAt: 'desc' }, take: 100 });
-  // Prefer the last edited of each kind without inventing or merging profiles.
-  return { requests: requests.map(request => ({
+  // IT: Keep all owned profiles. Profile kind is a secondary classification, not an identity key.
+  const channelsAvailable = exchangeBrowserEnabled(locals, url.origin)
+    && await accountDomain(locals.user.id) === 'ACTIVE';
+  return { channelsAvailable, requests: requests.map(request => ({
     id: request.id, domainKey: request.domainKey,
     name: decrypt(request.nameEnc, 'pilot.connection.name'),
     email: decrypt(request.emailEnc, 'pilot.connection.email'),
     requestedAt: request.createdAt.toISOString()
-  })), profiles: ['business','personal','dating'].map(kind => ({ kind,
-    profile: profiles.find(p => p.kind === kind) || null })) };
+  })), profiles };
 };

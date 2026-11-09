@@ -1,6 +1,6 @@
 # Relish: Start Here
 
-Status: living documentation index. Reviewed against the `development` branch on 2026-11-02.
+Status: living documentation index. Updated 2026-11-09; D-029 ordinary onboarding is implemented; F-202 schema is merged and DEV operator-confirmed; F-203 provisioning is merged and DEV operator-confirmed; F-204 through F-206 are merged; P-301 directory is merged; P-302 public exchange is merged; P-303 private notes are merged; P-304 profile continuity is merged; P-305 privacy and operations is merged; P-306 internal DEV pilot is operator-confirmed; hosted erasure replay and production acceptance remain pending. Invited-cohort launch policy is superseded below.
 
 Relish is a person-first Relationship Operating System. Dorian is a conversational AI partner that helps people understand themselves and develop valuable relationships with other people. The architecture and the immediate product experience evolve together, but an old release note is not a current product requirement.
 
@@ -14,6 +14,63 @@ Relish is a person-first Relationship Operating System. Dorian is a conversation
 6. [`DECISION_LOG.md`](DECISION_LOG.md) - major accepted decisions and links to deeper historical reasoning.
 
 For a quick visual or text change, read only the relevant sections and inspect the affected source files. For a cross-cutting change, read all six and inspect the current code. Avoid an unnecessarily lengthy audit of an obvious fix.
+
+## Current production direction
+
+[D-029](DECISION_LOG.md#d-029-ordinary-onboarding-and-an-incremental-production-launch) supersedes invited-cohort rollout and the prior production deferral: prepare the actual production app for ordinary new users with a small complete feature set, validate in DEV and add features incrementally. No special test-account or allowlist onboarding. The [production-base roadmap](ROADMAP.md#next-delivery-production-base) and [backlog](foundation/IMPLEMENTATION_PLAN.md#production-base-backlog-d-029) take priority. Core onboarding is implemented. The production exchange and recovery branch adds password reset, production exchange activation and richer phone contact export. Hosted DEV acceptance and promotion remain pending. See [rollout and recovery](foundation/PRODUCTION_EXCHANGE_AND_RECOVERY.md). Older pilot/stage notes preserve history, not current launch policy.
+
+## Current exchange direction
+
+Read [S-405 account channels and simpler exchange](foundation/S405_ACCOUNT_CHANNELS_AND_EXCHANGE.md) for the accepted correction to S-401: owned-profile confirmation for existing users and reusable, independently verified account phone/email channels for guest claims. S-405a is documentation only; runtime stages are listed there. Earlier S-401/S-402 documents remain evidence of the currently implemented per-exchange SMS flow.
+
+For the next runtime slice, see [S-405c account channel settings, migration and acceptance](foundation/S405C_ACCOUNT_CHANNELS.md). Email verification and guest assurance reuse remain planned.
+
+See [S-405d guest assurance reuse, email/Google proof and setup](foundation/S405D_GUEST_ASSURANCE.md) for the next runtime slice. Combined device/recovery acceptance remains S-405e.
+
+## Relationship foundation programme
+
+For architecture and new-domain implementation, read these linked documents after the living overview:
+
+- [Architecture and domain glossary](foundation/ARCHITECTURE.md): target model, existing-source assessment and required scenarios.
+- [Architecture decisions](foundation/DECISIONS.md): rationale and precise supersession of legacy assumptions.
+- [Permission and provenance contract](foundation/POLICY_AND_PROVENANCE.md): authority, evidence, correction and withdrawal.
+- [Implementation and rollout plan](foundation/IMPLEMENTATION_PLAN.md): stage gates, stage-2/3 source-level backlog, migration strategy and status register.
+- [Developer guide](foundation/DEVELOPER_GUIDE.md): worked patterns, PR evidence and ongoing documentation duties.
+- [F-201 physical model](foundation/PHYSICAL_MODEL.md): concrete tables, constraints, transaction/routing contracts and F-202 migration slices.
+- [F-201 dependency inventory](foundation/DEPENDENCY_INVENTORY.md): source consumers, ownership matrix and outstanding target-database evidence.
+- [F-202 invariants and rehearsal](foundation/F202_INVARIANTS.md): implemented SQL guarantees, repeatable isolated checks and deployment gates.
+
+- [F-203 provisioning isolation](foundation/F203_PROVISIONING.md): shared authentication boundary, preparation, claim isolation and validation.
+
+- [F-204 access and repositories](foundation/F204_ACCESS.md): owner authority, lifecycle locking, guarded queries and private subject services.
+
+- [F-205 private evidence](foundation/F205_EVIDENCE.md) covers versioned notes, excerpts, supported statements and current eligibility.
+
+- [F-206 integration rehearsal](foundation/F206_REHEARSAL.md) covers the stage-2 handoff, recovery and regression checks.
+
+- [P-301 private People directory](foundation/P301_PEOPLE.md) covers route dispatch, bounded search, validation and rollout limits.
+
+- [P-302 public exchange intake](foundation/P302_EXCHANGE.md) covers narrowly scoped visitor authority, atomic receipts and rollout gates.
+
+- [P-303 private notes](foundation/P303_NOTES.md) covers draft processing, retryable saves, history and transient audio limits.
+
+- [P-304 profile continuity](foundation/P304_PROFILE_CONTINUITY.md) covers signup draft binding, publication and QR selection.
+
+- [P-305 privacy operations](foundation/P305_PRIVACY_OPERATIONS.md) covers archive, support review, vault suspension/erasure and restore replay.
+
+- [P-306 hosted DEV rehearsal](foundation/P306_DEV_REHEARSAL.md) records the restore baseline and replay steps using the existing DEV test login.
+
+- [P-306 DEV test account](foundation/P306_DEV_TEST_ACCOUNT.md) covers the owner setup and phone acceptance for one internal login.
+
+- [S-401 exchange design](foundation/S401_EXCHANGE_DESIGN.md) specifies reciprocal saving, verified account claims and the Stage 4 implementation slices.
+
+- [S-403 exchange browser](foundation/S403_EXCHANGE_BROWSER.md) covers signup continuation, verification forms, controlled DEV admission and device acceptance.
+
+- [S-402b exchange service](foundation/S402_EXCHANGE_SERVICE.md) covers SMS assurance, reciprocal settlement, concurrency, expiry and privacy operations.
+
+- [S-402a exchange schema](foundation/S402_EXCHANGE_SCHEMA.md) records the additive persistence, invariants and migration requirements.
+
+These specifications guide future work; they do not replace source code as evidence of implementation. Update the relevant backlog item and stage register with each implementation PR.
 
 ## Source-of-truth rules
 

@@ -33,7 +33,7 @@ The authoritative detailed backlog and stage register are in [foundation impleme
 | 6 | Relationship understanding from separately governed perspectives | Future gated release |
 | 7 | Cross-account discovery and approved introductions | Future gated release |
 
-Do not implement all later intelligence capabilities in stage 2. Relationship subjects and independent perspectives belong in the base design; shared relationship analysis can follow the first production release. Brokerage stays on its current model unless separately authorised. No forced unified legacy directory is planned.
+Do not implement all later intelligence capabilities in stage 2. Relationship subjects and independent perspectives belong in the base design; shared relationship analysis can follow the first production release. Brokerage is maintained separately and does not drive Relish architecture. After the cutover is verified, inventory and remove unused Brokerage code in a separate change. Any removal of database data or schema needs its own review and approval.
 
 ## Exchange follow-up
 
@@ -47,7 +47,7 @@ Existing pilot and Dorian infrastructure can be maintained while the new foundat
 - Verify the merged neutral Home / hidden Dorian invite / simplified navigation changes on Development before pilot deployment.
 - Confirm a new user lands on context-neutral Relish Home without destroying access to existing context-specific operations.
 - Complete a real-device DEV pass of existing public QR and event redirect -> Share your details -> owner-private Contact -> voice note -> save/retrieve.
-- Check that Brokerage, public profiles, event signup and authenticated participant flows still work.
+- Check public profiles, event signup and authenticated participant flows on Relish. Verify the owner’s workflows on the separate Brokerage service independently.
 - Verify a user can independently label, publish and share several profiles of the same type; the multi-profile manager is present in the reviewed source; deployment remains unverified.
 - Refine interaction points only from observed pilot friction. Reuse QR and note UI; change persistence only through the foundation transition.
 - Track the Windows-specific recording issue separately; do not hold all mobile-first work hostage to one device without evidence of a shared defect.

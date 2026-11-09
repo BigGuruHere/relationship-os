@@ -77,6 +77,7 @@ test('P-301 private People routes and cohort isolation', { timeout: 120000 }, as
 		function event(path, signed = session.cookie) {
 			return {
 				locals: {},
+				route: { id: null },
 				url: new URL('http://localhost:5173' + path),
 				request: new Request('http://localhost:5173' + path),
 				cookies: { get: (name) => (name === 'rsid_dev' ? signed : 'forged-space') }
@@ -93,6 +94,40 @@ test('P-301 private People routes and cohort isolation', { timeout: 120000 }, as
 			});
 			return result;
 		}
+		await t.test('Relish blocks Brokerage before authentication and strips navigation even for owners', async () => {
+			const previous = process.env.RELISH_BROKERAGE_ENABLED;
+			delete process.env.RELISH_BROKERAGE_ENABLED;
+			try {
+				// SvelteKit has already matched the unescaped route ID before calling the hook.
+				const blocked = event('/%64eals/fixture', '');
+				blocked.route.id = '/deals/[id]';
+				blocked.cookies.get = () => { throw new Error('Unexpected session read'); };
+				await assert.rejects(hooks.handle({ event: blocked, resolve: () => assert.fail('unexpected handler') }),
+					error => error.status === 404);
+
+				const { linkLeadsForUserFlexible } = await load('lib/leads/link');
+				assert.deepEqual(await linkLeadsForUserFlexible('absent-user', { email: 'fixture@example.invalid' }),
+					{ claimedLeadIds: [], touchedContactIds: [], owners: [] });
+
+				await db.query(`UPDATE "User" SET role='owner' WHERE id='pilot'`);
+				try {
+					const capabilities = () => throughHook('/people', async e => (await layout.load(e)).capabilities);
+					assert.deepEqual(await capabilities(), ['MEMBER', 'OPERATOR', 'ADMIN']);
+					await assert.rejects(throughHook('/broker', () => assert.fail('unexpected handler')),
+						error => error.status === 404);
+					process.env.RELISH_BROKERAGE_ENABLED = 'YES';
+					assert.deepEqual(await capabilities(), ['MEMBER', 'OPERATOR', 'ADMIN', 'BROKER']);
+					assert.equal(await throughHook('/broker', () => 'available'), 'available');
+					assert.equal(await throughHook('/tasks', () => 'available'), 'available');
+				} finally {
+					await db.query(`UPDATE "User" SET role='member' WHERE id='pilot'`);
+				}
+			} finally {
+				if (previous === undefined) delete process.env.RELISH_BROKERAGE_ENABLED;
+				else process.env.RELISH_BROKERAGE_ENABLED = previous;
+			}
+		});
+
 		const directoryFor = (who = locals, q = '', after) =>
 			directory.load({
 				locals: who,

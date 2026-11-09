@@ -6,6 +6,7 @@
 // MULTI TENANT: All queries are scoped by userId.
 
 import type { LayoutServerLoad } from './$types';
+import { brokerageEnabled } from '$lib/server/core/capabilities';
 import { prisma } from '$lib/db';
 import { decryptUserEmail } from '$lib/server/userEmail'; // IT - server-only decrypt helper
 import { decryptContextSpaceDisplayName } from '$lib/server/core/contextSpaceDirectory';
@@ -64,7 +65,7 @@ export const load: LayoutServerLoad = async ({ locals, url }) => {
 	let tasksOpenCount = 0;
 
 	// SECURITY: Never let a route without a resolved app ContextSpace fall back to userId-only Business reads.
-	if (locals.user?.id && locals.contextSpaceId) {
+	if (brokerageEnabled() && locals.user?.id && locals.contextSpaceId) {
 		// IT - compute reconnects due from cadence fields
 		const rows = await prisma.contact.findMany({
 			where: { userId: locals.user.id, contextSpaceId: locals.contextSpaceId, reconnectEveryDays: { not: null } },

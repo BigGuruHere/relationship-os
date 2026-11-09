@@ -13,6 +13,10 @@ Status: updated **2026-11-09**. The production-base feature branch starts at rem
 
 The [production-base register](foundation/IMPLEMENTATION_PLAN.md#production-base-backlog-d-029) records verification, provider and recovery gaps. There is no new Prisma migration. The Git diff from `master` at `b58ba02` contains five existing Foundation migrations; this does not establish the deployed production SHA or migration history.
 
+## Guest sharing and account verification
+
+On `feature/guest-sharing-account-verification`, guest Send requires email or mobile. An authenticated guest receives the published card in My People before verification. The verification screen asks for the exact submitted mobile when present, or email for email-only sharing. Proof links the guest to the original private entry. Account channels remain independent. No migration. Feature branch validation uses isolated databases and simulated providers. Hosted acceptance is pending. See the [exchange contract](foundation/S405_ACCOUNT_CHANNELS_AND_EXCHANGE.md).
+
 ## Channel verification diagnostic follow-up
 
 Operator reported `/settings/channels` HTTP 400 and an `operation:add` / `reason:UNAVAILABLE` event at 2026-11-08 11:15:18 UTC (22:15 Melbourne), reference `bbea31cb-26bc-4c5f-83b7-d416df68f5ee`. Its relationship to the latest click is unknown. Add precedes delivery, so this event is not evidence of a Resend failure. The add form defaults to PHONE; entering email without choosing EMAIL is one possible cause, not a confirmed diagnosis.

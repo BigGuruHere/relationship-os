@@ -1,4 +1,4 @@
-import { EXCHANGE_RETURN } from '$lib/server/exchangeOnboarding';
+import { EXCHANGE_RETURN, startExchangeAfterAuth } from '$lib/server/exchangeOnboarding';
 // src/routes/auth/login/+page.server.ts
 // PURPOSE: verify credentials and set a new session cookie
 // SECURITY:
@@ -65,8 +65,9 @@ export const actions: Actions = {
     }
 
     // 6 - create session and set env-aware cookie
-    const { cookie, expiresAt } = await createSession(user.id);
+    const { cookie, expiresAt, sessionId } = await createSession(user.id);
     setSessionCookie(cookies, locals, cookie, expiresAt);
+    await startExchangeAfterAuth(cookies, url, locals, next, user.id, sessionId);
 
     // Repair old partial registrations without blocking an otherwise valid login.
     // New registrations create the profile atomically, so this is a legacy recovery path.

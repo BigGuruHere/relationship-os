@@ -98,9 +98,18 @@ try {
     assert.equal('contactId' in result,false);
     const missingConsent=await route.actions.default(event({name:'Guest',captureToken:'token'}));
     assert.equal(missingConsent.status,400);
-    const badToken=await route.actions.default(event({name:'Guest',contactConsent:'yes',captureToken:'bad'}));
+    const badToken=await route.actions.default(event({name:'Guest',email:'guest@example.test',contactConsent:'yes',captureToken:'bad'}));
     assert.equal(badToken.status,403);
     assert.equal(globalThis.__onboardingCaptures.length,1);
+  });
+  await test('sharing a name alone leaves no contact or browser receipt', async () => {
+    globalThis.__onboardingCaptures = [];
+    const e = event({name:'Guest',contactConsent:'yes',captureToken:'token'});
+    const result = await route.actions.default(e);
+    assert.equal(result.status,400);
+    assert.match(result.data.error,/email address or mobile number/);
+    assert.equal(globalThis.__onboardingCaptures.length,0);
+    assert.equal(draft.hasSharedContact(e.cookies,'profile'),false);
   });
   await test('successful share followed by Maybe later and another download skips the sharing form', async () => {
     globalThis.__onboardingCaptures=[];
@@ -121,7 +130,7 @@ try {
     assert.equal((await route.load(skipped)).createStep,false);
     const trap=event({website_check:'bot'});await route.actions.default(trap);
     assert.equal(draft.hasSharedContact(trap.cookies,'profile'),false);
-    const failed=event({name:'Guest',contactConsent:'yes',captureToken:'token'});
+    const failed=event({name:'Guest',email:'guest@example.test',contactConsent:'yes',captureToken:'token'});
     globalThis.__onboardingCaptureFailure=true;
     try { assert.equal((await route.actions.default(failed)).status,503); }
     finally { delete globalThis.__onboardingCaptureFailure; }
@@ -405,7 +414,7 @@ try {
     const html=render(Component,{props:{data}}).body;
     assert.match(html,/Share your details with Terence/);assert.match(html,/>Skip</);assert.match(html,/>Send</);assert.match(html,/name="contactConsent"/);assert.doesNotMatch(html,/Create my Relish profile|verify a phone number/);
     const enabled=render(Component,{props:{data:{...data,exchangeAvailable:true}}}).body;
-    assert.match(enabled,/verify a phone number/);
+    assert.match(enabled,/confirm the mobile number/);
   });
   await test('Send and Skip each show optional step three; preview escapes submitted markup',()=>{
     const html=render(Component,{props:{data,form:{shared:true,values:{name:'<script>Guest</script>',email:'guest@example.test',phone:''}}}}).body;

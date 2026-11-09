@@ -1,5 +1,5 @@
 import { provisionNewFoundationAccount } from '$lib/server/foundation/provisioning';
-import { EXCHANGE_RETURN } from '$lib/server/exchangeOnboarding';
+import { EXCHANGE_RETURN, startExchangeAfterAuth } from '$lib/server/exchangeOnboarding';
 // src/routes/auth/register/+page.server.ts
 // PURPOSE: create a user and immediately sign in
 // NOTES:
@@ -73,8 +73,9 @@ export const actions: Actions = {
     }
 
     // A credential email and a draft do not authorize a legacy Lead claim or publication.
-    const { cookie, expiresAt } = await createSession(created.id);
+    const { cookie, expiresAt, sessionId } = await createSession(created.id);
     setSessionCookie(cookies, locals, cookie, expiresAt);
+    await startExchangeAfterAuth(cookies, url, locals, next, created.id, sessionId);
     throw redirect(303, finishProfileAuth(
       cookies, url, next === EXCHANGE_RETURN ? next : PROFILE_ONBOARDING_RETURN, created.id, created.profiles[0].id
     ));

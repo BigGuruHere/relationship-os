@@ -1,7 +1,7 @@
 import { recordGoogleEmailProof } from '$lib/server/foundation/accountChannels';
 import { exchangeBrowserEnabled } from '$lib/server/foundation/devPilotGate';
 import { accountDomain, provisionNewFoundationAccount } from '$lib/server/foundation/provisioning';
-import { EXCHANGE_RETURN } from '$lib/server/exchangeOnboarding';
+import { EXCHANGE_RETURN, startExchangeAfterAuth } from '$lib/server/exchangeOnboarding';
 import { requiredEnv } from '$lib/server/config/requiredEnv';
 // src/routes/auth/google/callback/+server.ts
 // PURPOSE: exchange code for tokens, verify ID token, upsert OAuthAccount, create first party session
@@ -261,6 +261,7 @@ export const GET: RequestHandler = async ({ url, cookies, locals, getClientAddre
   // 14 - create a first party session cookie using env aware helpers
   const sess = await createSession(user.id);
   setSessionCookie(cookies, locals, sess.cookie, sess.expiresAt);
+  await startExchangeAfterAuth(cookies, url, locals, next, user.id, sess.sessionId);
 
   // Only newly validated callbacks can establish account email assurance. This never blocks login
   // or reactivates revoked channels; credentials and private domain enrollment remain independent.

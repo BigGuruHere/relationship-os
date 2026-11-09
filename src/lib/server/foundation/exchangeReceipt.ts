@@ -9,7 +9,8 @@ export async function insertExchangeReceipt(
 	subjectId: string,
 	snapshot: { name: string; email: string; phone: string },
 	exchangeId: string,
-	profileId: string
+	profileId: string,
+	authority: 'PUBLISHED_PROFILE' | 'VERIFIED_EXCHANGE' = 'VERIFIED_EXCHANGE'
 ) {
 	const sourceId = randomUUID(),
 		versionId = randomUUID(),
@@ -37,7 +38,7 @@ export async function insertExchangeReceipt(
 				exchangeId,
 				profileId,
 				copiedAt: new Date().toISOString(),
-				authority: 'VERIFIED_EXCHANGE',
+				authority,
 				ongoingUpdates: false
 			})
 		}

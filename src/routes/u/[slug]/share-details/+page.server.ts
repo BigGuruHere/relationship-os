@@ -79,7 +79,14 @@ export const actions: Actions = {
     const profile = await publishedCaptureProfile(params.slug);
     const values = { name: form.get('name') || '', email: form.get('email') || '', phone: form.get('phone') || '' };
     if (form.get('contactConsent') !== 'yes') return fail(400, { error: 'Please confirm how your details will be used.', values });
-    try { validateContactDetails(values); } catch (e) { return fail(400, { error: (e as Error).message, values }); }
+    let details: ReturnType<typeof validateContactDetails>;
+    try { details = validateContactDetails(values); } catch (e) { return fail(400, { error: (e as Error).message, values }); }
+    if (!details.email && !details.phone) {
+      return fail(400, { error: 'Enter an email address or mobile number.', values });
+    }
+    if (details.phone && details.phone.replace(/[^0-9]/g, '').length < 7) {
+      return fail(400, { error: 'Enter a valid mobile number.', values });
+    }
     // Self scans use the existing profile experience before creating any duplicate contact.
     if(locals.user?.id===profile.userId) throw redirect(303,'/profiles');
     let receipt;
@@ -87,9 +94,11 @@ export const actions: Actions = {
     catch { return fail(403, { error: 'This form has expired. Reload the page and try again.', values }); }
     try {
       const input = { ...values, ...receipt, captureToken: form.get('captureToken'), browser: cookies.get(CAPTURE_COOKIE)! };
-      let supported = false;
-      supported = submissionChannels(values.phone,values.email).length>0;
-      if(supported && exchangeBrowserEnabled(locals,url.origin) && await accountDomain(profile.userId)==='ACTIVE') {
+      if (exchangeBrowserEnabled(locals, url.origin) && await accountDomain(profile.userId) === 'ACTIVE') {
+        const channels = submissionChannels(details.phone, details.email);
+        if (details.phone && !channels.some(channel => channel.type === 'PHONE')) {
+          return fail(400, { error: 'Enter an Australian mobile number, or remove it and share your email address.', values });
+        }
         const token = await captureFoundationAccountExchange(profile.id,input);
         if(token) saveExchange(cookies,url,token,profile.id,2);
       } else {

@@ -28,7 +28,7 @@ const vite = await createServer({
                 if (id === '\0gate') return `export function exchangeBrowserEnabled(){return true;}`;
 				if (id === '\0domain') return `export async function accountDomain(){return 'ACTIVE';}`;
 				if (id === '\0claims')
-					return `export async function accountClaimState(){return {canComplete:true,settled:Boolean(globalThis.guestCompleted),channels:[{type:'PHONE',verified:true,available:true,masked:'•••• 0000'}]};} export async function prepareAccountClaim(){return 'phone';} export async function completeAccountClaim(){globalThis.guestCompleted=true;return {status:'SETTLED',personId:'private-person'};} export async function requestExchangeCode(...a){globalThis.claimArgs=a;return {status:'QUEUED',challengeId:'challenge'};} export async function dispatchExchangeCode(){return {status:'SENT'};} export async function verifyExchangeCode(...a){globalThis.verifyArgs=a;return {status:'SETTLED',personId:'private-person'};}`;
+					return `export async function accountClaimState(){return {canComplete:!globalThis.guestNeedsProof,settled:Boolean(globalThis.guestCompleted),channel:{type:'PHONE',available:true,masked:'•••• 0000'}};} export async function prepareAccountClaim(){return 'phone';} export async function completeAccountClaim(){globalThis.guestCompleted=true;return {status:'SETTLED',personId:'private-person'};} export async function requestExchangeCode(...a){globalThis.claimArgs=a;return {status:'QUEUED',challengeId:'challenge'};} export async function dispatchExchangeCode(){return {status:'SENT'};} export async function verifyExchangeCode(...a){globalThis.verifyArgs=a;return {status:'SETTLED',personId:'private-person'};}`;
 			}
 		}
 	]
@@ -222,7 +222,7 @@ try {
 			.evaluate((input) => input.checkValidity()),
 		true
 	);
-	await tab.getByRole('button', { name: 'Verify and save contact', exact: true }).click();
+	await tab.getByRole('button', { name: 'Verify my account', exact: true }).click();
 	await tab.waitForURL(base + '/people');
 	assert.equal(globalThis.verifyArgs[3], '012345');
 
@@ -244,8 +244,21 @@ try {
     // Existing retained assurance completes a v2 guest exchange through a same-origin native POST.
     flow.saveExchange(c,new URL('https://dev.relish.live'),'b'.repeat(64),'profile',2);
     await tab.goto(base);
-    await tab.getByRole('button',{name:'Save contact using my verified details',exact:true}).click();
-    await tab.getByRole('status').filter({hasText:'Your contact is saved in My People.'}).waitFor();
+    await tab.getByRole('button',{name:'Continue',exact:true}).click();
+    await tab.getByRole('status').filter({hasText:'Your account details are verified.'}).waitFor();
+    // A guest with both channels sees only the required mobile verification task.
+    globalThis.guestNeedsProof = true;
+    globalThis.guestCompleted = false;
+    flow.saveExchange(c,new URL('https://dev.relish.live'),'c'.repeat(64),'profile',2);
+    await tab.goto(base);
+    await tab.getByRole('heading',{name:'Verify your account'}).waitFor();
+    assert.deepEqual(await tab.locator('input[name="channelType"]').evaluateAll(inputs => inputs.map(input => input.value)), ['PHONE']);
+    await tab.getByRole('button',{name:'Send verification code',exact:true}).click();
+    await tab.getByLabel('Verification code',{exact:true}).fill('005321');
+    await tab.getByRole('button',{name:'Verify my account',exact:true}).click();
+    await tab.getByRole('status').filter({hasText:'Your account details are verified.'}).waitFor();
+    assert.equal(globalThis.accountVerifyArgs[2],'005321');
+
 	// The top publication button is associated with the existing form and includes unsaved edits.
 	await tab.goto(base + '/profile');
 	await tab.getByLabel('Public name', { exact: true }).fill('Edited Mark');

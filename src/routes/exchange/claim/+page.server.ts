@@ -39,6 +39,7 @@ export const load: PageServerLoad = async ({ locals, cookies, setHeaders, url })
 		ready: Boolean(locals.user && (await accountDomain(locals.user.id)) === 'ACTIVE'),
 		codeRequested: Boolean(
 			claim?.challengeId &&
+				(claim.version !== 2 || !accountClaim || claim.channelType === accountClaim.channel.type) &&
 				claim.accountId === locals.user?.id &&
 				claim.sessionId === locals.sessionId
 		)
@@ -81,13 +82,14 @@ export const actions: Actions = {
               const delivery=await dispatchAccountChannelCode(locals,issued.challengeId);
               return delivery==='SENT'?{sent:true}:fail(503,{error:'Delivery failed. You can retry or continue later.'});
             }
-            if(intent!=='verify' || !claim.challengeId || claim.accountId!==locals.user.id || claim.sessionId!==locals.sessionId) return fail(400,{error:'Request a code from this session first.'});
+            if(intent!=='verify' || !claim.challengeId || claim.accountId!==locals.user.id || claim.sessionId!==locals.sessionId)
+              return fail(400,{error:'Request a code from this session first.'});
             const result=await verifyAccountChannelCode(locals,claim.challengeId,form.get('code') || '',getClientAddress());
             if(result!=='VERIFIED') return fail(400,{error:result==='LIMITED'?'Please wait before trying again.':'That code did not match. Please try again.'});
             // Proof commits first. Withdrawal/archiving can block settlement without losing channel assurance.
             try{await completeAccountClaim(locals,claim.token);return {completed:true};}
-            catch{return fail(409,{verified:true,error:'Your channel is verified. This exchange could not finish now; your saved details are kept. You can continue later or share again.'});}
-          }catch(e){return fail(400,{reference:reportExchangeFailure('verify',e),error:'This exchange could not be completed. Check your account or share your details again. Your saved contact is kept.'});}
+            catch{return fail(409,{verified:true,error:'Your account details are verified. We couldn’t finish this step. Please try again.'});}
+          }catch(e){return fail(400,{reference:reportExchangeFailure('verify',e),error:'We couldn’t complete this step. Please try again.'});}
         }
 		let operation: 'request' | 'dispatch' | 'verify' = 'request';
 		try {

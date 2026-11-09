@@ -77,3 +77,21 @@ export function clearExchange(cookies: Cookies) {
 	cookies.delete(CLAIM, { path: '/' });
 	cookies.delete(BROWSER, { path: '/' });
 }
+
+// Called only after successful auth with the server-issued session and exact browser continuation.
+export async function startExchangeAfterAuth(
+	cookies: Cookies, url: URL, locals: Pick<App.Locals, 'env' | 'appOrigin'>,
+	next: string | null, accountId: string, sessionId: string
+) {
+	if (next !== EXCHANGE_RETURN || !sessionId) return;
+	const claim = readExchange(cookies);
+	if (claim?.version !== 2) return;
+	const { exchangeBrowserEnabled } = await import('./foundation/devPilotGate');
+	if (!exchangeBrowserEnabled(locals, url.origin)) return;
+	try {
+		const { startAccountClaim } = await import('./foundation/exchangeClaims');
+		await startAccountClaim({ ...locals, user: { id: accountId }, sessionId }, claim.token);
+	} catch {
+		// Auth succeeded independently. The verification action can retry the claim.
+	}
+}

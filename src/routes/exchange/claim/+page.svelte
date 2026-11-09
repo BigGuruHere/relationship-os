@@ -16,80 +16,67 @@
 </script>
 
 <svelte:head
-	><title>Finish your exchange - Relish</title><meta name="robots" content="noindex" /></svelte:head
+	><title>Verify your account - Relish</title><meta name="robots" content="noindex" /></svelte:head
 >
 <main>
-	<h1>Keep your new contact in My People</h1>
+	<h1>Verify your account</h1>
 	{#if !data.available}<p>
 			This exchange has expired or is unavailable. You can share your details again.
 		</p>
 		<a href="/profiles">My Profiles</a>
 	{:else if !data.signedIn}<p>
-			Sign in or create your profile, then verify a phone number or email you shared.
+			Create an account or sign in to verify the contact details you shared.
 		</p>
-		<a href="/auth/register?next=%2Fexchange%2Fclaim">Create my profile</a>
+		<a href="/auth/register?next=%2Fexchange%2Fclaim">Create my Relish account</a>
 		<p><a href="/auth/login?next=%2Fexchange%2Fclaim">Sign in</a></p>
 	{:else if !data.ready}<p>
-			Your details have been saved. Account linking is currently available to the controlled DEV
-			test group. You can continue with your profile.
+			Account verification is unavailable for this account. You can continue to your profile.
 		</p>
 		<a href="/settings/profile?onboarding=1">Continue to my profile</a>
 	{:else if data.version === 2}
-		{#if form?.completed || data.accountClaim?.settled}<p role="status">
-				Your contact is saved in My People.
-			</p>
+		{#if form?.completed || data.accountClaim?.settled}
+			<p role="status">Your account details are verified.</p>
 			<a href="/people">Open My People</a>
-		{:else if data.accountClaim?.canComplete}<form id="complete-exchange" method="POST">
-				<input type="hidden" name="intent" value="complete" /><button
-					>Save contact using my verified details</button
-				>
+		{:else if data.accountClaim?.canComplete}
+			<form id="complete-exchange" method="POST">
+				<input type="hidden" name="intent" value="complete" />
+				<button>Continue</button>
 			</form>
-		{:else}<p>
-				Verify a phone number or email you shared. Its verification stays on your account for future
-				exchanges.
-			</p>{/if}
+		{:else if data.accountClaim}
+			{@const channel = data.accountClaim.channel}
+			<p>Confirm the {channel.type === 'PHONE' ? 'mobile number' : 'email address'} you shared to verify your account.</p>
+			<p>{channel.masked}</p>
+
+			{#if channel.available}
+				<form method="POST">
+					<input type="hidden" name="intent" value={data.codeRequested ? 'resend' : 'send'} />
+					<input type="hidden" name="channelType" value={channel.type} />
+					<button class:later={data.codeRequested}>
+						{data.codeRequested ? 'Request a new code' : 'Send verification code'}
+					</button>
+				</form>
+			{:else}
+				<p>Email verification is currently unavailable. Please try again later.</p>
+			{/if}
+		{:else if !data.codeRequested}
+			<p>Account verification is unavailable for this submission. You can share your details again.</p>
+		{/if}
+		{#if data.codeRequested && !data.accountClaim?.canComplete && !data.accountClaim?.settled && !form?.completed}
+			<form method="POST">
+				<input type="hidden" name="intent" value="verify" />
+				<label>Verification code
+					<input name="code" inputmode="numeric" autocomplete="one-time-code"
+						pattern={'[0-9]{6}'} maxlength="6" required />
+				</label>
+				<button>Verify my account</button>
+			</form>
+		{/if}
 		{#if form?.error}<p role="alert">{form.error}</p>{/if}
 		{#if form?.reference}<p>Support reference: {form.reference}</p>{/if}
 		{#if form?.sent}<p role="status">Code sent. Check your messages.</p>{/if}
-		{#each data.accountClaim?.channels || [] as channel}
-			<p>
-				{channel.type === 'PHONE' ? 'Phone' : 'Email'}
-				{channel.masked}: {channel.verified ? 'Verified' : 'Verification pending'}
-			</p>
-			{#if !channel.verified && channel.available && !form?.completed && !data.accountClaim?.settled}
-				<form method="POST">
-					<input type="hidden" name="intent" value="resend" /><input
-						type="hidden"
-						name="channelType"
-						value={channel.type}
-					/><button>Send {channel.type === 'PHONE' ? 'SMS' : 'email'} code</button>
-				</form>
-			{/if}
-		{/each}
-		{#if data.codeRequested && !form?.completed && !data.accountClaim?.settled}<form method="POST">
-				<input type="hidden" name="intent" value="verify" /><label
-					>Verification code <input
-						name="code"
-						inputmode="numeric"
-						autocomplete="one-time-code"
-						pattern={'[0-9]{6}'}
-						maxlength="6"
-						required
-					/></label
-				><button>Verify and save contact</button>
-			</form>{/if}
-		{#if data.accountClaim?.channels.some((c) => c.type === 'EMAIL' && !c.available && !c.verified)}<p
-			>
-				Email verification awaits sender setup. You can continue later.
-			</p>{/if}
-		<p>
-			Phone and email are checked independently. One verified channel can complete this exchange.
-		</p>
-		<a href="/settings/channels">Verify remaining details in Phone and email settings</a>
 	{:else}
 		<p>
-			We’ll send a code to the mobile number you shared. Verification saves the exchanged details
-			privately in each person’s My People.
+			We’ll send a code to the mobile number you shared to verify your account.
 		</p>
 		{#if form?.error}<p role="alert">{form.error}</p>{/if}
 		{#if form?.reference}<p class="support-reference">Support reference: {form.reference}</p>{/if}
@@ -118,12 +105,14 @@
 					pattern={'[0-9]{6}'}
 					maxlength="6"
 					required
-				/><button>Verify and save contact</button>
+				/><button>Verify my account</button>
 			</form>{/if}
 	{/if}
-	<form method="POST">
-		<input type="hidden" name="intent" value="later" /><button class="later">Continue later</button>
-	</form>
+	{#if data.version !== 2}
+		<form method="POST">
+			<input type="hidden" name="intent" value="later" /><button class="later">Continue later</button>
+		</form>
+	{/if}
 </main>
 
 <style>

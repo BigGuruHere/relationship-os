@@ -299,6 +299,7 @@ test('Internal DEV setup and ordinary Foundation signup on an isolated database'
 						headers: { origin },
 						body: new URLSearchParams({
 							name: 'Fixture visitor',
+							email: 'fixture-visitor@example.invalid',
 							contactConsent: 'yes',
 							captureToken: capture.captureToken
 						})
@@ -622,6 +623,39 @@ test('Internal DEV setup and ordinary Foundation signup on an isolated database'
 			assert.equal(saved.text, 'Reviewed voice transcript');
 			assert.equal(saved.summary, 'Private summary');
 		});
+		await t.test('guest signup first opens verification and saves the card without guest account proof', async () => {
+			process.env.RELISH_DEV_FOUNDATION_PILOT_TARGET = target;
+			process.env.RELISH_EXCHANGE_BROWSER_ENABLED = 'YES';
+			process.env.RELISH_EXCHANGE_REALM = 'p306-guest-test';
+			const guest = newBrowser('dev', origin);
+			const params = { slug: ordinaryProfile.slug };
+			const path = '/u/' + params.slug + '/share-details';
+			const capture = await capturePage.load({ ...event(guest, path), params });
+			const email = 'exchange-signup@example.invalid';
+			const values = { name: 'Guest signup', email, phone: '0412345678', contactConsent: 'yes', captureToken: capture.captureToken };
+			const invalid = await capturePage.actions.default({
+				...event(guest, path, { ...values, phone: '0212345678' }), params
+			});
+			assert.equal(invalid.status, 400);
+			const shared = await capturePage.actions.default({ ...event(guest, path, values), params });
+			assert.equal(shared.canClaim, true);
+			const register = '/auth/register?next=%2Fexchange%2Fclaim';
+			await assert.rejects(registerPage.actions.default(event(guest, register, { email, password })), at('/exchange/claim'));
+			const session = await sessionFor(guest);
+			authAs(guest, session);
+			const directory = await people.load(event(guest, '/people'));
+			assert.deepEqual(directory.people.map(person => person.name), [publicName]);
+			const claimPage = await load('routes/exchange/claim/+page.server');
+			const claim = await claimPage.load(event(guest, '/exchange/claim'));
+			assert.equal(claim.accountClaim.channel.type, 'PHONE');
+			assert.equal(claim.accountClaim.canComplete, false);
+			const links = (await db.query(
+				'SELECT channel FROM "FoundationAccountAssociation" WHERE "ownerUserId"=$1 AND "accountId"=$2',
+				[ordinaryId, session.user.id]
+			)).rows;
+			assert.deepEqual(links, []);
+		});
+
 	} finally {
 		if (prisma) await prisma.$disconnect();
 		if (vite) await vite.close();

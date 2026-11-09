@@ -113,6 +113,10 @@ S-403 pre-SMS follow-up (2026-11-07): after PR #34 merged, the operator still re
 
 S-403 code-input correction (2026-11-07): operator confirmed SELF_EXCHANGE was resolved by separate test logins and SMS delivery succeeded. Browser rejected code input because Svelte interpolated the quoted regex quantifier. `fix/exchange-code-input` uses a literal string expression and adds rendered/native six-digit submission tests, including leading zero. No migration or schema rollback; application-only rollback. Full live settlement still awaits operator retest after merge/deployment.
 
+## Guest sharing follow-up
+
+Implemented on `feature/guest-sharing-account-verification`, based on Development `169bece`. Guest Send requires an email or mobile. On authenticated v2 continuation, the published card is saved immediately with published-profile provenance. The account verification page presents mobile when supplied, and email for email-only intake. Only current proof of that required submitted channel can settle the visitor's account association. Pending secondary channels and both parties' private notes remain independent. No schema migration. Local auth/capture and isolated service tests cover early card visibility, priority, retries and the pending/verified boundary. Hosted DEV rollout and acceptance are pending. This changes the S-405d guest flow while retaining the existing DEV gate and legacy v1 protocol.
+
 ## S-405 revised exchange backlog, 2026-11-07
 
 [S-405 account channels and simpler exchange](S405_ACCOUNT_CHANNELS_AND_EXCHANGE.md) is the controlling design correction to S-401. Runtime baseline is development `4a4ddb2`, including PR #36. Existing email delivery remains a stub; the account-channel registry is absent. No current capability is inferred from the accepted design.

@@ -52,7 +52,7 @@
         </div>
       </article>
       {#if canClaim}
-        <form method="POST"><input type="hidden" name="intent" value="create-profile" /><input type="hidden" name="name" value={draft.name} /><input type="hidden" name="email" value={draft.email} /><input type="hidden" name="phone" value={draft.phone} /><button class="primary">{data.isSignedIn ? 'Verify and save contact' : 'Create my profile and keep this contact'}</button></form>
+        <form method="POST"><input type="hidden" name="intent" value="create-profile" /><input type="hidden" name="name" value={draft.name} /><input type="hidden" name="email" value={draft.email} /><input type="hidden" name="phone" value={draft.phone} /><button class="primary">{data.isSignedIn ? 'Verify my account' : 'Create my Relish account'}</button></form>
       {:else if data.isSignedIn}
         <a class="primary" href="/profiles">Go to My Profiles</a>
       {:else}
@@ -73,18 +73,18 @@
       {#if data.profile.avatarUrl}<img class="avatar" src={data.profile.avatarUrl} alt="" width="64" height="64" />{/if}
       {#if data.canSignIn}<form method="POST"><input type="hidden" name="intent" value="signin-exchange" /><button class="primary">Already use Relish? Sign in to choose a profile</button></form>{/if}
       <h1 id="capture-heading">Share your details with {data.profile.name}</h1>
-      <p>Let {data.profile.name} save your details privately and follow up after meeting you.</p>
+      <p>Enter an email address, a mobile number, or both so {data.profile.name} can follow up.</p>
       <form method="POST">
         <input type="hidden" name="captureToken" value={data.captureToken} />
         <label for="capture-name">Your name</label>
         <input id="capture-name" name="name" autocomplete="name" maxlength="200" required value={form?.values?.name || ''} />
-        <label for="capture-email">Email (optional)</label>
+        <label for="capture-email">Email address</label>
         <input id="capture-email" name="email" type="email" autocomplete="email" maxlength="254" value={form?.values?.email || ''} />
-        <label for="capture-phone">Telephone (optional)</label>
+        <label for="capture-phone">Mobile number</label>
         <input id="capture-phone" name="phone" type="tel" autocomplete="tel" maxlength="40" value={form?.values?.phone || ''} />
         <div class="capture-trap" aria-hidden="true"><label for="capture-website">Leave blank</label><input id="capture-website" name="website_check" tabindex="-1" autocomplete="off" /></div>
         <label class="capture-consent"><input name="contactConsent" type="checkbox" value="yes" required /><span>I agree to share these details with {data.profile.name} for their private contact record and personal follow-up.</span></label>
-        <p class="hint">{#if data.exchangeAvailable}If you join and verify a phone number or email you shared, the exchanged details can be saved in each person’s My People. {/if}Sharing your details leaves account creation optional and keeps private notes separate. <a href="/legal/privacy">Privacy notice</a>.</p>
+        <p class="hint">{#if data.exchangeAvailable}If you create an account, we’ll ask you to confirm the mobile number you shared, or your email if you only shared an email. {/if}Creating an account is optional. <a href="/legal/privacy">Privacy notice</a>.</p>
         {#if form?.error}<p role="alert">{form.error}</p>{/if}
         {#if form?.reference}<p>Support reference: {form.reference}</p>{/if}
         <button class="primary" type="submit">Send</button>

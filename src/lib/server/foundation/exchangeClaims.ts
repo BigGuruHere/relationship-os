@@ -605,73 +605,127 @@ async function saveProfileSide(
 	return { personId, sourceId };
 }
 
-// Common settlement preserves source IDs/history and copies only the selected public card.
-async function settleClaim(tx:AppTransactionClient,e:FoundationExchange,accountId:string,recipient:Root,channelHash:string,method='SMS') {
-		const existing = await tx.foundationAccountAssociation.findFirst({
-			where: { accountId: accountId }
+// The recipient can save the owner's published card before proving their own channel.
+async function saveSharedCard(
+	tx: AppTransactionClient, e: FoundationExchange, recipient: Root, early = false
+) {
+	return exchangeScope(recipient, async () => {
+		const prior = await tx.foundationAccountAssociation.findFirst({
+			where: { accountId: e.ownerUserId }
 		});
-		if (existing && existing.subjectId !== e.subjectId) throw new FoundationDenied();
-		await association(tx, e, accountId, e.subjectId, channelHash, e.id, method);
-		const personId = await exchangeScope(recipient, async () => {
-			const prior = await tx.foundationAccountAssociation.findFirst({
-				where: { accountId: e.ownerUserId }
-			});
-			if (prior) return association(tx, recipient, e.ownerUserId, prior.subjectId, '', e.id);
-			const snapshot = open('FoundationExchange', 'snapshotEnc', e, e.id, e.snapshotEnc);
-			const person = await insertPrivatePerson(tx, recipient, snapshot, {
-				submittedAt: new Date().toISOString(),
-				profileId: e.profileId,
-				sourceId: e.sourceId
-			});
-			await insertExchangeReceipt(tx, recipient, person.id, snapshot, e.id, e.profileId);
-			// The published card establishes the sharer's account. It is distinct from SMS assurance.
-			await tx.foundationAccountAssociation.create({
-				data: {
-					...recipient,
-					subjectId: person.id,
-					accountId: e.ownerUserId,
-					channel: 'PROFILE',
-					channelHash: '',
-					verifiedAt: new Date(),
-					exchangeRef: e.id
-				}
-			});
-			return person.id;
+		if (prior) return association(tx, recipient, e.ownerUserId, prior.subjectId, '', e.id);
+		const snapshot = open('FoundationExchange', 'snapshotEnc', e, e.id, e.snapshotEnc);
+		const person = await insertPrivatePerson(tx, recipient, snapshot, {
+			submittedAt: new Date().toISOString(),
+			profileId: e.profileId,
+			sourceId: e.sourceId
 		});
- await tx.foundationExchange.updateMany({where:{id:e.id},data:{beneficiaryUserId:accountId,status:'SETTLED',settledSubjectId:personId,settledVaultId:recipient.vaultId}});
- return {status:'SETTLED' as const,personId};
+		await insertExchangeReceipt(tx, recipient, person.id, snapshot, e.id, e.profileId,
+			early ? 'PUBLISHED_PROFILE' : 'VERIFIED_EXCHANGE');
+		// PROFILE is evidence of the sharer's published card, never proof of the guest's channel.
+		return association(tx, recipient, e.ownerUserId, person.id, '', e.id, 'PROFILE');
+	});
+}
+
+// Common settlement preserves both private records and attaches the guest only after proof.
+async function settleClaim(
+	tx: AppTransactionClient, e: FoundationExchange, accountId: string,
+	recipient: Root, channelHash: string, method = 'SMS'
+) {
+	const existing = await tx.foundationAccountAssociation.findFirst({ where: { accountId } });
+	if (existing && existing.subjectId !== e.subjectId) throw new FoundationDenied();
+	await association(tx, e, accountId, e.subjectId, channelHash, e.id, method);
+	const personId = await saveSharedCard(tx, e, recipient);
+	await tx.foundationExchange.updateMany({
+		where: { id: e.id },
+		data: {
+			beneficiaryUserId: accountId, status: 'SETTLED',
+			settledSubjectId: personId, settledVaultId: recipient.vaultId
+		}
+	});
+	return { status: 'SETTLED' as const, personId };
 }
 
 function submittedChannels(e:FoundationExchange):{type:'PHONE'|'EMAIL';value:string}[]{
  if(e.claimVersion!==2 || !e.submittedChannelsEnc) throw new FoundationDenied();
  return open('FoundationExchange','submittedChannelsEnc',e,e.id,e.submittedChannelsEnc);
 }
-export async function accountClaimState(locals:Actor,token:string){
- return withClaim(locals,token,async(tx,e,actor)=>{
-  const channels=submittedChannels(e);const statuses=[];
-  for(const c of channels){const proof=await currentSubmittedProof(tx,actor.accountId,c.type,c.value);
-   statuses.push({type:c.type,verified:Boolean(proof),available:c.type==='PHONE' || emailVerificationConfigured(),masked:c.type==='PHONE'?'•••• '+c.value.slice(-4):c.value[0]+'•••@'+c.value.split('@')[1]});}
-  return {settled:e.status==='SETTLED',channels:statuses,canComplete:statuses.some(c=>c.verified)};
- });
+// Resolve the required channel from the original submission, never from form input.
+function requiredSubmittedChannel(channels: ReturnType<typeof submittedChannels>) {
+	const required = channels.find(c => c.type === 'PHONE') ?? channels.find(c => c.type === 'EMAIL');
+	if (!required) throw new FoundationDenied();
+	return required;
 }
-// Bind a new exact submission before requesting a channel check; destination is never read from a form.
-export async function prepareAccountClaim(locals:Actor,token:string,type:string){
- return withClaim(locals,token,async(tx,e,actor)=>{
-  const channels=submittedChannels(e);const selected=channels.find(c=>c.type===type);
-  if(!selected) throw new FoundationDenied();
-  await tx.foundationExchange.updateMany({where:{id:e.id},data:{beneficiaryUserId:actor.accountId,status:e.status==='SETTLED'?'SETTLED':'BOUND'}});
-  let selectedId='';for(const c of channels){const saved=await ensureSubmittedChannel(tx,actor.accountId,c.type,c.value);if(c.type===type) selectedId=saved.id;}
-  return selectedId;
- });
+
+export async function accountClaimState(locals: Actor, token: string) {
+	return withClaim(locals, token, async (tx, e, actor) => {
+		const channels = submittedChannels(e);
+		const required = requiredSubmittedChannel(channels);
+		const statuses = [];
+		for (const channel of channels) {
+			statuses.push({ type: channel.type, verified: Boolean(
+				await currentSubmittedProof(tx, actor.accountId, channel.type, channel.value)
+			) });
+		}
+		const verified = statuses.some(channel => channel.type === required.type && channel.verified);
+		const masked = required.type === 'PHONE'
+			? '•••• ' + required.value.slice(-4)
+			: required.value[0] + '•••@' + required.value.split('@')[1];
+		return {
+			settled: e.status === 'SETTLED',
+			canComplete: verified,
+			channels: statuses,
+			channel: {
+				type: required.type, masked, available: required.type === 'PHONE' || emailVerificationConfigured()
+			}
+		};
+	});
 }
-export async function completeAccountClaim(locals:Actor,token:string){
- return withClaim(locals,token,async(tx,e,actor,recipient)=>{
-  const channels=submittedChannels(e);let verified:{type:string;value:string}|undefined;
-  // Resolve current proof within the same global/account locks used by revocation and settlement.
-  for(const c of channels) if(await currentSubmittedProof(tx,actor.accountId,c.type,c.value)){verified=c;break;}
-  if(!verified) throw new FoundationDenied();
-  if(e.status==='SETTLED') return {status:'SETTLED' as const,personId:e.settledSubjectId};
-  for(const c of channels) await ensureSubmittedChannel(tx,actor.accountId,c.type,c.value);
-  return settleClaim(tx,e,actor.accountId,recipient,claimMac(verified.type+':'+verified.value,'channel'),'ACCOUNT_CHANNEL');
- });
+
+async function bindSubmittedClaim(
+	tx: AppTransactionClient, e: FoundationExchange, accountId: string, recipient: Root,
+	requestedType?: string
+) {
+	const channels = submittedChannels(e);
+	const required = requiredSubmittedChannel(channels);
+	if (requestedType && requestedType !== required.type) throw new FoundationDenied();
+	if (e.status !== 'SETTLED') {
+		await tx.foundationExchange.updateMany({
+			where: { id: e.id }, data: { beneficiaryUserId: accountId, status: 'BOUND' }
+		});
+		await saveSharedCard(tx, e, recipient, true);
+	}
+	let channelId = '';
+	for (const channel of channels) {
+		const saved = await ensureSubmittedChannel(tx, accountId, channel.type, channel.value);
+		if (channel.type === required.type) channelId = saved.id;
+	}
+	return { channelId, type: required.type };
+}
+
+// Authenticated onboarding saves the published card and pending channels without sending a code.
+export async function startAccountClaim(locals: Actor, token: string) {
+	return withClaim(locals, token, (tx, e, actor, recipient) =>
+		bindSubmittedClaim(tx, e, actor.accountId, recipient)
+	);
+}
+
+export async function prepareAccountClaim(locals: Actor, token: string, type: string) {
+	return withClaim(locals, token, async (tx, e, actor, recipient) =>
+		(await bindSubmittedClaim(tx, e, actor.accountId, recipient, type)).channelId
+	);
+}
+
+export async function completeAccountClaim(locals: Actor, token: string) {
+	return withClaim(locals, token, async (tx, e, actor, recipient) => {
+		if (e.claimVersion !== 2) throw new FoundationDenied();
+		const required = requiredSubmittedChannel(submittedChannels(e));
+		// Resolve proof while holding the same account and exchange locks used for revocation.
+		if (!await currentSubmittedProof(tx, actor.accountId, required.type, required.value))
+			throw new FoundationDenied();
+		if (e.status === 'SETTLED') return { status: 'SETTLED' as const, personId: e.settledSubjectId };
+		await bindSubmittedClaim(tx, e, actor.accountId, recipient);
+		return settleClaim(tx, e, actor.accountId, recipient,
+			claimMac(required.type + ':' + required.value, 'channel'), 'ACCOUNT_CHANNEL');
+	});
 }

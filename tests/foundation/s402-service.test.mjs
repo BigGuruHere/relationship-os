@@ -641,6 +641,18 @@ CREATE TRIGGER s402_fail_settlement BEFORE UPDATE ON "FoundationExchange" FOR EA
           const service=await load('lib/server/foundation/accountChannels');const f=await fixture();
           const token=await v2(f,{email:'new-guest@example.invalid'});
           assert.equal((await claims.accountClaimState(f.locals,token)).canComplete,false);
+          await claims.startAccountClaim(f.locals, token);
+          await claims.startAccountClaim(f.locals, token);
+          const beforeProof = await privacy.reviewFoundationPrivacy(f.b);
+          assert.equal(beforeProof.associations.length, 1);
+          assert.equal(beforeProof.associations[0].channel, 'PROFILE');
+          assert.equal((await privacy.reviewFoundationPrivacy(f.a)).associations.length, 0);
+          await assert.rejects(claims.prepareAccountClaim(f.locals, token, 'EMAIL'));
+          await service.recordGoogleEmailProof(f.locals, 'new-guest@example.invalid');
+          assert.equal((await claims.accountClaimState(f.locals, token)).canComplete, false);
+          await assert.rejects(claims.completeAccountClaim(f.locals, token));
+          const emailChannel = (await service.listAccountChannels(f.locals)).find(c => c.type === 'EMAIL');
+          await service.revokeAccountChannel(f.locals, emailChannel.id);
           const id=await claims.prepareAccountClaim(f.locals,token,'PHONE');
           const challenge=await service.requestAccountChannelCode(f.locals,id,randomUUID(),'guest-proof-ip');
           await service.dispatchAccountChannelCode(f.locals,challenge.challengeId);
@@ -648,6 +660,7 @@ CREATE TRIGGER s402_fail_settlement BEFORE UPDATE ON "FoundationExchange" FOR EA
           const count=sent.length;
           const results=await Promise.all([claims.completeAccountClaim(f.locals,token),claims.completeAccountClaim(f.locals,token)]);
           assert.deepEqual(results[0],results[1]);assert.equal(sent.length,count);
+          assert.equal(results[0].personId, beforeProof.associations[0].subjectId);
           const status=await claims.accountClaimState(f.locals,token);
           assert.equal(status.channels.find(c=>c.type==='PHONE').verified,true);
           assert.equal(status.channels.find(c=>c.type==='EMAIL').verified,false);

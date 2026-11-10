@@ -698,7 +698,8 @@ test('Internal DEV setup and ordinary Foundation signup on an isolated database'
 			}), at(register));
 			const registration = await registerPage.load(event(guest, register));
 			assert.equal(registration.draft.email, email);
-			await assert.rejects(registerPage.actions.default(event(guest, register, { email, password })), at('/exchange/claim'));
+			// A generic signup URL still resumes the pending exchange in this browser.
+			await assert.rejects(registerPage.actions.default(event(guest, '/auth/register', { email, password })), at('/exchange/claim'));
 			const session = await sessionFor(guest);
 			authAs(guest, session);
 			const directory = await people.load(event(guest, '/people'));

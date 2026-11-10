@@ -72,9 +72,11 @@ export const actions: Actions = {
         saveProfileDraft(cookies,url,profileDraft({name:form.get('name')||'',email:form.get('email')||'',phone:form.get('phone')||''}));
         throw redirect(303, locals.user ? EXCHANGE_RETURN : '/auth/register?next=' + encodeURIComponent(EXCHANGE_RETURN));
       }
-      if (locals.user) throw redirect(303, '/profiles');
+      // A share without a claim can open My People, but cannot attach the sharer to this account.
+      const next = hasSharedContact(cookies, selected.id) ? '/people' : PROFILE_ONBOARDING_RETURN;
+      if (locals.user) throw redirect(303, next === '/people' ? next : '/profiles');
       saveProfileDraft(cookies, url, profileDraft({ name: form.get('name') || '', email: form.get('email') || '', phone: form.get('phone') || '' }));
-      throw redirect(303, '/auth/register?next=' + encodeURIComponent(PROFILE_ONBOARDING_RETURN));
+      throw redirect(303, '/auth/register?next=' + encodeURIComponent(next));
     }
     // Honeypot returns the same generic receipt without storing anything.
     if (form.get('website_check')) return { shared: true };

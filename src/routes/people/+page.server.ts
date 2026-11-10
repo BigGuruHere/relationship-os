@@ -19,7 +19,7 @@ export const load: PageServerLoad = async ({ locals, url }) => {
   const context = await requirePeopleAccess(locals);
   // Decrypt only this owner's private-home Contacts; encrypted fields cannot support plaintext SQL search.
   const rows = await prisma.contact.findMany({ where: { userId: context.workspaceUserId, contextSpaceId: context.contextSpaceId },
-    orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], select: { id: true, fullNameEnc: true, emailEnc: true, phoneEnc: true } });
+    orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }], select: { id: true, fullNameEnc: true, emailEnc: true, phoneEnc: true } });
   const people = rows.map(privateContactDetails).filter(p => !q || [p.name,p.email,p.phone].some(v => v.toLowerCase().includes(q.toLowerCase())));
   return { people, q, next: null, foundation: false };
 };

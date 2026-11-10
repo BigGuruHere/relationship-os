@@ -1,5 +1,5 @@
 import { provisionNewFoundationAccount } from '$lib/server/foundation/provisioning';
-import { EXCHANGE_RETURN, startExchangeAfterAuth } from '$lib/server/exchangeOnboarding';
+import { EXCHANGE_RETURN, exchangeAuthReturn, startExchangeAfterAuth } from '$lib/server/exchangeOnboarding';
 // src/routes/auth/register/+page.server.ts
 // PURPOSE: create a user and immediately sign in
 // NOTES:
@@ -19,19 +19,19 @@ import { finishProfileAuth, profileReturnForAccount, readProfileDraft, PROFILE_O
 
 
 export const load: PageServerLoad = async ({ locals, url, cookies, setHeaders }) => {
-  const next = safeAuthReturn(url.searchParams.get('next'));
+  const next = await exchangeAuthReturn(cookies, url, locals, safeAuthReturn(url.searchParams.get('next')));
   // If already signed in, redirect home
   if (locals.user) throw redirect(303, profileReturnForAccount(cookies, next, locals.user.id));
   // SECURITY: Draft data stays out of URLs and shared caches; it proves no identity.
   setHeaders({ 'cache-control': 'private, no-store', 'referrer-policy': 'same-origin' });
-  return { next, draft: (next === PROFILE_ONBOARDING_RETURN || next === EXCHANGE_RETURN) ? readProfileDraft(cookies) : null };
+  return { next, draft: (next === PROFILE_ONBOARDING_RETURN || next === EXCHANGE_RETURN || next === '/people') ? readProfileDraft(cookies) : null };
 };
 
 export const actions: Actions = {
   default: async ({ request, cookies, locals, url, getClientAddress }) => {
-    const next = safeAuthReturn(url.searchParams.get('next'));
+    const next = await exchangeAuthReturn(cookies, url, locals, safeAuthReturn(url.searchParams.get('next')));
     if (locals.user) throw redirect(303, profileReturnForAccount(cookies, next, locals.user.id));
-    const draft = (next === PROFILE_ONBOARDING_RETURN || next === EXCHANGE_RETURN) ? readProfileDraft(cookies) : null;
+    const draft = (next === PROFILE_ONBOARDING_RETURN || next === EXCHANGE_RETURN || next === '/people') ? readProfileDraft(cookies) : null;
     const form = await request.formData();
     const email = String(form.get('email') || '').trim().toLowerCase();
     const password = String(form.get('password') || '');
@@ -77,7 +77,7 @@ export const actions: Actions = {
     setSessionCookie(cookies, locals, cookie, expiresAt);
     await startExchangeAfterAuth(cookies, url, locals, next, created.id, sessionId);
     throw redirect(303, finishProfileAuth(
-      cookies, url, next === EXCHANGE_RETURN ? next : PROFILE_ONBOARDING_RETURN, created.id, created.profiles[0].id
+      cookies, url, next === EXCHANGE_RETURN || next === '/people' ? next : PROFILE_ONBOARDING_RETURN, created.id, created.profiles[0].id
     ));
   }
 };

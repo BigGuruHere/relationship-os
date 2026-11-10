@@ -371,6 +371,16 @@ test('P-301 private People routes and cohort isolation', { timeout: 120000 }, as
 				const person = await screen('src/routes/people/[id]/+page.svelte', 'detail', data);
 				assert.match(person, /&lt;script(?:>|&gt;)Betty/);
 				assert.match(person, /notes\/new/);
+				for (const followup of ['1', 'received']) {
+					const prompt = await screen('src/routes/people/[id]/+page.svelte', 'prompt-' + followup, {
+						...data, followup
+					});
+					assert.match(prompt, /Would you like to add a voice note to remember the conversation/);
+					assert.match(prompt, /notes\/new\?afterExchange=1">Create Voice Note/);
+					assert.match(prompt, /href="\/">Not Now/);
+					assert.equal(prompt.includes('has shared their details'), followup === 'received');
+					assert.doesNotMatch(prompt, /betty@example\.test|History|Archive/);
+				}
 				const old = await screen('src/routes/people/[id]/+page.svelte', 'legacy-detail', {
 					...data,
 					foundation: false

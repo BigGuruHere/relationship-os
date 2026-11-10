@@ -5,6 +5,11 @@ import { error } from '@sveltejs/kit';
 import { buildScopedMacToken } from '$lib/crypto';
 import { verifyContactCaptureToken } from '$lib/server/core/contactCaptureToken';
 import { lockFoundationAccount } from './provisioning';
+// Match capture receipts to the exact shared profile within the owner's vault.
+export function captureProfilePrefix(profileId: string, vaultId: string) {
+	return 'exchange:v1:' + buildScopedMacToken(profileId, 'foundation:' + vaultId + ':capture-profile') + ':';
+}
+
 export type FoundationOperation =
 	| 'READ'
 	| 'WRITE'
@@ -195,10 +200,7 @@ export async function withPublicCapture(
 				} catch {
 					throw error(403, 'This form has expired. Reload the page and try again.');
 				}
-				const prefix =
-					'exchange:v1:' +
-					buildScopedMacToken(profileId, 'foundation:' + root.vaultId + ':capture-profile') +
-					':';
+				const prefix = captureProfilePrefix(profileId, root.vaultId);
 				await runFoundationBoundary(
 					{
 						ownerUserId: candidate.userId,

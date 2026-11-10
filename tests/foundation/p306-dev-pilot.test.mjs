@@ -586,6 +586,7 @@ test('Internal DEV setup and ordinary Foundation signup on an isolated database'
 				assert.equal((await publicPage.actions[action](publicCard)).status, 404);
 			const capturePath = '/u/' + slug + '/share-details?via=qr';
 			const params = { slug };
+			const since = Date.now();
 			const capture = await capturePage.load({ ...event(guest, capturePath), params });
 			assert.equal(capture.canSignIn, false);
 			const result = await capturePage.actions.default({
@@ -603,6 +604,11 @@ test('Internal DEV setup and ordinary Foundation signup on an isolated database'
 			const visible = (await directory()).people;
 			assert.deepEqual(visible.map((person) => person.name).sort(), ['Manual visitor', 'QR visitor']);
 			const person = visible.find((entry) => entry.name === 'QR visitor');
+			const incoming = await load('routes/share/incoming/+server');
+			const received = await incoming.GET(event(browser, '/share/incoming?' +
+				new URLSearchParams({ profile: slug, since: String(since) })));
+			assert.equal(received.status, 200);
+			assert.deepEqual(await received.json(), { personId: person.id });
 			const personParams = { id: person.id };
 			const detail = (client) => personPage.load({ ...event(client, '/people/' + person.id), params: personParams });
 			await assert.rejects(detail(another), (error) => error.status === 404);
@@ -662,6 +668,11 @@ test('Internal DEV setup and ordinary Foundation signup on an isolated database'
 			const guest = newBrowser('dev', origin);
 			const params = { slug: ordinaryProfile.slug };
 			const path = '/u/' + params.slug + '/share-details';
+			const incoming = await load('routes/share/incoming/+server');
+			const since = Date.now();
+			const checkIncoming = (client) => incoming.GET(event(client, '/share/incoming?' +
+				new URLSearchParams({ profile: params.slug, since: String(since) })));
+			assert.equal((await checkIncoming(browser)).status, 204);
 			const capture = await capturePage.load({ ...event(guest, path), params });
 			const email = 'exchange-signup@example.invalid';
 			const values = { name: 'Guest signup', email, phone: '0412345678', contactConsent: 'yes', captureToken: capture.captureToken };
@@ -671,6 +682,16 @@ test('Internal DEV setup and ordinary Foundation signup on an isolated database'
 			assert.equal(invalid.status, 400);
 			const shared = await capturePage.actions.default({ ...event(guest, path, values), params });
 			assert.equal(shared.canClaim, true);
+			const received = await checkIncoming(browser);
+			assert.equal(received.status, 200);
+			assert.equal(received.headers.get('cache-control'), 'private, no-store');
+			const { personId } = await received.json();
+			const ownerPrompt = await personPage.load({
+				...event(browser, '/people/' + personId + '?afterExchange=received'), params: { id: personId }
+			});
+			assert.equal(ownerPrompt.followup, 'received');
+			assert.equal(ownerPrompt.contact.name, values.name);
+			assert.deepEqual(ownerPrompt.notes, []);
 			const register = '/auth/register?next=%2Fexchange%2Fclaim';
 			await assert.rejects(capturePage.actions.default({
 				...event(guest, path, { ...values, intent: 'create-profile' }), params
@@ -682,6 +703,14 @@ test('Internal DEV setup and ordinary Foundation signup on an isolated database'
 			authAs(guest, session);
 			const directory = await people.load(event(guest, '/people'));
 			assert.deepEqual(directory.people.map(person => person.name), [publicName]);
+			assert.equal((await checkIncoming(guest)).status, 204);
+			const saved = directory.people[0];
+			const guestPrompt = await personPage.load({
+				...event(guest, '/people/' + saved.id + '?afterExchange=1'), params: { id: saved.id }
+			});
+			assert.equal(guestPrompt.followup, '1');
+			assert.equal(guestPrompt.contact.name, publicName);
+			assert.deepEqual(guestPrompt.notes, []);
 			const claimPage = await load('routes/exchange/claim/+page.server');
 			const claim = await claimPage.load(event(guest, '/exchange/claim'));
 			assert.equal(claim.accountClaim.channel.step, 'LOGIN_EMAIL');

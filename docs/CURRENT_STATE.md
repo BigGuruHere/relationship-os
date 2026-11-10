@@ -7,6 +7,12 @@ Profile publishing cleanup is implemented on `feature/profile-publishing-cleanup
 
 Exchange and notes follow-up is implemented on `feature/exchange-voice-note-followup`. Sign-in with sufficient existing channel proof can finish the exchange and open the saved person’s voice-note invitation directly. Explicit proof and signed-in profile exchange use the same destination. Owner-private notes support text, summary and timestamp edits. Foundation edits append a revision. Existing stored-only legacy notes are updated within their owner’s contact workspace. No migration or deployment.
 
+## Dorian browser voice test
+
+`feature/dorian-webrtc-dev` adds an owner-only page at `/settings/dorian-voice-test` on the canonical DEV origin. It uses ElevenLabs' JavaScript SDK and WebRTC with a short-lived token issued by Relish. The page requires the existing server-only `ELEVENLABS_API_KEY` and a dedicated, private DEV agent in `RELISH_DORIAN_WEB_TEST_AGENT_ID`. Use an agent with no tools, Relish webhooks or memory ingestion and verify its provider retention settings before speaking. Use synthetic conversation details. Relish sends no contact data and saves no transcript or note in this test. No migration.
+
+On real devices, sign in as owner, open the page, start and end a conversation twice, and check for repeat microphone permission prompts. Note whether Dorian plays through the earpiece, speaker or connected headphones. Repeat in iPhone Safari, Android Chrome and their installed Relish web apps. Check that ending the conversation releases the microphone. Hosted and handset acceptance is pending.
+
 ## QR exchange follow-up
 
 On `feature/people-recency-exchange`, My People lists the most recently modified contact records first. A pending guest exchange resumes after sign-in even from a generic auth URL. Completed exchanges open the voice-note choice once the required account proof is available. A share without a claim opens My People without an automatic reciprocal contact. The profile editor is separate from both share return paths. No migration or hosted configuration change.

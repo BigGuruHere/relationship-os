@@ -1,5 +1,5 @@
 import { resolveOrigin } from '$lib/env';
-import { parseElevenLabsTranscript, readElevenLabsSummary, type ElevenLabsConversationData } from './conversation';
+import { parseElevenLabsTranscript, type ElevenLabsConversationData } from './conversation';
 
 export function peopleDorianAgent(locals: App.Locals, url: URL) {
   // Keep this slice on the owner-only DEV agent until live acceptance.
@@ -10,7 +10,20 @@ export function peopleDorianAgent(locals: App.Locals, url: URL) {
   return null;
 }
 
-export function draftFromDorianCall(data: ElevenLabsConversationData, conversationId: string, agentId: string) {
+export const personNoteIntention = 'Help the caller remember what matters about this person and any next step they mention. Keep the conversation brief and ask one natural question at a time.';
+
+export function personNoteInitiation(callerName: string, personName: string) {
+  // Names are display labels. The server-side launch keeps the authorization binding.
+  const greeting = callerName ? 'Hi ' + callerName + '. ' : 'Hi. ';
+  return {
+    caller_name: callerName || 'there',
+    person_name: personName,
+    call_intention: personNoteIntention,
+    first_message: greeting + 'What would you like to remember about ' + personName + '?'
+  };
+}
+
+export function speechFromDorianCall(data: ElevenLabsConversationData, conversationId: string, agentId: string) {
   // A result must match the server-issued identifiers before any text reaches the UI.
   if (data.conversation_id !== conversationId || data.agent_id !== agentId)
     throw new Error('Dorian conversation binding mismatch.');
@@ -18,8 +31,8 @@ export function draftFromDorianCall(data: ElevenLabsConversationData, conversati
   if (data.status !== 'done') return { state: 'pending' } as const;
   try {
     const transcript = parseElevenLabsTranscript(data);
-    // Prefer the provider's summary. Fall back to the user's own words, excluding agent suggestions.
-    const text = readElevenLabsSummary(data) || transcript.turns
+    // Use participant speech only. Provider recaps describe the call rather than the person.
+    const text = transcript.turns
       .filter(turn => turn.speaker === 'User')
       .map(turn => turn.text.slice('User: '.length)).join('\n').slice(0, 64000).trim();
     return text ? { state: 'ready', text } as const : { state: 'failed' } as const;

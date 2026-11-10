@@ -108,6 +108,9 @@ On `feature/clean-exchange-followup`, the two participants can go directly to th
 
 ### Dorian web note intake
 
+On `feature/dorian-person-note-quality`, P-303 reuses transient draft-processing authorization and the existing summary provider to produce a person-centred note. Isolated acceptance covers per-call initiation, caller-only model input and editable fallback. Live DEV acceptance remains pending. No migration or activation change.
+
+
 P-303 gains an owner-only DEV conversation draft adapter on `feature/dorian-people-note`. Isolated tests cover the server-issued conversation, exact owner and person, review before save, save replay, and discard. Live provider and device testing remain pending. No migration. Revert the application change to remove the new entry point.
 
 ## Stage register

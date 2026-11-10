@@ -46,9 +46,10 @@
       const { Conversation } = await import('@elevenlabs/client');
       if (current !== attempt) return;
       stage = 'webrtc';
+      const initiation = result.data.initiation as Record<string, string> | undefined;
       const conversation = await Conversation.startSession({
         conversationToken: result.data.token,
-        dynamicVariables: typeof result.data.personName === 'string' ? { person_name: result.data.personName } : undefined,
+        dynamicVariables: initiation,
         onError: () => {
           if (current === attempt) report('sdk_error');
         },

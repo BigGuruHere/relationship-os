@@ -4,7 +4,10 @@ import { foundationPage, peopleRouteDomain } from '$lib/server/foundation/people
 import { resolveFoundationAccess } from '$lib/server/foundation/policy';
 import { readPerson } from '$lib/server/foundation/subjects';
 import { fetchElevenLabsConversation } from '$lib/server/integrations/elevenlabs/conversation';
-import { draftFromDorianCall, peopleDorianAgent } from '$lib/server/integrations/elevenlabs/peopleWebNote';
+import { speechFromDorianCall, peopleDorianAgent, personNoteInitiation } from '$lib/server/integrations/elevenlabs/peopleWebNote';
+import { prisma } from '$lib/db';
+import { summarizeText } from '$lib/ai';
+import { resolveDraftProcessing } from '$lib/server/foundation/drafts';
 import { issueDorianWebToken } from '$lib/server/integrations/elevenlabs/webToken';
 import type { Actions, PageServerLoad } from './$types';
 
@@ -42,6 +45,15 @@ function readLaunch(cookies: Cookies, scope: Awaited<ReturnType<typeof context>>
   }
 }
 
+async function accountDisplayName(userId: string) {
+  // Account-owned default profile, independent of public profile publication.
+  const profile = await prisma.profile.findFirst({
+    where: { userId, isDefault: true }, select: { displayName: true }, orderBy: { id: 'asc' }
+  });
+  const name = profile?.displayName?.replace(/\s+/g, ' ').trim().slice(0, 120);
+  return name && name !== 'New Relish user' ? name : '';
+}
+
 function requireOrigin(request: Request, url: URL) {
   if (request.headers.get('origin') !== url.origin) throw error(403, 'Submit from the Dorian page.');
 }
@@ -57,6 +69,7 @@ export const actions: Actions = {
     requireOrigin(request, url);
     setHeaders({ 'cache-control': 'private, no-store' });
     const scope = await context(locals, url, params.id);
+    const callerName = await accountDisplayName(locals.user!.id);
     const issued = await issueDorianWebToken(scope.agentId, fetch);
     if (!('token' in issued)) return issued;
     if (!issued.conversationId || !/^conv_[a-z0-9_-]{1,235}$/i.test(issued.conversationId))
@@ -67,7 +80,7 @@ export const actions: Actions = {
       ...binding, conversationId: issued.conversationId, reference: issued.reference,
       expiresAt: Date.now() + ttl * 1000
     }), purpose), { path: url.pathname.replace(/\/$/, ''), httpOnly: true, secure: true, sameSite: 'lax', maxAge: ttl });
-    return { token: issued.token, reference: issued.reference, personName: name };
+    return { token: issued.token, reference: issued.reference, initiation: personNoteInitiation(callerName, name) };
   },
   draft: async ({ locals, url, params, request, fetch, cookies, setHeaders }) => {
     requireOrigin(request, url);
@@ -78,12 +91,30 @@ export const actions: Actions = {
       return fail(409, { error: 'This conversation expired or was replaced. Start a new conversation.' });
     try {
       const result = await fetchElevenLabsConversation(launch.conversationId, undefined, fetch, AbortSignal.timeout(8000));
-      const draft = draftFromDorianCall(result, launch.conversationId, scope.agentId);
-      // Check custody again after the provider call before revealing the draft.
+      const speech = speechFromDorianCall(result, launch.conversationId, scope.agentId);
+      if (speech.state !== 'ready') return speech;
+      // Recheck the subject and draft-processing authority before sending speech for summarisation.
       const current = await context(locals, url, params.id);
       if (readLaunch(cookies, current)?.reference !== launch.reference)
         return fail(409, { error: 'This conversation is no longer available.' });
-      return draft;
+      const callerName = await accountDisplayName(locals.user!.id);
+      const processing = await resolveDraftProcessing(locals);
+      await processing.authorize();
+      let text = '';
+      try {
+        const result = await summarizeText(JSON.stringify({
+          callerName, personName: current.name, callerSpeech: speech.text
+        }), { purpose: 'person-note', request: fetch, signal: AbortSignal.timeout(12000) });
+        text = result.summary.trim();
+      } catch {
+        // A provider failure leaves the user in control of the note text.
+        console.warn(JSON.stringify({ component: 'relish.dorian.people_note', stage: 'summary',
+          reference: launch.reference, reason: 'summary_unavailable' }));
+      }
+      await processing.authorize();
+      if (readLaunch(cookies, await context(locals, url, params.id))?.reference !== launch.reference)
+        return fail(409, { error: 'This conversation is no longer available.' });
+      return { state: 'ready' as const, text, ...(text ? {} : { callerSpeech: speech.text }) };
     } catch {
       console.warn(JSON.stringify({ component: 'relish.dorian.people_note', stage: 'draft',
         reference: launch.reference, reason: 'conversation_unavailable' }));

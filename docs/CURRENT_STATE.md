@@ -21,9 +21,9 @@ On real devices, sign in as owner, open the page, start and end a conversation t
 
 ## Dorian notes in My People
 
-The `feature/dorian-people-note` branch adds **Talk to Dorian** for DEV owners with an active Foundation vault. It reuses the existing private DEV agent configuration and the WebRTC controls. Set a default for the ElevenLabs `person_name` dynamic variable and use it in the dedicated test agent's prompt or greeting. For example, ask what the user wants to remember about meeting the named person, treat the name as a label, and keep legacy tools and Relish webhooks detached. A standalone call uses the default. The existing DEV API key must be able to issue tokens and fetch conversations.
+The owner-only DEV flow is live-tested by the operator through note save. The `feature/dorian-person-note-quality` branch replaces provider call recaps with a person-centred draft from caller speech through the existing OpenAI summariser. The user can still review, edit, save, or discard. If no draft is generated, the editor opens blank and offers the caller's own words as reference. Existing saved notes remain editable. No migration.
 
-Use a synthetic My People record. Start the call, say what you want to remember, end the call, then edit and save or discard the draft. Check that the saved note appears on the correct person. Relish uses ElevenLabs' summary or the user's words if a summary is unavailable. Discard clears the Relish draft session. Provider retention is controlled separately. The call does not update Living Understanding. Hosted acceptance is pending. No migration.
+Configure the dedicated ElevenLabs web test agent's First message as `{{first_message}}`. Add defaults for `first_message` (for example, “Hi, what would you like to remember?”), `caller_name` (for example, “there”), `person_name` (for example, “this person”), and `call_intention` (for example, “Help the caller capture a short private note about someone.”). Reference `{{call_intention}}` in its system prompt and treat the names as labels. Standalone test calls use the defaults. My People calls supply values from Relish. Keep the dedicated web agent's legacy tools and webhooks detached. DEV needs the existing OpenAI key for drafts. Live acceptance of this refinement is pending.
 
 ## QR exchange follow-up
 

@@ -1,4 +1,5 @@
 <script lang="ts">
+    import ShareExchangeWatcher from '$lib/components/ShareExchangeWatcher.svelte';
     // PURPOSE: dedicated QR share page once a QR has been generated.
     export let data;
   
@@ -12,6 +13,9 @@
     }
   </script>
   
+  {#key data.watchSince + ':' + data.profileSlug}
+    <ShareExchangeWatcher slug={data.profileSlug} since={data.watchSince} enabled={true} />
+  {/key}
   <div class="container">
     <div class="card" style="padding:16px; max-width:520px; margin:0 auto;">
       <h1 style="margin:0 0 12px 0;">Share</h1>

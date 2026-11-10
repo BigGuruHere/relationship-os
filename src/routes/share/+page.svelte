@@ -1,4 +1,5 @@
 <script lang="ts">
+  import ShareExchangeWatcher from '$lib/components/ShareExchangeWatcher.svelte';
   // src/routes/share/+page.svelte
   // PURPOSE: Share page - show QR and provide a one-tap Copy link action without exposing the raw URL
   // SECURITY: renders only server-provided strings - no secrets or decryption
@@ -74,6 +75,9 @@
   }
 </script>
 
+{#key data.watchSince + ':' + profile.slug}
+  <ShareExchangeWatcher slug={profile.slug} since={data.watchSince} enabled={profile.isPublished} />
+{/key}
 <div class="container">
   <div class="card" style="padding:20px; max-width:720px; margin:0 auto;">
     <h1 style="margin-top:0;">{heading}</h1>

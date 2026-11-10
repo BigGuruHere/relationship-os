@@ -20,5 +20,5 @@ export const load: PageServerLoad = async ({ locals, url }) => {
   if (!profile) {
     throw redirect(303, absoluteUrlFromOrigin(locals.appOrigin, '/settings/profile?mode=edit&first=1&next=preview'));
   }
-  return { profile, profileOptions, origin: locals.appOrigin };
+  return { profile, profileOptions, origin: locals.appOrigin, watchSince: Date.now() };
 };

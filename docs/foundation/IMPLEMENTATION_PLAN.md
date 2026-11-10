@@ -100,6 +100,10 @@ Each item updates current state and this item's status in the same implementatio
 
 Use the [developer guide](DEVELOPER_GUIDE.md) for PR evidence. Stages 4-7 get a source-grounded backlog before implementation; they are not permission to build the full future system during stages 2-3.
 
+### QR exchange voice-note follow-up
+
+On `feature/clean-exchange-followup`, the two participants can go directly to the existing private voice recorder or return Home. The Share screen polls only for a fresh receipt for the selected profile in the signed-in owner's active Foundation vault. Acceptance covers saved-contact and claim receipts, owner isolation and the two prompt variants in disposable database and render tests. Hosted two-device acceptance is pending. Rollback is a code revert. There is no migration or activation change.
+
 ## Stage register
 
 | Stage | Designed | Implemented | Validated | Merged | DEV / PROD |

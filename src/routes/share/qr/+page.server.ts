@@ -24,7 +24,7 @@ export const load: PageServerLoad = async ({ locals, url }) => {
   if (!profile.isPublished) throw redirect(303, '/share?profile=' + selected);
   const link = absoluteUrlFromOrigin(locals.appOrigin, '/u/' + selected);
   return {
-    link,
+    link, watchSince: Date.now(), profileSlug: profile.slug,
     qrUrl: '/api/qr?slug=' + selected,
     smsUrl: 'sms:?&body=' + encodeURIComponent('Hi - here is my link to connect: ' + link),
     whatsappUrl: 'https://wa.me/?text=' + encodeURIComponent('Hi - here is my link to connect: ' + link),

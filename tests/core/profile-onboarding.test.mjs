@@ -18,6 +18,7 @@ const server = await createServer({ configFile: false, ssr: { noExternal: ['jose
         if (id === '$lib/' + dep || id === resolve('src/lib',dep)) return '\0mock:$lib/' + dep;
       }
       if (id === '$app/forms') return '\0mock:forms';
+      if (id === '$app/navigation') return '\0mock:navigation';
       if (id === 'jose') return '\0mock:jose';
       if (id.endsWith('/core/contactCapture') || id.endsWith('/core/contactCaptureToken') || id.endsWith('/core/contacts')) return '\0mock:' + id.split('/').at(-1);
     },
@@ -27,6 +28,7 @@ const server = await createServer({ configFile: false, ssr: { noExternal: ['jose
       if (id === '\0mock:$lib/leads/link') return `export async function linkLeadsForUser(){globalThis.__onboardingClaims++;}`;
       if (id === '\0mock:$lib/server/userEmail') return `export async function findUserByEmail(email){globalThis.__onboardingLookups.push(email);return globalThis.__onboardingUser || null;} export function encryptedUserEmailFields(){return {email_Enc:'encrypted',email_Idx:'index'};} export function decryptUserEmail(){return 'account@example.test';} export async function setUserEmail(){throw Error('fixture has encrypted email');}`;
       if (id === '\0mock:forms') return 'export function enhance(){}';
+      if (id === '\0mock:navigation') return 'export function goto(){}';
       if (id === '\0mock:jose') return `export const createRemoteJWKSet=()=>({}); export const jwtVerify=async(_token,_keys,options)=>(globalThis.__googleOptions=options,{payload:globalThis.__googlePayload || {sub:'google-account',email:'google@example.test',email_verified:true,nonce:'nonce',name:'Verified name'}});`;
       if (id === '\0mock:$lib/server/foundation/provisioning') return `export async function provisionNewFoundationAccount(){} export async function accountDomain(){return 'LEGACY';} export async function usesLegacyProfileServices(){return true;}`;
       if (id === '\0mock:$lib/server/loginThrottle') return `export async function consumePasswordSignupAttempt(){return true;} export async function consumePasswordLoginAttempt(){return true;} export async function clearSuccessfulLoginAccountBucket(){}`;
@@ -38,6 +40,10 @@ const server = await createServer({ configFile: false, ssr: { noExternal: ['jose
       if (id === '\0mock:contactCaptureToken') return `export const CAPTURE_COOKIE='capture'; export const issueContactCaptureToken=()=> 'token';
         export function verifyContactCaptureToken(token) { if(token!=='token') throw Error('invalid'); return {nonce:'nonce',via:'qr'}; }`;
       if (id === '\0mock:contacts') return `export function validateContactDetails(v) { if (!v.name.trim()) throw Error('Name required'); return v; }`;
+    },
+    transform(source, id) {
+      // Compile child components imported by the precompiled SSR fixtures.
+      if (id.endsWith('.svelte')) return compile(source, { filename: id, generate: 'server' }).js;
     }
   }]
 });
@@ -417,7 +423,7 @@ try {
   const data={profile:{name:'Terence',slug:'terence'},captureToken:'token',createStep:false,isSignedIn:false};
   const shareCompiled=compile(readFileSync('src/routes/share/+page.svelte','utf8'),{generate:'server'});
   writeFileSync(out+'/share.mjs',shareCompiled.js.code);
-  const Share=(await import(out+'/share.mjs')).default;
+  const Share=(await server.ssrLoadModule('/.svelte-kit/onboarding-test/share.mjs')).default;
   const publicCompiled = compile(readFileSync('src/routes/u/[slug]/+page.svelte', 'utf8'), {generate:'server'});
   writeFileSync(out + '/public-profile.js', publicCompiled.js.code);
   const PublicProfile = (await server.ssrLoadModule('/.svelte-kit/onboarding-test/public-profile.js')).default;

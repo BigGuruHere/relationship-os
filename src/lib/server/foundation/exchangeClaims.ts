@@ -18,6 +18,7 @@ import {
 } from './exchangeAuthority';
 import { claimMac, sameMac, seal, open, verificationPhone, verificationEmail } from './exchangeCrypto';
 import { insertExchangeReceipt } from './exchangeReceipt';
+import { captureProfilePrefix } from './policy';
 import { insertPrivatePerson } from './subjects';
 import { sendTelnyxSms } from '$lib/server/integrations/telnyx/messaging';
 import { devPilotEnabled, exchangeBrowserEnabled } from './devPilotGate';
@@ -733,4 +734,52 @@ export async function completeAccountClaim(locals: Actor, token: string) {
 		return settleClaim(tx, e, actor.accountId, recipient,
 			claimMac(verified.type + ':' + verified.value, 'channel'), 'ACCOUNT_CHANNEL');
 	});
+}
+
+// Look only for new receipts for the exact published QR the signed-in owner is viewing.
+export async function findIncomingShare(locals: Actor, slug: string, since: Date) {
+	if (!locals.user?.id) throw new FoundationDenied();
+	return exchangeTransaction(locals.user.id, async tx => {
+		const { accountId } = await requireClaimSession(tx, locals);
+		const profile = await tx.profile.findFirst({
+			where: { slug, userId: accountId, isPublished: true }, select: { id: true }
+		});
+		if (!profile) return null;
+		const root = (await exchangeRoots(tx, [accountId])).get(accountId)!;
+		return exchangeScope(root, async () => {
+			const exchange = await tx.foundationExchange.findFirst({
+				where: { profileId: profile.id, createdAt: { gte: since },
+					status: { in: ['PENDING', 'BOUND', 'SETTLED'] } },
+				orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], select: { subjectId: true }
+			});
+			let subjectId = exchange?.subjectId;
+			if (!subjectId) {
+				// Plain captures have the same private receipt evidence even without a claim.
+				const source = await tx.foundationSource.findFirst({
+					where: { kind: 'CONTACT_EXCHANGE', state: 'ACTIVE', createdAt: { gte: since },
+						ingestKey: { startsWith: captureProfilePrefix(profile.id, root.vaultId) } },
+					orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], select: { id: true }
+				});
+				if (!source) return null;
+				const version = await tx.foundationSourceVersion.findFirst({
+					where: { sourceId: source.id, version: 1 }, select: { id: true }
+				});
+				if (!version) return null;
+				const segment = await tx.foundationEvidenceSegment.findFirst({
+					where: { sourceVersionId: version.id }, select: { id: true }
+				});
+				if (!segment) return null;
+				const link = await tx.foundationEvidenceSubject.findFirst({
+					where: { segmentId: segment.id }, select: { subjectId: true }
+				});
+				subjectId = link?.subjectId;
+			}
+			if (!subjectId) return null;
+			const person = await tx.foundationSubject.findFirst({
+				where: { id: subjectId, kind: 'PERSON', state: 'ACTIVE', selfUserId: null },
+				select: { id: true }
+			});
+			return person?.id ?? null;
+		});
+	}, false);
 }

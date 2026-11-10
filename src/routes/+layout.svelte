@@ -4,6 +4,8 @@
   import '../app.css';
   import { onMount } from 'svelte';
   import { afterNavigate } from '$app/navigation';
+  import { page } from '$app/stores';
+  import InstallRelish from '$lib/components/InstallRelish.svelte';
   export let data: any;
 
   const nav = [
@@ -133,7 +135,10 @@
     {/if}
   {/if}
 
-  <main class="relish-content"><slot /></main>
+  <main class="relish-content">
+    <InstallRelish enabled={Boolean(data.user) && /^\/people\/[^/]+\/?$/.test(path) && $page.url.searchParams.get('afterExchange') === '1'} />
+    <slot />
+  </main>
 
   {#if !isPublic && data.user && !specialist}
     <nav class="relish-bottom-nav" aria-label={isNeutralNavigation ? 'Relish navigation' : activeSpace.label + ' navigation'}>

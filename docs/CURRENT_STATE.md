@@ -19,6 +19,12 @@ Token requests now have a Relish reference visible on failure and in Railway log
 
 On real devices, sign in as owner, open the page, start and end a conversation twice, and check for repeat microphone permission prompts. Note whether Dorian plays through the earpiece, speaker or connected headphones. Repeat in iPhone Safari, Android Chrome and their installed Relish web apps. Check that ending the conversation releases the microphone. Hosted and handset acceptance is pending.
 
+## Living Understanding review from a note
+
+`feature/note-understanding-review` adds an owner-only DEV review to saved My People notes, including Dorian notes. The owner explicitly requests OpenAI suggestions, sees the exact supporting quotes and approves individual updates. General preferences belong under Me. Wishes tied to the selected relationship belong under Our relationship, even if only the owner expressed them. Person observations preserve reported speech or impressions. Approved statements record the owner's perspective.
+
+The first approved relationship statement creates a default private relationship reference for the pair. Later reviewed notes reuse it. The review page shows the approved statements for that note. Editing the note supersedes its evidence and opens the corrected version for a fresh review. One approval batch is supported per note version. Hosted DEV acceptance is pending. No migration.
+
 ## Dorian notes in My People
 
 The owner-only DEV flow is live-tested by the operator through note save. The `feature/dorian-person-note-quality` branch replaces provider call recaps with a person-centred draft from caller speech through the existing OpenAI summariser. The user can still review, edit, save, or discard. If no draft is generated, the editor opens blank and offers the caller's own words as reference. Existing saved notes remain editable. No migration.

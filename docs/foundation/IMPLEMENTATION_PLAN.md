@@ -113,6 +113,10 @@ On `feature/dorian-person-note-quality`, P-303 reuses transient draft-processing
 
 P-303 gains an owner-only DEV conversation draft adapter on `feature/dorian-people-note`. Isolated tests cover the server-issued conversation, exact owner and person, review before save, save replay, and discard. Live provider and device testing remain pending. No migration. Revert the application change to remove the new entry point.
 
+### Living Understanding from saved notes
+
+`feature/note-understanding-review` connects P-303 notes to F-205 statements for owners on DEV. Accept when a general preference, reported view of the other person and relationship-specific want remain distinct, approved passages are exact, retries are idempotent and corrections make old support ineligible. No migration. Revert the application entry point to stop further writes while retaining versioned records. Hosted acceptance is pending.
+
 ## Stage register
 
 | Stage | Designed | Implemented | Validated | Merged | DEV / PROD |

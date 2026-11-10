@@ -18,6 +18,7 @@ export type FoundationOperation =
 	| 'RECORD_STATEMENT'
 	| 'READ_STATEMENT'
 	| 'READ_NOTES'
+	| 'REVIEW_NOTE'
 	| 'PROCESS_DRAFT';
 export type FoundationAccess = Readonly<{
 	actorId: string;
@@ -88,6 +89,7 @@ async function resolve(
 			'RECORD_STATEMENT',
 			'READ_STATEMENT',
 			'READ_NOTES',
+			'REVIEW_NOTE',
 			'PROCESS_DRAFT'
 		].includes(operation)
 	)

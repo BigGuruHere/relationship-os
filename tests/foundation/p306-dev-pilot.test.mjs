@@ -683,10 +683,11 @@ test('Internal DEV setup and ordinary Foundation signup on an isolated database'
 					Response.json({ token: 'synthetic-token', conversation_id: 'conv_fixture' }) };
 				await assert.rejects(voice.load({ ...start, locals: browser.locals }), e => e.status === 404);
 				const issued = await voice.actions.start(start);
-				assert.equal(issued.initiation.person_name, 'QR visitor');
-				assert.equal(issued.initiation.caller_name, publicName);
-				assert.match(issued.initiation.first_message, /remember about QR visitor/);
-				assert.match(issued.initiation.call_intention, /next step/);
+				assert.equal(issued.initiation.firstMessage, 'Hi ' + publicName + '. What would you like to remember about QR visitor?');
+				assert.equal(issued.initiation.dynamicVariables.person_name, 'QR visitor');
+				assert.equal(issued.initiation.dynamicVariables.caller_name, publicName);
+				assert.match(issued.initiation.dynamicVariables.call_intention, /next step/);
+				assert.equal(issued.initiation.dynamicVariables.first_message, undefined);
 				assert.equal(issued.conversationId, undefined);
 				const providerConversation = { conversation_id: 'conv_fixture', agent_id: agentId, status: 'done',
 					transcript: [

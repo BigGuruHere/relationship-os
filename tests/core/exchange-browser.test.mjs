@@ -122,8 +122,12 @@ try {
       const c = cookies();
       const url = new URL('https://dev.relish.live/auth/google/callback');
       flow.saveExchange(c, url, 'd'.repeat(64), 'profile', 2);
-      assert.equal(await flow.finishVerifiedExchange(c, url, {env:'dev', appOrigin:url.origin},
-        flow.EXCHANGE_RETURN, 'betty', 'session'), '/people/private-person?afterExchange=1');
+      const locals = {env:'dev', appOrigin:url.origin};
+      assert.equal(await flow.exchangeAuthReturn(c, url, locals, '/network/join/invite'), '/network/join/invite');
+      const next = await flow.exchangeAuthReturn(c, url, locals, null);
+      assert.equal(next, flow.EXCHANGE_RETURN);
+      assert.equal(await flow.finishVerifiedExchange(c, url, locals,
+        next, 'betty', 'session'), '/people/private-person?afterExchange=1');
       assert.equal(flow.readExchange(c), null);
       globalThis.guestCompleted = false;
     });

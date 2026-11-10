@@ -102,6 +102,8 @@ Use the [developer guide](DEVELOPER_GUIDE.md) for PR evidence. Stages 4-7 get a 
 
 ### QR exchange voice-note follow-up
 
+The `feature/people-recency-exchange` branch preserves pending exchange returns on generic auth URLs and orders P-301's bounded directory by record modification time. Targeted route and isolated database tests cover continuation and page boundaries. No migration. Roll back with a code revert. Hosted device acceptance remains separate.
+
 On `feature/clean-exchange-followup`, the two participants can go directly to the existing private voice recorder or return Home. The Share screen polls only for a fresh receipt for the selected profile in the signed-in owner's active Foundation vault. Acceptance covers saved-contact and claim receipts, owner isolation and the two prompt variants in disposable database and render tests. Hosted two-device acceptance is pending. Rollback is a code revert. There is no migration or activation change.
 
 ## Stage register

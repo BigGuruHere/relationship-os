@@ -756,6 +756,92 @@ test('Internal DEV setup and ordinary Foundation signup on an isolated database'
 			}
 		});
 
+		await t.test('review keeps general preferences and relationship-specific wishes separate', async () => {
+			const owner = { ...browser, locals: { ...browser.locals, env: 'dev', appOrigin: origin,
+				user: { ...browser.locals.user, role: 'owner' } } };
+			const directory = await people.load(event(owner, '/people'));
+			const person = directory.people.find(row => row.name === 'QR visitor');
+			const id = person.id;
+			const personPath = '/people/' + id;
+			const personDetail = () => personPage.load({ ...event(owner, personPath), params: { id } });
+			const draft = await notePage.load({ locals: owner.locals, params: { id } });
+			const text = 'I generally like to catch up every three weeks. I would like to spend more time with this person. They told me weekends are busy.';
+			await assert.rejects(notePage.actions.save({ ...event(owner, personPath + '/notes/new?/save', {
+				text, saveKey: draft.saveKey
+			}), params: { id } }), at(personPath));
+			const note = (await personDetail()).notes.find(row => row.text === text);
+			const path = personPath + '/notes/' + note.id + '/review';
+			const params = { id, noteId: note.id };
+			const page = await load('routes/people/[id]/notes/[noteId]/review/+page.server');
+			const before = await count('FoundationStatement');
+			const priorRelationships = (await db.query('SELECT count(*)::int AS n FROM "FoundationSubject" WHERE kind = $1', ['RELATIONSHIP'])).rows[0].n;
+			await assert.rejects(page.load({ ...event(browser, path), params }), e => e.status === 404);
+			const proposals = [
+				{ bucket: 'self', text: 'I generally prefer catching up every three weeks.', quote: 'I generally like to catch up every three weeks.', mode: 'OBSERVED' },
+				{ bucket: 'relationship', text: 'I would like to spend more time with this person.', quote: 'I would like to spend more time with this person.', mode: 'OBSERVED' },
+				{ bucket: 'person', text: 'They told me their weekends are busy.', quote: 'They told me weekends are busy.', mode: 'OBSERVED' },
+				{ bucket: 'person', text: 'They prefer Mondays.', quote: 'They prefer Mondays.', mode: 'INFERRED' }
+			];
+			const previous = process.env.OPENAI_API_KEY;
+			process.env.OPENAI_API_KEY = 'synthetic-key';
+			let generated;
+			try {
+				generated = await page.actions.analyse({ ...event(owner, path, {}), params,
+					fetch: async (endpoint, options) => {
+						assert.equal(String(endpoint), 'https://api.openai.com/v1/chat/completions');
+						const payload = JSON.parse(options.body);
+						assert.match(payload.messages[0].content, /spend more time with John.*belongs under relationship/);
+						assert.equal(JSON.parse(payload.messages[1].content).note, text);
+						return Response.json({ choices: [{ message: { content: JSON.stringify({ proposals }) } }] });
+					}
+				});
+			} finally {
+				if (previous === undefined) delete process.env.OPENAI_API_KEY;
+				else process.env.OPENAI_API_KEY = previous;
+			}
+			assert.deepEqual(generated.proposals, proposals.slice(0, 3));
+			assert.equal(await count('FoundationStatement'), before);
+			const submit = (client, fields) => page.actions.approve({ ...event(client, path, fields), params });
+			const selection = new URLSearchParams({ proposalToken: generated.token });
+			selection.append('selected', '0');
+			selection.append('selected', '1');
+			assert.equal((await submit(owner, { proposalToken: generated.token })).status, 400);
+			assert.equal((await submit({ ...owner, locals: { ...owner.locals, sessionId: 'different' } }, selection)).status, 409);
+			await assert.rejects(submit(owner, selection), at(path));
+			await assert.rejects(submit(owner, selection), at(path));
+			assert.equal(await count('FoundationStatement'), before + 2);
+			const result = await page.load({ ...event(owner, path), params });
+			assert.deepEqual(result.approved.map(row => [row.bucket, row.quote]), [
+				['self', proposals[0].quote], ['relationship', proposals[1].quote]
+			]);
+			const targets = (await db.query(`SELECT s.kind, s."selfUserId", p.kind AS perspective
+				FROM "FoundationStatementSubject" ss JOIN "FoundationSubject" s ON s.id = ss."subjectId"
+				JOIN "FoundationStatementVersion" v ON v.id = ss."statementVersionId"
+				JOIN "FoundationStatement" st ON st.id = v."statementId"
+				JOIN "FoundationPerspective" p ON p.id = st."perspectiveId"
+				WHERE ss."ownerUserId"=$1 ORDER BY s.kind`, [owner.locals.user.id])).rows;
+			assert.deepEqual(targets, [
+				{ kind: 'PERSON', selfUserId: owner.locals.user.id, perspective: 'OWNER_RECORDED' },
+				{ kind: 'RELATIONSHIP', selfUserId: null, perspective: 'OWNER_RECORDED' }
+			]);
+			assert.equal((await db.query('SELECT count(*)::int AS n FROM "FoundationSubject" WHERE kind = $1',
+				['RELATIONSHIP'])).rows[0].n, priorRelationships + 1);
+
+			const current = (await personDetail()).notes.find(row => row.id === note.id);
+			assert.equal(current.editable, true);
+			const { readNoteForReview, readCurrentStatement } = await load('lib/server/foundation/evidence');
+			const { resolveFoundationAccess } = await load('lib/server/foundation/policy');
+			const receipt = await readNoteForReview(await resolveFoundationAccess(owner.locals, 'READ_NOTES'), id, note.id);
+			await assert.rejects(personPage.actions.editNote({ ...event(owner, personPath + '?/editNote', {
+				noteId: note.id, version: String(current.version), text: 'Corrected note.',
+				occurredAt: current.at.slice(0, -1), channel: current.channel
+			}), params: { id } }), at(personPath));
+			const access = await resolveFoundationAccess(owner.locals, 'READ_STATEMENT');
+			for (const entry of receipt.review.entries)
+				await assert.rejects(readCurrentStatement(access, entry.statementId), /resource unavailable/);
+			assert.equal((await submit(owner, selection)).status, 409);
+		});
+
 		await t.test('guest signup first opens verification and saves the card without guest account proof', async () => {
 			process.env.RELISH_DEV_FOUNDATION_PILOT_TARGET = target;
 			process.env.RELISH_EXCHANGE_BROWSER_ENABLED = 'YES';

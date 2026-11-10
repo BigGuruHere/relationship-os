@@ -1,3 +1,4 @@
+import { noteReviewAvailable } from '$lib/server/foundation/noteReview';
 import { peopleDorianAgent } from '$lib/server/integrations/elevenlabs/peopleWebNote';
 import { appendOwnerNote, listPersonNotes, FoundationConflict } from '$lib/server/foundation/evidence';
 import { error, fail, redirect } from '@sveltejs/kit';
@@ -25,7 +26,7 @@ export const load: PageServerLoad = async ({ locals, params, url }) => {
       };
     }
     const history = await foundationPage(async () => listPersonNotes(await resolveFoundationAccess(locals, 'READ_NOTES'), params.id, url?.searchParams.get('afterNote') || undefined));
-    return { contact, origin: contact.origin, notes: history.notes, nextNote: history.next, foundation: true, dorianAvailable, followup: null };
+    return { contact, origin: contact.origin, notes: history.notes, nextNote: history.next, foundation: true, dorianAvailable, noteReviewAvailable: Boolean(url && noteReviewAvailable(locals, url)), followup: null };
   }
   const { context, contact } = await requirePeopleContact(locals, params.id);
   const rows = await prisma.interaction.findMany({ where: { userId: context.workspaceUserId, contextSpaceId: context.contextSpaceId, contactId: contact.id },

@@ -128,6 +128,10 @@ The DEV-only My People flow binds the conversation ID returned by ElevenLabs at 
 
 Web note calls and telephone calls share the ElevenLabs provider adapter. The My People workflow supplies a per-session greeting and purpose, uses only caller speech for transient person-note drafting, and saves through the owner-approved note path. The telephone workflow retains its own identity, consent and ingestion rules. Neither channel needs a separate implementation of the provider transport.
 
+## Living Understanding note review
+
+A request to analyse an owner note is transient draft processing. Approval atomically records an admitted revision of that same note, exact evidence passages, owner-perspective statements and, if needed, the private relationship subject. The note's placement on a person's page does not determine the statement subject. A general cadence preference concerns the owner; wanting to spend more time with a specific person concerns that relationship from the owner's view. A future Relish interpretation or bridged view requires separate authority and perspective. Editing the source invalidates dependent current statements through F-205's existing revision checks.
+
 ## P-305 private vault operations
 
 The offline support service uses the same account/vault locks as foundation writers. Its review, control and erasure scopes are separated from browser authority. Suspension advances the epoch; transactional erasure removes the scoped graph and retains an empty locked vault and suspended enrollment. Archived subjects retain their content for review. The shared account and legacy/provider data require separately scoped closure actions. See [the support and restore runbook](foundation/P305_PRIVACY_OPERATIONS.md).

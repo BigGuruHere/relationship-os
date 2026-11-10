@@ -100,6 +100,10 @@ const statementModels = [
 	'FoundationSupport'
 ];
 function evidenceOperationAllowed(mode: Boundary['mode'], model: string, op: string) {
+	// Review appends to an owner note and creates private subjects and statements atomically.
+	if (mode === 'REVIEW_NOTE')
+		return [...sourceModels, ...statementModels, ...domainModels].includes(model) &&
+			(reads.has(op) || op === 'create');
 	if (mode === 'READ_NOTES')
 		return reads.has(op) && [...sourceModels, 'FoundationSubject'].includes(model);
 	if (mode === 'READ_SEGMENT')

@@ -24,7 +24,7 @@ function aad(access: Custody, id: string) {
 	return `foundation:v1:FoundationSubject:displayNameEnc:${access.ownerUserId}:${access.vaultId}:${id}`;
 }
 function view(
-	access: FoundationAccess,
+	access: Custody,
 	row: { id: string; kind: Kind; displayNameEnc: string; state: string; selfUserId: string | null }
 ) {
 	return {
@@ -44,9 +44,9 @@ async function insert(
 		email: string;
 		phone: string;
 		origin?: { submittedAt: string; profileId: string; sourceId: string };
-	}
+	},
+	id: string = randomUUID()
 ) {
-	const id = randomUUID();
 	return tx.foundationSubject.create({
 		data: {
 			id,
@@ -194,35 +194,39 @@ export function createRelationship(
 	personIds: string[],
 	kind: 'RELATIONSHIP' | 'GROUP' = 'RELATIONSHIP'
 ) {
-	return withFoundationAccess(access, 'WRITE', async (tx) => {
-		if (
-			!['RELATIONSHIP', 'GROUP'].includes(kind) ||
-			!Array.isArray(personIds) ||
-			personIds.length > 50 ||
-			personIds.some((id) => typeof id !== 'string') ||
-			new Set(personIds).size !== personIds.length ||
-			personIds.length < (kind === 'RELATIONSHIP' ? 2 : 1)
-		)
-			throw new Error('Invalid relationship members.');
-		const members = await tx.foundationSubject.findMany({
-			where: { id: { in: personIds }, kind: 'PERSON', state: 'ACTIVE' },
-			select: { id: true }
-		});
-		if (members.length !== personIds.length) throw new FoundationDenied();
-		const row = await insert(tx, access, kind, name);
-		for (const personSubjectId of personIds)
-			await tx.foundationMembership.create({
-				data: {
-					ownerUserId: access.ownerUserId,
-					vaultId: access.vaultId,
-					containerSubjectId: row.id,
-					containerKind: kind,
-					personSubjectId,
-					personKind: 'PERSON'
-				}
-			});
-		return view(access, row);
+	return withFoundationAccess(access, 'WRITE', (tx) => insertRelationship(tx, access, name, personIds, kind));
+}
+
+// Uses an already-scoped transaction so relationship creation can commit with its first statement.
+export async function insertRelationship(tx: AppTransactionClient, access: Custody, name: string,
+	personIds: string[], kind: 'RELATIONSHIP' | 'GROUP', relationshipId?: string) {
+	if (
+		!['RELATIONSHIP', 'GROUP'].includes(kind) ||
+		!Array.isArray(personIds) ||
+		personIds.length > 50 ||
+		personIds.some((id) => typeof id !== 'string') ||
+		new Set(personIds).size !== personIds.length ||
+		personIds.length < (kind === 'RELATIONSHIP' ? 2 : 1)
+	)
+		throw new Error('Invalid relationship members.');
+	const members = await tx.foundationSubject.findMany({
+		where: { id: { in: personIds }, kind: 'PERSON', state: 'ACTIVE' },
+		select: { id: true }
 	});
+	if (members.length !== personIds.length) throw new FoundationDenied();
+	const row = await insert(tx, access, kind, name, undefined, relationshipId);
+	for (const personSubjectId of personIds)
+		await tx.foundationMembership.create({
+			data: {
+				ownerUserId: access.ownerUserId,
+				vaultId: access.vaultId,
+				containerSubjectId: row.id,
+				containerKind: kind,
+				personSubjectId,
+				personKind: 'PERSON'
+			}
+		});
+	return view(access, row);
 }
 export function readRelationship(access: FoundationAccess, id: string) {
 	return withFoundationAccess(access, 'READ', async (tx) => {

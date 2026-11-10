@@ -137,15 +137,42 @@ export async function summarizeText(text: string, options: {
     }
   ];
 
+  const assistantText = await requestDraftCompletion(system[0].content, text, {
+    ...options, json: options.purpose === 'person-note'
+  });
+
+  if (!assistantText) return { summary: "", tags: [] };
+
+  // Try parsing JSON strictly. If parsing fails, return the raw assistant text as summary.
+  try {
+    const parsed = JSON.parse(assistantText);
+    const summary = typeof parsed.summary === "string" ? parsed.summary :
+      options.purpose === 'person-note' ? "" : String(parsed.summary || "");
+    const tags = Array.isArray(parsed.tags)
+      ? parsed.tags.filter((t: unknown) => typeof t === "string")
+      : [];
+    return { summary, tags };
+  } catch {
+    if (options.purpose === 'person-note') return { summary: "", tags: [] };
+    // Fallback: use the assistantText as summary, empty tags
+    return { summary: assistantText.trim(), tags: [] };
+  }
+}
+
+
+// Shared provider transport. Callers own their draft schema and authorization.
+export async function requestDraftCompletion(instruction: string, text: string, options: {
+  request?: typeof fetch; signal?: AbortSignal; json?: boolean; maxTokens?: number;
+} = {}): Promise<string> {
   const payload = {
     model: "gpt-4o-mini",
     messages: [
-      ...system,
+      { role: "system", content: instruction },
       { role: "user", content: text }
     ],
-    max_tokens: 500,
+    max_tokens: options.maxTokens ?? 500,
     temperature: 0.2,
-    ...(options.purpose === 'person-note' ? { response_format: { type: 'json_object' } } : {})
+    ...(options.json ? { response_format: { type: 'json_object' } } : {})
   };
 
   const resp = await (options.request ?? fetch)("https://api.openai.com/v1/chat/completions", {
@@ -172,20 +199,5 @@ export async function summarizeText(text: string, options: {
   // The assistant text may be in result.choices[0].message.content
   const assistantText = result?.choices?.[0]?.message?.content ?? "";
 
-  if (!assistantText) return { summary: "", tags: [] };
-
-  // Try parsing JSON strictly. If parsing fails, return the raw assistant text as summary.
-  try {
-    const parsed = JSON.parse(assistantText);
-    const summary = typeof parsed.summary === "string" ? parsed.summary :
-      options.purpose === 'person-note' ? "" : String(parsed.summary || "");
-    const tags = Array.isArray(parsed.tags)
-      ? parsed.tags.filter((t: unknown) => typeof t === "string")
-      : [];
-    return { summary, tags };
-  } catch {
-    if (options.purpose === 'person-note') return { summary: "", tags: [] };
-    // Fallback: use the assistantText as summary, empty tags
-    return { summary: assistantText.trim(), tags: [] };
-  }
+  return typeof assistantText === 'string' ? assistantText : '';
 }

@@ -18,7 +18,7 @@
 {#if data.contact.phone}<p><a href={'tel:' + data.contact.phone}>{data.contact.phone}</a></p>{/if}
 <a class="btn primary" href={'/people/' + data.contact.id + '/notes/new'}>Record voice note / Add note</a>
 {#if data.dorianAvailable}<a class="btn" href={'/people/' + data.contact.id + '/notes/dorian'}>Talk to Dorian</a>{/if}
-<p class="muted">Your private observations. These notes are not shared or added to this person's understanding.</p>
+<p class="muted">Your private observations. You choose which suggestions to save to Living Understanding.</p>
 <h2>History</h2>{#if data.origin}<p>Details shared through your profile on {new Date(data.origin.submittedAt).toLocaleString()}.</p>{/if}{#each data.notes as note}<article><p><time datetime={note.at}>{new Date(note.at).toLocaleString()}</time> · {note.channel === 'OWNER_VOICE_NOTE' ? 'Your voice note' : 'Your note'}</p><p class="note-text">{note.text}</p>{#if note.summary}<h3>Summary</h3><p class="note-text">{note.summary}</p>{/if}{#if note.editable}
   <details open={form?.draft?.id === note.id}>
     <summary>Edit note</summary>
@@ -35,6 +35,8 @@
       <button class="btn" type="submit">Save changes</button>
     </form>
   </details>
+{/if}{#if data.noteReviewAvailable && note.editable}
+  <a class="btn" href={'/people/' + data.contact.id + '/notes/' + note.id + '/review'}>Review for Living Understanding</a>
 {/if}</article>{:else}<p>No notes yet. Record what you want to remember.</p>{/each}{#if data.nextNote}<a class="btn" href={'/people/' + data.contact.id + '?afterNote=' + encodeURIComponent(data.nextNote)}>More history</a>{/if}{#if data.foundation}
   <details>
     <summary>Remove from My People</summary>

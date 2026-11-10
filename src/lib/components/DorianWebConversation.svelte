@@ -46,10 +46,17 @@
       const { Conversation } = await import('@elevenlabs/client');
       if (current !== attempt) return;
       stage = 'webrtc';
-      const initiation = result.data.initiation as Record<string, string> | undefined;
+      const initiation = result.data.initiation as {
+        firstMessage: string;
+        dynamicVariables: Record<string, string>;
+      } | undefined;
       const conversation = await Conversation.startSession({
         conversationToken: result.data.token,
-        dynamicVariables: initiation,
+        // The SDK serializes firstMessage as conversation_config_override.agent.first_message.
+        ...(initiation ? {
+          dynamicVariables: initiation.dynamicVariables,
+          overrides: { agent: { firstMessage: initiation.firstMessage } }
+        } : {}),
         onError: () => {
           if (current === attempt) report('sdk_error');
         },

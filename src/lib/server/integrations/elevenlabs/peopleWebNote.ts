@@ -16,10 +16,13 @@ export function personNoteInitiation(callerName: string, personName: string) {
   // Names are display labels. The server-side launch keeps the authorization binding.
   const greeting = callerName ? 'Hi ' + callerName + '. ' : 'Hi. ';
   return {
-    caller_name: callerName || 'there',
-    person_name: personName,
-    call_intention: personNoteIntention,
-    first_message: greeting + 'What would you like to remember about ' + personName + '?'
+    // ElevenLabs sends this as an agent override. The other fields personalise the prompt.
+    firstMessage: greeting + 'What would you like to remember about ' + personName + '?',
+    dynamicVariables: {
+      caller_name: callerName || 'there',
+      person_name: personName,
+      call_intention: personNoteIntention
+    }
   };
 }
 

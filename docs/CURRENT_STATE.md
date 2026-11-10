@@ -9,6 +9,8 @@ Exchange and notes follow-up is implemented on `feature/exchange-voice-note-foll
 
 ## QR exchange follow-up
 
+On `feature/people-recency-exchange`, My People lists the most recently modified contact records first. A pending guest exchange resumes after sign-in even from a generic auth URL. Completed exchanges open the voice-note choice once the required account proof is available. A share without a claim opens My People without an automatic reciprocal contact. The profile editor is separate from both share return paths. No migration or hosted configuration change.
+
 On `feature/clean-exchange-followup`, the recipient sees a simple voice-note choice after saving the sharer. An active Foundation account showing its published profile on Share or Share QR sees a matching prompt after a new contact arrives for that profile. Share checks for new receipts for up to 15 minutes and opens the prompt while the tab is visible. Both prompts open the existing recorder or return Home. The install banner appears on the recorder after an exchange. No schema migration is required.
 
 ## Brokerage cutover

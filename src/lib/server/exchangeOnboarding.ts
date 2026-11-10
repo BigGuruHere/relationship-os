@@ -78,6 +78,15 @@ export function clearExchange(cookies: Cookies) {
 	cookies.delete(BROWSER, { path: '/' });
 }
 
+// Resume a pending QR exchange even if the user opened a generic sign-in or signup link.
+export async function exchangeAuthReturn(
+	cookies: Cookies, url: URL, locals: Pick<App.Locals, 'env'>, next: string | null
+) {
+	if (next || readExchange(cookies)?.version !== 2) return next;
+	const { exchangeBrowserEnabled } = await import('./foundation/devPilotGate');
+	return exchangeBrowserEnabled(locals, url.origin) ? EXCHANGE_RETURN : next;
+}
+
 // Called only after successful auth with the server-issued session and exact browser continuation.
 export async function startExchangeAfterAuth(
 	cookies: Cookies, url: URL, locals: Pick<App.Locals, 'env' | 'appOrigin'>,

@@ -1,4 +1,4 @@
-import { EXCHANGE_RETURN, startExchangeAfterAuth, finishVerifiedExchange } from '$lib/server/exchangeOnboarding';
+import { EXCHANGE_RETURN, exchangeAuthReturn, startExchangeAfterAuth, finishVerifiedExchange } from '$lib/server/exchangeOnboarding';
 // src/routes/auth/login/+page.server.ts
 // PURPOSE: verify credentials and set a new session cookie
 // SECURITY:
@@ -23,7 +23,7 @@ import { finishProfileAuth, profileReturnForAccount, PROFILE_ONBOARDING_RETURN }
 import { safeAuthReturn } from '$lib/server/networkJoinReturn';
 
 export const load: PageServerLoad = async ({ locals, url, cookies }) => {
-  const next = safeAuthReturn(url.searchParams.get('next'));
+  const next = await exchangeAuthReturn(cookies, url, locals, safeAuthReturn(url.searchParams.get('next')));
   // If already signed in, redirect home
   if (locals.user) throw redirect(303, profileReturnForAccount(cookies, next, locals.user.id));
   return { next };
@@ -31,7 +31,7 @@ export const load: PageServerLoad = async ({ locals, url, cookies }) => {
 
 export const actions: Actions = {
   default: async ({ request, cookies, locals, getClientAddress, url }) => {
-    const next = safeAuthReturn(url.searchParams.get('next'));
+    const next = await exchangeAuthReturn(cookies, url, locals, safeAuthReturn(url.searchParams.get('next')));
     // 1 - parse form
     const form = await request.formData();
     const emailInput = String(form.get('email') || '').trim();
@@ -99,7 +99,7 @@ export const actions: Actions = {
     if (followup) throw redirect(303, followup);
 
     // Profile continuation skips legacy claims. Existing Network and ordinary login keep their flow.
-    if ((next === PROFILE_ONBOARDING_RETURN || next === EXCHANGE_RETURN)) {
+    if (next === PROFILE_ONBOARDING_RETURN || next === EXCHANGE_RETURN || next === '/people') {
       throw redirect(303, finishProfileAuth(cookies, url, next, user.id));
     }
 

@@ -265,13 +265,18 @@ test('P-301 private People routes and cohort isolation', { timeout: 120000 }, as
 			async () => {
 				const write = await policy.resolveFoundationAccess(locals, 'WRITE');
 				for (let i = 0; i < 52; i++) await people.createPerson(write, 'Page person ' + i);
+				const newest = await people.createPerson(write, 'Recently modified');
+				await db.query('UPDATE "FoundationSubject" SET "updatedAt"=$1 WHERE "id"=$2', [
+					'2099-01-01T00:00:00Z', newest.id
+				]);
 				const first = await directoryFor();
 				assert.equal(first.people.length, 50);
+				assert.equal(first.people[0].id, newest.id);
 				assert.ok(first.next);
 				const last = await directoryFor(locals, '', first.next);
-				assert.equal(last.people.length, 4);
+				assert.equal(last.people.length, 5);
 				assert.equal(last.next, null);
-				assert.equal(new Set([...first.people, ...last.people].map((p) => p.id)).size, 54);
+				assert.equal(new Set([...first.people, ...last.people].map((p) => p.id)).size, 55);
 				const query = last.people[0].name;
 				let page = await directoryFor(locals, query),
 					found = [...page.people];

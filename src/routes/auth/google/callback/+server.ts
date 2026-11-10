@@ -2,7 +2,7 @@ import { googleControlsMailbox } from '$lib/server/googleEmailAuthority';
 import { recordGoogleEmailProof } from '$lib/server/foundation/accountChannels';
 import { exchangeBrowserEnabled } from '$lib/server/foundation/devPilotGate';
 import { accountDomain, provisionNewFoundationAccount } from '$lib/server/foundation/provisioning';
-import { EXCHANGE_RETURN, startExchangeAfterAuth, finishVerifiedExchange } from '$lib/server/exchangeOnboarding';
+import { EXCHANGE_RETURN, exchangeAuthReturn, startExchangeAfterAuth, finishVerifiedExchange } from '$lib/server/exchangeOnboarding';
 import { requiredEnv } from '$lib/server/config/requiredEnv';
 // src/routes/auth/google/callback/+server.ts
 // PURPOSE: exchange code for tokens, verify ID token, upsert OAuthAccount, create first party session
@@ -78,7 +78,7 @@ export const GET: RequestHandler = async ({ url, cookies, locals, getClientAddre
 
   // 2 - required query params
   // IT: Read before clearing temporary OAuth cookies; never trust an arbitrary redirect.
-  const next = safeAuthReturn(cookies.get('oauth_network_next'));
+  const next = await exchangeAuthReturn(cookies, url, locals, safeAuthReturn(cookies.get('oauth_network_next')));
   const code = url.searchParams.get('code') || '';
   const state = url.searchParams.get('state') || '';
 
@@ -178,7 +178,7 @@ export const GET: RequestHandler = async ({ url, cookies, locals, getClientAddre
     }
   }
 
-  const onboarding = next === PROFILE_ONBOARDING_RETURN || next === EXCHANGE_RETURN;
+  const onboarding = next === PROFILE_ONBOARDING_RETURN || next === EXCHANGE_RETURN || next === '/people';
   const seed = {
     displayName: typeof payload.name === 'string' ? payload.name.trim().slice(0, 200) : null,
     avatarUrl: typeof payload.picture === 'string' ? payload.picture.trim() : null

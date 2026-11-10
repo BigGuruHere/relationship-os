@@ -138,14 +138,21 @@ export function searchPeople(access: FoundationAccess, query = '', afterId?: str
 	if (query.length > 200 || (afterId && !/^[0-9a-f-]{36}$/i.test(afterId)))
 		throw new Error('Invalid directory search.');
 	return withFoundationAccess(access, 'READ', async (tx) => {
+		const people = { kind: 'PERSON', state: 'ACTIVE', selfUserId: null } as const;
+		// Resolve the cursor inside this vault before applying the same sort keys to the next page.
+		const anchor = afterId ? await tx.foundationSubject.findFirst({
+			where: { ...people, id: afterId }, select: { id: true, updatedAt: true }
+		}) : null;
+		if (afterId && !anchor) return { items: [], next: null };
 		const rows = await tx.foundationSubject.findMany({
 			where: {
-				kind: 'PERSON',
-				state: 'ACTIVE',
-				selfUserId: null,
-				...(afterId ? { id: { gt: afterId } } : {})
+				...people,
+				...(anchor ? { OR: [
+					{ updatedAt: { lt: anchor.updatedAt } },
+					{ updatedAt: anchor.updatedAt, id: { lt: anchor.id } }
+				] } : {})
 			},
-			orderBy: { id: 'asc' },
+			orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
 			take: 51,
 			select: personSelect
 		});

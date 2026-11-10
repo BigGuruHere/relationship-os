@@ -62,10 +62,10 @@ export function profileReturnForAccount(cookies: Cookies, next: string | null, o
 }
 
 export function finishProfileAuth(cookies: Cookies, url: URL, next: string | null, ownerId: string, newProfileId?: string): string {
-  if (next === EXCHANGE_RETURN) {
-    // Bind the existing signup draft using the same ownership rules, then resume verification.
+  if (next === EXCHANGE_RETURN || next === '/people') {
+    // Bind the signup draft for later editing without interrupting the exchange or directory return.
     finishProfileAuth(cookies, url, PROFILE_ONBOARDING_RETURN, ownerId, newProfileId);
-    return EXCHANGE_RETURN;
+    return next;
   }
   if (next !== PROFILE_ONBOARDING_RETURN) return next || '/';
   if (newProfileId) {

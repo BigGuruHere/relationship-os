@@ -68,6 +68,14 @@ try {
     for (const v of ['https://evil.test','//evil.test','/settings/profile?onboarding=1&next=//evil.test','/settings/profile','/network/join/alice?next=evil','/%2f%2fevil.test']) assert.equal(returns.safeAuthReturn(v),null);
     assert.equal(returns.safeNetworkJoinReturn(draft.PROFILE_ONBOARDING_RETURN),null);
   });
+  await test('a completed share without a claim returns through My People', async () => {
+    const e = event({intent:'create-profile',name:'Guest',email:'guest@example.test'});
+    draft.rememberContactShare(e.cookies, e.url, 'profile');
+    await assert.rejects(route.actions.default(e), r => r.status === 303 &&
+      r.location === '/auth/register?next=%2Fpeople');
+    assert.equal(returns.safeAuthReturn('/people'), '/people');
+    assert.equal(draft.finishProfileAuth(e.cookies, e.url, '/people', 'new-user', 'new-profile'), '/people');
+  });
   await test('draft is encrypted, authenticated, bounded, expires and rejects malformed input', () => {
     const input = {name:'<script>Guest</script>',email:'guest@example.test',phone:'+61400000000'};
     const encoded = draft.encodeProfileDraft(input,1000);

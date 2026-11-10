@@ -11,6 +11,7 @@
   let calling = false;
   let message = '';
   let draft = '';
+  let callerSpeech = '';
   let ready = false;
   let timer: ReturnType<typeof setTimeout>;
   let controller: AbortController | undefined;
@@ -23,7 +24,7 @@
     controller?.abort();
     reference = data.reference;
     checking = calling = ready = false;
-    draft = message = '';
+    draft = message = callerSpeech = '';
   }
 
   async function checkDraft(remaining = 1) {
@@ -43,6 +44,7 @@
       if (current.signal.aborted) return;
       if (result.type === 'success' && result.data?.state === 'ready' && typeof result.data.text === 'string') {
         draft = result.data.text;
+        callerSpeech = typeof result.data.callerSpeech === 'string' ? result.data.callerSpeech : '';
         ready = true;
         message = '';
       } else if (result.type === 'success' && result.data?.state === 'pending') {
@@ -76,7 +78,7 @@
 <section class="container" style="max-width: 40rem">
   <a href={personPath}>← Back to {data.name}</a>
   <h1>Talk to Dorian about {data.name}</h1>
-  <p>Dorian can help you remember what mattered. ElevenLabs receives the live audio and this person’s display name to prepare a draft.</p>
+  <p>Dorian can help you remember what mattered. ElevenLabs receives your live audio and both display names. OpenAI uses your side of the conversation to draft the note.</p>
   {#if !ready}
     {#key activePerson}
       <DorianWebConversation action="?/start" disabled={checking}
@@ -91,6 +93,10 @@
     {/if}
   {:else}
     <h2>Review your private note</h2>
+    {#if callerSpeech}
+      <p>No draft was generated. You can write a note using what you said below.</p>
+      <details><summary>Show what I said</summary><p style="white-space: pre-wrap">{callerSpeech}</p></details>
+    {/if}
     <!-- Post to the existing private note writer with a stable key for retries. -->
     <form method="POST" action={personPath + '/notes/new?/save'}>
       <input type="hidden" name="saveKey" value={reference} />

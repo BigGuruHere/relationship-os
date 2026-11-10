@@ -666,6 +666,8 @@ test('Internal DEV setup and ordinary Foundation signup on an isolated database'
 			process.env.RELISH_DORIAN_WEB_TEST_AGENT_ID = agentId;
 			const previousApiKey = process.env.ELEVENLABS_API_KEY;
 			process.env.ELEVENLABS_API_KEY = 'synthetic-dev-key';
+			const previousOpenAiKey = process.env.OPENAI_API_KEY;
+			process.env.OPENAI_API_KEY = 'synthetic-openai-key';
 			try {
 				const owner = { cookies: browser.cookies, locals: {
 					...browser.locals, env: 'dev', appOrigin: origin,
@@ -681,15 +683,30 @@ test('Internal DEV setup and ordinary Foundation signup on an isolated database'
 					Response.json({ token: 'synthetic-token', conversation_id: 'conv_fixture' }) };
 				await assert.rejects(voice.load({ ...start, locals: browser.locals }), e => e.status === 404);
 				const issued = await voice.actions.start(start);
-				assert.equal(issued.personName, 'QR visitor');
+				assert.equal(issued.initiation.person_name, 'QR visitor');
+				assert.equal(issued.initiation.caller_name, publicName);
+				assert.match(issued.initiation.first_message, /remember about QR visitor/);
+				assert.match(issued.initiation.call_intention, /next step/);
 				assert.equal(issued.conversationId, undefined);
+				const providerConversation = { conversation_id: 'conv_fixture', agent_id: agentId, status: 'done',
+					transcript: [
+						{ role: 'agent', message: 'Unconfirmed suggestion from Dorian' },
+						{ role: 'user', message: 'Met at a conference' }
+					],
+					analysis: { transcript_summary: 'The user initiated a call.' }
+				};
+				let summaryPayload;
 				const draft = {
 					...event(owner, path, { reference: issued.reference }), params,
-					fetch: async endpoint => {
+					fetch: async (endpoint, options) => {
+						if (String(endpoint) === 'https://api.openai.com/v1/chat/completions') {
+							summaryPayload = JSON.parse(options.body);
+							return Response.json({ choices: [{ message: { content: JSON.stringify({
+								summary: publicName + ' met QR visitor at a conference.', tags: []
+							}) } }] });
+						}
 						assert.match(String(endpoint), /\/conversations\/conv_fixture\?format=json$/);
-						return Response.json({ conversation_id: 'conv_fixture', agent_id: agentId, status: 'done',
-							transcript: [{ role: 'user', message: 'Met at a conference' }],
-							analysis: { transcript_summary: 'Met at a conference.' } });
+						return Response.json(providerConversation);
 					}
 				};
 				const requestDraft = (input) => voice.actions.draft({ ...input, request: input.request.clone() });
@@ -705,7 +722,17 @@ test('Internal DEV setup and ordinary Foundation signup on an isolated database'
 				assert.equal((await requestDraft({ ...draft, fetch: async () =>
 					Response.json({ conversation_id: 'conv_other', agent_id: agentId, status: 'done' })
 				})).status, 502);
-				assert.deepEqual(await requestDraft(draft), { state: 'ready', text: 'Met at a conference.' });
+				assert.deepEqual(await requestDraft(draft), {
+					state: 'ready', text: publicName + ' met QR visitor at a conference.'
+				});
+				assert.match(summaryPayload.messages[0].content, /Omit greetings, delays, call logistics/);
+				assert.deepEqual(JSON.parse(summaryPayload.messages[1].content), {
+					callerName: publicName, personName: 'QR visitor', callerSpeech: 'Met at a conference'
+				});
+				assert.deepEqual(await requestDraft({ ...draft, fetch: async endpoint =>
+					String(endpoint).includes('api.openai.com') ? new Response(null, { status: 503 }) :
+						Response.json(providerConversation)
+				}), { state: 'ready', text: '', callerSpeech: 'Met at a conference' });
 
 				const detail = () => personPage.load({ ...event(owner, '/people/' + person.id), params });
 				assert.ok(!(await detail()).notes.some(note => note.text.includes('conference')));
@@ -723,6 +750,8 @@ test('Internal DEV setup and ordinary Foundation signup on an isolated database'
 				delete process.env.RELISH_DORIAN_WEB_TEST_AGENT_ID;
 				if (previousApiKey === undefined) delete process.env.ELEVENLABS_API_KEY;
 				else process.env.ELEVENLABS_API_KEY = previousApiKey;
+				if (previousOpenAiKey === undefined) delete process.env.OPENAI_API_KEY;
+				else process.env.OPENAI_API_KEY = previousOpenAiKey;
 			}
 		});
 

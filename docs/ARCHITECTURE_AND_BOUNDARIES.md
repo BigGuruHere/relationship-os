@@ -126,6 +126,8 @@ Resolve the profile owner and check its enrollment under the account lock on the
 
 The DEV-only My People flow binds the conversation ID returned by ElevenLabs at token issuance to an encrypted, HTTP-only continuation for the exact signed-in session, person, vault epoch and agent. After the call, Relish retrieves the provider result server-to-server and verifies its ID and agent before returning an editable draft. A user-approved save goes through the existing P-303 owner-private note writer. This first slice uses the authenticated conversation read API, so it does not require an inbound webhook or a legacy workspace binding.
 
+Web note calls and telephone calls share the ElevenLabs provider adapter. The My People workflow supplies a per-session greeting and purpose, uses only caller speech for transient person-note drafting, and saves through the owner-approved note path. The telephone workflow retains its own identity, consent and ingestion rules. Neither channel needs a separate implementation of the provider transport.
+
 ## P-305 private vault operations
 
 The offline support service uses the same account/vault locks as foundation writers. Its review, control and erasure scopes are separated from browser authority. Suspension advances the epoch; transactional erasure removes the scoped graph and retains an empty locked vault and suspended enrollment. Archived subjects retain their content for review. The shared account and legacy/provider data require separately scoped closure actions. See [the support and restore runbook](foundation/P305_PRIVACY_OPERATIONS.md).

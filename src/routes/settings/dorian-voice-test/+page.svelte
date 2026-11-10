@@ -12,6 +12,10 @@
     const current = ++attempt;
     state = 'connecting';
     message = '';
+    let reference: string | undefined;
+    let stage = 'token';
+    // Log only the stage and Relish's diagnostic reference, never SDK payloads or errors.
+    const report = (reason: string) => console.warn('[Relish Dorian voice test]', { stage, reason, reference });
     try {
       const response = await fetch(window.location.href, {
         method: 'POST',
@@ -20,20 +24,33 @@
       });
       const result = deserialize(await response.text());
       if (current !== attempt) return;
+      if ((result.type === 'success' || result.type === 'failure') &&
+          typeof result.data?.reference === 'string') reference = result.data.reference;
       if (result.type !== 'success' || typeof result.data?.token !== 'string') {
         message = result.type === 'failure' && typeof result.data?.error === 'string'
           ? result.data.error : 'Could not start the conversation.';
+        if (reference) message += ' Reference ' + reference;
+        report('token_unavailable');
         state = 'idle';
         return;
       }
 
       // Let the SDK request the microphone only after the user starts a conversation.
+      stage = 'sdk_load';
       const { Conversation } = await import('@elevenlabs/client');
       if (current !== attempt) return;
+      stage = 'webrtc';
       const conversation = await Conversation.startSession({
         conversationToken: result.data.token,
+        onError: () => {
+          if (current === attempt) report('sdk_error');
+        },
         onDisconnect: () => {
           if (current !== attempt) return;
+          if (state === 'connecting') {
+            report('disconnected_during_start');
+            message = 'Dorian disconnected during setup.' + (reference ? ' Reference ' + reference : '');
+          }
           ++attempt;
           session = null;
           state = 'idle';
@@ -45,9 +62,12 @@
       }
       session = conversation;
       state = 'connected';
-    } catch {
+    } catch (cause) {
       if (current !== attempt) return;
-      message = 'Could not connect. Check your microphone permission and try again.';
+      const microphoneDenied = cause instanceof DOMException && cause.name === 'NotAllowedError';
+      report(microphoneDenied ? 'microphone_permission_denied' : 'start_failed');
+      message = microphoneDenied ? 'Allow microphone access and try again.' : 'Could not connect to Dorian.';
+      if (reference) message += ' Reference ' + reference;
       state = 'idle';
     }
   }

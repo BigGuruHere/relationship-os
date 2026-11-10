@@ -12,6 +12,9 @@ test('Dorian voice test issues only a token on the canonical DEV origin for an o
   });
   const keys = ['RELISH_DORIAN_WEB_TEST_AGENT_ID', 'ELEVENLABS_API_KEY'];
   const previous = keys.map(key => process.env[key]);
+  const original = { info: console.info, warn: console.warn };
+  const diagnostics = [];
+  console.info = console.warn = line => diagnostics.push(JSON.parse(line));
   try {
     const { load, actions } = await server.ssrLoadModule('/src/routes/settings/dorian-voice-test/+page.server.ts');
     const url = new URL('https://dev.relish.live/settings/dorian-voice-test');
@@ -44,9 +47,30 @@ test('Dorian voice test issues only a token on the canonical DEV origin for an o
     assert.equal((await actions.default({ ...event, request: new Request(url, { method: 'POST' }) })).status, 403);
     assert.equal(calls, 0);
     load(event);
-    assert.deepEqual(await actions.default(event), { token: 'test-token' });
+    const issued = await actions.default(event);
+    assert.deepEqual(issued, { token: 'test-token', reference: diagnostics.at(-1).reference });
+    assert.equal(diagnostics.at(-1).reason, 'issued');
     assert.equal(calls, 1);
+
+    const rejected = await actions.default({
+      ...event, fetch: async () => Response.json({
+        detail: { status: 'missing_permissions', message: 'private-agent-id' }
+      }, { status: 403 })
+    });
+    assert.equal(rejected.status, 502);
+    assert.equal(rejected.data.reference, diagnostics.at(-1).reference);
+    assert.equal(diagnostics.at(-1).upstreamStatus, 403);
+    assert.equal(diagnostics.at(-1).providerCode, 'missing_permissions');
+
+    await actions.default({ ...event, fetch: async () => new Response('unexpected', { status: 200 }) });
+    assert.equal(diagnostics.at(-1).reason, 'invalid_provider_response');
+    await actions.default({
+      ...event, fetch: async () => { throw new Error('private-network-error'); }
+    });
+    assert.equal(diagnostics.at(-1).reason, 'provider_request_failed');
+    assert.doesNotMatch(JSON.stringify(diagnostics), /test-key|test-token|agent_test|private-agent-id|private-network-error/);
   } finally {
+    Object.assign(console, original);
     for (const [i, key] of keys.entries()) {
       if (previous[i] === undefined) delete process.env[key];
       else process.env[key] = previous[i];

@@ -6,13 +6,10 @@
   export let form: any;
 
   // IT: helper utilities for rendering and vCard link building
-  import { headerFrom, publicRows, buildVcardUrl, EXTRA_KEYS } from '$lib/publicProfile';
+  import { headerFrom, publicRows, buildVcardUrl } from '$lib/publicProfile';
   import { onMount } from 'svelte';
   import { enhance } from '$app/forms';
 
-
-  // IT: start in edit mode if the server requested it
-  let editing = Boolean(data?.isOwner && data?.editingRequested);
 
   // IT: seed fields from server profile or defaults
   const prof: any = data?.profile || {};
@@ -21,7 +18,7 @@
   // IT: Reversible pilot switch - keep Dorian onboarding code but temporarily hide invitations.
   const showDorianInvitation = false;
   // IT: Published guest profiles use the same profile-first contact exchange across kinds.
-  $: isFirstContact = prof.isPublished && !data?.isOwner && !editing;
+  $: isFirstContact = prof.isPublished && !data?.isOwner;
   // Visibility is counted after browser render, not on server prefetch. No identity tracking on landing.
   onMount(() => {
     if (!data?.legacyProfile || !data?.profile?.isPublished || !isPilotKind || data?.isOwner) return;
@@ -33,7 +30,6 @@
   // IT: derive a friendly owner name for the thanks banner
   const ownerName = (prof.displayName && prof.displayName.trim()) || 'the owner';
 
-  let profileId   = prof.id || '';
   let profileSlug = prof.slug || (data?.owner && data.owner.slug) || data?.slugParam || '';
   let displayName = prof.displayName || '';
   let headline    = prof.headline || '';
@@ -45,12 +41,6 @@
   let emailPublic = prof.emailPublic || '';
   let phonePublic = prof.phonePublic || '';
   let publicMeta  = prof.publicMeta || {};
-
-  // IT: extras keyed by EXTRA_KEYS from helper
-  let extra_inputs: Record<string, string> = {};
-  for (const spec of EXTRA_KEYS) {
-    extra_inputs[spec.key] = typeof publicMeta[spec.key] === 'string' ? publicMeta[spec.key] : '';
-  }
 
   // IT: public link used for vCard note or source
   const publicLink = profileSlug ? data.origin + '/u/' + profileSlug : data.origin + '/u';
@@ -212,23 +202,12 @@
       </section>
     {/if}
 
-    <!-- IT: owner only edit icon - toggles edit mode on this page -->
     {#if data?.isOwner}
-      <form method="get" on:submit|preventDefault={() => (editing = !editing)}>
-        <button type="submit" class="icon-btn" aria-label="Edit profile" title="Edit profile">
-          <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1.003 1.003 0 0 0 0-1.42l-2.34-2.34a1.003 1.003 0 0 0 1.42 0l-1.83 1.83 3.75 3.75 1.84-1.82z" fill="currentColor"/>
-          </svg>
-        </button>
-      </form>
-    {/if}
-
-    <!-- IT: first time banner - auto switch into edit mode -->
-    {#if data?.firstVisit}
-      <div class="note" style="margin-bottom:10px;">
-        Create profile - fill the fields below then save. This is what others will see.
-      </div>
-      {#if !editing}{@html (() => { editing = true; return '' })()}{/if}
+      <a class="icon-btn" href={prof.id ? '/settings/profile?profile=' + encodeURIComponent(prof.slug) + '&from=profiles' : '/settings/profile?mode=new'} aria-label="Edit profile" title="Edit profile">
+        <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M3 17.25V21h3.75l11.06-11.06-3.75-3.75L3 17.25zM20.71 7.04a1.003 1.003 0 0 0 0-1.42l-2.34-2.34a1 1 0 0 0-1.42 0l-1.83 1.83 3.75 3.75 1.84-1.82z" fill="currentColor"/>
+        </svg>
+      </a>
     {/if}
 
     <!-- IT: thanks banner - shown after lead submit -->
@@ -239,7 +218,7 @@
     {/if}
 
     <!-- IT: LOGGED-IN USER DETECTION - show connect UI instead of lead capture -->
-    {#if !data?.isOwner && data?.isVisitorLoggedIn && !editing && prof.kind === 'personal'}
+    {#if !data?.isOwner && data?.isVisitorLoggedIn && prof.kind === 'personal'}
       
       {#if data?.isSelfView}
         <!-- IT: visitor is viewing their own profile -->
@@ -271,8 +250,6 @@
       {/if}
     {/if}
 
-    <!-- IT: view mode -->
-    {#if !editing}
       <header style="display:flex; gap:12px; align-items:center;">
         {#if hdr.avatarUrl}
           <img src={hdr.avatarUrl} alt="Avatar" class="avatar" />
@@ -333,42 +310,6 @@
           {#if data?.isOwner}Click the pencil icon to edit.{/if}
         </div>
       {/if}
-    {:else}
-      <!-- IT: edit mode - posts to the named save action -->
-      <form method="post" action="?/save" class="grid">
-        <input type="hidden" name="profileId" value={profileId} />
-        <label><input type="checkbox" name="isPublished" checked={prof.isPublished !== false} /> Published publicly</label>
-
-        <div class="field"><label for="displayName">Name</label><input id="displayName" name="displayName" bind:value={displayName} /></div>
-        <div class="field"><label for="headline">Headline</label><input id="headline" name="headline" bind:value={headline} /></div>
-        <div class="field span2"><label for="bio">Bio</label><textarea id="bio" name="bio" rows="4" bind:value={bio}></textarea></div>
-        <div class="field"><label for="avatarUrl">Avatar URL</label><input id="avatarUrl" name="avatarUrl" bind:value={avatarUrl} /></div>
-        <div class="field"><label for="company">Company</label><input id="company" name="company" bind:value={company} /></div>
-        <div class="field"><label for="title">Title</label><input id="title" name="title" bind:value={title} /></div>
-        <div class="field"><label for="websiteUrl">Website</label><input id="websiteUrl" name="websiteUrl" bind:value={websiteUrl} /></div>
-        <div class="field"><label for="emailPublic">Public email</label><input id="emailPublic" name="emailPublic" bind:value={emailPublic} /></div>
-        <div class="field"><label for="phonePublic">Public phone</label><input id="phonePublic" name="phonePublic" bind:value={phonePublic} /></div>
-
-        <!-- IT: extra public links driven by helper keys -->
-        {#each EXTRA_KEYS as spec}
-          {#key spec.key}
-            <div class="field">
-              <label for={"extra_"+spec.key}>{spec.label}</label>
-              <input id={"extra_"+spec.key} name={"extra_" + spec.key} bind:value={extra_inputs[spec.key]} />
-            </div>
-          {/key}
-        {/each}
-
-        <div class="btnrow" style="grid-column: 1 / span 2;">
-          <button class="btn primary" type="submit">Save</button>
-          <button class="btn" type="button" on:click={() => (editing = false)}>Cancel</button>
-        </div>
-
-        {#if form?.error}
-          <p style="color:var(--danger); margin-top:6px;">{form.error}</p>
-        {/if}
-      </form>
-    {/if}
   </div>
 </div>
 {/if}
@@ -404,7 +345,6 @@
   .public-profile .topbar { width: 100%; box-sizing: border-box; min-width: 0; }
   .public-profile header > div { min-width: 0; overflow-wrap: anywhere; }
   .info-row { flex-wrap: wrap; min-width: 0; overflow-wrap: anywhere; }
-  @media (max-width: 520px) { .grid { grid-template-columns: minmax(0, 1fr) !important; } .span2 { grid-column: 1 !important; } }
   .avatar { width:64px; height:64px; border-radius:50%; object-fit:cover; }
   .muted { color:#666; }
   .small { font-size:0.95rem; }
@@ -423,10 +363,6 @@
     display:inline-flex; align-items:center; justify-content:center;
     width:32px; height:32px; border:1px solid #ddd; border-radius:10px; background:#fff; cursor:pointer;
   }
-  .grid { display:grid; grid-template-columns: 1fr 1fr; gap:12px; }
-  .field { display:flex; flex-direction:column; gap:6px; }
-  .field input, .field textarea { padding:8px 10px; border:1px solid #ddd; border-radius:10px; }
-  .span2 { grid-column: 1 / span 2; }
   .note { background:#f6f7f8; border:1px solid #e3e4e6; border-radius:10px; padding:8px 10px; color:#444; }
 
   /* IT: make the helper text look like plain text */

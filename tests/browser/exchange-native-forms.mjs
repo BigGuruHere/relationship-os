@@ -6,7 +6,7 @@ import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 const { chromium } = createRequire(import.meta.url)('playwright');
 import assert from 'node:assert/strict';
-import { createServer } from 'vite';
+import { build, createServer } from 'vite';
 import { resolve } from 'node:path';
 process.env.SECRET_MASTER_KEY = 'b'.repeat(64);
 const vite = await createServer({
@@ -18,12 +18,14 @@ const vite = await createServer({
 			name: 'exchange-test-services',
 			enforce: 'pre',
 			resolveId(id) {
+				if (id === '$app/forms') return '\0app-forms';
 				if (id.endsWith('/foundation/accountChannels')) return '\0channels';
                 if (id.endsWith('/foundation/devPilotGate')) return '\0gate';
 				if (id.endsWith('/foundation/exchangeClaims')) return '\0claims';
 				if (id.endsWith('/foundation/provisioning')) return '\0domain';
 			},
 			load(id) {
+				if (id === '\0app-forms') return 'export function enhance() {}';
 				if(id==='\0channels') return `export async function listAccountChannels(){return [{id:'phone',type:'PHONE',masked:'•••• 0000',status:globalThis.channelVerified?'VERIFIED':'PENDING'}];} export async function addAccountChannel(){return 'phone';} export async function requestAccountChannelCode(){return {status:'QUEUED',challengeId:'account-challenge'};} export async function dispatchAccountChannelCode(){return 'SENT';} export async function verifyAccountChannelCode(...a){globalThis.accountVerifyArgs=a;globalThis.channelVerified=true;if(globalThis.guestNeedsProof)globalThis.guestNeedsProof=false;return 'VERIFIED';} export async function revokeAccountChannel(){} export async function eraseRevokedAccountChannel(){}`;
                 if (id === '\0gate') return `export function exchangeBrowserEnabled(){return true;}`;
 				if (id === '\0domain') return `export async function accountDomain(){return 'ACTIVE';}`;
@@ -56,9 +58,11 @@ function event(c, body, origin = 'https://dev.relish.live') {
 }
 // Optional local Chromium acceptance. Provider/domain services above are intercepted.
 await mkdir('.svelte-kit/browser-check', { recursive: true });
+const componentStyles = new Map();
 async function component(path, name) {
 	const source = await readFile(path, 'utf8');
 	const result = compile(source, { generate: 'server', filename: path });
+	componentStyles.set(name, result.css?.code || '');
 	await writeFile('.svelte-kit/browser-check/' + name + '.js', result.js.code);
 	return (await vite.ssrLoadModule('/.svelte-kit/browser-check/' + name + '.js')).default;
 }
@@ -67,6 +71,26 @@ const channelsUI=await component('src/routes/settings/channels/+page.svelte','ch
 const channelPage=await vite.ssrLoadModule('/src/routes/settings/channels/+page.server.ts');
 const claimUI = await component('src/routes/exchange/claim/+page.svelte', 'claim');
 const profileUI = await component('src/routes/settings/profile/+page.svelte', 'profile');
+const publicProfileUI = await component('src/routes/u/[slug]/+page.svelte', 'publicProfile');
+// Hydrate the real editor so the browser test exercises change detection as well as native forms.
+const profilePath = 'src/routes/settings/profile/+page.svelte';
+const compiledProfile = compile(await readFile(profilePath, 'utf8'), { generate: 'client', filename: profilePath });
+await writeFile('.svelte-kit/browser-check/profile-client.js', compiledProfile.js.code);
+const entry = resolve('.svelte-kit/browser-check/profile-entry.js');
+await writeFile(entry, `
+  import { hydrate } from 'svelte';
+  import Profile from './profile-client.js';
+  const target = document.querySelector('#editor-fixture');
+  hydrate(Profile, { target, props: { data: JSON.parse(target.dataset.profile), form: null } });
+`);
+const bundle = await build({
+  configFile: false,
+  logLevel: 'error',
+  resolve: { alias: { $lib: resolve('src/lib') } },
+  build: { write: false, lib: { entry, formats: ['es'] } }
+});
+const profileClient = (Array.isArray(bundle) ? bundle[0] : bundle).output.find((part) => part.type === 'chunk').code;
+const appStyles = await readFile('src/app.css', 'utf8');
 const c = cookies();
 let policyOverride = null,
 	lastProfile;
@@ -76,7 +100,12 @@ const server = httpServer(async (req, res) => {
 		const url = new URL(req.url, 'http://127.0.0.1:' + server.address().port);
 		if (process.env.RELISH_BROWSER_SERVE_ONLY === 'YES')
 			policyOverride = url.searchParams.get('policy') === 'no-referrer' ? 'no-referrer' : null;
-		if (url.pathname === '/profiles') {
+		if (url.pathname === '/profile-client.js') {
+			res.setHeader('content-type', 'text/javascript');
+			res.end(profileClient);
+			return;
+		}
+		if (url.pathname.startsWith('/people/') || url.pathname === '/profiles') {
 			res.end('My Profiles');
 			return;
 		}
@@ -140,24 +169,24 @@ const server = httpServer(async (req, res) => {
 				throw r;
 			}
 		}
-		if (url.pathname === '/profile') {
+		if (url.pathname === '/profile' || url.pathname === '/public-editor') {
+			const creatingNew = url.searchParams.has('new');
+			const publicEditor = url.pathname === '/public-editor';
+			const profile = {
+				id: 'p', slug: 'mark', displayName: 'Mark Test', kind: 'business', isPublished: url.searchParams.has('published'),
+				publicMeta: { linkedin: 'https://www.linkedin.com/in/mark-test' }
+			};
+			const data = publicEditor
+				? { profile, isOwner: true, origin: url.origin, slugParam: 'mark' }
+				: { creatingNew, profile: creatingNew ? null : profile };
+			const markup = render(publicEditor ? publicProfileUI : profileUI, { props: { data, form: null } });
 			res.setHeader('content-type', 'text/html');
-			res.end(
-				render(profileUI, {
-					props: {
-						data: {
-							profile: {
-								id: 'p',
-								slug: 'mark',
-								displayName: 'Mark Test',
-								kind: 'business',
-								isPublished: false
-							}
-						},
-						form: null
-					}
-				}).body
-			);
+			res.end('<!doctype html><html><head><meta name="viewport" content="width=device-width, initial-scale=1">' +
+				'<style>' + appStyles + componentStyles.get(publicEditor ? 'publicProfile' : 'profile') +
+				 '</style>' + markup.head + '</head><body>' +
+				(publicEditor ? markup.body :
+					'<div id="editor-fixture" data-profile="' + JSON.stringify(data).replaceAll('&', '&amp;').replaceAll('"', '&quot;') +
+					'">' + markup.body + '</div><script type="module" src="/profile-client.js"></script>') + '</body></html>');
 			return;
 		}
 		const data = await (url.pathname==='/channels'?channelPage:page).load({
@@ -223,7 +252,7 @@ try {
 		true
 	);
 	await tab.getByRole('button', { name: 'Verify my account', exact: true }).click();
-	await tab.waitForURL(base + '/people');
+	await tab.waitForURL(base + '/people/private-person?afterExchange=1');
 	assert.equal(globalThis.verifyArgs[3], '012345');
 
 	// Real native owned-profile form submits the preview without a code or typed contact fields.
@@ -245,7 +274,7 @@ try {
     flow.saveExchange(c,new URL('https://dev.relish.live'),'b'.repeat(64),'profile',2);
     await tab.goto(base);
     await tab.getByRole('button',{name:'Continue',exact:true}).click();
-    await tab.getByRole('status').filter({hasText:'Your account details are verified.'}).waitFor();
+    await tab.waitForURL(base + '/people/private-person?afterExchange=1');
     // A guest with both channels sees the sign-in email check first.
     globalThis.guestNeedsProof = true;
     globalThis.guestCompleted = false;
@@ -256,17 +285,71 @@ try {
     await tab.getByRole('button',{name:'Send verification code',exact:true}).click();
     await tab.getByLabel('Verification code',{exact:true}).fill('005321');
     await tab.getByRole('button',{name:'Verify my email',exact:true}).click();
-    await tab.getByRole('status').filter({hasText:'Your account details are verified.'}).waitFor();
+    await tab.waitForURL(base + '/people/private-person?afterExchange=1');
     assert.equal(globalThis.accountVerifyArgs[2],'005321');
 
-	// The top publication button is associated with the existing form and includes unsaved edits.
+	// Exercise both editor entry points at phone widths, with their compiled scoped CSS.
+	for (const width of [320, 390, 600]) {
+		await tab.setViewportSize({ width, height: 800 });
+		for (const path of ['/profile', '/profile?new=1']) {
+			await tab.goto(base + path);
+			const form = tab.locator('#profile-editor');
+			await form.waitFor();
+			const columns = await form.evaluate(el => getComputedStyle(el).gridTemplateColumns);
+			assert.equal(columns.split(' ').length, 1, path + ' at ' + width);
+			const overflow = await tab.evaluate(() => ({
+				width: document.documentElement.scrollWidth,
+				nodes: [...document.querySelectorAll('body *')].filter(el => el.getBoundingClientRect().right > document.documentElement.clientWidth + 1)
+					.map(el => [el.tagName, el.className, Math.round(el.getBoundingClientRect().right)])
+			}));
+			assert.equal(overflow.width, width, path + ' at ' + width + ' ' + JSON.stringify(overflow.nodes));
+			const name = await form.locator('#displayName').boundingBox();
+			const headline = await form.locator('#headline').boundingBox();
+			assert.ok(Math.abs(name.x - headline.x) < 1 && headline.y > name.y);
+		}
+	}
+
+	await tab.goto(base + '/public-editor');
+	assert.equal(await tab.getByRole('link', { name: 'Edit profile' }).getAttribute('href'),
+		'/settings/profile?profile=mark&from=profiles');
+
+	// Closed optional fields must still submit, and Publish includes unsaved edits.
 	await tab.goto(base + '/profile');
+	await tab.getByRole('button', { name: 'Publish', exact: true }).waitFor({ state: 'hidden' });
+	await tab.getByRole('button', { name: 'Save for Later', exact: true }).waitFor({ state: 'hidden' });
+	await tab.getByRole('button', { name: 'Publish saved profile', exact: true }).waitFor();
 	await tab.getByLabel('Public name', { exact: true }).fill('Edited Mark');
-	await tab.getByRole('button', { name: 'Publish profile', exact: true }).click();
+	await tab.getByRole('button', { name: 'Publish', exact: true }).waitFor();
+	await tab.getByLabel('Public name', { exact: true }).fill('Mark Test');
+	await tab.getByRole('button', { name: 'Publish', exact: true }).waitFor({ state: 'hidden' });
+	await tab.getByLabel('Public name', { exact: true }).fill('Edited Mark');
+	await tab.getByRole('button', { name: 'Publish', exact: true }).click();
 	assert.equal(lastProfile.get('publishNow'), 'yes');
 	assert.equal(lastProfile.get('displayName'), 'Edited Mark');
+	assert.equal(lastProfile.get('extra_linkedin'), 'https://www.linkedin.com/in/mark-test');
+	await tab.goto(base + '/profile?published=1');
+	await tab.getByRole('button', { name: 'Unpublish', exact: true }).waitFor();
+	await tab.getByLabel('Public name', { exact: true }).fill('Private edit');
+	await tab.getByText('Save for Later unpublishes', { exact: false }).waitFor();
+	await tab.getByRole('button', { name: 'Save for Later', exact: true }).click();
+	assert.equal(lastProfile.get('publishNow'), null);
+
+	await tab.goto(base + '/profile?new=1');
+	await tab.getByRole('link', { name: 'Back to My Profiles', exact: true }).waitFor();
+	assert.deepEqual(await tab.locator('#profile-editor .form-actions :is(button, a):visible').allTextContents(),
+		['Publish', 'Save for Later', 'Back to My Profiles']);
+	assert.equal(await tab.getByRole('checkbox', { name: /published publicly/i }).count(), 0);
+	assert.equal(await tab.getByLabel('Profile publication status').count(), 0);
+	await tab.getByRole('button', { name: 'Publish', exact: true }).waitFor();
+	await tab.getByLabel('Public name', { exact: true }).fill('New profile');
+	await tab.getByLabel('Profile label (only you see this)', { exact: true }).fill('Networking');
+	await tab.getByText('Website and social links', { exact: true }).click();
+	await tab.getByLabel('LinkedIn', { exact: true }).fill('https://www.linkedin.com/in/new-profile');
+	await tab.getByRole('button', { name: 'Save for Later', exact: true }).click();
+	assert.equal(lastProfile.get('createNewProfile'), '1');
+	assert.equal(lastProfile.get('extra_linkedin'), 'https://www.linkedin.com/in/new-profile');
 	console.log(
-		'PASS: reproduced null Origin; corrected native Send, Continue later and six-digit code submission; publish submits current editor fields.'
+		'PASS: reproduced null Origin; corrected native Send, Continue later and six-digit code submission; phone-width profile editors save and publish current fields.'
 	);
 } finally {
 	if (browser) await browser.close();

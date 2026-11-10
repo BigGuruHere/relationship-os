@@ -102,12 +102,42 @@ export const load: PageServerLoad = async ({ locals, url, cookies, setHeaders })
   const draft = onboarding && profile ? readOwnedProfileDraft(cookies, locals.user.id, profile.id) : null;
   if (onboarding) setHeaders({ 'cache-control': 'private, no-store', 'referrer-policy': 'same-origin' });
   const exchangeReturn = url.searchParams.get('exchange')==='1' ? profileExchangeReturn(cookies,locals.user.id) : null;
-  return { exchangeReturn, profile: profile || null, requestedProfileKind, networkEntry, creatingNew,
+  // Retain the exact selection on a failed POST so the editor cannot reload a different card.
+  const query = new URLSearchParams(url.searchParams);
+  for (const name of [...query.keys()]) {
+    if (name.startsWith('/')) query.delete(name);
+  }
+  const editorQuery = query.toString();
+  return { editorQuery, exchangeReturn, profile: profile || null, requestedProfileKind, networkEntry, creatingNew,
     onboarding, draft,
     fromProfiles: url.searchParams.get('from') === 'profiles', mode, first, next, returnContext };
 };
 
 export const actions: Actions = {
+  publication: async ({ request, locals, url }) => {
+    if (!locals.user) throw redirect(303, '/auth/login');
+    const fd = await request.formData();
+    const profileId = String(fd.get('profileId') || '');
+    const intent = fd.get('publication');
+    if (!profileId || (intent !== 'publish' && intent !== 'unpublish')) {
+      return fail(400, { error: 'Choose a profile and publication action.' });
+    }
+    const profile = await prisma.profile.findFirst({
+      where: { id: profileId, userId: locals.user.id },
+      select: { slug: true, displayName: true }
+    });
+    if (!profile) return fail(404, { error: 'Profile not found' });
+    if (intent === 'publish' && !profile.displayName?.trim()) {
+      return fail(400, { error: 'Enter a public name before publishing.' });
+    }
+
+    // Change visibility only. Preserve the slug and existing exchange history.
+    await prisma.profile.update({
+      where: { id: profileId, userId: locals.user.id },
+      data: { isPublished: intent === 'publish' }
+    });
+    throw redirect(303, url.pathname + '?profile=' + encodeURIComponent(profile.slug));
+  },
   save: async ({ request, locals, url, cookies }) => {
     // IT: require auth
     if (!locals.user) {
@@ -134,7 +164,7 @@ export const actions: Actions = {
     const phonePublic = String(fd.get('phonePublic') || '').trim();
     // SECURITY: Publication is an explicit owner decision, not inferred from QR generation.
     // The prominent publish button submits the same editor and all its validation.
-    const isPublished = fd.get('publishNow') === 'yes' || fd.get('isPublished') === 'on';
+    const isPublished = fd.get('publishNow') === 'yes';
     // IT: Network entry never permits changing another profile kind through form tampering.
     const networkEntry = String(fd.get('entry') || '') === 'network';
     const requestedKind = networkEntry ? 'personal' : String(fd.get('kind') || 'business').trim();
@@ -283,6 +313,8 @@ export const actions: Actions = {
     if (kindForContext[returnContext] === kind) {
       throw redirect(303, `/space/${returnContext}/profile`);
     }
+
+    if (!isPublished) throw redirect(303, '/profiles');
 
     // First-time flow - preview public page
     const nextParam = url.searchParams.get('next');

@@ -24,7 +24,8 @@ const note = z.strictObject({
 	speakerId: id.optional(),
 	allowPrivateAnalysis: z.boolean().default(false),
 	captureKind: z.enum(['OWNER_NOTE', 'VOICE_NOTE']).optional(),
-	summary: z.string().max(20000).optional()
+	summary: z.string().max(20000).optional(),
+	occurredAt: z.string().datetime().optional()
 });
 const statement = z.strictObject({
 	...revision,
@@ -77,7 +78,7 @@ function lineage(previous: { id: string; version: number } | null) {
 }
 
 // The F-204 account and vault locks serialize expected-version comparison, replay and all inserts.
-export function appendOwnerNote(access: FoundationAccess, values: z.input<typeof note>) {
+export function appendOwnerNote(access: FoundationAccess, values: z.input<typeof note>, correctionSourceId?: string) {
 	return withFoundationAccess(access, 'RECORD_EVIDENCE', async (tx) => {
 		const input = note.parse(values);
 		if (!anchorIsValid(input))
@@ -94,7 +95,10 @@ export function appendOwnerNote(access: FoundationAccess, values: z.input<typeof
 		const custody = scope(access);
 		const ingestKey = mac(access, 'note-key', input.key);
 		const replay = mac(access, 'note-request', JSON.stringify(input));
-		let source = await tx.foundationSource.findFirst({ where: { ingestKey } });
+		let source = await tx.foundationSource.findFirst({
+			where: correctionSourceId ? { id: correctionSourceId } : { ingestKey }
+		});
+		if (correctionSourceId && !source) throw new FoundationDenied();
 		if (
 			source &&
 			(source.state !== 'ACTIVE' || source.kind !== (input.captureKind ?? 'OWNER_NOTE'))
@@ -110,6 +114,20 @@ export function appendOwnerNote(access: FoundationAccess, values: z.input<typeof
 			where: { sourceId: source.id },
 			orderBy: { version: 'desc' }
 		});
+		if (correctionSourceId) {
+			// The editor owns only single-person private notes, not shared or attributed evidence.
+			if (!latest || latest.version !== input.expectedVersion) throw new FoundationConflict();
+			if (latest.processingAdmission !== 'STORED_ONLY') throw new FoundationDenied();
+			const segments = await tx.foundationEvidenceSegment.findMany({
+				where: { sourceVersionId: latest.id }, take: 2
+			});
+			if (segments.length !== 1 || segments[0].speakerSubjectId) throw new FoundationDenied();
+			const links = await tx.foundationEvidenceSubject.findMany({
+				where: { segmentId: segments[0].id }, take: 2
+			});
+			if (links.length !== 1 || input.subjectIds.length !== 1 ||
+				links[0].subjectId !== input.subjectIds[0]) throw new FoundationDenied();
+		}
 		if ((latest?.version ?? 0) !== input.expectedVersion) {
 			const prior = await tx.foundationSourceVersion.findFirst({
 				where: { sourceId: source.id, version: input.expectedVersion + 1 }
@@ -149,6 +167,7 @@ export function appendOwnerNote(access: FoundationAccess, values: z.input<typeof
 				sourceId: source.id,
 				...lineage(latest),
 				recordedByKind: 'OWNER',
+				occurredAt: input.occurredAt ? new Date(input.occurredAt) : undefined,
 				processingAdmission: admission,
 				contentMac,
 				payloadEnc: encrypt(
@@ -461,7 +480,7 @@ export function listPersonNotes(access: FoundationAccess, personId: string, afte
 		});
 		const associations = await tx.foundationEvidenceSubject.findMany({
 			where: { segmentId: { in: current.map((segment) => segment.id) } },
-			select: { subjectId: true },
+			select: { subjectId: true, segmentId: true },
 			take: 1601
 		});
 		// Preserve lifecycle checks for every subject/speaker, not only the person whose page is open.
@@ -493,6 +512,10 @@ export function listPersonNotes(access: FoundationAccess, personId: string, afte
 			);
 			notes.push({
 				id: source.id,
+				version: version.version,
+				editable: version.processingAdmission === 'STORED_ONLY' && !segment?.speakerSubjectId &&
+					current.filter((item) => item.sourceVersionId === version.id).length === 1 &&
+					associations.filter((link) => link.segmentId === segment?.id).length === 1,
 				channel: source.kind === 'VOICE_NOTE' ? 'OWNER_VOICE_NOTE' : 'OWNER_NOTE',
 				at: (version.occurredAt ?? version.createdAt).toISOString(),
 				text: decrypt(

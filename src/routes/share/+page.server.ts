@@ -9,7 +9,7 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 
   const profileOptions = await prisma.profile.findMany({
     where: { userId: locals.user.id },
-    select: { id: true, slug: true, label: true, displayName: true, kind: true, isPublished: true },
+    select: { id: true, slug: true, label: true, displayName: true, isPublished: true },
     orderBy: [{ isDefault: 'desc' }, { updatedAt: 'desc' }]
   });
 

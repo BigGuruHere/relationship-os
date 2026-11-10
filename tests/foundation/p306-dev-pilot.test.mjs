@@ -279,7 +279,7 @@ test('Internal DEV setup and ordinary Foundation signup on an isolated database'
 								profileId: profile.id,
 								displayName: 'Relish foundation test',
 								kind: 'business',
-								isPublished: 'on'
+								publishNow: 'yes'
 							})
 						})
 					}),
@@ -625,6 +625,35 @@ test('Internal DEV setup and ordinary Foundation signup on an isolated database'
 			const saved = (await detail(browser)).notes[0];
 			assert.equal(saved.text, 'Reviewed voice transcript');
 			assert.equal(saved.summary, 'Private summary');
+			const edit = () => personPage.actions.editNote({
+				...event(browser, '/people/' + person.id + '?/editNote', {
+					noteId: saved.id, version: String(saved.version), channel: saved.channel,
+					text: 'Corrected transcript', summary: 'Updated summary', occurredAt: '2026-11-09T09:30'
+				}), params: personParams
+			});
+			await assert.rejects(edit(), at('/people/' + person.id));
+			const corrected = (await detail(browser)).notes[0];
+			assert.equal(corrected.id, saved.id);
+			assert.equal(corrected.version, saved.version + 1);
+			assert.equal(corrected.text, 'Corrected transcript');
+			assert.equal(corrected.summary, 'Updated summary');
+			assert.equal(corrected.at, '2026-11-09T09:30:00.000Z');
+			assert.equal((await edit()).status, 409);
+
+			// Unpublishing closes the live card and QR while retaining captured data.
+			await assert.rejects(publicPage.load({
+				...event(browser, '/u/' + slug + '?edit=1'), params: { slug }
+			}), at('/settings/profile?profile=' + slug + '&from=profiles'));
+			const editPath = '/settings/profile?profile=' + slug;
+			const changeVisibility = (publication) => profilesPage.actions.publication(event(browser,
+				editPath + '&/publication', { profileId: ordinaryProfile.id, publication }));
+			await assert.rejects(changeVisibility('unpublish'), at(editPath));
+			await assert.rejects(publicPage.load(publicCard), (error) => error.status === 404);
+			assert.equal((await qr.GET(event(guest, '/api/qr?slug=' + slug))).status, 404);
+			assert.equal((await detail(browser)).notes[0].id, saved.id);
+			await assert.rejects(changeVisibility('publish'), at(editPath));
+			assert.equal((await publicPage.load(publicCard)).profile.displayName, publicName);
+
 		});
 		await t.test('guest signup first opens verification and saves the card without guest account proof', async () => {
 			process.env.RELISH_DEV_FOUNDATION_PILOT_TARGET = target;

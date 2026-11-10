@@ -17,7 +17,7 @@
   $: isHome = path === '/';
   $: isPeople = path === '/people' || path.startsWith('/people/');
   // IT: Profiles and Share operate on user-owned profiles, not ContextSpace selection.
-  $: isProfileManagement = path === '/profiles' || path === '/share' || path === '/settings/profile' || path.startsWith('/share/');
+  $: isProfileManagement = path === '/profiles' || path === '/share' || path === '/settings/profile' || path.startsWith('/share/') || /^\/space\/[^/]+\/share\/?$/.test(path);
   $: isNeutralNavigation = isHome || isPeople || isProfileManagement || spaces.length === 0;
   $: isPublic = path.startsWith('/u/') || path.startsWith('/pilot/dorian/') || path.startsWith('/network/join/') || path === '/legal' || path.startsWith('/legal/');
   $: isBroker = ['/broker', '/leads', '/deals', '/companies', '/agents', '/workstreams', '/contacts', '/wants', '/offers', '/introductions', '/projects', '/tasks', '/actions', '/search'].some(prefix => path === prefix || path.startsWith(prefix + '/'));
@@ -136,7 +136,7 @@
   <main class="relish-content"><slot /></main>
 
   {#if !isPublic && data.user && !specialist}
-    <nav class="relish-bottom-nav" aria-label={isHome ? 'Relish navigation' : activeSpace.label + ' navigation'}>
+    <nav class="relish-bottom-nav" aria-label={isNeutralNavigation ? 'Relish navigation' : activeSpace.label + ' navigation'}>
       {#each nav as item}
         <a class:current={path === navHref(item.slug, isNeutralNavigation, activeBase)} href={navHref(item.slug, isNeutralNavigation, activeBase)}>
           <span aria-hidden="true">{item.icon}</span><span>{item.label}</span>

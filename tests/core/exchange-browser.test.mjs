@@ -28,7 +28,7 @@ const vite = await createServer({
                 if (id === '\0gate') return `export function exchangeBrowserEnabled(){return true;}`;
 				if (id === '\0domain') return `export async function accountDomain(){return 'ACTIVE';}`;
 				if (id === '\0claims')
-					return `export async function accountClaimState(){return {canComplete:true,settled:Boolean(globalThis.guestCompleted),channel:{type:'PHONE',step:'PHONE',available:true,masked:'•••• 0000'}};} export async function prepareAccountClaim(){return 'phone';} export async function completeAccountClaim(){globalThis.guestCompleted=true;return {status:'SETTLED',personId:'private-person'};} export async function ownedExchangeChoices(){return [];} export async function confirmOwnedProfileExchange(...a){globalThis.ownedArgs=a;} export async function requestExchangeCode(...a){globalThis.claimArgs=a;if(globalThis.claimFailure)throw globalThis.claimFailure;return {status:'QUEUED',challengeId:'challenge'};} export async function dispatchExchangeCode(){return {status:'SENT'};} export async function verifyExchangeCode(...a){globalThis.verifyArgs=a;return {status:'SETTLED',personId:'private-person'};}`;
+					return `export async function accountClaimState(){return {canComplete:true,settled:Boolean(globalThis.guestCompleted),channel:{type:'PHONE',step:'PHONE',available:true,masked:'•••• 0000'}};} export async function prepareAccountClaim(){return 'phone';} export async function completeAccountClaim(){globalThis.guestCompleted=true;return {status:'SETTLED',personId:'private-person'};} export async function ownedExchangeChoices(){return [];} export async function confirmOwnedProfileExchange(...a){globalThis.ownedArgs=a;return {personId:"private-person"};} export async function requestExchangeCode(...a){globalThis.claimArgs=a;if(globalThis.claimFailure)throw globalThis.claimFailure;return {status:'QUEUED',challengeId:'challenge'};} export async function dispatchExchangeCode(){return {status:'SENT'};} export async function verifyExchangeCode(...a){globalThis.verifyArgs=a;return {status:'SETTLED',personId:'private-person'};}`;
 			}
 		}
 	]
@@ -62,7 +62,7 @@ try {
       const ev=event(c,{intent:'confirm-profile',confirmation:'opaque-preview'});
       ev.params={slug:'mark'};
       ev.url=new URL('https://dev.relish.live/u/mark/share-details');
-      await assert.rejects(route.actions.default(ev),e=>e.status===303 && e.location==='/people');
+      await assert.rejects(route.actions.default(ev),e=>e.status===303 && e.location==='/people/private-person?afterExchange=1');
       assert.equal(globalThis.ownedArgs[1],'opaque-preview');assert.equal(globalThis.ownedArgs[3],'target');
       const bad=event(c,{intent:'confirm-profile'},'https://evil.invalid');bad.params={slug:'mark'};
       assert.equal((await route.actions.default(bad)).status,403);
@@ -115,8 +115,17 @@ try {
       const e=event(c,{intent:'complete'});e.locals.env='dev';
       const state=await page.load(e);assert.equal(state.version,2);assert.equal(state.accountClaim.canComplete,true);
       const before=globalThis.claimArgs;
-      const result=await page.actions.default(e);assert.equal(result.completed,true);assert.equal(globalThis.claimArgs,before);
+      await assert.rejects(page.actions.default(e), r => r.status === 303 && r.location === '/people/private-person?afterExchange=1');assert.equal(globalThis.claimArgs,before);
       globalThis.guestCompleted=false;
+    });
+    await test('sign-in can complete an exchange with existing proof without visiting the claim page', async () => {
+      const c = cookies();
+      const url = new URL('https://dev.relish.live/auth/google/callback');
+      flow.saveExchange(c, url, 'd'.repeat(64), 'profile', 2);
+      assert.equal(await flow.finishVerifiedExchange(c, url, {env:'dev', appOrigin:url.origin},
+        flow.EXCHANGE_RETURN, 'betty', 'session'), '/people/private-person?afterExchange=1');
+      assert.equal(flow.readExchange(c), null);
+      globalThis.guestCompleted = false;
     });
     await test('channel diagnostics classify validation/schema/provider failures without private values',async()=>{
       const diag=await vite.ssrLoadModule('/src/lib/server/foundation/channelDiagnostics.ts');
@@ -163,7 +172,7 @@ try {
 		assert.equal((await page.actions.default(switched)).status, 400);
 		await assert.rejects(
 			page.actions.default(event(c, { intent: 'verify', code: '123456' })),
-			(e) => e.status === 303 && e.location === '/people'
+			(e) => e.status === 303 && e.location === '/people/private-person?afterExchange=1'
 		);
 		assert.equal(flow.readExchange(c), null);
 		assert.equal(globalThis.verifyArgs[4], 'trusted-address');

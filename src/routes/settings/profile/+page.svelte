@@ -1,37 +1,44 @@
 <script lang="ts">
   // PURPOSE: edit your shareable profile with flexible extras from EXTRA_KEYS
   // SECURITY: only handles plain user-entered strings - no decryption here
+  import { onMount } from 'svelte';
   export let data: any;
   export let form: any;
 
   import { EXTRA_KEYS } from '$lib/publicProfile'; // IT: [{ key, label }]
 
-  // IT: working profile from loader or defaults
-  const p: any = data?.profile || {};
-  // IT: Label is an owner-facing name, separate from the profile's public display name.
-  let profileLabel = p.label && p.label !== 'My profile' ? p.label : (p.displayName || '');
-
-  // IT: core public fields
-  let displayName = p.displayName || data?.draft?.name || '';
-  let headline    = p.headline || '';
-  let bio         = p.bio || '';
-  let avatarUrl   = p.avatarUrl || '';
-  let company     = p.company || '';
-  let title       = p.title || '';
-  let websiteUrl  = p.websiteUrl || '';
-  let emailPublic = p.emailPublic || data?.draft?.email || '';
-  let phonePublic = p.phonePublic || data?.draft?.phone || '';
-  let kind        = p.kind || data?.requestedProfileKind || 'business';
-
-  // IT: extra inputs - one per EXTRA_KEYS entry
-  const publicMeta = p.publicMeta || {};
+  let profileLabel = '', displayName = '', headline = '', bio = '', avatarUrl = '';
+  let company = '', title = '', websiteUrl = '', emailPublic = '', phonePublic = '';
   let extra_inputs: Record<string, string> = {};
-  for (const spec of EXTRA_KEYS) {
-    extra_inputs[spec.key] = typeof publicMeta[spec.key] === 'string' ? publicMeta[spec.key] : '';
+  let baseline = '';
+  let ready = false;
+  onMount(() => { ready = true; });
+
+  // SvelteKit can reuse this editor when moving to another profile or after a save.
+  function initialise(profile: any, draft: any) {
+    profileLabel = profile.label && profile.label !== 'My profile' ? profile.label : profile.displayName || '';
+    displayName = profile.displayName || draft?.name || '';
+    headline = profile.headline || '';
+    bio = profile.bio || '';
+    avatarUrl = profile.avatarUrl || '';
+    company = profile.company || '';
+    title = profile.title || '';
+    websiteUrl = profile.websiteUrl || '';
+    emailPublic = profile.emailPublic || draft?.email || '';
+    phonePublic = profile.phonePublic || draft?.phone || '';
+    extra_inputs = Object.fromEntries(EXTRA_KEYS.map(({ key }) => [key, profile.publicMeta?.[key] || '']));
+    baseline = JSON.stringify([profileLabel, displayName, headline, bio, avatarUrl, company, title,
+      websiteUrl, emailPublic, phonePublic, extra_inputs]);
   }
 
-  // IT: first time banner flag from loader
-  const isFirstTime = Boolean(data?.first);
+  $: p = data?.profile || {};
+  $: initialise(p, data?.draft);
+  $: creating = !p.id || (data?.onboarding && !p.isPublished);
+  $: kind = p.kind || data?.requestedProfileKind || 'business';
+  $: changed = JSON.stringify([profileLabel, displayName, headline, bio, avatarUrl, company, title,
+    websiteUrl, emailPublic, phonePublic, extra_inputs]) !== baseline;
+  $: editorQuery = data?.editorQuery ? '&' + data.editorQuery : '';
+  $: showSaveActions = creating || changed || !ready;
 
   let photoError = '';
   let photoBusy = false;
@@ -68,57 +75,48 @@
 
 </script>
 
-<div class="container">
-  <div class="card" style="padding:16px; max-width:720px; margin:0 auto;">
-    <h1 style="margin:0 0 12px 0;">{p?.id ? 'Edit profile' : 'Create profile'}</h1>
-    {#if p.isPublished === false || !p.id}
-      <!-- Submit the existing editor, including unsaved fields and its normal validation. -->
-      <aside class="publication-banner" aria-label="Profile publication status">
-        <div><strong>Your profile is unpublished</strong><p>Publish it to make your profile link and QR code available.</p></div>
-        <button class="btn primary" type="submit" form="profile-editor" name="publishNow" value="yes">Publish profile</button>
-      </aside>
+<div class="card profile-card">
+  <h1>{creating ? 'Create profile' : 'Edit profile'}</h1>
+  {#if !creating}
+    <aside class="publication-banner" aria-label="Profile publication status">
+      <strong>{p.isPublished ? 'Published' : 'Unpublished'}</strong>
+      {#if !changed && !data?.exchangeReturn}
+        <form method="post" action={'?/publication' + editorQuery}>
+          <input type="hidden" name="profileId" value={p.id} />
+          <button class="btn" type="submit" name="publication" value={p.isPublished ? 'unpublish' : 'publish'}>
+            {p.isPublished ? 'Unpublish' : 'Publish saved profile'}
+          </button>
+        </form>
+      {/if}
+    </aside>
+  {/if}
+  <!-- IT: main editor form - named action `save` -->
+  <form id="profile-editor" method="post" action={'?/save' + editorQuery} class="profile-editor">
+    {#if data?.exchangeReturn}<input type="hidden" name="returnToExchange" value="1" />{/if}
+    {#if data?.returnContext}
+      <!-- IT: Return to the same context after editing, never to a mismatched profile. -->
+      <input type="hidden" name="returnContext" value={data.returnContext} />
     {/if}
-    {#if data?.onboarding}
-      <p>Review your details and choose whether to publish. Your QR code becomes available after publication.</p>
+    {#if data?.networkEntry}
+      <!-- IT: explicit Network workflow flag, checked by the server. -->
+      <input type="hidden" name="entry" value="network" />
+    {/if}
+    {#if data?.fromProfiles}
+      <!-- IT: Editing from the manager returns to the manager, not an unrelated context. -->
+      <input type="hidden" name="returnToProfiles" value="1" />
+    {/if}
+    {#if data?.creatingNew}
+      <!-- IT: Explicitly create another profile even if this account has one of the same type. -->
+      <input type="hidden" name="createNewProfile" value="1" />
+      <input type="hidden" name="returnToProfiles" value="1" />
+    {/if}
+    {#if p?.id}
+      <!-- IT: include for update path -->
+      <input type="hidden" name="profileId" value={p.id} />
     {/if}
 
-    {#if isFirstTime}
-      <div style="margin:0 0 12px 0; padding:8px 10px; border:1px solid #e6e6e6; border-radius:10px; background:#fafafa;">
-        Create your public profile, then we will show you how others will see it.
-      </div>
-    {/if}
-
-    <!-- IT: main editor form - named action `save` -->
-    <form id="profile-editor" method="post" action={data?.onboarding ? "?/save&onboarding=1" : "?/save"} style="display:grid; grid-template-columns: 1fr 1fr; gap:12px;">
-      {#if data?.exchangeReturn}<input type="hidden" name="returnToExchange" value="1" />{/if}
-      {#if data?.returnContext}
-        <!-- IT: Return to the same context after editing, never to a mismatched profile. -->
-        <input type="hidden" name="returnContext" value={data.returnContext} />
-      {/if}
-      {#if data?.networkEntry}
-        <!-- IT: explicit Network workflow flag, checked by the server. -->
-        <input type="hidden" name="entry" value="network" />
-      {/if}
-      {#if data?.fromProfiles}
-        <!-- IT: Editing from the manager returns to the manager, not an unrelated context. -->
-        <input type="hidden" name="returnToProfiles" value="1" />
-      {/if}
-      {#if data?.creatingNew}
-        <!-- IT: Explicitly create another profile even if this account has one of the same type. -->
-        <input type="hidden" name="createNewProfile" value="1" />
-        <input type="hidden" name="returnToProfiles" value="1" />
-      {/if}
-      {#if p?.id}
-        <!-- IT: include for update path -->
-        <input type="hidden" name="profileId" value={p.id} />
-      {/if}
-
-      <div class="field">
-        <label for="profileLabel">Profile label (only you see this)</label>
-        <input id="profileLabel" name="label" bind:value={profileLabel} maxlength="120" required={data?.creatingNew} placeholder="e.g. Thursday Networking" />
-        <small>Use this name to choose which profile to share. Visitors see your public name below.</small>
-      </div>
-
+    <fieldset class="editor-section">
+      <legend>Profile details</legend>
       <div class="field">
         <label for="displayName">Public name</label>
         <input id="displayName" name="displayName" bind:value={displayName} required />
@@ -138,7 +136,7 @@
         <label for="photoFile">Profile photo (specific to this profile)</label>
         {#if avatarUrl}<img src={avatarUrl} alt="Current profile" class="profile-photo-preview" />{/if}
         <input id="photoFile" type="file" accept="image/jpeg,image/png,image/webp" on:change={uploadProfilePhoto} />
-        <small>Choose a photo from your phone. It will be resized and displayed publicly on this profile only.</small>
+        <small>Choose a photo from your phone. It will be resized and shown when you publish this profile.</small>
         {#if photoBusy}<small>Preparing photo…</small>{/if}
         {#if photoError}<p role="alert">{photoError}</p>{/if}
         <input type="hidden" name="avatarUrl" value={avatarUrl} />
@@ -155,10 +153,17 @@
       </div>
 
       <div class="field">
-        <label for="websiteUrl">Website</label>
-        <input id="websiteUrl" name="websiteUrl" bind:value={websiteUrl} placeholder="https://..." />
+        <label for="profileLabel">Profile label (only you see this)</label>
+        <input id="profileLabel" name="label" bind:value={profileLabel} maxlength="120" required={data?.creatingNew} placeholder="e.g. Thursday Networking" />
+        <small>Use this name to choose which profile to share. Visitors see your public name.</small>
       </div>
 
+      <!-- Contextual entry points still use the stored kind for legacy routing. -->
+      <input type="hidden" name="kind" value={kind} />
+    </fieldset>
+
+    <fieldset class="editor-section">
+      <legend>Public contact details</legend>
       <div class="field">
         <label for="emailPublic">Public email</label>
         <input id="emailPublic" name="emailPublic" type="email" bind:value={emailPublic} />
@@ -166,56 +171,101 @@
 
       <div class="field">
         <label for="phonePublic">Public phone</label>
-        <input id="phonePublic" name="phonePublic" bind:value={phonePublic} />
+        <input id="phonePublic" name="phonePublic" type="tel" bind:value={phonePublic} />
       </div>
+    </fieldset>
 
-      <div class="field span2">
-        <label><input type="checkbox" name="isPublished" checked={p?.id ? p.isPublished !== false : !data?.creatingNew && !data?.onboarding} /> Published publicly</label>
-        <small>Uncheck to hide this profile and disable its public QR destination.</small>
-      </div>
-      <div class="field">
-        <label for="kind">Profile type</label>
-        <select id="kind" name="kind" bind:value={kind} disabled={data?.networkEntry || !!p.id}>
-          <option value="business">Business</option>
-          <option value="personal">Friendship</option>
-          <option value="dating">Dating</option>
-          <option value="custom">Custom</option>
-        </select>
-      </div>
-
-      {#if p.id || data?.networkEntry}<input type="hidden" name="kind" value={kind} />{/if}
-
-      <!-- IT: flexible extras - one input per known key -->
-      {#each EXTRA_KEYS as spec (spec.key)}
+    <!-- Closed details keep the form short. Its named inputs still submit existing values. -->
+    <details class="links">
+      <summary>Website and social links</summary>
+      <div class="editor-section">
         <div class="field">
-          <label for={"extra_"+spec.key}>{spec.label}</label>
-          <input id={"extra_"+spec.key} name={"extra_" + spec.key} bind:value={extra_inputs[spec.key]} />
+          <label for="websiteUrl">Website</label>
+          <input id="websiteUrl" name="websiteUrl" bind:value={websiteUrl} placeholder="https://..." />
         </div>
-      {/each}
 
-      <div style="grid-column: 1 / span 2; display:flex; gap:8px; margin-top:8px; flex-wrap:wrap; align-items:center;">
-        <button class="btn primary" type="submit">Save</button>
-        <a class="btn" href={data?.exchangeReturn || "/profiles"}>{data?.exchangeReturn ? "Cancel and return to exchange" : "Back to My Profiles"}</a>
+        <!-- IT: flexible extras - one input per known key -->
+        {#each EXTRA_KEYS as spec (spec.key)}
+          <div class="field">
+            <label for={"extra_"+spec.key}>{spec.label}</label>
+            <input id={"extra_"+spec.key} name={"extra_" + spec.key} bind:value={extra_inputs[spec.key]} />
+          </div>
+        {/each}
       </div>
+    </details>
 
-      {#if form?.error}
-        <p style="color:var(--danger); margin-top:12px;">{form.error}</p>
+    {#if showSaveActions && p.isPublished}
+      <small>Save for Later unpublishes this profile and turns off its public link and QR code.</small>
+    {/if}
+    <div class="form-actions">
+      {#if showSaveActions}
+        <!-- Pressing Enter in a field saves privately. Publishing requires its own action. -->
+        <button type="submit" hidden disabled={photoBusy}>Save for Later</button>
+        <button class="btn primary" type="submit" name="publishNow" value="yes" disabled={photoBusy}>Publish</button>
+        <button class="btn" type="submit" disabled={photoBusy}>Save for Later</button>
       {/if}
-    </form>
+      <a class="btn" href={data?.exchangeReturn || "/profiles"}>{data?.exchangeReturn ? "Cancel and return to exchange" : "Back to My Profiles"}</a>
+    </div>
 
-
-  </div>
+    {#if form?.error}
+      <p class="form-error" role="alert">{form.error}</p>
+    {/if}
+  </form>
 </div>
 
 <style>
-  .publication-banner{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;padding:18px;margin:16px 0 22px;border:2px solid #256457;border-radius:12px;background:#edf7f2;}
-  .publication-banner p{margin:6px 0 0;line-height:1.5;}
-  .publication-banner button{min-height:48px;font-weight:700;padding:12px 20px;}
-  .profile-photo-preview { width:76px; height:76px; border-radius:50%; object-fit:cover; }
-  @media(max-width:540px){form{grid-template-columns:minmax(0,1fr)!important;} .span2{grid-column:1!important;} input,textarea,select{min-width:0;max-width:100%;box-sizing:border-box;} }
-  .field { display:flex; flex-direction:column; gap:6px; }
-  .field input, .field textarea, .field select { padding:8px 10px; border:1px solid #ddd; border-radius:10px; font-family:inherit; }
-  .span2 { grid-column: 1 / span 2; }
-  .btn { padding:8px 12px; border:1px solid #ccc; border-radius:10px; text-decoration:none; }
-  .btn.primary { background:#111; color:#fff; border-color:#111; }
+  .profile-card { max-width: 720px; margin: 0 auto; padding: clamp(12px, 3vw, 24px); }
+  h1 { margin: 0 0 12px; }
+  .profile-editor { display: grid; grid-template-columns: minmax(0, 1fr); gap: 18px; }
+  .editor-section {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 12px;
+    min-inline-size: 0;
+    margin: 0;
+    padding: 12px;
+    border: 1px solid var(--border, #ddd);
+    border-radius: 12px;
+  }
+  legend { padding: 0 4px; font-weight: 700; }
+  .field { display: flex; flex-direction: column; gap: 6px; min-width: 0; margin: 0; }
+  .field input, .field textarea {
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    min-height: 44px;
+    padding: 8px 10px;
+    border: 1px solid #ddd;
+    border-radius: 10px;
+    font: inherit;
+  }
+  .span2 { grid-column: 1 / -1; }
+  .links summary { cursor: pointer; font-weight: 700; padding: 12px 0; }
+  .links .editor-section { margin-top: 4px; }
+  .publication-banner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 8px 12px;
+    margin: 8px 0 16px;
+    border: 1px solid #b9d5cc;
+    border-radius: 10px;
+    background: #edf7f2;
+  }
+  .profile-photo-preview { width: 76px; height: 76px; border-radius: 50%; object-fit: cover; }
+  .form-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+  .form-error { margin: 0; color: var(--danger); }
+  .btn { padding: 8px 12px; min-height: 44px; border: 1px solid #ccc; border-radius: 10px; text-decoration: none; }
+  .btn.primary { background: #111; color: #fff; border-color: #111; }
+
+  /* A full-width row always spans the explicit grid, even when the phone layout has one column. */
+  @media (min-width: 851px) {
+    .editor-section { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  }
+  @media (max-width: 540px) {
+    .form-actions { display: grid; }
+  }
 </style>

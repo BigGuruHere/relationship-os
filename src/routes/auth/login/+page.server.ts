@@ -1,4 +1,4 @@
-import { EXCHANGE_RETURN, startExchangeAfterAuth } from '$lib/server/exchangeOnboarding';
+import { EXCHANGE_RETURN, startExchangeAfterAuth, finishVerifiedExchange } from '$lib/server/exchangeOnboarding';
 // src/routes/auth/login/+page.server.ts
 // PURPOSE: verify credentials and set a new session cookie
 // SECURITY:
@@ -94,6 +94,9 @@ export const actions: Actions = {
     } catch (e) {
       console.warn('Could not clear successful-login throttle bucket:', e);
     }
+
+    const followup = await finishVerifiedExchange(cookies, url, locals, next, user.id, sessionId);
+    if (followup) throw redirect(303, followup);
 
     // Profile continuation skips legacy claims. Existing Network and ordinary login keep their flow.
     if ((next === PROFILE_ONBOARDING_RETURN || next === EXCHANGE_RETURN)) {

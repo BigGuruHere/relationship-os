@@ -1,3 +1,4 @@
+import { peopleDorianAgent } from '$lib/server/integrations/elevenlabs/peopleWebNote';
 import { appendOwnerNote, listPersonNotes, FoundationConflict } from '$lib/server/foundation/evidence';
 import { error, fail, redirect } from '@sveltejs/kit';
 import { peopleRouteDomain, foundationPage } from '$lib/server/foundation/peopleRouting';
@@ -14,16 +15,17 @@ export const load: PageServerLoad = async ({ locals, params, url }) => {
   if (!locals.user) throw redirect(303, '/auth/login');
   if (await peopleRouteDomain(locals.user.id, '/people/' + params.id) === 'FOUNDATION') {
     const contact = await foundationPage(async () => readPerson(await resolveFoundationAccess(locals, 'READ'), params.id));
+    const dorianAvailable = Boolean(url && peopleDorianAgent(locals, url));
     const followup = url?.searchParams.get('afterExchange');
     if (followup === '1' || followup === 'received') {
       // The exchange prompt only needs the name and the link to the private recorder.
       return {
         contact: { id: contact.id, name: contact.name, email: '', phone: '' },
-        origin: null, notes: [], nextNote: null, foundation: true, followup
+        origin: null, notes: [], nextNote: null, foundation: true, dorianAvailable, followup
       };
     }
     const history = await foundationPage(async () => listPersonNotes(await resolveFoundationAccess(locals, 'READ_NOTES'), params.id, url?.searchParams.get('afterNote') || undefined));
-    return { contact, origin: contact.origin, notes: history.notes, nextNote: history.next, foundation: true, followup: null };
+    return { contact, origin: contact.origin, notes: history.notes, nextNote: history.next, foundation: true, dorianAvailable, followup: null };
   }
   const { context, contact } = await requirePeopleContact(locals, params.id);
   const rows = await prisma.interaction.findMany({ where: { userId: context.workspaceUserId, contextSpaceId: context.contextSpaceId, contactId: contact.id },

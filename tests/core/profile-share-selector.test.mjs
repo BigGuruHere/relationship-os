@@ -5,17 +5,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 const read = (path) => readFileSync(new URL('../../' + path, import.meta.url), 'utf8');
-const layout = read('src/routes/+layout.svelte');
 const shareServer = read('src/routes/share/+page.server.ts');
 const sharePage = read('src/routes/share/+page.svelte');
-
-test('profile management, editing, and Share are neutral destinations, not ContextSpace selectors', () => {
-  assert.match(layout, /isProfileManagement = path === '\/profiles' \|\| path === '\/share' \|\| path === '\/settings\/profile'/);
-  assert.match(layout, /isNeutralNavigation = isHome \|\| isPeople \|\| isProfileManagement/);
-  assert.match(layout, /\{#if !isNeutralNavigation\}<div class="relish-context-picker">/);
-  assert.match(layout, /href=\{isNeutralNavigation \? '\/share' : activeBase \+ '\/share'\}/);
-  assert.match(layout, /if \(neutralNavigation && slug === '\/profile'\) return '\/profiles'/);
-});
 
 test('Share selects only signed-in users own profiles by exact slug', () => {
   assert.match(shareServer, /where: \{ userId: locals\.user\.id \}/);

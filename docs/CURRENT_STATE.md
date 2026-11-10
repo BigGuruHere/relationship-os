@@ -11,6 +11,8 @@ Exchange and notes follow-up is implemented on `feature/exchange-voice-note-foll
 
 `feature/dorian-webrtc-dev` adds an owner-only page at `/settings/dorian-voice-test` on the canonical DEV origin. It uses ElevenLabs' JavaScript SDK and WebRTC with a short-lived token issued by Relish. The page requires the existing server-only `ELEVENLABS_API_KEY` and a dedicated, private DEV agent in `RELISH_DORIAN_WEB_TEST_AGENT_ID`. Use an agent with no tools, Relish webhooks or memory ingestion and verify its provider retention settings before speaking. Use synthetic conversation details. Relish sends no contact data and saves no transcript or note in this test. No migration.
 
+Token requests now have a Relish reference visible on failure and in Railway logs. The logs distinguish provider rejection and its HTTP status, connection failures, timeouts, and invalid responses. Browser console stages distinguish token, SDK load and WebRTC failures. For this transport test, use a self-contained agent with static prompt and greeting or defaults for every required dynamic variable. The existing Dorian browser initiation webhook is a separate path that requires an authorized Relish session token.
+
 On real devices, sign in as owner, open the page, start and end a conversation twice, and check for repeat microphone permission prompts. Note whether Dorian plays through the earpiece, speaker or connected headphones. Repeat in iPhone Safari, Android Chrome and their installed Relish web apps. Check that ending the conversation releases the microphone. Hosted and handset acceptance is pending.
 
 ## QR exchange follow-up

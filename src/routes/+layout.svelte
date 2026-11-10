@@ -22,6 +22,8 @@
   $: isProfileManagement = path === '/profiles' || path === '/share' || path === '/settings/profile' || path.startsWith('/share/') || /^\/space\/[^/]+\/share\/?$/.test(path);
   $: isNeutralNavigation = isHome || isPeople || isProfileManagement || spaces.length === 0;
   $: isPublic = path.startsWith('/u/') || path.startsWith('/pilot/dorian/') || path.startsWith('/network/join/') || path === '/legal' || path.startsWith('/legal/');
+  $: exchangeFollowup = Boolean(data.user) && /^\/people\/[^/]+\/?$/.test(path) &&
+    ['1', 'received'].includes($page.url.searchParams.get('afterExchange') || '');
   $: isBroker = ['/broker', '/leads', '/deals', '/companies', '/agents', '/workstreams', '/contacts', '/wants', '/offers', '/introductions', '/projects', '/tasks', '/actions', '/search'].some(prefix => path === prefix || path.startsWith(prefix + '/'));
   $: isOperator = path === '/operator' || path.startsWith('/operator/') || path === '/general' || path.startsWith('/general/');
   $: hint = (path === '/settings/profile' && data.profileKindHint === 'personal') ? 'friendship' : path === '/settings/profile' && ['business', 'dating'].includes(data.profileKindHint) ? data.profileKindHint : null;
@@ -62,8 +64,8 @@
 </script>
 
 <svelte:head><meta name="theme-color" content={activeSpace.color}/></svelte:head>
-<div class:relish-visitor={isPublic} class="relish-shell" style={'--workspace-accent:' + activeSpace.color}>
-  {#if !isPublic}
+<div class:relish-visitor={isPublic || exchangeFollowup} class="relish-shell" style={'--workspace-accent:' + activeSpace.color}>
+  {#if !isPublic && !exchangeFollowup}
     <header class="relish-header">
       <a class="relish-brand" href={data.user ? '/' : '/auth/login'} aria-label="Relish home">
         <img src="/relish-logo.png" alt="" width="36" height="36" />
@@ -136,11 +138,11 @@
   {/if}
 
   <main class="relish-content">
-    <InstallRelish enabled={Boolean(data.user) && /^\/people\/[^/]+\/?$/.test(path) && $page.url.searchParams.get('afterExchange') === '1'} />
+    <InstallRelish enabled={Boolean(data.user) && /^\/people\/[^/]+\/notes\/new\/?$/.test(path) && $page.url.searchParams.get('afterExchange') === '1'} />
     <slot />
   </main>
 
-  {#if !isPublic && data.user && !specialist}
+  {#if !isPublic && !exchangeFollowup && data.user && !specialist}
     <nav class="relish-bottom-nav" aria-label={isNeutralNavigation ? 'Relish navigation' : activeSpace.label + ' navigation'}>
       {#each nav as item}
         <a class:current={path === navHref(item.slug, isNeutralNavigation, activeBase)} href={navHref(item.slug, isNeutralNavigation, activeBase)}>

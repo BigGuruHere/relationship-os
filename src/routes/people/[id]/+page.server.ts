@@ -14,15 +14,23 @@ export const load: PageServerLoad = async ({ locals, params, url }) => {
   if (!locals.user) throw redirect(303, '/auth/login');
   if (await peopleRouteDomain(locals.user.id, '/people/' + params.id) === 'FOUNDATION') {
     const contact = await foundationPage(async () => readPerson(await resolveFoundationAccess(locals, 'READ'), params.id));
+    const followup = url?.searchParams.get('afterExchange');
+    if (followup === '1' || followup === 'received') {
+      // The exchange prompt only needs the name and the link to the private recorder.
+      return {
+        contact: { id: contact.id, name: contact.name, email: '', phone: '' },
+        origin: null, notes: [], nextNote: null, foundation: true, followup
+      };
+    }
     const history = await foundationPage(async () => listPersonNotes(await resolveFoundationAccess(locals, 'READ_NOTES'), params.id, url?.searchParams.get('afterNote') || undefined));
-    return { contact, origin: contact.origin, notes: history.notes, nextNote: history.next, foundation: true, afterExchange: url?.searchParams.get('afterExchange') === '1' };
+    return { contact, origin: contact.origin, notes: history.notes, nextNote: history.next, foundation: true, followup: null };
   }
   const { context, contact } = await requirePeopleContact(locals, params.id);
   const rows = await prisma.interaction.findMany({ where: { userId: context.workspaceUserId, contextSpaceId: context.contextSpaceId, contactId: contact.id },
     orderBy: [{ occurredAt: 'desc' }, { id: 'desc' }], select: { id: true, channel: true, rawTextEnc: true, summaryEnc: true, luAdmission: true, occurredAt: true } });
   const originRow = rows.find(row => row.channel === CAPTURE_CHANNEL);
   const origin = originRow ? JSON.parse(decrypt(originRow.rawTextEnc, 'interaction.raw_text')) : null;
-  return { foundation: false, nextNote: null, origin: origin ? { submittedAt: origin.submittedAt as string, channel: 'Profile detail sharing' } : null, contact: privateContactDetails(contact), afterExchange: false, notes: rows.filter(row => row.channel !== CAPTURE_CHANNEL).map(row => ({ id: row.id, version: 0, editable: row.luAdmission === 'STORED_ONLY' && ['OWNER_NOTE', 'OWNER_VOICE_NOTE'].includes(row.channel), channel: row.channel, at: row.occurredAt.toISOString(), text: decrypt(row.rawTextEnc, 'interaction.raw_text'), summary: decryptInteractionSummary(row.summaryEnc) })) };
+  return { foundation: false, nextNote: null, origin: origin ? { submittedAt: origin.submittedAt as string, channel: 'Profile detail sharing' } : null, contact: privateContactDetails(contact), followup: null, notes: rows.filter(row => row.channel !== CAPTURE_CHANNEL).map(row => ({ id: row.id, version: 0, editable: row.luAdmission === 'STORED_ONLY' && ['OWNER_NOTE', 'OWNER_VOICE_NOTE'].includes(row.channel), channel: row.channel, at: row.occurredAt.toISOString(), text: decrypt(row.rawTextEnc, 'interaction.raw_text'), summary: decryptInteractionSummary(row.summaryEnc) })) };
 };
 
 // Archive the existing owner-private person. This does not erase related evidence.

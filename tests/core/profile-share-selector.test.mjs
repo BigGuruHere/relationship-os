@@ -22,7 +22,7 @@ test('Share selects only signed-in users own profiles by exact slug', () => {
   assert.match(shareServer, /select: \{ id: true, slug: true, label: true, displayName: true, isPublished: true \}/);
   assert.match(shareServer, /profileOptions\.find\(row => row\.slug === targetSlug\)/);
   assert.match(shareServer, /if \(targetSlug !== null && !profile\) throw error\(404/);
-  assert.match(shareServer, /return \{ profile, profileOptions, origin: locals\.appOrigin \}/);
+  assert.match(shareServer, /return \{ profile, profileOptions, origin: locals\.appOrigin, watchSince: Date\.now\(\) \}/);
 });
 
 test('Share dropdown displays owner labels and refreshes all profile-specific links', () => {

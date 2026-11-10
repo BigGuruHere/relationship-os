@@ -661,6 +661,71 @@ test('Internal DEV setup and ordinary Foundation signup on an isolated database'
 			assert.equal((await publicPage.load(publicCard)).profile.displayName, publicName);
 
 		});
+		await t.test('Dorian draft is bound to the owner session and person until explicit save', async () => {
+			const agentId = 'agent_dev_dorian';
+			process.env.RELISH_DORIAN_WEB_TEST_AGENT_ID = agentId;
+			const previousApiKey = process.env.ELEVENLABS_API_KEY;
+			process.env.ELEVENLABS_API_KEY = 'synthetic-dev-key';
+			try {
+				const owner = { cookies: browser.cookies, locals: {
+					...browser.locals, env: 'dev', appOrigin: origin,
+					user: { ...browser.locals.user, role: 'owner' }
+				} };
+				const directory = await people.load(event(owner, '/people'));
+				const person = directory.people.find(row => row.name === 'QR visitor');
+				const other = directory.people.find(row => row.name === 'Manual visitor');
+				const path = '/people/' + person.id + '/notes/dorian';
+				const params = { id: person.id };
+				const voice = await load('routes/people/[id]/notes/dorian/+page.server');
+				const start = { ...event(owner, path, {}), params, fetch: async () =>
+					Response.json({ token: 'synthetic-token', conversation_id: 'conv_fixture' }) };
+				await assert.rejects(voice.load({ ...start, locals: browser.locals }), e => e.status === 404);
+				const issued = await voice.actions.start(start);
+				assert.equal(issued.personName, 'QR visitor');
+				assert.equal(issued.conversationId, undefined);
+				const draft = {
+					...event(owner, path, { reference: issued.reference }), params,
+					fetch: async endpoint => {
+						assert.match(String(endpoint), /\/conversations\/conv_fixture\?format=json$/);
+						return Response.json({ conversation_id: 'conv_fixture', agent_id: agentId, status: 'done',
+							transcript: [{ role: 'user', message: 'Met at a conference' }],
+							analysis: { transcript_summary: 'Met at a conference.' } });
+					}
+				};
+				const requestDraft = (input) => voice.actions.draft({ ...input, request: input.request.clone() });
+				const foreign = { ...draft, locals: { ...another.locals, user: {
+					...another.locals.user, role: 'owner'
+				} } };
+				await assert.rejects(requestDraft(foreign), e => e.status === 404);
+				assert.equal((await requestDraft({ ...draft, params: { id: other.id } })).status, 409);
+				assert.equal((await requestDraft({ ...draft, locals: { ...owner.locals, sessionId: 'other-session' } })).status, 409);
+				assert.deepEqual(await requestDraft({ ...draft, fetch: async () =>
+					Response.json({ conversation_id: 'conv_fixture', agent_id: agentId, status: 'processing' })
+				}), { state: 'pending' });
+				assert.equal((await requestDraft({ ...draft, fetch: async () =>
+					Response.json({ conversation_id: 'conv_other', agent_id: agentId, status: 'done' })
+				})).status, 502);
+				assert.deepEqual(await requestDraft(draft), { state: 'ready', text: 'Met at a conference.' });
+
+				const detail = () => personPage.load({ ...event(owner, '/people/' + person.id), params });
+				assert.ok(!(await detail()).notes.some(note => note.text.includes('conference')));
+				const save = () => notePage.actions.save({
+					...event(owner, '/people/' + person.id + '/notes/new?/save', {
+						text: 'Met at the conference on Tuesday.', saveKey: issued.reference
+					}), params
+				});
+				await assert.rejects(save(), at('/people/' + person.id));
+				await assert.rejects(save(), at('/people/' + person.id));
+				assert.equal((await detail()).notes.filter(note => note.text.includes('conference')).length, 1);
+				await assert.rejects(voice.actions.discard({ ...event(owner, path, { reference: issued.reference }), params }), at('/people/' + person.id));
+				assert.equal((await requestDraft(draft)).status, 409);
+			} finally {
+				delete process.env.RELISH_DORIAN_WEB_TEST_AGENT_ID;
+				if (previousApiKey === undefined) delete process.env.ELEVENLABS_API_KEY;
+				else process.env.ELEVENLABS_API_KEY = previousApiKey;
+			}
+		});
+
 		await t.test('guest signup first opens verification and saves the card without guest account proof', async () => {
 			process.env.RELISH_DEV_FOUNDATION_PILOT_TARGET = target;
 			process.env.RELISH_EXCHANGE_BROWSER_ENABLED = 'YES';

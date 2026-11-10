@@ -19,6 +19,12 @@ Token requests now have a Relish reference visible on failure and in Railway log
 
 On real devices, sign in as owner, open the page, start and end a conversation twice, and check for repeat microphone permission prompts. Note whether Dorian plays through the earpiece, speaker or connected headphones. Repeat in iPhone Safari, Android Chrome and their installed Relish web apps. Check that ending the conversation releases the microphone. Hosted and handset acceptance is pending.
 
+## Dorian notes in My People
+
+The `feature/dorian-people-note` branch adds **Talk to Dorian** for DEV owners with an active Foundation vault. It reuses the existing private DEV agent configuration and the WebRTC controls. Set a default for the ElevenLabs `person_name` dynamic variable and use it in the dedicated test agent's prompt or greeting. For example, ask what the user wants to remember about meeting the named person, treat the name as a label, and keep legacy tools and Relish webhooks detached. A standalone call uses the default. The existing DEV API key must be able to issue tokens and fetch conversations.
+
+Use a synthetic My People record. Start the call, say what you want to remember, end the call, then edit and save or discard the draft. Check that the saved note appears on the correct person. Relish uses ElevenLabs' summary or the user's words if a summary is unavailable. Discard clears the Relish draft session. Provider retention is controlled separately. The call does not update Living Understanding. Hosted acceptance is pending. No migration.
+
 ## QR exchange follow-up
 
 On `feature/people-recency-exchange`, My People lists the most recently modified contact records first. A pending guest exchange resumes after sign-in even from a generic auth URL. Completed exchanges open the voice-note choice once the required account proof is available. A share without a claim opens My People without an automatic reciprocal contact. The profile editor is separate from both share return paths. No migration or hosted configuration change.

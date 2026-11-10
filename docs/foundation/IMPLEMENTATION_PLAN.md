@@ -106,6 +106,10 @@ The `feature/people-recency-exchange` branch preserves pending exchange returns 
 
 On `feature/clean-exchange-followup`, the two participants can go directly to the existing private voice recorder or return Home. The Share screen polls only for a fresh receipt for the selected profile in the signed-in owner's active Foundation vault. Acceptance covers saved-contact and claim receipts, owner isolation and the two prompt variants in disposable database and render tests. Hosted two-device acceptance is pending. Rollback is a code revert. There is no migration or activation change.
 
+### Dorian web note intake
+
+P-303 gains an owner-only DEV conversation draft adapter on `feature/dorian-people-note`. Isolated tests cover the server-issued conversation, exact owner and person, review before save, save replay, and discard. Live provider and device testing remain pending. No migration. Revert the application change to remove the new entry point.
+
 ## Stage register
 
 | Stage | Designed | Implemented | Validated | Merged | DEV / PROD |

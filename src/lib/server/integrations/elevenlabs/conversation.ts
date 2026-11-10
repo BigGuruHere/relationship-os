@@ -100,9 +100,8 @@ export function verifyElevenLabsSignature(rawBody: string, signatureHeader: stri
   return inspectElevenLabsSignature(rawBody, signatureHeader, secret, nowSeconds).valid;
 }
 
-export function normalizeElevenLabsConversation(input: ElevenLabsConversationData, ingestMethod: 'ELEVENLABS_WEBHOOK' | 'ELEVENLABS_API') {
-  const conversationId = String(input?.conversation_id || '').trim();
-  if (!conversationId || conversationId.length > 240) throw new Error('ElevenLabs conversation_id is missing or invalid.');
+// Parse speech independently of the legacy telephone metadata and configuration.
+export function parseElevenLabsTranscript(input: ElevenLabsConversationData): ParsedTranscript {
   const transcript = Array.isArray(input?.transcript) ? input.transcript : [];
   const turns: TranscriptTurn[] = [];
   const speakers = new Set<string>();
@@ -117,16 +116,22 @@ export function normalizeElevenLabsConversation(input: ElevenLabsConversationDat
     if (turns.length > 600) throw new Error('ElevenLabs conversation exceeds the 600-turn import limit.');
   }
   if (!turns.some(turn => turn.speaker === 'User')) throw new Error('ElevenLabs conversation has no participant speech to retain.');
+  const parsed: ParsedTranscript = { turns, speakers: [...speakers], text: turns.map(turn => turn.text).join('\n') };
+  return parsed;
+}
+
+export function normalizeElevenLabsConversation(input: ElevenLabsConversationData, ingestMethod: 'ELEVENLABS_WEBHOOK' | 'ELEVENLABS_API') {
+  const conversationId = String(input?.conversation_id || '').trim();
+  if (!conversationId || conversationId.length > 240) throw new Error('ElevenLabs conversation_id is missing or invalid.');
+  const parsed = parseElevenLabsTranscript(input);
   const metadata = asObject(input?.metadata);
   const started = Number(metadata.start_time_unix_secs);
   const occurredAt = Number.isFinite(started) && started > 0 ? new Date(started * 1000) : null;
-  const parsed: ParsedTranscript = { turns, speakers: [...speakers], text: turns.map(turn => turn.text).join('\n') };
   const clientData = asObject(input?.conversation_initiation_client_data);
   const dynamicVariables = asObject(clientData.dynamic_variables);
   const callerPhone = extractCallerPhone(input, metadata, dynamicVariables);
   const calledNumber = extractCalledNumber(metadata, dynamicVariables);
-  const analysis = asObject(input?.analysis);
-  const transcriptSummary = firstNonEmpty(analysis.transcript_summary).slice(0, 4000) || null;
+  const transcriptSummary = readElevenLabsSummary(input);
   return {
     parsed,
     metadata: {
@@ -147,12 +152,16 @@ export function normalizeElevenLabsConversation(input: ElevenLabsConversationDat
   };
 }
 
-export async function fetchElevenLabsConversation(conversationId: string, apiKey = requiredEnv('ELEVENLABS_API_KEY')) {
+export function readElevenLabsSummary(input: ElevenLabsConversationData) {
+  return firstNonEmpty(asObject(input?.analysis).transcript_summary).slice(0, 4000) || null;
+}
+
+export async function fetchElevenLabsConversation(conversationId: string, apiKey = requiredEnv('ELEVENLABS_API_KEY'), request = fetch, signal?: AbortSignal) {
   const id = String(conversationId || '').trim();
   if (!id || id.length > 240 || !/^[A-Za-z0-9_-]+$/.test(id)) throw new Error('Enter a valid ElevenLabs conversation ID.');
   if (!apiKey) throw new Error('ELEVENLABS_API_KEY is not configured.');
-  const response = await fetch(`https://api.elevenlabs.io/v1/convai/conversations/${encodeURIComponent(id)}?format=json`, {
-    headers: { 'xi-api-key': apiKey, accept: 'application/json' }
+  const response = await request(`https://api.elevenlabs.io/v1/convai/conversations/${encodeURIComponent(id)}?format=json`, {
+    headers: { 'xi-api-key': apiKey, accept: 'application/json' }, signal
   });
   if (!response.ok) throw new Error(`ElevenLabs conversation fetch failed (${response.status}).`);
   return await response.json() as ElevenLabsConversationData;

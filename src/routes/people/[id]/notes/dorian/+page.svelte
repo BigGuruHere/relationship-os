@@ -1,10 +1,11 @@
 <script lang="ts">
-  import { deserialize } from '$app/forms';
+  import { deserialize, enhance } from '$app/forms';
   import { onMount } from 'svelte';
   import DorianWebConversation from '$lib/components/DorianWebConversation.svelte';
-  import type { PageData } from './$types';
+  import type { ActionData, PageData } from './$types';
 
   export let data: PageData;
+  export let form: ActionData;
   let activePerson = data.personId;
   let reference = data.reference;
   let checking = false;
@@ -78,7 +79,7 @@
 <section class="container" style="max-width: 40rem">
   <a href={personPath}>← Back to {data.name}</a>
   <h1>Talk to Dorian about {data.name}</h1>
-  <p>Dorian can help you remember what mattered. ElevenLabs receives your live audio and both display names. OpenAI uses your side of the conversation to draft the note.</p>
+  <p>Dorian can help you remember what mattered. ElevenLabs receives your live audio and both display names. OpenAI uses your side of the conversation to draft the summary. If you save, both sides of the transcript are stored privately with your summary.</p>
   {#if !ready}
     {#key activePerson}
       <DorianWebConversation action="?/start" disabled={checking}
@@ -97,12 +98,12 @@
       <p>No draft was generated. You can write a note using what you said below.</p>
       <details><summary>Show what I said</summary><p style="white-space: pre-wrap">{callerSpeech}</p></details>
     {/if}
-    <!-- Post to the existing private note writer with a stable key for retries. -->
-    <form method="POST" action={personPath + '/notes/new?/save'}>
-      <input type="hidden" name="saveKey" value={reference} />
-      <label for="note">Note</label>
-      <textarea id="note" name="text" rows="9" maxlength="64000" required bind:value={draft}></textarea>
-      <button class="btn primary" type="submit">Save private note</button>
+    <form method="POST" action="?/save" use:enhance>
+      <input type="hidden" name="reference" value={reference} />
+      <label for="note">Summary</label>
+      <textarea id="note" name="summary" rows="9" maxlength="20000" required bind:value={draft}></textarea>
+      {#if form && 'error' in form && form.error}<p role="alert">{form.error}</p>{/if}
+      <button class="btn primary" type="submit">Save private conversation</button>
     </form>
   {/if}
   {#if reference && !calling}

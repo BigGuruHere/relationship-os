@@ -1,5 +1,6 @@
 // Exercise the shipped adapters with synthetic accounts. All SQL lives in an in-memory database.
 import test from 'node:test';
+import { applyLuMigration } from './lu-migration-fixture.mjs';
 import assert from 'node:assert/strict';
 import { compile } from 'svelte/compiler';
 import { render } from 'svelte/server';
@@ -27,6 +28,7 @@ test('P-301 private People routes and cohort isolation', { timeout: 120000 }, as
 				'utf8'
 			)
 		);
+		await applyLuMigration(db);
 		await db.exec(`INSERT INTO "User" (id,"updatedAt") VALUES ('pilot',now()),('second',now()),('legacy',now());
       INSERT INTO "Profile"(id,"userId",slug,"updatedAt") VALUES ('pilot-card','pilot','pilot',now()),('legacy-card','legacy','legacy',now()),('second-card','second','second',now());`);
 		socket = new PGLiteSocketServer({ db, host: '127.0.0.1', port: 0, maxConnections: 1 });

@@ -161,11 +161,12 @@ export async function summarizeText(text: string, options: {
 
 
 // Shared provider transport. Callers own their draft schema and authorization.
+export const privateDraftModel = 'gpt-4o-mini';
 export async function requestDraftCompletion(instruction: string, text: string, options: {
   request?: typeof fetch; signal?: AbortSignal; json?: boolean; maxTokens?: number;
 } = {}): Promise<string> {
   const payload = {
-    model: "gpt-4o-mini",
+    model: privateDraftModel,
     messages: [
       { role: "system", content: instruction },
       { role: "user", content: text }

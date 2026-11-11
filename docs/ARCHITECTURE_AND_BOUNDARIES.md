@@ -28,6 +28,10 @@ Keep existing data and security boundaries during the deployment split. Brokerag
 
 See the [stage-2/3 backlog and migration gates](foundation/IMPLEMENTATION_PLAN.md). F-201 now specifies the [physical schema and transaction contracts](foundation/PHYSICAL_MODEL.md), with [source dependency and data inventory](foundation/DEPENDENCY_INVENTORY.md). F-202 adds the custody root and typed subjects to Prisma and an additive migration on its feature branch; [invariants and rehearsal](foundation/F202_INVARIANTS.md) document coverage. Target migration, auth isolation, access services and user-facing activation remain pending. The sections below describe current implementation, not the target schema.
 
+## Foundation conversation and understanding persistence
+
+LUR-2 introduces a full conversation source in the existing private vault. The source version binds speaker-labelled turns to the exact provider capture. Presentation versions link each editable summary to its source version and person. Understanding streams are scoped by subject and perspective. Each approved revision points to exact topic versions and their meaning and evidence dependencies. The preparation, approval and eligible-read operations recheck the current vault and source. See [LUR-2](foundation/LUR2_PERSISTENCE.md) for the feature branch, migration and acceptance status.
+
 ## Stack and environments
 
 - Main app: SvelteKit, TypeScript, Node 22, Prisma 6, PostgreSQL/Neon with pgvector, OpenAI integrations; Railway DEV and PROD.

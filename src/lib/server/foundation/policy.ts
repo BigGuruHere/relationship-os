@@ -19,7 +19,14 @@ export type FoundationOperation =
 	| 'READ_STATEMENT'
 	| 'READ_NOTES'
 	| 'REVIEW_NOTE'
-	| 'PROCESS_DRAFT';
+	| 'PROCESS_DRAFT'
+	| 'SAVE_CONVERSATION'
+	| 'READ_CONVERSATION'
+	| 'REVISE_CONVERSATION_SOURCE'
+	| 'PREPARE_LU'
+	| 'STORE_LU_CANDIDATE'
+	| 'APPROVE_LU'
+	| 'READ_LU';
 export type FoundationAccess = Readonly<{
 	actorId: string;
 	ownerUserId: string;
@@ -65,6 +72,9 @@ function purposeFor(operation: FoundationOperation): FoundationAccess['purpose']
 			return 'PRIVATE_DIRECTORY';
 		case 'PROCESS_DRAFT':
 			return 'PRIVATE_DRAFT_PROCESSING';
+		case 'SAVE_CONVERSATION':
+		case 'READ_CONVERSATION':
+		case 'REVISE_CONVERSATION_SOURCE':
 		case 'READ_NOTES':
 		case 'READ_SEGMENT':
 		case 'RECORD_EVIDENCE':
@@ -90,7 +100,14 @@ async function resolve(
 			'READ_STATEMENT',
 			'READ_NOTES',
 			'REVIEW_NOTE',
-			'PROCESS_DRAFT'
+			'PROCESS_DRAFT',
+			'SAVE_CONVERSATION',
+			'READ_CONVERSATION',
+			'REVISE_CONVERSATION_SOURCE',
+			'PREPARE_LU',
+			'STORE_LU_CANDIDATE',
+			'APPROVE_LU',
+			'READ_LU'
 		].includes(operation)
 	)
 		throw new FoundationDenied();

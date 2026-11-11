@@ -99,6 +99,40 @@ const statementModels = [
 	'FoundationStatementSubject',
 	'FoundationSupport'
 ];
+// The conversation and LU repositories use separate capabilities for capture,
+// analysis and approval. Ordinary notes and segment readers gain no new payload access.
+const presentationModel = 'FoundationSourcePresentationVersion';
+const luSnapshotModels = [
+	'FoundationLuStream', 'FoundationLuTopic', 'FoundationLuTopicVersion',
+	'FoundationLuTopicMeaning', 'FoundationLuRevision', 'FoundationLuRevisionTopic'
+];
+const luModels = [...luSnapshotModels, 'FoundationLuMeaningOrigin', 'FoundationLuCandidate', 'FoundationLuApproval'];
+function luOperationAllowed(mode: Boundary['mode'], model: string, op: string) {
+	const conversationReads = ['FoundationSubject', 'FoundationSource', 'FoundationSourceVersion', presentationModel];
+	const graphReads = [...conversationReads, ...domainModels, ...sourceModels, ...statementModels, ...luSnapshotModels];
+	switch (mode) {
+		case 'READ_CONVERSATION':
+			return reads.has(op) && conversationReads.includes(model);
+		case 'SAVE_CONVERSATION':
+			return (reads.has(op) && conversationReads.includes(model)) ||
+				(op === 'create' && ['FoundationSource', 'FoundationSourceVersion', presentationModel].includes(model));
+		case 'REVISE_CONVERSATION_SOURCE':
+			return (reads.has(op) && conversationReads.includes(model)) ||
+				(op === 'create' && model === 'FoundationSourceVersion');
+		case 'PREPARE_LU':
+			return (reads.has(op) && graphReads.includes(model)) || (op === 'create' && domainModels.has(model));
+		case 'STORE_LU_CANDIDATE':
+			return (reads.has(op) && graphReads.includes(model)) || (op === 'create' && model === 'FoundationLuCandidate');
+		case 'APPROVE_LU':
+			return (reads.has(op) && [...graphReads, ...luModels].includes(model)) ||
+				(op === 'create' && [...sourceModels.slice(2), ...statementModels, ...luSnapshotModels,
+					'FoundationLuMeaningOrigin', 'FoundationLuApproval'].includes(model));
+		case 'READ_LU':
+			return reads.has(op) && [...graphReads.filter(name => name !== presentationModel), 'FoundationLuMeaningOrigin'].includes(model);
+		default:
+			return false;
+	}
+}
 function evidenceOperationAllowed(mode: Boundary['mode'], model: string, op: string) {
 	// Review appends to an owner note and creates private subjects and statements atomically.
 	if (mode === 'REVIEW_NOTE')
@@ -150,7 +184,9 @@ function privacyOperationAllowed(mode: Boundary['mode'], model: string, op: stri
 		...statementModels,
 		...domainModels,
 		'FoundationContext',
-		'FoundationContextAssociation'
+		'FoundationContextAssociation',
+		presentationModel,
+		...luModels
 	];
 	if (!contentModels.includes(model)) return false;
 	if (mode === 'PRIVACY_REVIEW') return op === 'findMany' || op === 'count';
@@ -264,7 +300,7 @@ export function guardFoundationQuery(model: string | undefined, operation: strin
 	// Segment and understanding reads may inspect source eligibility, never a parent payload.
 	if (
 		model === 'FoundationSourceVersion' &&
-		['READ_SEGMENT', 'RECORD_STATEMENT', 'READ_STATEMENT'].includes(scope.mode)
+		['READ_SEGMENT', 'RECORD_STATEMENT', 'READ_STATEMENT', 'READ_LU'].includes(scope.mode)
 	) {
 		const allowed = ['sourceId', 'version', 'processingAdmission'];
 		if (!args?.select || Object.keys(args.select).some((k) => !allowed.includes(k)))
@@ -276,6 +312,11 @@ export function guardFoundationQuery(model: string | undefined, operation: strin
 		'FoundationExchangeDispatch',
 		'FoundationAccountAssociation'
 	];
+	// Evidence readers may check the conversation's subject binding without its summary.
+	const presentationBindingRead = model === presentationModel && operation === 'findFirst' &&
+		['READ_SEGMENT', 'READ_STATEMENT', 'RECORD_STATEMENT', 'READ_LU'].includes(scope.mode) &&
+		typeof args?.where?.sourceId === 'string' && args.where.version === 1 &&
+		args?.select && Object.keys(args.select).every(key => key === 'subjectId');
 	const evidenceAllowed =
 		scope.mode === 'EXCHANGE'
 			? (exchangeModels.includes(model) &&
@@ -293,7 +334,8 @@ export function guardFoundationQuery(model: string | undefined, operation: strin
 			: scope.mode === 'PUBLIC_CAPTURE'
 				? captureOperationAllowed(model, operation, args, scope.capturePrefix)
 				: evidenceOperationAllowed(scope.mode, model, operation) ||
-					privacyOperationAllowed(scope.mode, model, operation, args);
+					privacyOperationAllowed(scope.mode, model, operation, args) ||
+					luOperationAllowed(scope.mode, model, operation) || presentationBindingRead;
 	if (scope.mode === 'PRIVACY_CONTROL' && !evidenceAllowed) throw new FoundationDenied();
 	if (
 		!evidenceAllowed &&

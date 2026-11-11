@@ -1,11 +1,13 @@
 // Versioned owner evidence. P-303 routes pass explicit owner authority and stored-only admission.
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
-import { buildScopedMacToken, encrypt, decrypt } from '$lib/crypto';
+import { encrypt, decrypt } from '$lib/crypto';
 import type { AppTransactionClient } from '$lib/db';
 import { FoundationDenied } from './internal';
 import { withFoundationAccess, type FoundationAccess } from './policy';
 import { insertRelationship } from './subjects';
+import { FoundationConflict, scope, mac, aad, activeSubjects, lineage, scopedId, recordEvidenceSegment } from './evidenceRecords';
+export { FoundationConflict } from './evidenceRecords';
 
 const id = z.string().min(1).max(200);
 const subjects = z
@@ -47,24 +49,6 @@ const statement = z.strictObject({
 	mode: z.enum(['DECLARED', 'OBSERVED', 'INFERRED']),
 	confidence: z.enum(['LOW', 'MEDIUM', 'HIGH'])
 });
-export class FoundationConflict extends Error {
-	constructor() {
-		super('The revision or replay key conflicts with saved work.');
-	}
-}
-function scope(a: FoundationAccess) {
-	return { ownerUserId: a.ownerUserId, vaultId: a.vaultId };
-}
-function mac(a: FoundationAccess, purpose: string, value: string) {
-	return buildScopedMacToken(value, 'foundation:v1:' + a.vaultId + ':' + purpose);
-}
-function aad(a: FoundationAccess, table: string, field: string, row: string) {
-	return ['foundation', 'v1', table, field, a.ownerUserId, a.vaultId, row].join(':');
-}
-async function activeSubjects(tx: AppTransactionClient, ids: string[]) {
-	const count = await tx.foundationSubject.count({ where: { id: { in: ids }, state: 'ACTIVE' } });
-	if (!ids.length || count !== ids.length) throw new FoundationDenied();
-}
 // A valid UTF-16 offset must not divide a surrogate pair.
 function splitsPair(text: string, offset: number) {
 	return (
@@ -80,14 +64,6 @@ function anchorIsValid(input: z.infer<typeof note>) {
 		input.text.slice(input.start, input.end) === input.quote
 	);
 }
-function lineage(previous: { id: string; version: number } | null) {
-	return {
-		version: (previous?.version ?? 0) + 1,
-		previousVersionId: previous?.id ?? null,
-		previousVersionNumber: previous?.version ?? null
-	};
-}
-
 // The F-204 account and vault locks serialize expected-version comparison, replay and all inserts.
 export function appendOwnerNote(access: FoundationAccess, values: z.input<typeof note>, correctionSourceId?: string) {
 	return withFoundationAccess(access, 'RECORD_EVIDENCE', (tx) => recordOwnerNote(tx, access, values, correctionSourceId));
@@ -186,39 +162,11 @@ async function recordOwnerNote(tx: AppTransactionClient, access: FoundationAcces
 			)
 		}
 	});
-	const segmentId = await recordNoteSegment(tx, access, versionId, contentMac, input.start, input.end,
+	const segmentId = await recordEvidenceSegment(tx, access, versionId, contentMac, input.start, input.end,
 		input.quote, input.subjectIds, input.speakerId);
 	return { sourceId: source.id, version: version.version, segmentId };
 }
 
-
-async function recordNoteSegment(tx: AppTransactionClient, access: FoundationAccess, versionId: string,
-	contentMac: string, start: number, end: number, quote: string, subjectIds: string[], speakerId?: string) {
-	const custody = scope(access);
-	const segmentId = randomUUID();
-	const anchor = JSON.stringify({ encoding: 'UTF-16', start, end, contentMac });
-	await tx.foundationEvidenceSegment.create({
-		data: {
-			...custody,
-			id: segmentId,
-			sourceVersionId: versionId,
-			speakerSubjectId: speakerId,
-			speakerKind: speakerId ? 'PERSON' : null,
-			anchorMac: mac(access, 'anchor:' + versionId, anchor),
-			anchorEnc: encrypt(
-				anchor,
-				aad(access, 'FoundationEvidenceSegment', 'anchorEnc', segmentId)
-			),
-			excerptEnc: encrypt(
-				quote,
-				aad(access, 'FoundationEvidenceSegment', 'excerptEnc', segmentId)
-			)
-		}
-	});
-	for (const subjectId of subjectIds)
-		await tx.foundationEvidenceSubject.create({ data: { ...custody, segmentId, subjectId } });
-	return segmentId;
-}
 
 function noteProvenance(access: FoundationAccess, version: { id: string; provenanceEnc: string }) {
 	return JSON.parse(decrypt(version.provenanceEnc, aad(access, 'FoundationSourceVersion', 'provenanceEnc', version.id)));
@@ -241,7 +189,7 @@ async function editablePersonNote(tx: AppTransactionClient, access: FoundationAc
 }
 
 // A segment projection cannot traverse to parent payload, even when an earlier version is inspected.
-async function segmentState(
+export async function segmentState(
 	tx: AppTransactionClient,
 	segmentId: string,
 	forUnderstanding: boolean
@@ -252,14 +200,11 @@ async function segmentState(
 		where: { id: segment.sourceVersionId },
 		select: { sourceId: true, version: true, processingAdmission: true }
 	});
-	if (
-		!version ||
-		!(await tx.foundationSource.findFirst({
-			where: { id: version.sourceId, state: 'ACTIVE' },
-			select: { id: true }
-		}))
-	)
-		throw new FoundationDenied();
+	if (!version) throw new FoundationDenied();
+	const source = await tx.foundationSource.findFirst({
+		where: { id: version.sourceId, state: 'ACTIVE' }, select: { kind: true }
+	});
+	if (!source) throw new FoundationDenied();
 	if (forUnderstanding) {
 		const latest = await tx.foundationSourceVersion.findFirst({
 			where: { sourceId: version.sourceId },
@@ -276,10 +221,18 @@ async function segmentState(
 	});
 	if (links.length > 32) throw new FoundationDenied();
 	const subjectIds = links.map((l) => l.subjectId);
+	if (source.kind === 'IMPORTED_CONVERSATION') {
+		// Conversation anchors use the source's person binding. They do not add rows
+		// to the ordinary note history index for each supported passage.
+		const presentation = await tx.foundationSourcePresentationVersion.findFirst({
+			where: { sourceId: version.sourceId, version: 1 }, select: { subjectId: true }
+		});
+		if (presentation) subjectIds.push(presentation.subjectId);
+	}
 	await activeSubjects(tx, [
 		...new Set([...subjectIds, ...(segment.speakerSubjectId ? [segment.speakerSubjectId] : [])])
 	]);
-	return { segment, subjectIds };
+	return { segment, subjectIds: [...new Set(subjectIds)] };
 }
 export function readEvidenceSegment(access: FoundationAccess, segmentId: string) {
 	return withFoundationAccess(access, 'READ_SEGMENT', async (tx) => {
@@ -296,6 +249,7 @@ export function readEvidenceSegment(access: FoundationAccess, segmentId: string)
 			start: anchor.start,
 			end: anchor.end,
 			encoding: anchor.encoding,
+			...(anchor.turnId ? { turnId: anchor.turnId, speakerRole: anchor.speakerRole } : {}),
 			speakerId: segment.speakerSubjectId,
 			subjectIds
 		};
@@ -399,12 +353,6 @@ async function recordSupportedStatement(tx: AppTransactionClient, access: Founda
 }
 
 
-// Stable per-vault opaque UUIDv8 for scoped creation and retry keys.
-function scopedId(access: FoundationAccess, purpose: string, key: string) {
-	const hash = mac(access, purpose, key);
-	return [hash.slice(0, 8), hash.slice(8, 12), '8' + hash.slice(13, 16),
-		'8' + hash.slice(17, 20), hash.slice(20, 32)].join('-');
-}
 export function readCurrentStatement(access: FoundationAccess, statementId: string) {
 	return withFoundationAccess(access, 'READ_STATEMENT', async (tx) => {
 		const root = await tx.foundationStatement.findFirst({
@@ -651,7 +599,7 @@ export function approveNoteReview(access: FoundationAccess, personId: string, so
 		const segments = new Map([[first.start + ':' + first.end, admitted.segmentId]]);
 		for (const anchor of anchors) {
 			const position = anchor.start + ':' + anchor.end;
-			const segmentId = segments.get(position) ?? await recordNoteSegment(tx, access, version.id,
+			const segmentId = segments.get(position) ?? await recordEvidenceSegment(tx, access, version.id,
 				version.contentMac, anchor.start, anchor.end, anchor.proposal.quote, [personId]);
 			segments.set(position, segmentId);
 			const subjectId = { self: self.id, person: personId, relationship: relationshipId }[anchor.proposal.bucket];

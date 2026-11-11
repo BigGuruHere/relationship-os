@@ -46,6 +46,8 @@ For architecture and new-domain implementation, read these linked documents afte
 
 - [F-205 private evidence](foundation/F205_EVIDENCE.md) covers versioned notes, excerpts, supported statements and current eligibility.
 
+- [LUR-2 private conversation and understanding persistence](foundation/LUR2_PERSISTENCE.md) describes the additive migration, owner-private conversation flow and snapshot acceptance.
+
 - [LUR-1 contracts and persistence handoff](foundation/LUR1_CONTRACTS.md) inventories the shared LU validators and defines the next Foundation migration and its acceptance gates.
 
 - [F-206 integration rehearsal](foundation/F206_REHEARSAL.md) covers the stage-2 handoff, recovery and regression checks.

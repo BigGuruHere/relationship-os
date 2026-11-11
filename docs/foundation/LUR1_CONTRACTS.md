@@ -1,6 +1,6 @@
 # LUR-1: reusable Living Understanding contracts
 
-2026-11-11. Implemented on `feature/lu-contracts-extraction`, based on `development` at `d0e3ada0`. Unmerged and undeployed. This is stage one of the [Astra preservation assessment and build plan](https://github.com/BigGuruHere/relationship-os/blob/f4de3ffb6f2566e2e5f6a12ce01a77b5f001a453/docs/foundation/LU_REFACTOR_ASSESSMENT_AND_PLAN.md), independently reviewable in [PR #65](https://github.com/BigGuruHere/relationship-os/pull/65). The implementation uses the user's Sol 6.1 Medium scope for this bounded stage.
+2026-11-11. Implemented on `feature/lu-contracts-extraction`, based on `development` at `d0e3ada0`. Merged into Development via PR #66 at `f79cd8af`. Hosted verification has not been recorded. See [LUR-2](LUR2_PERSISTENCE.md) for the implemented physical details. This is stage one of the [Astra preservation assessment and build plan](https://github.com/BigGuruHere/relationship-os/blob/f4de3ffb6f2566e2e5f6a12ce01a77b5f001a453/docs/foundation/LU_REFACTOR_ASSESSMENT_AND_PLAN.md), independently reviewable in [PR #65](https://github.com/BigGuruHere/relationship-os/pull/65). The implementation uses the user's Sol 6.1 Medium scope for this bounded stage.
 
 ## Reuse and caller inventory
 

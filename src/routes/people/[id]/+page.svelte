@@ -19,6 +19,38 @@
 <a class="btn primary" href={'/people/' + data.contact.id + '/notes/new'}>Record voice note / Add note</a>
 {#if data.dorianAvailable}<a class="btn" href={'/people/' + data.contact.id + '/notes/dorian'}>Talk to Dorian</a>{/if}
 <p class="muted">Your private observations. You choose which suggestions to save to Living Understanding.</p>
+ {#if data.conversations?.items.length || data.conversations?.selected || data.conversations?.next}
+  <h2>Dorian conversations</h2>
+  {#if data.conversations.selected}
+    {@const conversation = data.conversations.selected}
+    <article>
+      <h3>Conversation summary</h3>
+      <p class="note-text">{conversation.summary}</p>
+      <details open={Boolean(form?.conversationError)}>
+        <summary>Edit summary</summary>
+        <form method="post" action={'?conversation=' + encodeURIComponent(conversation.id) + '&/editConversation'}>
+          <input type="hidden" name="summaryVersion" value={conversation.summaryVersion} />
+          <label>Summary <textarea name="summary" required maxlength="20000">{form && 'conversationDraft' in form ? form.conversationDraft : conversation.summary}</textarea></label>
+          {#if form?.conversationError}<p role="alert">{form.conversationError}</p>{/if}
+          <button class="btn" type="submit">Save summary</button>
+        </form>
+      </details>
+      <details>
+        <summary>Full transcript</summary>
+        {#if conversation.completeness === 'INCOMPLETE'}<p>Only part of the transcript was available.</p>{/if}
+        {#each conversation.turns as turn (turn.id)}
+          <p class="note-text"><strong>{turn.role === 'OWNER' ? 'You' : turn.role === 'AGENT' ? 'Dorian' : 'Unknown speaker'}:</strong> {turn.text}</p>
+        {/each}
+      </details>
+    </article>
+  {/if}
+  <ul>
+    {#each data.conversations.items as item (item.id)}
+      <li><a href={'?conversation=' + encodeURIComponent(item.id)}>Conversation saved <time datetime={item.at}>{new Date(item.at).toLocaleString()}</time></a></li>
+    {/each}
+  </ul>
+  {#if data.conversations.next}<a href={'?afterConversation=' + encodeURIComponent(data.conversations.next)}>More conversations</a>{/if}
+{/if}
 <h2>History</h2>{#if data.origin}<p>Details shared through your profile on {new Date(data.origin.submittedAt).toLocaleString()}.</p>{/if}{#each data.notes as note}<article><p><time datetime={note.at}>{new Date(note.at).toLocaleString()}</time> · {note.channel === 'OWNER_VOICE_NOTE' ? 'Your voice note' : 'Your note'}</p><p class="note-text">{note.text}</p>{#if note.summary}<h3>Summary</h3><p class="note-text">{note.summary}</p>{/if}{#if note.editable}
   <details open={form?.draft?.id === note.id}>
     <summary>Edit note</summary>

@@ -1,3 +1,4 @@
+import { conversationSummary, editConversationSummary, listPersonConversations, readPersonConversation } from '$lib/server/foundation/conversations';
 import { noteReviewAvailable } from '$lib/server/foundation/noteReview';
 import { peopleDorianAgent } from '$lib/server/integrations/elevenlabs/peopleWebNote';
 import { appendOwnerNote, listPersonNotes, FoundationConflict } from '$lib/server/foundation/evidence';
@@ -12,7 +13,7 @@ import { CAPTURE_CHANNEL } from '$lib/server/core/contactCapture';
 import { decrypt, encrypt } from '$lib/crypto';
 import { requirePeopleContact } from '$lib/server/core/myPeople';
 import { privateContactDetails } from '$lib/server/core/contacts';
-export const load: PageServerLoad = async ({ locals, params, url }) => {
+export const load: PageServerLoad = async ({ locals, params, url, setHeaders }) => {
   if (!locals.user) throw redirect(303, '/auth/login');
   if (await peopleRouteDomain(locals.user.id, '/people/' + params.id) === 'FOUNDATION') {
     const contact = await foundationPage(async () => readPerson(await resolveFoundationAccess(locals, 'READ'), params.id));
@@ -26,7 +27,16 @@ export const load: PageServerLoad = async ({ locals, params, url }) => {
       };
     }
     const history = await foundationPage(async () => listPersonNotes(await resolveFoundationAccess(locals, 'READ_NOTES'), params.id, url?.searchParams.get('afterNote') || undefined));
-    return { contact, origin: contact.origin, notes: history.notes, nextNote: history.next, foundation: true, dorianAvailable, noteReviewAvailable: Boolean(url && noteReviewAvailable(locals, url)), followup: null };
+    const conversationId = url?.searchParams.get('conversation');
+    const conversations = await foundationPage(async () => {
+      const access = await resolveFoundationAccess(locals, 'READ_CONVERSATION');
+      return {
+        ...await listPersonConversations(access, params.id, url?.searchParams.get('afterConversation') || undefined),
+        selected: conversationId ? await readPersonConversation(access, params.id, conversationId) : null
+      };
+    });
+    if (conversations.selected) setHeaders({ 'cache-control': 'private, no-store' });
+    return { contact, conversations, origin: contact.origin, notes: history.notes, nextNote: history.next, foundation: true, dorianAvailable, noteReviewAvailable: Boolean(url && noteReviewAvailable(locals, url)), followup: null };
   }
   const { context, contact } = await requirePeopleContact(locals, params.id);
   const rows = await prisma.interaction.findMany({ where: { userId: context.workspaceUserId, contextSpaceId: context.contextSpaceId, contactId: contact.id },
@@ -79,6 +89,28 @@ export const actions: Actions = {
       if (!result.count) return fail(404, { error: 'Note not found.', draft });
     }
     throw redirect(303, '/people/' + encodeURIComponent(params.id));
+  },
+  editConversation: async ({ locals, params, request, url }) => {
+    if (!locals.user) throw redirect(303, '/auth/login');
+    if (request.headers.get('origin') !== url.origin) throw error(403, 'Submit from My People.');
+    if (await peopleRouteDomain(locals.user.id, url.pathname) !== 'FOUNDATION') throw error(404, 'Conversation unavailable.');
+    const fields = await request.formData();
+    const id = url.searchParams.get('conversation');
+    const summary = conversationSummary.safeParse(fields.get('summary'));
+    const expected = Number(fields.get('summaryVersion'));
+    if (!id || !summary.success) return fail(400, { conversationError: 'Enter a summary of up to 20,000 characters.' });
+    try {
+      await foundationPage(async () => editConversationSummary(
+        await resolveFoundationAccess(locals, 'SAVE_CONVERSATION'), params.id, id, expected, summary.data
+      ));
+    } catch (e) {
+      if (e instanceof FoundationConflict) return fail(409, {
+        conversationError: 'The summary changed. Copy your edits and reload before trying again.',
+        conversationDraft: summary.data
+      });
+      throw e;
+    }
+    throw redirect(303, '/people/' + encodeURIComponent(params.id) + '?conversation=' + encodeURIComponent(id));
   },
   archive: async ({ locals, params }) => {
     if (!locals.user) throw redirect(303, '/auth/login');

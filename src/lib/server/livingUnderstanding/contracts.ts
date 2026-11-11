@@ -156,6 +156,7 @@ const candidateSchema = z.strictObject({
 							prose: z.string().min(1).max(6500),
 							timeScope: z.enum(['CURRENT', 'HISTORICAL', 'MIXED']),
 							meaningIds: z.array(id),
+							contextualMeaningIds: z.array(id).optional(),
 							retainedMeaningVersionIds: z.array(id),
 							retiredMeanings: z.array(z.strictObject({ versionId: id, reason: z.string().min(1) }))
 						})
@@ -349,6 +350,11 @@ export function parseCandidate(raw: unknown, packet: SourcePacket): Understandin
 					unique(t.retainedMeaningVersionIds) &&
 					unique(t.retiredMeanings.map((r) => r.versionId)),
 				'duplicate_meaning'
+			);
+			const contextual = t.contextualMeaningIds ?? [];
+			ensure(
+				unique(contextual) && contextual.every((id) => t.meaningIds.includes(id)),
+				'contextual_meaning'
 			);
 			for (const meaningId of t.meaningIds) {
 				const meaning = meanings.get(meaningId);

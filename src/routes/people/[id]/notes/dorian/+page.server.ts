@@ -1,12 +1,15 @@
 import { error, fail, redirect, type Cookies } from '@sveltejs/kit';
-import { encrypt, decrypt } from '$lib/crypto';
+import { randomUUID } from 'node:crypto';
+import { buildScopedMacToken, encrypt, decrypt } from '$lib/crypto';
 import { foundationPage, peopleRouteDomain } from '$lib/server/foundation/peopleRouting';
 import { resolveFoundationAccess } from '$lib/server/foundation/policy';
 import { readPerson } from '$lib/server/foundation/subjects';
 import { fetchElevenLabsConversation } from '$lib/server/integrations/elevenlabs/conversation';
-import { speechFromDorianCall, peopleDorianAgent, personNoteInitiation } from '$lib/server/integrations/elevenlabs/peopleWebNote';
+import { capturedPeopleConversation, speechFromDorianCall, peopleDorianAgent, personNoteInitiation } from '$lib/server/integrations/elevenlabs/peopleWebNote';
 import { prisma } from '$lib/db';
-import { summarizeText } from '$lib/ai';
+import { privateDraftModel, summarizeText } from '$lib/ai';
+import { conversationSummary, savePersonConversation, savedConversationReceipt } from '$lib/server/foundation/conversations';
+import { FoundationConflict } from '$lib/server/foundation/evidenceRecords';
 import { resolveDraftProcessing } from '$lib/server/foundation/drafts';
 import { issueDorianWebToken } from '$lib/server/integrations/elevenlabs/webToken';
 import type { Actions, PageServerLoad } from './$types';
@@ -28,7 +31,7 @@ async function context(locals: App.Locals, url: URL, personId: string) {
     personId: person.id, name: person.name };
 }
 
-type Launch = { reference: string; conversationId: string; expiresAt: number };
+type Launch = { reference: string; conversationId: string; expiresAt: number; draft?: { mac: string; invocationId: string; model: string } };
 
 function readLaunch(cookies: Cookies, scope: Awaited<ReturnType<typeof context>>): Launch | null {
   try {
@@ -43,6 +46,17 @@ function readLaunch(cookies: Cookies, scope: Awaited<ReturnType<typeof context>>
   } catch {
     return null;
   }
+}
+
+function writeLaunch(cookies: Cookies, url: URL, scope: Awaited<ReturnType<typeof context>>, launch: Launch) {
+  const { name, ...binding } = scope;
+  cookies.set(cookie, encrypt(JSON.stringify({ ...binding, ...launch }), purpose), {
+    path: url.pathname.replace(/\/$/, ''), httpOnly: true, secure: true, sameSite: 'lax',
+    maxAge: Math.max(1, Math.ceil((launch.expiresAt - Date.now()) / 1000))
+  });
+}
+function summaryMac(reference: string, summary: string) {
+  return buildScopedMacToken(summary, 'dorian-people-note-summary:' + reference);
 }
 
 async function accountDisplayName(userId: string) {
@@ -75,12 +89,11 @@ export const actions: Actions = {
     if (!issued.conversationId || !/^conv_[a-z0-9_-]{1,235}$/i.test(issued.conversationId))
       return fail(502, { error: 'Dorian did not return a conversation ID.', reference: issued.reference });
 
-    const { name, ...binding } = scope;
-    cookies.set(cookie, encrypt(JSON.stringify({
-      ...binding, conversationId: issued.conversationId, reference: issued.reference,
+    writeLaunch(cookies, url, scope, {
+      conversationId: issued.conversationId, reference: issued.reference,
       expiresAt: Date.now() + ttl * 1000
-    }), purpose), { path: url.pathname.replace(/\/$/, ''), httpOnly: true, secure: true, sameSite: 'lax', maxAge: ttl });
-    return { token: issued.token, reference: issued.reference, initiation: personNoteInitiation(callerName, name) };
+    });
+    return { token: issued.token, reference: issued.reference, initiation: personNoteInitiation(callerName, scope.name) };
   },
   draft: async ({ locals, url, params, request, fetch, cookies, setHeaders }) => {
     requireOrigin(request, url);
@@ -114,6 +127,9 @@ export const actions: Actions = {
       await processing.authorize();
       if (readLaunch(cookies, await context(locals, url, params.id))?.reference !== launch.reference)
         return fail(409, { error: 'This conversation is no longer available.' });
+      if (text) writeLaunch(cookies, url, current, {
+        ...launch, draft: { mac: summaryMac(launch.reference, text), invocationId: randomUUID(), model: privateDraftModel }
+      });
       return { state: 'ready' as const, text, ...(text ? {} : { callerSpeech: speech.text }) };
     } catch {
       console.warn(JSON.stringify({ component: 'relish.dorian.people_note', stage: 'draft',
@@ -121,11 +137,44 @@ export const actions: Actions = {
       return fail(502, { error: 'Could not retrieve the conversation. Try again.', reference: launch.reference });
     }
   },
+  save: async ({ locals, url, params, request, fetch, cookies, setHeaders }) => {
+    requireOrigin(request, url);
+    setHeaders({ 'cache-control': 'private, no-store' });
+    const scope = await context(locals, url, params.id);
+    const launch = readLaunch(cookies, scope);
+    const fields = await request.formData();
+    if (!launch || fields.get('reference') !== launch.reference)
+      return fail(409, { error: 'This conversation expired or was replaced.' });
+    const input = conversationSummary.safeParse(fields.get('summary'));
+    if (!input.success) return fail(400, { error: 'Enter a summary of up to 20,000 characters.' });
+    const summary = input.data;
+    const binding = { provider: 'ELEVENLABS' as const, conversationId: launch.conversationId, agentId: scope.agentId };
+    let saved: { sourceId: string } | null;
+    try {
+      const access = await resolveFoundationAccess(locals, 'SAVE_CONVERSATION');
+      saved = await savedConversationReceipt(access, params.id, binding, summary);
+      if (!saved) {
+        const result = await fetchElevenLabsConversation(launch.conversationId, undefined, fetch, AbortSignal.timeout(8000));
+        const capture = capturedPeopleConversation(result, launch.conversationId, scope.agentId);
+        if (readLaunch(cookies, await context(locals, url, params.id))?.reference !== launch.reference)
+          return fail(409, { error: 'This conversation is no longer available.' });
+        saved = await savePersonConversation(access, params.id, capture, summary, launch.draft ? {
+          kind: launch.draft.mac === summaryMac(launch.reference, summary) ? 'MODEL_DRAFTED' : 'HUMAN_EDITED_MODEL_DRAFT',
+          model: launch.draft.model, invocationId: launch.draft.invocationId
+        } : { kind: 'HUMAN_AUTHORED' });
+      }
+    } catch (e) {
+      if (e instanceof FoundationConflict)
+        return fail(409, { error: 'This conversation is already saved. You can edit its summary in My People.' });
+      return fail(502, { error: 'Could not save the conversation. Your summary is still here. Try again.' });
+    }
+    throw redirect(303, '/people/' + encodeURIComponent(params.id) + '?conversation=' + encodeURIComponent(saved.sourceId));
+  },
   discard: async ({ locals, url, params, request, cookies }) => {
     requireOrigin(request, url);
     const scope = await context(locals, url, params.id);
     const launch = readLaunch(cookies, scope);
-    if (launch?.reference !== (await request.formData()).get('reference'))
+    if (!launch || launch.reference !== (await request.formData()).get('reference'))
       throw error(409, 'This conversation expired or was replaced.');
     cookies.delete(cookie, { path: url.pathname.replace(/\/$/, '') });
     throw redirect(303, '/people/' + params.id);

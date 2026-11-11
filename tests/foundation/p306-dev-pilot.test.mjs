@@ -1,5 +1,6 @@
 // Exercise the existing owner page, login and private People routes on a disposable database.
 import test from 'node:test';
+import { applyLuMigration } from './lu-migration-fixture.mjs';
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
@@ -46,6 +47,8 @@ test('Internal DEV setup and ordinary Foundation signup on an isolated database'
 		]) {
 			await db.exec(await readFile('prisma/migrations/' + name + '/migration.sql', 'utf8'));
 		}
+
+		await applyLuMigration(db);
 
 		process.env.DATABASE_URL =
 			'postgresql://postgres:postgres@' + socket.getServerConn() + '/postgres?connection_limit=1';
@@ -737,14 +740,32 @@ test('Internal DEV setup and ordinary Foundation signup on an isolated database'
 
 				const detail = () => personPage.load({ ...event(owner, '/people/' + person.id), params });
 				assert.ok(!(await detail()).notes.some(note => note.text.includes('conference')));
-				const save = () => notePage.actions.save({
-					...event(owner, '/people/' + person.id + '/notes/new?/save', {
-						text: 'Met at the conference on Tuesday.', saveKey: issued.reference
-					}), params
+				const save = (fetcher = draft.fetch, summary = 'Met at the conference on Tuesday.') => voice.actions.save({
+					...event(owner, path + '?/save', { reference: issued.reference, summary }),
+					params, fetch: fetcher
 				});
-				await assert.rejects(save(), at('/people/' + person.id));
-				await assert.rejects(save(), at('/people/' + person.id));
-				assert.equal((await detail()).notes.filter(note => note.text.includes('conference')).length, 1);
+				let savedLocation;
+				await assert.rejects(save(), error => {
+					savedLocation = error.location;
+					return error.status === 303 && savedLocation.startsWith('/people/' + person.id + '?conversation=');
+				});
+				await assert.rejects(save(async () => assert.fail('A replay must not call the provider.')), at(savedLocation));
+				assert.equal((await save(draft.fetch, 'Changed retry')).status, 409);
+				const summaryPage = () => personPage.load({ ...event(owner, savedLocation), params });
+				const saved = (await summaryPage()).conversations.selected;
+				assert.equal(saved.summary, 'Met at the conference on Tuesday.');
+				assert.deepEqual(saved.turns.map(t => [t.role, t.text]), [
+					['AGENT', 'Unconfirmed suggestion from Dorian'], ['OWNER', 'Met at a conference']
+				]);
+				assert.equal((await detail()).conversations.items.length, 1);
+				assert.equal((await detail()).conversations.selected, null);
+				await assert.rejects(personPage.actions.editConversation({
+					...event(owner, savedLocation + '&/editConversation', { summary: 'Edited summary', summaryVersion: '1' }), params
+				}), at(savedLocation));
+				const edited = (await summaryPage()).conversations.selected;
+				assert.equal(edited.summary, 'Edited summary');
+				assert.equal(edited.summaryVersion, 2);
+				assert.deepEqual(edited.turns, saved.turns);
 				await assert.rejects(voice.actions.discard({ ...event(owner, path, { reference: issued.reference }), params }), at('/people/' + person.id));
 				assert.equal((await requestDraft(draft)).status, 409);
 			} finally {

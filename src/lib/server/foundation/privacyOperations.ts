@@ -146,6 +146,7 @@ export function reviewFoundationPrivacy(ownerUserId: string) {
 					select: { id: true, kind: true, state: true, createdAt: true }
 				})
 			);
+			const conversationIds = new Set(sources.filter(s => s.kind === 'IMPORTED_CONVERSATION').map(s => s.id));
 			const sourceVersions = bounded(
 				await tx.foundationSourceVersion.findMany({
 					...page,
@@ -166,9 +167,18 @@ export function reviewFoundationPrivacy(ownerUserId: string) {
 				const provenance = JSON.parse(
 					read('FoundationSourceVersion', 'provenanceEnc', row, provenanceEnc) ?? 'null'
 				);
+				let text = read('FoundationSourceVersion', 'payloadEnc', row, payloadEnc);
+				if (text && conversationIds.has(row.sourceId)) {
+					// Export speech rather than the provider binding in the stored envelope.
+					let capture;
+					try { capture = JSON.parse(text); } catch { /* Older imported text uses its original format. */ }
+					if (capture?.format === 'conversation-v1') text = JSON.stringify({
+						completeness: capture.completeness, turns: capture.turns
+					});
+				}
 				return {
 					...row,
-					text: read('FoundationSourceVersion', 'payloadEnc', row, payloadEnc),
+					text,
 					reviewedSummary:
 						typeof provenance?.reviewedSummary === 'string' ? provenance.reviewedSummary : null
 				};
@@ -319,7 +329,19 @@ export function reviewFoundationPrivacy(ownerUserId: string) {
 				})
 			);
 
+			const conversationSummaries = bounded(await tx.foundationSourcePresentationVersion.findMany({
+				...page, select: { id: true, sourceId: true, sourceVersionId: true, subjectId: true, version: true, summaryEnc: true }
+			})).map(({ summaryEnc, ...row }) => ({
+				...row, summary: read('FoundationSourcePresentationVersion', 'summaryEnc', row, summaryEnc)
+			}));
+			const luTopics = bounded(await tx.foundationLuTopicVersion.findMany({
+				...page, select: { id: true, streamId: true, topicId: true, creatingRevisionId: true,
+					version: true, timeScope: true, effect: true, contentEnc: true }
+			})).map(({ contentEnc, ...row }) => ({
+				...row, content: JSON.parse(read('FoundationLuTopicVersion', 'contentEnc', row, contentEnc)!)
+			}));
 			return {
+				conversationSummaries, luTopics,
 				exchanges,
 				associations,
 				challenges,
@@ -357,6 +379,16 @@ export function eraseFoundationPrivacy(ownerUserId: string) {
 				// Remove links before parents and all versions in each lineage in one SQL
 				// statement. Composite custody FKs prevent touching a second account.
 				let erasedRows = exchangeRows + (await tx.foundationContextAssociation.deleteMany()).count;
+				erasedRows += (await tx.foundationLuRevisionTopic.deleteMany()).count;
+				erasedRows += (await tx.foundationLuTopicMeaning.deleteMany()).count;
+				erasedRows += (await tx.foundationLuTopicVersion.deleteMany()).count;
+				erasedRows += (await tx.foundationLuRevision.deleteMany()).count;
+				erasedRows += (await tx.foundationLuTopic.deleteMany()).count;
+				erasedRows += (await tx.foundationLuStream.deleteMany()).count;
+				erasedRows += (await tx.foundationLuApproval.deleteMany()).count;
+				erasedRows += (await tx.foundationLuCandidate.deleteMany()).count;
+				erasedRows += (await tx.foundationLuMeaningOrigin.deleteMany()).count;
+				erasedRows += (await tx.foundationSourcePresentationVersion.deleteMany()).count;
 				erasedRows += (await tx.foundationSupport.deleteMany()).count;
 				erasedRows += (await tx.foundationStatementSubject.deleteMany()).count;
 				erasedRows += (await tx.foundationStatementVersion.deleteMany()).count;

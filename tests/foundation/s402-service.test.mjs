@@ -1,5 +1,6 @@
 // Use real guarded services and a disposable database. Every outbound SMS is intercepted locally.
 import test from 'node:test';
+import { applyLuMigration } from './lu-migration-fixture.mjs';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
@@ -44,6 +45,7 @@ CREATE TABLE "Session"(id text PRIMARY KEY,"userId" text NOT NULL REFERENCES "Us
             '20261109060000_google_mailbox_authority'
 		])
 			await db.exec(await readFile('prisma/migrations/' + name + '/migration.sql', 'utf8'));
+		await applyLuMigration(db);
 		if (!endpoint) {
 			socket = new PGLiteSocketServer({ db, host: '127.0.0.1', port: 0, maxConnections: 1 });
 			await socket.start();

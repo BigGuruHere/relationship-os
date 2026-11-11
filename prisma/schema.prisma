@@ -4174,6 +4174,7 @@ enum FoundationSupportRelation {
   SUPPORTS
   QUALIFIES
   CONTRADICTS
+  CONTEXT
 }
 
 enum FoundationContextState {
@@ -4193,6 +4194,16 @@ model FoundationEnrollment {
 
 // IT: Custody references restrict deletion; services must explicitly erase dependencies.
 model FoundationVault {
+  sourcePresentationVersion_vault FoundationSourcePresentationVersion[] @relation("SourcePresentationVersion_vault")
+  luMeaningOrigin_vault FoundationLuMeaningOrigin[] @relation("LuMeaningOrigin_vault")
+  luStream_vault FoundationLuStream[] @relation("LuStream_vault")
+  luTopic_vault FoundationLuTopic[] @relation("LuTopic_vault")
+  luCandidate_vault FoundationLuCandidate[] @relation("LuCandidate_vault")
+  luApproval_vault FoundationLuApproval[] @relation("LuApproval_vault")
+  luRevision_vault FoundationLuRevision[] @relation("LuRevision_vault")
+  luTopicVersion_vault FoundationLuTopicVersion[] @relation("LuTopicVersion_vault")
+  luTopicMeaning_vault FoundationLuTopicMeaning[] @relation("LuTopicMeaning_vault")
+  luRevisionTopic_vault FoundationLuRevisionTopic[] @relation("LuRevisionTopic_vault")
   s402Association FoundationAccountAssociation[]
 
   s402Exchange FoundationExchange[]
@@ -4223,6 +4234,9 @@ model FoundationVault {
 
 // IT: Custody references restrict deletion; services must explicitly erase dependencies.
 model FoundationSubject {
+  sourcePresentationVersion_subject FoundationSourcePresentationVersion[] @relation("SourcePresentationVersion_subject")
+  luMeaningOrigin_asserter FoundationLuMeaningOrigin[] @relation("LuMeaningOrigin_asserter")
+  luStream_subject FoundationLuStream[] @relation("LuStream_subject")
   s402SettledExchange FoundationExchange[] @relation("ExchangeSettlement")
   s402Association FoundationAccountAssociation[]
 
@@ -4274,6 +4288,7 @@ model FoundationMembership {
 
 // IT: Custody references restrict deletion; services must explicitly erase dependencies.
 model FoundationPerspective {
+  luStream_perspective FoundationLuStream[] @relation("LuStream_perspective")
   id String @id @default(uuid())
   ownerUserId String
   vaultId String
@@ -4311,6 +4326,9 @@ model FoundationSource {
 
 // IT: Custody references restrict deletion; services must explicitly erase dependencies.
 model FoundationSourceVersion {
+  sourcePresentationVersion_sourceVersion FoundationSourcePresentationVersion[] @relation("SourcePresentationVersion_sourceVersion")
+  luCandidate_sourceVersion FoundationLuCandidate[] @relation("LuCandidate_sourceVersion")
+  luRevision_sourceVersion FoundationLuRevision[] @relation("LuRevision_sourceVersion")
   id String @id @default(uuid())
   ownerUserId String
   vaultId String
@@ -4337,6 +4355,7 @@ model FoundationSourceVersion {
 
 // IT: Custody references restrict deletion; services must explicitly erase dependencies.
 model FoundationEvidenceSegment {
+  luMeaningOrigin_primarySegment FoundationLuMeaningOrigin[] @relation("LuMeaningOrigin_primarySegment")
   id String @id @default(uuid())
   ownerUserId String
   vaultId String
@@ -4393,6 +4412,8 @@ model FoundationStatement {
 
 // IT: Custody references restrict deletion; services must explicitly erase dependencies.
 model FoundationStatementVersion {
+  luMeaningOrigin_statementVersion FoundationLuMeaningOrigin[] @relation("LuMeaningOrigin_statementVersion")
+  luTopicMeaning_statementVersion FoundationLuTopicMeaning[] @relation("LuTopicMeaning_statementVersion")
   id String @id @default(uuid())
   ownerUserId String
   vaultId String
@@ -4669,4 +4690,277 @@ model FoundationAccountChannelDispatch {
  expiresAt DateTime @db.Timestamptz(3)
  @@unique([challengeId,ownerUserId])
  challenge FoundationAccountChannelChallenge @relation(fields:[challengeId,ownerUserId],references:[id,ownerUserId],onDelete:Restrict,onUpdate:Restrict)
+}
+
+// LUR-2: immutable private conversation presentations and understanding revisions.
+
+enum FoundationLuContentKind {
+  FACT
+  OBJECTIVE
+  WANT
+  OFFER
+  PREFERENCE
+  CONSTRAINT
+  RELATIONSHIP_STATE
+  OTHER
+}
+
+enum FoundationLuEpistemicBasis {
+  DIRECT_ACCOUNT
+  REPORTED_ASSERTION
+  EXPRESSED_OPINION
+  MODEL_INFERENCE
+  UNRESOLVED
+}
+
+enum FoundationLuAsserterKind {
+  SOURCE_SPEAKER
+  REPORTED_PERSON
+  MODEL
+  UNRESOLVED
+}
+
+enum FoundationLuGeneratorKind {
+  HUMAN_AUTHORED
+  MODEL_DRAFTED
+  HUMAN_EDITED_MODEL_DRAFT
+}
+
+enum FoundationLuCandidateOutcome {
+  READY
+  NO_CHANGE
+}
+
+enum FoundationLuTimeScope {
+  CURRENT
+  HISTORICAL
+  MIXED
+}
+
+enum FoundationLuTopicEffect {
+  NEW
+  REINFORCED
+  REFINED
+  EXPANDED
+  QUALIFIED
+  CONTRADICTED
+  SUPERSEDED
+}
+
+enum FoundationLuMeaningRole {
+  PRIMARY
+  CONTEXTUAL
+}
+
+model FoundationSourcePresentationVersion {
+  id String @id @default(uuid())
+  ownerUserId String
+  vaultId String
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  sourceId String
+  sourceVersionId String
+  sourceVersionNumber Int
+  subjectId String
+  subjectKind FoundationSubjectKind @default(PERSON)
+  version Int
+  previousVersionId String?
+  previousVersionNumber Int?
+  summaryEnc String
+  provenanceEnc String
+  requestMac String
+  vault FoundationVault @relation("SourcePresentationVersion_vault", fields: [vaultId, ownerUserId], references: [id, ownerUserId], onDelete: Restrict, onUpdate: Restrict)
+  sourceVersion FoundationSourceVersion @relation("SourcePresentationVersion_sourceVersion", fields: [sourceVersionId, sourceId, sourceVersionNumber, ownerUserId, vaultId], references: [id, sourceId, version, ownerUserId, vaultId], onDelete: Restrict, onUpdate: Restrict)
+  subject FoundationSubject @relation("SourcePresentationVersion_subject", fields: [subjectId, ownerUserId, vaultId, subjectKind], references: [id, ownerUserId, vaultId, kind], onDelete: Restrict, onUpdate: Restrict)
+  previous FoundationSourcePresentationVersion? @relation("SourcePresentationVersion_previous", fields: [previousVersionId, sourceId, subjectId, previousVersionNumber, ownerUserId, vaultId], references: [id, sourceId, subjectId, version, ownerUserId, vaultId], onDelete: Restrict, onUpdate: Restrict)
+  sourcePresentationVersion_previous FoundationSourcePresentationVersion[] @relation("SourcePresentationVersion_previous")
+
+  @@unique([id, ownerUserId, vaultId])
+  @@unique([sourceId, version])
+  @@unique([id, sourceId, subjectId, version, ownerUserId, vaultId])
+  @@index([ownerUserId, vaultId, subjectId, version, createdAt, id])
+}
+
+model FoundationLuMeaningOrigin {
+  id String @id @default(uuid())
+  ownerUserId String
+  vaultId String
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  statementVersionId String @unique
+  primarySegmentId String
+  contentKind FoundationLuContentKind
+  epistemicBasis FoundationLuEpistemicBasis
+  asserterKind FoundationLuAsserterKind
+  asserterSubjectId String?
+  asserterSubjectKind FoundationSubjectKind?
+  generatorKind FoundationLuGeneratorKind
+  recorderKind FoundationRecorderKind
+  generationEnc String
+  vault FoundationVault @relation("LuMeaningOrigin_vault", fields: [vaultId, ownerUserId], references: [id, ownerUserId], onDelete: Restrict, onUpdate: Restrict)
+  statementVersion FoundationStatementVersion @relation("LuMeaningOrigin_statementVersion", fields: [statementVersionId, ownerUserId, vaultId], references: [id, ownerUserId, vaultId], onDelete: Restrict, onUpdate: Restrict)
+  primarySegment FoundationEvidenceSegment @relation("LuMeaningOrigin_primarySegment", fields: [primarySegmentId, ownerUserId, vaultId], references: [id, ownerUserId, vaultId], onDelete: Restrict, onUpdate: Restrict)
+  asserter FoundationSubject? @relation("LuMeaningOrigin_asserter", fields: [asserterSubjectId, ownerUserId, vaultId, asserterSubjectKind], references: [id, ownerUserId, vaultId, kind], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([id, ownerUserId, vaultId])
+}
+
+model FoundationLuStream {
+  id String @id @default(uuid())
+  ownerUserId String
+  vaultId String
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  subjectId String
+  perspectiveId String
+  vault FoundationVault @relation("LuStream_vault", fields: [vaultId, ownerUserId], references: [id, ownerUserId], onDelete: Restrict, onUpdate: Restrict)
+  subject FoundationSubject @relation("LuStream_subject", fields: [subjectId, ownerUserId, vaultId], references: [id, ownerUserId, vaultId], onDelete: Restrict, onUpdate: Restrict)
+  perspective FoundationPerspective @relation("LuStream_perspective", fields: [perspectiveId, ownerUserId, vaultId], references: [id, ownerUserId, vaultId], onDelete: Restrict, onUpdate: Restrict)
+  luTopic_stream FoundationLuTopic[] @relation("LuTopic_stream")
+  luRevision_stream FoundationLuRevision[] @relation("LuRevision_stream")
+
+  @@unique([id, ownerUserId, vaultId])
+  @@unique([vaultId, subjectId, perspectiveId])
+}
+
+model FoundationLuTopic {
+  id String @id @default(uuid())
+  ownerUserId String
+  vaultId String
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  streamId String
+  vault FoundationVault @relation("LuTopic_vault", fields: [vaultId, ownerUserId], references: [id, ownerUserId], onDelete: Restrict, onUpdate: Restrict)
+  stream FoundationLuStream @relation("LuTopic_stream", fields: [streamId, ownerUserId, vaultId], references: [id, ownerUserId, vaultId], onDelete: Restrict, onUpdate: Restrict)
+  luTopicVersion_topic FoundationLuTopicVersion[] @relation("LuTopicVersion_topic")
+
+  @@unique([id, ownerUserId, vaultId])
+  @@unique([id, streamId, ownerUserId, vaultId])
+  @@index([ownerUserId, vaultId, streamId])
+}
+
+model FoundationLuCandidate {
+  id String @id @default(uuid())
+  ownerUserId String
+  vaultId String
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  sourceId String
+  sourceVersionId String
+  sourceVersionNumber Int
+  sourceContentMac String
+  epoch Int
+  expiresAt DateTime @db.Timestamptz(3)
+  outcome FoundationLuCandidateOutcome
+  proposalEnc String
+  vault FoundationVault @relation("LuCandidate_vault", fields: [vaultId, ownerUserId], references: [id, ownerUserId], onDelete: Restrict, onUpdate: Restrict)
+  sourceVersion FoundationSourceVersion @relation("LuCandidate_sourceVersion", fields: [sourceVersionId, sourceId, sourceVersionNumber, ownerUserId, vaultId], references: [id, sourceId, version, ownerUserId, vaultId], onDelete: Restrict, onUpdate: Restrict)
+  luApproval_candidate FoundationLuApproval[] @relation("LuApproval_candidate")
+
+  @@unique([id, ownerUserId, vaultId])
+  @@index([ownerUserId, vaultId, sourceVersionId, createdAt])
+}
+
+model FoundationLuApproval {
+  id String @id @default(uuid())
+  ownerUserId String
+  vaultId String
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  candidateId String
+  requestKeyMac String
+  requestMac String
+  selectionEnc String
+  vault FoundationVault @relation("LuApproval_vault", fields: [vaultId, ownerUserId], references: [id, ownerUserId], onDelete: Restrict, onUpdate: Restrict)
+  candidate FoundationLuCandidate @relation("LuApproval_candidate", fields: [candidateId, ownerUserId, vaultId], references: [id, ownerUserId, vaultId], onDelete: Restrict, onUpdate: Restrict)
+  luRevision_approval FoundationLuRevision[] @relation("LuRevision_approval")
+
+  @@unique([id, ownerUserId, vaultId])
+  @@unique([vaultId, requestKeyMac])
+  @@unique([candidateId])
+}
+
+model FoundationLuRevision {
+  id String @id @default(uuid())
+  ownerUserId String
+  vaultId String
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  streamId String
+  revisionNumber Int
+  previousRevisionId String?
+  previousRevisionNumber Int?
+  approvalId String
+  sourceVersionId String
+  vault FoundationVault @relation("LuRevision_vault", fields: [vaultId, ownerUserId], references: [id, ownerUserId], onDelete: Restrict, onUpdate: Restrict)
+  stream FoundationLuStream @relation("LuRevision_stream", fields: [streamId, ownerUserId, vaultId], references: [id, ownerUserId, vaultId], onDelete: Restrict, onUpdate: Restrict)
+  previous FoundationLuRevision? @relation("LuRevision_previous", fields: [previousRevisionId, streamId, previousRevisionNumber, ownerUserId, vaultId], references: [id, streamId, revisionNumber, ownerUserId, vaultId], onDelete: Restrict, onUpdate: Restrict)
+  approval FoundationLuApproval @relation("LuRevision_approval", fields: [approvalId, ownerUserId, vaultId], references: [id, ownerUserId, vaultId], onDelete: Restrict, onUpdate: Restrict)
+  sourceVersion FoundationSourceVersion @relation("LuRevision_sourceVersion", fields: [sourceVersionId, ownerUserId, vaultId], references: [id, ownerUserId, vaultId], onDelete: Restrict, onUpdate: Restrict)
+  luRevision_previous FoundationLuRevision[] @relation("LuRevision_previous")
+  luTopicVersion_creatingRevision FoundationLuTopicVersion[] @relation("LuTopicVersion_creatingRevision")
+  luRevisionTopic_revision FoundationLuRevisionTopic[] @relation("LuRevisionTopic_revision")
+
+  @@unique([id, ownerUserId, vaultId])
+  @@unique([streamId, revisionNumber])
+  @@unique([id, streamId, revisionNumber, ownerUserId, vaultId])
+  @@unique([id, streamId, ownerUserId, vaultId])
+}
+
+model FoundationLuTopicVersion {
+  id String @id @default(uuid())
+  ownerUserId String
+  vaultId String
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  streamId String
+  topicId String
+  version Int
+  previousVersionId String?
+  previousVersionNumber Int?
+  creatingRevisionId String
+  timeScope FoundationLuTimeScope
+  effect FoundationLuTopicEffect
+  contentEnc String
+  vault FoundationVault @relation("LuTopicVersion_vault", fields: [vaultId, ownerUserId], references: [id, ownerUserId], onDelete: Restrict, onUpdate: Restrict)
+  topic FoundationLuTopic @relation("LuTopicVersion_topic", fields: [topicId, streamId, ownerUserId, vaultId], references: [id, streamId, ownerUserId, vaultId], onDelete: Restrict, onUpdate: Restrict)
+  previous FoundationLuTopicVersion? @relation("LuTopicVersion_previous", fields: [previousVersionId, topicId, streamId, previousVersionNumber, ownerUserId, vaultId], references: [id, topicId, streamId, version, ownerUserId, vaultId], onDelete: Restrict, onUpdate: Restrict)
+  creatingRevision FoundationLuRevision @relation("LuTopicVersion_creatingRevision", fields: [creatingRevisionId, streamId, ownerUserId, vaultId], references: [id, streamId, ownerUserId, vaultId], onDelete: Restrict, onUpdate: Restrict)
+  luTopicVersion_previous FoundationLuTopicVersion[] @relation("LuTopicVersion_previous")
+  luTopicMeaning_topicVersion FoundationLuTopicMeaning[] @relation("LuTopicMeaning_topicVersion")
+  luRevisionTopic_topicVersion FoundationLuRevisionTopic[] @relation("LuRevisionTopic_topicVersion")
+
+  @@unique([id, ownerUserId, vaultId])
+  @@unique([topicId, version])
+  @@unique([id, topicId, streamId, version, ownerUserId, vaultId])
+  @@unique([id, topicId, streamId, ownerUserId, vaultId])
+}
+
+model FoundationLuTopicMeaning {
+  id String @id @default(uuid())
+  ownerUserId String
+  vaultId String
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  topicVersionId String
+  statementVersionId String
+  position Int
+  role FoundationLuMeaningRole
+  vault FoundationVault @relation("LuTopicMeaning_vault", fields: [vaultId, ownerUserId], references: [id, ownerUserId], onDelete: Restrict, onUpdate: Restrict)
+  topicVersion FoundationLuTopicVersion @relation("LuTopicMeaning_topicVersion", fields: [topicVersionId, ownerUserId, vaultId], references: [id, ownerUserId, vaultId], onDelete: Restrict, onUpdate: Restrict)
+  statementVersion FoundationStatementVersion @relation("LuTopicMeaning_statementVersion", fields: [statementVersionId, ownerUserId, vaultId], references: [id, ownerUserId, vaultId], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([id, ownerUserId, vaultId])
+  @@unique([topicVersionId, statementVersionId])
+  @@unique([topicVersionId, position])
+}
+
+model FoundationLuRevisionTopic {
+  id String @id @default(uuid())
+  ownerUserId String
+  vaultId String
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  revisionId String
+  streamId String
+  topicId String
+  topicVersionId String
+  position Int
+  vault FoundationVault @relation("LuRevisionTopic_vault", fields: [vaultId, ownerUserId], references: [id, ownerUserId], onDelete: Restrict, onUpdate: Restrict)
+  revision FoundationLuRevision @relation("LuRevisionTopic_revision", fields: [revisionId, streamId, ownerUserId, vaultId], references: [id, streamId, ownerUserId, vaultId], onDelete: Restrict, onUpdate: Restrict)
+  topicVersion FoundationLuTopicVersion @relation("LuRevisionTopic_topicVersion", fields: [topicVersionId, topicId, streamId, ownerUserId, vaultId], references: [id, topicId, streamId, ownerUserId, vaultId], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([id, ownerUserId, vaultId])
+  @@unique([revisionId, topicId])
+  @@unique([revisionId, position])
 }

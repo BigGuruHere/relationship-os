@@ -72,7 +72,8 @@ test('only reviewed modules may establish foundation authority or construct an O
 					if(name==='recordGoogleEmailProof') assert.equal(file,'src/routes/auth/google/callback/+server.ts');
                     if (name === 'withFoundationAccess')
 						assert.ok(
-							['subjects', 'evidence', 'drafts'].some(
+							// LUR-2 repositories use the existing operation-specific transaction guard.
+							['subjects', 'evidence', 'drafts', 'conversations', 'livingUnderstanding'].some(
 								(name) => file === 'src/lib/server/foundation/' + name + '.ts'
 							),
 							file

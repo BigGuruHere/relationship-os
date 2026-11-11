@@ -1,5 +1,6 @@
 // Actual guarded Prisma operations on a disposable database. Never use the app's DATABASE_URL.
 import test from 'node:test';
+import { applyLuMigration } from './lu-migration-fixture.mjs';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { execFile } from 'node:child_process';
@@ -55,6 +56,7 @@ test('P-305 privacy operations on a disposable database', { timeout: 120000 }, a
 			await db.exec(await readFile('prisma/migrations/' + name + '/migration.sql', 'utf8'));
 		}
 
+		await applyLuMigration(db);
 		if (!endpoint) {
 			socket = new PGLiteSocketServer({ db, host: '127.0.0.1', port: 0, maxConnections: 1 });
 			await socket.start();

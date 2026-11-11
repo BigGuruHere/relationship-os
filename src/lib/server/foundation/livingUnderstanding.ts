@@ -15,6 +15,11 @@ import { withFoundationAccess, type FoundationAccess } from './policy';
 import { aad, activeSubjects, FoundationConflict, mac, scope, scopedId } from './evidenceRecords';
 import { currentConversation } from './conversations';
 import { insertRelationship } from './subjects';
+import type {
+	AssessmentInput,
+	AssessmentProvenance,
+	PriorTopic
+} from '../livingUnderstanding/semanticAssessment';
 import { decodeLuTopic, luEligibility, recordLuMeaning, requireLuPerspective } from './luEvidence';
 
 const candidateTable = 'FoundationLuCandidate';
@@ -171,6 +176,202 @@ export function prepareLuInput(access: FoundationAccess, personId: string, sourc
 		loadPacket(tx, access, personId, sourceId, true)
 	);
 }
+// Load only eligible prior prose. The manifest retains hidden version IDs so a
+// changed snapshot can carry them forward without giving the model their content.
+async function loadAssessmentPrior(
+	tx: AppTransactionClient,
+	access: FoundationAccess,
+	packet: SourcePacket
+) {
+	const prior: PriorTopic[] = [];
+	const eligible = luEligibility(tx);
+	for (const baseline of packet.baselines) {
+		for (const topic of baseline.topics) {
+			try {
+				for (const versionId of topic.meaningVersionIds)
+					await eligible(versionId, baseline.subjectId, baseline.perspectiveId);
+			} catch (e) {
+				if (e instanceof FoundationDenied) continue;
+				throw e;
+			}
+			const version = await tx.foundationLuTopicVersion.findFirst({
+				where: { id: topic.versionId, topicId: topic.topicId }
+			});
+			if (!version) throw new FoundationDenied();
+			const revision = await tx.foundationLuRevision.findFirst({
+				where: { id: version.creatingRevisionId },
+				select: { sourceVersionId: true }
+			});
+			const source = revision
+				? await tx.foundationSourceVersion.findFirst({
+						where: { id: revision.sourceVersionId },
+						select: { occurredAt: true }
+					})
+				: null;
+			const values = await tx.foundationStatementVersion.findMany({
+				where: { id: { in: topic.meaningVersionIds } },
+				select: { id: true, textEnc: true, observedAt: true }
+			});
+			const byId = new Map(values.map((v) => [v.id, v]));
+			const origins = await tx.foundationLuMeaningOrigin.findMany({
+				where: { statementVersionId: { in: topic.meaningVersionIds } },
+				select: {
+					id: true,
+					statementVersionId: true,
+					contentKind: true,
+					epistemicBasis: true,
+					generationEnc: true
+				}
+			});
+			const originByVersion = new Map(origins.map((origin) => [origin.statementVersionId, origin]));
+			const dates = [source?.occurredAt, ...values.map((v) => v.observedAt)].flatMap((d) =>
+				d ? [d.toISOString()] : []
+			);
+			prior.push({
+				subjectId: baseline.subjectId,
+				perspectiveId: baseline.perspectiveId,
+				topicId: topic.topicId,
+				versionId: topic.versionId,
+				timeScope: version.timeScope,
+				...decodeLuTopic(access, version),
+				sourceAt: dates.sort().at(-1) ?? null,
+				meanings: topic.meaningVersionIds.map((id) => {
+					const meaning = byId.get(id);
+					if (!meaning) throw new FoundationDenied();
+					const origin = originByVersion.get(id);
+					const generation = origin
+						? JSON.parse(
+								decrypt(
+									origin.generationEnc,
+									aad(access, 'FoundationLuMeaningOrigin', 'generationEnc', origin.id)
+								)
+							)
+						: null;
+					return {
+						versionId: id,
+						observedAt: meaning.observedAt?.toISOString() ?? null,
+						...(origin
+							? {
+									kind: origin.contentKind,
+									basis: origin.epistemicBasis,
+									uncertainty:
+										typeof generation?.expressedUncertainty === 'string'
+											? generation.expressedUncertainty
+											: null
+								}
+							: {}),
+						text: decrypt(meaning.textEnc, aad(access, 'FoundationStatementVersion', 'textEnc', id))
+					};
+				})
+			});
+		}
+	}
+	return prior;
+}
+
+export function prepareLuAssessment(access: FoundationAccess, personId: string, sourceId: string) {
+	return withFoundationAccess(access, 'PREPARE_LU', async (tx) => {
+		const packet = await loadPacket(tx, access, personId, sourceId, true);
+		return { packet, prior: await loadAssessmentPrior(tx, access, packet) };
+	});
+}
+
+function comparePacket(current: SourcePacket, expected: SourcePacket) {
+	if (JSON.stringify({ ...expected, unresolvedMentions: [] }) !== JSON.stringify(current))
+		throw new FoundationConflict();
+}
+async function checkAssessmentPrior(
+	tx: AppTransactionClient,
+	access: FoundationAccess,
+	packet: SourcePacket,
+	prior: PriorTopic[]
+) {
+	const current = await loadAssessmentPrior(tx, access, packet);
+	if (JSON.stringify(current) !== JSON.stringify(prior)) throw new FoundationConflict();
+}
+export function verifyLuAssessment(
+	access: FoundationAccess,
+	personId: string,
+	input: AssessmentInput
+) {
+	return withFoundationAccess(access, 'PREPARE_LU', async (tx) => {
+		const current = await loadPacket(tx, access, personId, input.packet.source.id, false);
+		comparePacket(current, input.packet);
+		await checkAssessmentPrior(tx, access, current, input.prior);
+	});
+}
+
+const assessmentKey = z.string().trim().min(1).max(200);
+function assessmentId(access: FoundationAccess, sourceId: string, key: string) {
+	return scopedId(
+		access,
+		'lu-assessment-request',
+		JSON.stringify([sourceId, assessmentKey.parse(key)])
+	);
+}
+function inventoryMac(access: FoundationAccess, prior: PriorTopic[]) {
+	return mac(access, 'lu-assessment-prior', JSON.stringify(prior));
+}
+
+async function readAssessmentReceipt(
+	tx: AppTransactionClient,
+	access: FoundationAccess,
+	candidateId: string,
+	personId: string,
+	packet: SourcePacket,
+	prior: PriorTopic[]
+) {
+	const row = await tx.foundationLuCandidate.findFirst({ where: { id: candidateId } });
+	if (!row) return null;
+	if (
+		row.epoch !== access.epoch ||
+		row.expiresAt <= new Date() ||
+		row.sourceVersionId !== packet.source.versionId ||
+		row.sourceContentMac !== packet.source.contentMac ||
+		(await tx.foundationLuApproval.findFirst({ where: { candidateId }, select: { id: true } }))
+	)
+		throw new FoundationConflict();
+	const stored = JSON.parse(
+		decrypt(row.proposalEnc, aad(access, candidateTable, 'proposalEnc', candidateId))
+	);
+	if (
+		stored.personId !== personId ||
+		JSON.stringify(stored.baselines) !== JSON.stringify(packet.baselines) ||
+		stored.inventoryMac !== inventoryMac(access, prior)
+	)
+		throw new FoundationConflict();
+	return {
+		candidateId,
+		outcome: row.outcome,
+		candidate: parseCandidate(stored.proposal, packet),
+		provenance: stored.assessment as AssessmentProvenance,
+		unresolvedMentions: parseSourcePacket({
+			...packet,
+			unresolvedMentions: stored.unresolvedMentions
+		}).unresolvedMentions
+	};
+}
+export function resumeLuAssessment(
+	access: FoundationAccess,
+	personId: string,
+	input: AssessmentInput,
+	key: string
+) {
+	return withFoundationAccess(access, 'STORE_LU_CANDIDATE', async (tx) => {
+		const packet = await loadPacket(tx, access, personId, input.packet.source.id, false);
+		comparePacket(packet, input.packet);
+		await checkAssessmentPrior(tx, access, packet, input.prior);
+		return readAssessmentReceipt(
+			tx,
+			access,
+			assessmentId(access, packet.source.id, key),
+			personId,
+			packet,
+			input.prior
+		);
+	});
+}
+
 function changedTopics(candidate: UnderstandingCandidate) {
 	return candidate.streams.flatMap((stream) =>
 		stream.topics
@@ -192,16 +393,30 @@ export function storeLuCandidate(
 	access: FoundationAccess,
 	personId: string,
 	packet: SourcePacket,
-	proposal: unknown
+	proposal: unknown,
+	assessment?: { requestKey: string; prior: PriorTopic[]; provenance: AssessmentProvenance }
 ) {
 	return withFoundationAccess(access, 'STORE_LU_CANDIDATE', async (tx) => {
 		const current = await loadPacket(tx, access, personId, packet.source.id, false);
 		const input = parseSourcePacket(packet);
-		if (JSON.stringify({ ...input, unresolvedMentions: [] }) !== JSON.stringify(current))
-			throw new FoundationConflict();
+		comparePacket(current, input);
+		if (assessment) await checkAssessmentPrior(tx, access, current, assessment.prior);
 		const validated = parseCandidate(proposal, current);
 		if (validated.meanings.some((m) => m.evidence.length > 128)) throw new FoundationDenied();
-		const id = randomUUID();
+		const id = assessment
+			? assessmentId(access, current.source.id, assessment.requestKey)
+			: randomUUID();
+		if (assessment) {
+			const existing = await readAssessmentReceipt(
+				tx,
+				access,
+				id,
+				personId,
+				current,
+				assessment.prior
+			);
+			if (existing) return { candidateId: existing.candidateId, outcome: existing.outcome };
+		}
 		const outcome = changedTopics(validated).length ? 'READY' : 'NO_CHANGE';
 		await tx.foundationLuCandidate.create({
 			data: {
@@ -219,7 +434,13 @@ export function storeLuCandidate(
 						personId,
 						baselines: current.baselines,
 						proposal: validated,
-						unresolvedMentions: input.unresolvedMentions
+						unresolvedMentions: input.unresolvedMentions,
+						...(assessment
+							? {
+									assessment: assessment.provenance,
+									inventoryMac: inventoryMac(access, assessment.prior)
+								}
+							: {})
 					}),
 					aad(access, candidateTable, 'proposalEnc', id)
 				)
@@ -354,6 +575,12 @@ export function approveLuCandidate(
 			packet.source.versionId !== row.sourceVersionId ||
 			packet.source.contentMac !== row.sourceContentMac ||
 			JSON.stringify(packet.baselines) !== JSON.stringify(stored.baselines)
+		)
+			throw new FoundationConflict();
+		// A prior topic can become ineligible without a new stream revision.
+		if (
+			stored.inventoryMac &&
+			stored.inventoryMac !== inventoryMac(access, await loadAssessmentPrior(tx, access, packet))
 		)
 			throw new FoundationConflict();
 		const candidate = parseCandidate(stored.proposal, packet);

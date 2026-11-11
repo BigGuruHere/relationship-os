@@ -32,6 +32,8 @@ See the [stage-2/3 backlog and migration gates](foundation/IMPLEMENTATION_PLAN.m
 
 LUR-2 introduces a full conversation source in the existing private vault. The source version binds speaker-labelled turns to the exact provider capture. Presentation versions link each editable summary to its source version and person. Understanding streams are scoped by subject and perspective. Each approved revision points to exact topic versions and their meaning and evidence dependencies. The preparation, approval and eligible-read operations recheck the current vault and source. See [LUR-2](foundation/LUR2_PERSISTENCE.md) for the feature branch, migration and acceptance status.
 
+LUR-3 connects the semantic assessment to these private sources. The model receives scoped transcript turns and eligible baseline prose through the shared model gateway. Only owner turns can support claims. Encrypted candidates retain the exact proposal, invocation provenance and the assessed baseline binding. Source or inherited evidence changes invalidate that binding before storage or approval. See [LUR-3](foundation/LUR3_SEMANTIC_ASSESSMENT.md).
+
 ## Stack and environments
 
 - Main app: SvelteKit, TypeScript, Node 22, Prisma 6, PostgreSQL/Neon with pgvector, OpenAI integrations; Railway DEV and PROD.

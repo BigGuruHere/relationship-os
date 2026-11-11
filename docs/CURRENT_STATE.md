@@ -31,7 +31,11 @@ The first approved relationship statement creates a default private relationship
 
 ## LUR-2 private conversations and revision persistence
 
-[LUR-2](foundation/LUR2_PERSISTENCE.md) is implemented on `feature/lu-foundation-persistence`, based on `f79cd8af`. The existing owner-only DEV Dorian flow saves both speakers' turns and an independently versioned summary. My People opens saved conversations through the owner's vault. Rich revision persistence is exercised with synthetic candidates. Connecting the semantic engine and the owner review UI is staged for LUR-3 and LUR-4. One additive Prisma migration. Hosted acceptance is pending.
+[LUR-2](foundation/LUR2_PERSISTENCE.md) merged through PR #67 at `b855aa45`. It saves both speakers' turns and an independently versioned summary in the existing owner-only DEV Dorian flow. Hosted acceptance has not been recorded.
+
+## LUR-3 Foundation semantic assessment
+
+[LUR-3](foundation/LUR3_SEMANTIC_ASSESSMENT.md) is implemented on `feature/lu-foundation-semantic` from `b855aa45`. The internal service creates candidates from explicitly admitted transcripts, using both speakers for context and exact owner passages as support. It handles initial and longitudinal assessment and rechecks source and inherited evidence eligibility at each processing boundary. Owner review and activation are staged separately. No Prisma migration.
 
 ## Dorian notes in My People
 

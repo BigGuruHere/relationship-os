@@ -1,6 +1,6 @@
 # LUR-2 private conversation and understanding persistence
 
-Implemented on `feature/lu-foundation-persistence` from Development `f79cd8af`, which includes [LUR-1](LUR1_CONTRACTS.md). This stage connects the existing owner-only DEV Dorian conversation to Foundation storage and provides the repositories for the next semantic stage.
+Implemented on `feature/lu-foundation-persistence` from Development `f79cd8af`, which includes [LUR-1](LUR1_CONTRACTS.md). Merged via PR #67 at `b855aa45`. Hosted verification has not been recorded. This stage connects the existing owner-only DEV Dorian conversation to Foundation storage and provides the repositories for the next semantic stage.
 
 ## User flow
 

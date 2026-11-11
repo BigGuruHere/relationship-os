@@ -6,6 +6,7 @@ import { resolve } from 'node:path';
 import { PGlite } from '@electric-sql/pglite';
 import { PGLiteSocketServer } from '@electric-sql/pglite-socket';
 import { createServer } from 'vite';
+import { runLuAssessmentCases } from './lur3-assessment-cases.mjs';
 import { applyLuMigration } from './lu-migration-fixture.mjs';
 
 const endpoint = process.env.LUR2_TEST_DATABASE_URL;
@@ -570,6 +571,19 @@ test(
 						(await privacy.reviewFoundationPrivacy('other')).conversationSummaries[0].summary,
 						'Other summary'
 					);
+				}
+			);
+			await t.test(
+				'LUR-3 uses authorised transcripts through the shared model gateway and resumes safely',
+				async () => {
+					await runLuAssessmentCases({
+						load,
+						grant,
+						personId: otherPerson.id,
+						conversations,
+						lu,
+						count
+					});
 				}
 			);
 		} finally {

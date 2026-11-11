@@ -25,6 +25,10 @@ On real devices, sign in as owner, open the page, start and end a conversation t
 
 The first approved relationship statement creates a default private relationship reference for the pair. Later reviewed notes reuse it. The review page shows the approved statements for that note. Editing the note supersedes its evidence and opens the corrected version for a fresh review. One approval batch is supported per note version. Hosted DEV acceptance is pending. No migration.
 
+## LUR-1 shared validation contracts
+
+[LUR-1](foundation/LUR1_CONTRACTS.md) is implemented on `feature/lu-contracts-extraction` from `d0e3ada0`. Existing LU validators moved unchanged behind their original import. The new source/candidate parsers and taxonomy mapping are internal contracts with synthetic tests; no current route uses a new writer. The physical and permission handoff is specified for LUR-2. No Prisma migration, merge or deployment in this stage.
+
 ## Dorian notes in My People
 
 The owner-only DEV flow is live-tested by the operator through note save. The `feature/dorian-person-note-quality` branch replaces provider call recaps with a person-centred draft from caller speech through the existing OpenAI summariser. The user can still review, edit, save, or discard. If no draft is generated, the editor opens blank and offers the caller's own words as reference. Existing saved notes remain editable. No migration.

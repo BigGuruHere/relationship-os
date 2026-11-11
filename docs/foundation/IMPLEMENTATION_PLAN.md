@@ -117,6 +117,8 @@ P-303 gains an owner-only DEV conversation draft adapter on `feature/dorian-peop
 
 `feature/note-understanding-review` connects P-303 notes to F-205 statements for owners on DEV. Accept when a general preference, reported view of the other person and relationship-specific want remain distinct, approved passages are exact, retries are idempotent and corrections make old support ineligible. No migration. Revert the application entry point to stop further writes while retaining versioned records. Hosted acceptance is pending.
 
+[LUR-1](LUR1_CONTRACTS.md) extracts the existing validation policy and implements provider-independent source and candidate contracts with no active writer. Next, LUR-2 adds guarded conversation, presentation and topic persistence on an isolated database. Preserve existing notes and approvals; no transcript backfill or automatic cutover. Later semantic and review slices still require parity and privacy evidence before activation.
+
 ## Stage register
 
 | Stage | Designed | Implemented | Validated | Merged | DEV / PROD |
@@ -127,6 +129,7 @@ P-303 gains an owner-only DEV conversation draft adapter on `feature/dorian-peop
 | 3 | Backlog and gates | P-301 through P-305 merged; P-306 DEV test login merged and operator-confirmed; hosted replay command on feature branch | Nine P-301 checks and 104 total foundation CI checks pass; P-302 included in 116 passing foundation CI checks, zero skips; P-303 included in 131 passing foundation CI checks; 37 local legacy/shared-audio checks and Svelte pass; P-304 included in 160 passing CI checks; P-305 included in 171 passing CI checks with disposable restore and PostgreSQL erasure; P-306 included in 178 passing CI checks; local disposable restore replay verified | P-301 PR #20; P-302 PR #21; P-303 PR #22; P-304 PR #23; P-305 PR #24; P-306 PRs #25-27 | DEV restore baseline matched; existing-account and internal pilot smoke operator-confirmed; hosted replay, detailed device/provider and closure evidence pending; no invited cohort activation |
 | 4 | S-405a design merged in PR #37 | S-405b-d merged in PRs #38-40; diagnostics in PR #41; S-405e planned | Isolated exchange tests and Chromium native-form checks pass | Development `61e3356` | DEV intake/SMS operator-reported; complete phone/email/device acceptance pending |
 | 5-7 | Direction and gates only | No | No | No | Not deployed |
+| LUR-1 | Preservation assessment in PR #65; physical handoff in [LUR-1](LUR1_CONTRACTS.md) | Shared validators, typed contracts and fixtures on `feature/lu-contracts-extraction`; zero schema changes | Focused deterministic checks and unchanged legacy baseline failures; see linked validation | Pending | No DEV/PROD activation or rollout |
 
 S-403 DEV acceptance correction (2026-11-07): operator confirmed deployment and one-way intake, but claim native forms failed origin validation. `fix/profile-publish-exchange-origin` corrects referrer policy and improves publication visibility. Focused regressions and native Chromium CI cover the fix; no migration, schema rollback or live send. See [acceptance fixes and operational diagnosis](S403_DEV_FIXES.md). Both-direction live SMS acceptance remains pending.
 

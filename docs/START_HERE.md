@@ -19,6 +19,10 @@ For a quick visual or text change, read only the relevant sections and inspect t
 
 [D-029](DECISION_LOG.md#d-029-ordinary-onboarding-and-an-incremental-production-launch) supersedes invited-cohort rollout and the prior production deferral: prepare the actual production app for ordinary new users with a small complete feature set, validate in DEV and add features incrementally. No special test-account or allowlist onboarding. The [production-base roadmap](ROADMAP.md#next-delivery-production-base) and [backlog](foundation/IMPLEMENTATION_PLAN.md#production-base-backlog-d-029) take priority. Core onboarding is implemented. The production exchange and recovery branch adds password reset, production exchange activation and richer phone contact export. Hosted DEV acceptance and promotion remain pending. See [rollout and recovery](foundation/PRODUCTION_EXCHANGE_AND_RECOVERY.md). Older pilot/stage notes preserve history, not current launch policy.
 
+## Living Understanding refactor assessment
+
+Before changing Dorian conversation processing or Living Understanding persistence, read [the preservation assessment and Sol 6.1 build plan](foundation/LU_REFACTOR_ASSESSMENT_AND_PLAN.md). It inventories the established claim and topic pipelines against the new vault, subject and perspective foundation. The plan covers full conversation evidence and future support for several subjects. It is a planning deliverable, with implementation and release evidence to follow in separate feature branches.
+
 ## Current exchange direction
 
 Read [S-405 account channels and simpler exchange](foundation/S405_ACCOUNT_CHANNELS_AND_EXCHANGE.md) for the accepted correction to S-401: owned-profile confirmation for existing users and reusable, independently verified account phone/email channels for guest claims. S-405a is documentation only; runtime stages are listed there. Earlier S-401/S-402 documents remain evidence of the currently implemented per-exchange SMS flow.

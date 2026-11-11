@@ -17,6 +17,10 @@ Accepted direction: [D-029](DECISION_LOG.md#d-029-ordinary-onboarding-and-an-inc
 
 See the [production-base backlog](foundation/IMPLEMENTATION_PLAN.md#production-base-backlog-d-029) and [Current State](CURRENT_STATE.md#ordinary-production-onboarding).
 
+## Next intelligence delivery
+
+Refactor the established Living Understanding processing into the Foundation model while preserving its demonstrated depth. Use the [Astra preservation assessment and Sol 6.1 implementation briefs](foundation/LU_REFACTOR_ASSESSMENT_AND_PLAN.md) to stage full conversation evidence, assessment and validated topic revisions under vault, subject and perspective authority. The selected My People person anchors the initial workflow. Open-conversation identity resolution and cross-account perspectives follow their own future scope. Implementations must show preservation evidence before replacing existing behaviour.
+
 ## Active programme
 
 The production base above takes priority over the earlier invited-pilot sequence. Historical stages retain delivery evidence and future capability boundaries; completing every exchange/intelligence feature is not required before releasing the core app.

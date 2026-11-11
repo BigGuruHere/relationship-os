@@ -117,6 +117,10 @@ P-303 gains an owner-only DEV conversation draft adapter on `feature/dorian-peop
 
 `feature/note-understanding-review` connects P-303 notes to F-205 statements for owners on DEV. Accept when a general preference, reported view of the other person and relationship-specific want remain distinct, approved passages are exact, retries are idempotent and corrections make old support ineligible. No migration. Revert the application entry point to stop further writes while retaining versioned records. Hosted acceptance is pending.
 
+### Living Understanding refactor assessment
+
+The [Astra assessment and Sol 6.1 build plan](LU_REFACTOR_ASSESSMENT_AND_PLAN.md) is a documentation delivery on `docs/living-understanding-refactor-plan` from `d0e3ada0`. It defines preservation and release gates for the established LU process and a Foundation implementation supporting explicit subject and perspective. This stage changes documentation only. Runtime work, schema migrations and hosted acceptance belong to the planned slices.
+
 ## Stage register
 
 | Stage | Designed | Implemented | Validated | Merged | DEV / PROD |

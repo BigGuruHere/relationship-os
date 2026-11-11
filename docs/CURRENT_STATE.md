@@ -7,6 +7,10 @@ Profile publishing cleanup is implemented on `feature/profile-publishing-cleanup
 
 Exchange and notes follow-up is implemented on `feature/exchange-voice-note-followup`. Sign-in with sufficient existing channel proof can finish the exchange and open the saved person’s voice-note invitation directly. Explicit proof and signed-in profile exchange use the same destination. Owner-private notes support text, summary and timestamp edits. Foundation edits append a revision. Existing stored-only legacy notes are updated within their owner’s contact workspace. No migration or deployment.
 
+## Living Understanding refactor planning, 2026-11-11
+
+The [Astra assessment and Sol 6.1 build plan](foundation/LU_REFACTOR_ASSESSMENT_AND_PLAN.md) is prepared on `docs/living-understanding-refactor-plan` from remote Development `d0e3ada0`. It compares the established extraction, attribution, rich topics, temporal scope, evidence and revision process with the Foundation pipeline. The operator reports DEV and PROD account resets and successful in-app Dorian calls and note saving. The assessment is based on source, schema, tests and supplied product examples. No live account data was inspected. Runtime integration remains planned.
+
 ## Context-neutral navigation
 
 `fix/context-neutral-navigation` removes the shared context picker and uses global navigation destinations on desktop and mobile, including Operator Tools and Manage Users. Context-specific workflows retain their own routes, permissions and data scope. The operator reports that DEV and PROD accounts were reset. No database change is required for this navigation update.

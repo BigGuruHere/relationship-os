@@ -35,7 +35,7 @@ export type PriorTopic = {
 	}[];
 };
 export type AssessmentInput = { packet: SourcePacket; prior: PriorTopic[] };
-export const semanticPromptVersion = 'foundation-lu-2026-11-v4';
+export const semanticPromptVersion = 'foundation-lu-2026-11-v5';
 export const semanticStages = ['decompose', 'compose', 'audit'] as const;
 type Stage = (typeof semanticStages)[number];
 export type ModelRequest = {
@@ -153,14 +153,21 @@ const attributionIssue = z.enum([
 	'AGENT_AS_OWNER', 'REPORTED_AS_DIRECT', 'ONE_SIDED_AS_SHARED', 'UNCERTAINTY_LOST',
 	'OTHER_WRONG_SPEAKER', 'INSUFFICIENT_OWNER_SUPPORT'
 ]);
+const topicIndex = z.number().int().min(0).max(383);
+const wordingPatch = z.strictObject({
+	paragraphs: z.array(z.strictObject({
+		topicIndex, prose: z.string().trim().min(1).max(6500)
+	})).min(1).max(384)
+});
 const assessmentAudit = audit.extend({
+	unsupportedTopicIndexes: z.array(topicIndex).max(16).optional(),
 	subjectFindings: z.array(z.strictObject({
 		meaningId: ref,
 		suggestedDestination: ref
 	})).max(16).optional(),
 	attributionFindings: z.array(z.discriminatedUnion('target', [
 		z.strictObject({ target: z.literal('MEANING'), meaningId: ref, issue: attributionIssue }),
-		z.strictObject({ target: z.literal('TOPIC'), topicIndex: z.number().int().min(0).max(383), issue: attributionIssue })
+		z.strictObject({ target: z.literal('TOPIC'), topicIndex, issue: attributionIssue })
 	])).max(16).optional()
 });
 type AttributionRepair = {
@@ -660,9 +667,16 @@ export async function assessConversation(
 			trace?.stages.push({ stage: step, attempt, durationMs: Math.round(performance.now() - started), outcome });
 		}
 	}
-	for (let attempt = 1; attempt <= 2; attempt++) {
+	let wordingRepair: {
+		extracted: Awaited<ReturnType<typeof invoke<typeof decomposition>>>;
+		grounded: ReturnType<typeof grounding>;
+		draft: z.infer<typeof composition>;
+		indexes: number[];
+	} | undefined;
+
+	for (let attempt = 1; attempt <= 3; attempt++) {
 		try {
-			const extracted = await invoke(
+			const extracted = wordingRepair?.extracted ?? await invoke(
 				'decompose',
 				decomposition,
 				[
@@ -690,7 +704,7 @@ export async function assessConversation(
 				},
 				attempt
 			);
-			const grounded = grounding(input, view, extracted.data, {
+			const grounded = wordingRepair?.grounded ?? grounding(input, view, extracted.data, {
 				kind: 'MODEL_DRAFTED',
 				invocationId: extracted.invocationId,
 				model: extracted.model,
@@ -700,7 +714,28 @@ export async function assessConversation(
 			const wholeTurnIds = new Set(extracted.data.meanings.flatMap((meaning) =>
 				meaning.evidence.filter((citation) => citation.quote === null).map((citation) => citation.turnId)
 			));
-			const proposed = await invoke(
+			const proposed = wordingRepair ? { data: await (async () => {
+				const { draft, indexes } = wordingRepair;
+				const selected = draft.topics.flatMap((topic, index) =>
+					topic.prose && (!indexes.length || indexes.includes(index)) ? [{ topicIndex: index, ...topic }] : []);
+				const patch = await invoke(
+					'compose', wordingPatch,
+					'Rewrite only the unsupported paragraphs. Use the supplied topicIndex values. Keep every supported qualification. Use only the assigned grounded meanings and eligible prior text. Return only the paragraphs that need correction.',
+					{
+						topics: selected, prior: view.inventory, decomposition: extracted.data,
+						wholeTurns: view.turns.filter((turn) => wholeTurnIds.has(turn.id))
+					},
+					attempt
+				);
+				const allowed = new Set(selected.map((topic) => topic.topicIndex));
+				const changes = new Map(patch.data.paragraphs.map(({ topicIndex, prose }) => [topicIndex, prose]));
+				check(changes.size === patch.data.paragraphs.length &&
+					[...changes.keys()].every((index) => allowed.has(index)) &&
+					[...changes].some(([index, prose]) => prose !== draft.topics[index].prose),
+					'INVALID_WORDING_REPAIR');
+				// Keep destinations, evidence assignments and prior-topic dispositions intact.
+				return { topics: draft.topics.map((topic, index) => ({ ...topic, prose: changes.get(index) ?? topic.prose })) };
+			})() } : await invoke(
 				'compose',
 				composition,
 				[
@@ -732,6 +767,7 @@ export async function assessConversation(
 					'Check every claim has meaningful owner support. Reject attribution from an unconfirmed Dorian suggestion, bare acknowledgement, or answer that does not clearly endorse the proposed meaning.',
 					'For BAD_SUBJECT, identify each misrouted extracted meaning in subjectFindings using its existing meaningId and the suggested destination ref from source.destinations. Use an empty array if the subject problem is in topic wording alone or no different destination is supported.',
 					'For MISATTRIBUTION, identify the offending extracted meaning by meaningId or the affected topic paragraph by zero-based topicIndex in draft.topics. Return attributionFindings with the applicable fixed issue for each. If no target can be identified, keep MISATTRIBUTION and leave the findings empty.',
+					'For UNSUPPORTED_PROSE, give the zero-based indexes in draft.topics of unsupported paragraphs in unsupportedTopicIndexes. Return an empty list if the affected indexes cannot be identified.',
 					'Return an empty issues array only when every material claim, omission and topic change is defensible.'
 				].join('\n'),
 				{
@@ -742,7 +778,7 @@ export async function assessConversation(
 				},
 				attempt
 			);
-			const { issues, subjectFindings, attributionFindings } = assessed.data;
+			const { issues, subjectFindings, attributionFindings, unsupportedTopicIndexes } = assessed.data;
 			const reviewFindings: AssessmentReviewFinding[] = [];
 			if (issues.includes('BAD_SUBJECT')) {
 				// Carry only findings that refer to a real meaning and another permitted
@@ -778,6 +814,23 @@ export async function assessConversation(
 					: []
 			});
 			if (issues.length) {
+				const indexes = [...new Set(unsupportedTopicIndexes ?? [])].filter((index) => proposed.data.topics[index]?.prose);
+				if (issues.includes('UNSUPPORTED_PROSE')) {
+					for (const index of indexes) {
+						const topic = proposed.data.topics[index];
+						const ids = [...topic.primary, ...topic.contextual];
+						const evidence = grounded.meanings.filter((meaning) => ids.includes(meaning.id)).flatMap((meaning) => meaning.evidence);
+						reviewFindings.push(reviewFinding(view, 'UNSUPPORTED_PROSE', topic.prose!, evidence));
+					}
+				}
+				if (!wordingRepair && issues.every((issue) => issue === 'UNSUPPORTED_PROSE') &&
+					proposed.data.topics.some((topic) => topic.prose)) {
+					wordingRepair = { extracted, grounded, draft: proposed.data, indexes };
+					const repair = { stage: 'audit' as const, reason: 'UNSUPPORTED_PROSE' };
+					provenance.repairs.push(repair);
+					trace?.repairs.push(repair);
+					continue;
+				}
 				const reason = issues.includes('MISATTRIBUTION') ? 'MISATTRIBUTION'
 					: issues.includes('BAD_SUBJECT') ? 'BAD_SUBJECT' : issues[0];
 				const failure = new AssessmentError(reason);
@@ -788,7 +841,7 @@ export async function assessConversation(
 		} catch (error) {
 			if (!(error instanceof AssessmentError)) throw error;
 			if (
-				attempt === 2 ||
+				attempt >= 2 ||
 				['MODEL_FAILURE', 'MODEL_TIMEOUT', 'CANCELLED', 'INPUT_LIMIT'].includes(error.reason)
 			) {
 				error.diagnostic = { stage, attempt };

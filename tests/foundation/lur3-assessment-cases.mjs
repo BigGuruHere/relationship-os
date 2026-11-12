@@ -284,7 +284,7 @@ export async function runLuAssessmentCases({ load, vite, otherPersonId, grant, p
 			assert.ok(durationMs >= 0);
 			assert.deepEqual(logFields, {
 				component: 'relish.lu.review', operation: 'analyse', reference,
-				outcome: 'FAILED', model: 'synthetic-lu-model', promptVersion: 'foundation-lu-2026-11-v4',
+				outcome: 'FAILED', model: 'synthetic-lu-model', promptVersion: 'foundation-lu-2026-11-v5',
 				stage: 'audit', attempt: 2, reason: 'MISATTRIBUTION'
 			});
 			assert.deepEqual(stages.map(({ durationMs: ms, ...stage }) => {

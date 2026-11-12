@@ -98,7 +98,7 @@ export async function runLuAssessmentCases({ load, vite, otherPersonId, grant, p
 		const data = JSON.parse(prompt);
 		const stage = data.topic ? 'edit-audit' : data.draft ? 'audit' : data.decomposition ? 'compose' : 'decompose';
 		calls.push({ stage, data });
-		if (beforeResponse) await beforeResponse(stage);
+		if (beforeResponse) await beforeResponse(stage, init.signal);
 		let output;
 		if (stage === 'decompose') {
 			const [agent, answer, ...additional] = data.source.turns;
@@ -238,10 +238,33 @@ export async function runLuAssessmentCases({ load, vite, otherPersonId, grant, p
 		await assert.rejects(route.load(event(first, '', owner, { id: otherPersonId, noteId: first })), status(404));
 		await assert.rejects(action('assessConversation', first, firstFields, '', owner, 'https://example.test'), status(403));
 
-		beforeResponse = async () => { beforeResponse = undefined; throw new DOMException('Synthetic provider timeout', 'TimeoutError'); };
-		const failed = await action('assessConversation', first, firstFields);
+		const nativeTimeout = AbortSignal.timeout;
+		const budgets = [];
+		const overall = new AbortController();
+		let failed;
+		try {
+			AbortSignal.timeout = (milliseconds) => {
+				budgets.push(milliseconds);
+				return milliseconds === 240_000 ? overall.signal : nativeTimeout(milliseconds);
+			};
+			beforeResponse = async (stage, signal) => {
+				if (stage === 'compose') {
+					beforeResponse = undefined;
+					overall.abort(new DOMException('Synthetic assessment deadline', 'TimeoutError'));
+					assert.equal(signal.reason, overall.signal.reason);
+					signal.throwIfAborted();
+				}
+			};
+			failed = await action('assessConversation', first, firstFields);
+		} finally {
+			AbortSignal.timeout = nativeTimeout;
+			beforeResponse = undefined;
+		}
+		assert.deepEqual(budgets.filter((ms) => [240_000, 90_000, 45_000].includes(ms)), [240_000, 90_000, 45_000]);
 		assert.equal(failed.status, 503);
+		assert.match(failed.data.message, /Analysis took too long/);
 		assert.equal(failed.data.retryKey, firstFields.requestKey);
+		assert.equal(await count('FoundationLuCandidate'), 0);
 		assert.equal(await count('FoundationLuRevision'), 0);
 		assert.equal((await route.load(event(first))).conversation.summary, 'First private summary');
 		assert.equal((await action('assessConversation', first, firstFields)).status, 409);

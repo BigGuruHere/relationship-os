@@ -171,9 +171,11 @@ export const conversationLuActions = {
 					attempt: cause.diagnostic?.attempt ?? 0, reason: cause.reason
 				}));
 				const unavailable = cause.reason.startsWith('MODEL_');
-				const message = unavailable
-					? 'Analysis is temporarily unavailable. You can retry.'
-					: 'Relish could not validate updates from this conversation. You can retry.';
+				const message = cause.reason === 'MODEL_TIMEOUT'
+					? 'Analysis took too long. Your conversation is still saved. You can retry.'
+					: unavailable
+						? 'Analysis is temporarily unavailable. You can retry.'
+						: 'Relish could not validate updates from this conversation. You can retry.';
 				return fail(unavailable ? 503 : 422, {
 					message: message + ' Reference: ' + reference, retryKey: requestKey.data,
 					...(cause.reviewFindings?.length ? { reviewFindings: cause.reviewFindings } : {})

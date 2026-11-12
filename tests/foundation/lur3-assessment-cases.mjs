@@ -264,7 +264,11 @@ export async function runLuAssessmentCases({ load, vite, otherPersonId, grant, p
 		assert.equal(failed.status, 503);
 		assert.match(failed.data.message, /Analysis took too long/);
 		assert.equal(failed.data.retryKey, firstFields.requestKey);
-		assert.equal(await count('FoundationLuCandidate'), 0);
+		assert.equal(await count('FoundationLuCandidate'), 1);
+		const recoveredTimeout = await route.load(event(first));
+		assert.equal(recoveredTimeout.candidate, null);
+		assert.equal(recoveredTimeout.failedReview.reason, 'MODEL_TIMEOUT');
+		assert.equal(recoveredTimeout.failedReview.message, failed.data.message);
 		assert.equal(await count('FoundationLuRevision'), 0);
 		assert.equal((await route.load(event(first))).conversation.summary, 'First private summary');
 		assert.equal((await action('assessConversation', first, firstFields)).status, 409);
@@ -296,6 +300,12 @@ export async function runLuAssessmentCases({ load, vite, otherPersonId, grant, p
 				attempt, issues: ['MISATTRIBUTION'], attributionIssues: ['ONE_SIDED_AS_SHARED']
 			})));
 			assert.deepEqual(repairs, [{ stage: 'audit', reason: 'MISATTRIBUTION' }]);
+			const reopened = await route.load(event(first));
+			assert.equal(reopened.candidate, null);
+			assert.equal(reopened.failedReview.reference, reference);
+			assert.deepEqual(reopened.failedReview.stageReview, JSON.parse(JSON.stringify(invalid.data.stageReview)));
+			assert.equal((await route.load(event(first, '&candidate=' + reference))).candidate, null);
+			assert.equal((await action('decide', first, { decision: 'REJECT' }, '&candidate=' + reference)).status, 409);
 			const panels = invalid.data.stageReview;
 			assert.deepEqual(panels.map(({ stage, attempt, reason }) => [stage, attempt, reason]), [
 				['decompose', 1, undefined], ['compose', 1, undefined], ['audit', 1, undefined],
@@ -315,7 +325,7 @@ export async function runLuAssessmentCases({ load, vite, otherPersonId, grant, p
 			assert.deepEqual(retry, [{ issue: 'ONE_SIDED_AS_SHARED', claim: finding.claim, turnIds: ['T1', 'T2'] }]);
 			if (browser) {
 				await browser.page.goto(origin + pathname(first) + '?conversation=1');
-				await browser.page.getByRole('button', { name: 'Analyse conversation' }).click();
+				// Open a clean GET, with no action response available to the page.
 				await browser.page.getByText('Analysis steps', { exact: true }).click();
 				await browser.page.getByText('Extraction · Attempt 1', { exact: true }).click();
 				assert.ok(await browser.page.getByRole('button', { name: 'Copy item' }).first().isVisible());
@@ -327,11 +337,12 @@ export async function runLuAssessmentCases({ load, vite, otherPersonId, grant, p
 			console.warn = warn;
 			rejectAssessment = false;
 		}
-		assert.equal(await count('FoundationLuCandidate'), 0);
+		assert.equal(await count('FoundationLuCandidate'), 2);
 		assert.equal(await count('FoundationLuRevision'), 0);
 		const retried = await redirectTo(action('assessConversation', first, { ...firstFields, sourceVersion: '2' }));
 		const ready = retried.searchParams.get('candidate');
 		const query = '&candidate=' + ready;
+		assert.equal((await route.load(event(first))).failedReview, null);
 		const initialReview = await route.load(event(first, query));
 		assert.deepEqual(initialReview.candidate.stageReview.map(({ stage }) => stage), ['decompose', 'compose', 'audit']);
 		assert.ok(initialReview.candidate.stageReview[0].items.some(({ title }) => title.includes('My view of our relationship')));

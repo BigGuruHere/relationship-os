@@ -6,7 +6,7 @@ import { readPersonConversation, reviseConversationSource } from './conversation
 import { FoundationConflict } from './evidence';
 import { FoundationDenied } from './internal';
 import {
-	approveLuCandidate, readLuCandidateForReview, readPersonLuHistory, reviewGroups, stableTopicKey
+	approveLuCandidate, readLatestLuFailedReview, readLuCandidateForReview, readPersonLuHistory, reviewGroups, stableTopicKey
 } from './livingUnderstanding';
 import { assessFoundationConversation, editFoundationProposal } from './luAssessment';
 import { noteReviewAvailable } from './noteReview';
@@ -79,6 +79,7 @@ export async function loadConversationLuReview(event: ReviewEvent) {
 	const conversation = await reviewContext(event);
 	const person = await foundationPage(async () =>
 		readPerson(await resolveFoundationAccess(locals, 'READ'), params.id));
+	const enabled = conversationReviewAvailable(locals, url);
 	const candidateId = id.safeParse(url.searchParams.get('candidate'));
 	const candidate = await (async () => {
 		if (!candidateId.success) return null;
@@ -90,6 +91,17 @@ export async function loadConversationLuReview(event: ReviewEvent) {
 			throw cause;
 		}
 	})();
+	const failedReview = enabled && !url.searchParams.has('candidate') && !url.searchParams.has('status')
+		? await (async () => {
+			try {
+				const access = await resolveFoundationAccess(locals, 'STORE_LU_CANDIDATE');
+				const failed = await readLatestLuFailedReview(access, params.id, params.noteId, conversation.sourceVersion);
+				return failed && { ...failed, message: failedAnalysisMessage(failed.reason, failed.reference) };
+			} catch (cause) {
+				if (cause instanceof FoundationDenied || cause instanceof FoundationConflict) return null;
+				throw cause;
+			}
+		})() : null;
 	const group = groupSchema.safeParse(url.searchParams.get('group')).data;
 	const revision = number.safeParse(url.searchParams.get('revision')).data;
 	const topic = id.safeParse(url.searchParams.get('topic')).data;
@@ -100,7 +112,7 @@ export async function loadConversationLuReview(event: ReviewEvent) {
 	return {
 		kind: 'conversation' as const, person: { id: person.id, name: person.name }, conversation,
 		candidate, stale: url.searchParams.has('candidate') && !candidate,
-		enabled: conversationReviewAvailable(locals, url),
+		enabled, failedReview,
 		requestKey: randomUUID(),
 		status: decisionSchema.safeParse(url.searchParams.get('status')).data,
 		history, historySelection: { group, revision, topic }
@@ -133,6 +145,15 @@ function readKey(value: FormDataEntryValue | null) {
 	}
 }
 
+function failedAnalysisMessage(reason: string, reference: string) {
+	const message = reason === 'MODEL_TIMEOUT'
+		? 'Analysis took too long. Your conversation is still saved. You can retry.'
+		: reason.startsWith('MODEL_')
+			? 'Analysis is temporarily unavailable. You can retry.'
+			: 'Relish could not validate updates from this conversation. You can retry.';
+	return message + ' Reference: ' + reference;
+}
+
 export const conversationLuActions = {
 	assessConversation: async (event: FormEvent) => {
 		const { locals, params, url, request } = event;
@@ -158,7 +179,7 @@ export const conversationLuActions = {
 			const access = await resolveFoundationAccess(locals, 'REVISE_CONVERSATION_SOURCE');
 			const source = await reviseConversationSource(access, params.id, params.noteId, expected.data, 'PRIVATE_ANALYSIS');
 			const result = await assessFoundationConversation(locals, params.id, params.noteId, requestKey.data,
-				{ signal: request.signal, sourceVersionId: source.id, trace, stageReview });
+				{ signal: request.signal, sourceVersionId: source.id, trace, stageReview, failureReference: reference });
 			console.info(JSON.stringify(log(result.outcome)));
 			return reviewRedirect(url, { candidate: result.candidateId });
 		} catch (cause) {
@@ -173,13 +194,8 @@ export const conversationLuActions = {
 					attempt: cause.diagnostic?.attempt ?? 0, reason: cause.reason
 				}));
 				const unavailable = cause.reason.startsWith('MODEL_');
-				const message = cause.reason === 'MODEL_TIMEOUT'
-					? 'Analysis took too long. Your conversation is still saved. You can retry.'
-					: unavailable
-						? 'Analysis is temporarily unavailable. You can retry.'
-						: 'Relish could not validate updates from this conversation. You can retry.';
 				return fail(unavailable ? 503 : 422, {
-					message: message + ' Reference: ' + reference, retryKey: requestKey.data,
+					message: failedAnalysisMessage(cause.reason, reference), retryKey: requestKey.data,
 					...(stageReview.length ? { stageReview } : {}),
 					...(cause.reviewFindings?.length ? { reviewFindings: cause.reviewFindings } : {})
 				});

@@ -4729,6 +4729,7 @@ enum FoundationLuGeneratorKind {
 enum FoundationLuCandidateOutcome {
   READY
   NO_CHANGE
+  FAILED
 }
 
 enum FoundationLuTimeScope {

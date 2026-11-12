@@ -42,6 +42,14 @@ A hosted retry logged `decompose / MODEL_TIMEOUT`, followed by `audit / MISATTRI
 
 If a terminal audit identifies a disputed claim, the authenticated DEV owner can expand **Why these suggestions were held** directly on the failed review. The panel shows a bounded set of disputed claims and cited excerpts. Full turns remain in the saved transcript above. The panel is part of the no-store action response and disappears when the page is reloaded. No failed draft is approved or persisted. Retry the same saved conversation after deployment to verify this case.
 
+A later DEV analysis repaired its quote citations and then hit `UNSUPPORTED_PROSE` in the audit. A prose-only finding now gets one wording repair using the grounded extraction. The repair keeps the same evidence, destinations and topic dispositions, then runs the complete audit again. If the audit identifies specific paragraphs, the owner can inspect those findings on a terminal failure. The existing four-minute model deadline covers both repairs.
+
+## Inspect the analysis stages
+
+In the DEV owner review, expand **Analysis steps** after an analysis. Each attempt shows extraction (groups, meanings, citations and exclusions), composition (draft paragraphs and assigned meanings), and the audit outcome. The panels preview a bounded amount of each step and identify omitted items. Use **Copy item** to copy only the item you want to discuss. Earlier drafts can contain rejected statements.
+
+Successful previews are encrypted with the private draft candidate and remain available while that candidate can be reviewed. Failed previews appear only in the no-store action response after rechecking access and source eligibility. The stage previews are separate from the safe application log. To inspect a previously saved call, run a fresh analysis.
+
 ## Validation
 
 The LUR-2 disposable database suite includes LUR-3 assessment and LUR-4 route cases with a simulated model. The browser job exercises native forms with Chromium against that same isolated fixture. The suite covers the first and second revisions, edited wording and its origin, provider-failure recovery, defer and reject, prior evidence eligibility, read-only rollback and denied cross-account access. The browser fixture renders the real review component and calls the real route handlers. A hosted Dorian/OpenAI quality replay remains part of LUR-5.

@@ -35,7 +35,7 @@ export type PriorTopic = {
 	}[];
 };
 export type AssessmentInput = { packet: SourcePacket; prior: PriorTopic[] };
-export const semanticPromptVersion = 'foundation-lu-2026-11-v4';
+export const semanticPromptVersion = 'foundation-lu-2026-11-v5';
 export const semanticStages = ['decompose', 'compose', 'audit'] as const;
 type Stage = (typeof semanticStages)[number];
 export type ModelRequest = {
@@ -55,7 +55,17 @@ export type AssessmentProvenance = {
 	pipelineVersion: 'LUR-3';
 	invocations: { stage: Stage; attempt: number; invocationId: string; model: string }[];
 	repairs: { stage: Stage; reason: string }[];
+	stageReview?: AssessmentStagePanel[];
 	ownerEdits?: { topic: string; fromCandidateId: string; invocationId: string; model: string }[];
+};
+
+// Private stage previews are kept separate from the operational trace.
+export type AssessmentStagePanel = {
+	stage: Stage;
+	attempt: number;
+	items: { title: string; text: string }[];
+	omitted: number;
+	reason?: string;
 };
 
 export type AssessmentTrace = {
@@ -153,14 +163,21 @@ const attributionIssue = z.enum([
 	'AGENT_AS_OWNER', 'REPORTED_AS_DIRECT', 'ONE_SIDED_AS_SHARED', 'UNCERTAINTY_LOST',
 	'OTHER_WRONG_SPEAKER', 'INSUFFICIENT_OWNER_SUPPORT'
 ]);
+const topicIndex = z.number().int().min(0).max(383);
+const wordingPatch = z.strictObject({
+	paragraphs: z.array(z.strictObject({
+		topicIndex, prose: z.string().trim().min(1).max(6500)
+	})).min(1).max(384)
+});
 const assessmentAudit = audit.extend({
+	unsupportedTopicIndexes: z.array(topicIndex).max(16).optional(),
 	subjectFindings: z.array(z.strictObject({
 		meaningId: ref,
 		suggestedDestination: ref
 	})).max(16).optional(),
 	attributionFindings: z.array(z.discriminatedUnion('target', [
 		z.strictObject({ target: z.literal('MEANING'), meaningId: ref, issue: attributionIssue }),
-		z.strictObject({ target: z.literal('TOPIC'), topicIndex: z.number().int().min(0).max(383), issue: attributionIssue })
+		z.strictObject({ target: z.literal('TOPIC'), topicIndex, issue: attributionIssue })
 	])).max(16).optional()
 });
 type AttributionRepair = {
@@ -593,12 +610,31 @@ function reviewFinding(
 	};
 }
 
+function recordStagePanel(
+	panels: AssessmentStagePanel[],
+	stage: Stage,
+	attempt: number,
+	items: { title: string; text: string }[],
+	reason?: string
+) {
+	// Keep bounded previews in the action response and the encrypted candidate.
+	const limit = 36;
+	panels.push({
+		stage, attempt, omitted: Math.max(0, items.length - limit), reason,
+		items: items.slice(0, limit).map(({ title, text }) => ({
+			title: title.length > 240 ? title.slice(0, 240) + '…' : title,
+			text: text.length > 2400 ? text.slice(0, 2400) + '…' : text
+		}))
+	});
+}
+
 export async function assessConversation(
 	input: AssessmentInput,
 	model: AssessmentModel,
 	authorize: () => Promise<void>,
 	signal?: AbortSignal,
-	trace?: AssessmentTrace
+	trace?: AssessmentTrace,
+	stageReview?: AssessmentStagePanel[]
 ) {
 	const view = modelInput(input);
 	const provenance: AssessmentProvenance = {
@@ -606,6 +642,11 @@ export async function assessConversation(
 		pipelineVersion: 'LUR-3',
 		invocations: [],
 		repairs: []
+	};
+	const groupFor = (ref: string) => {
+		const role = view.destinations.find((item) => item.ref === ref)?.role;
+		return role === 'SELF' ? 'Me' : role === 'PERSON' ? 'My view of this person'
+			: role === 'RELATIONSHIP' ? 'My view of our relationship' : 'Unknown subject';
 	};
 	let stage: Stage = 'decompose';
 	let subjectRepair: SubjectRepair[] = [];
@@ -660,9 +701,16 @@ export async function assessConversation(
 			trace?.stages.push({ stage: step, attempt, durationMs: Math.round(performance.now() - started), outcome });
 		}
 	}
-	for (let attempt = 1; attempt <= 2; attempt++) {
+	let wordingRepair: {
+		extracted: Awaited<ReturnType<typeof invoke<typeof decomposition>>>;
+		grounded: ReturnType<typeof grounding>;
+		draft: z.infer<typeof composition>;
+		indexes: number[];
+	} | undefined;
+
+	for (let attempt = 1; attempt <= 3; attempt++) {
 		try {
-			const extracted = await invoke(
+			const extracted = wordingRepair?.extracted ?? await invoke(
 				'decompose',
 				decomposition,
 				[
@@ -690,7 +738,29 @@ export async function assessConversation(
 				},
 				attempt
 			);
-			const grounded = grounding(input, view, extracted.data, {
+			if (stageReview && !wordingRepair) recordStagePanel(stageReview, 'decompose', attempt, [
+				...extracted.data.meanings.map((meaning) => ({
+					title: meaning.id + ' · ' + groupFor(meaning.destination) + ' · ' + meaning.topic,
+					text: [
+						meaning.text,
+						meaning.kind + ' · ' + meaning.basis + (meaning.uncertainty ? ' · ' + meaning.uncertainty : ''),
+						...meaning.evidence.map(({ turnId, role, quote }) => {
+							const turn = view.turns.find((item) => item.id === turnId);
+							const excerpt = quote ?? turn?.text ?? 'Turn not found';
+							return turnId + ' · ' + (turn?.role ?? 'UNKNOWN') + ' · ' + role +
+								(quote === null ? ' · Whole turn' : '') + ' · ' +
+								(excerpt.length > 360 ? excerpt.slice(0, 360) + '…' : excerpt);
+						})
+					].join('\n')
+				})),
+				...extracted.data.exclusions.map(({ turnId, reason }) => ({
+					title: 'Excluded turn ' + turnId, text: reason
+				})),
+				...extracted.data.unresolvedMentions.map(({ turnId, text }) => ({
+					title: 'Unresolved mention · ' + turnId, text
+				}))
+			]);
+			const grounded = wordingRepair?.grounded ?? grounding(input, view, extracted.data, {
 				kind: 'MODEL_DRAFTED',
 				invocationId: extracted.invocationId,
 				model: extracted.model,
@@ -700,7 +770,28 @@ export async function assessConversation(
 			const wholeTurnIds = new Set(extracted.data.meanings.flatMap((meaning) =>
 				meaning.evidence.filter((citation) => citation.quote === null).map((citation) => citation.turnId)
 			));
-			const proposed = await invoke(
+			const proposed = wordingRepair ? { data: await (async () => {
+				const { draft, indexes } = wordingRepair;
+				const selected = draft.topics.flatMap((topic, index) =>
+					topic.prose && (!indexes.length || indexes.includes(index)) ? [{ topicIndex: index, ...topic }] : []);
+				const patch = await invoke(
+					'compose', wordingPatch,
+					'Rewrite only the unsupported paragraphs. Use the supplied topicIndex values. Keep every supported qualification. Use only the assigned grounded meanings and eligible prior text. Return only the paragraphs that need correction.',
+					{
+						topics: selected, prior: view.inventory, decomposition: extracted.data,
+						wholeTurns: view.turns.filter((turn) => wholeTurnIds.has(turn.id))
+					},
+					attempt
+				);
+				const allowed = new Set(selected.map((topic) => topic.topicIndex));
+				const changes = new Map(patch.data.paragraphs.map(({ topicIndex, prose }) => [topicIndex, prose]));
+				check(changes.size === patch.data.paragraphs.length &&
+					[...changes.keys()].every((index) => allowed.has(index)) &&
+					[...changes].some(([index, prose]) => prose !== draft.topics[index].prose),
+					'INVALID_WORDING_REPAIR');
+				// Keep destinations, evidence assignments and prior-topic dispositions intact.
+				return { topics: draft.topics.map((topic, index) => ({ ...topic, prose: changes.get(index) ?? topic.prose })) };
+			})() } : await invoke(
 				'compose',
 				composition,
 				[
@@ -721,6 +812,15 @@ export async function assessConversation(
 				},
 				attempt
 			);
+			if (stageReview) recordStagePanel(stageReview, 'compose', attempt, proposed.data.topics.map((topic) => ({
+				title: groupFor(topic.destination) + ' · ' + (topic.title ?? view.prior.find((item) => item.ref === topic.prior)?.title ?? 'Prior topic'),
+				text: [
+					topic.prose ?? 'Prior paragraph retained.',
+					topic.effect + (topic.timeScope ? ' · ' + topic.timeScope : ''),
+					'Primary meanings: ' + (topic.primary.join(', ') || 'None'),
+					'Contextual meanings: ' + (topic.contextual.join(', ') || 'None')
+				].join('\n')
+			})));
 			const candidate = composeCandidate(input, view, grounded, extracted.data, proposed.data);
 			const assessed = await invoke(
 				'audit',
@@ -732,6 +832,7 @@ export async function assessConversation(
 					'Check every claim has meaningful owner support. Reject attribution from an unconfirmed Dorian suggestion, bare acknowledgement, or answer that does not clearly endorse the proposed meaning.',
 					'For BAD_SUBJECT, identify each misrouted extracted meaning in subjectFindings using its existing meaningId and the suggested destination ref from source.destinations. Use an empty array if the subject problem is in topic wording alone or no different destination is supported.',
 					'For MISATTRIBUTION, identify the offending extracted meaning by meaningId or the affected topic paragraph by zero-based topicIndex in draft.topics. Return attributionFindings with the applicable fixed issue for each. If no target can be identified, keep MISATTRIBUTION and leave the findings empty.',
+					'For UNSUPPORTED_PROSE, give the zero-based indexes in draft.topics of unsupported paragraphs in unsupportedTopicIndexes. Return an empty list if the affected indexes cannot be identified.',
 					'Return an empty issues array only when every material claim, omission and topic change is defensible.'
 				].join('\n'),
 				{
@@ -742,7 +843,7 @@ export async function assessConversation(
 				},
 				attempt
 			);
-			const { issues, subjectFindings, attributionFindings } = assessed.data;
+			const { issues, subjectFindings, attributionFindings, unsupportedTopicIndexes } = assessed.data;
 			const reviewFindings: AssessmentReviewFinding[] = [];
 			if (issues.includes('BAD_SUBJECT')) {
 				// Carry only findings that refer to a real meaning and another permitted
@@ -771,6 +872,25 @@ export async function assessConversation(
 					return [{ issue: finding.issue, claim, turnIds: [...new Set(evidence.map((item) => item.turnId))] }];
 				});
 			}
+			const indexes = [...new Set(unsupportedTopicIndexes ?? [])].filter((index) => proposed.data.topics[index]?.prose);
+			if (issues.includes('UNSUPPORTED_PROSE')) {
+				for (const index of indexes) {
+					const topic = proposed.data.topics[index];
+					const ids = [...topic.primary, ...topic.contextual];
+					const evidence = grounded.meanings.filter((meaning) => ids.includes(meaning.id)).flatMap((meaning) => meaning.evidence);
+					reviewFindings.push(reviewFinding(view, 'UNSUPPORTED_PROSE', topic.prose!, evidence));
+				}
+			}
+			if (stageReview) recordStagePanel(stageReview, 'audit', attempt, [
+				{ title: issues.length ? 'Audit raised issues' : 'Audit passed', text: issues.join(', ') || 'No issues reported.' },
+				...reviewFindings.map((finding) => ({
+					title: finding.issue, text: [
+						finding.claim,
+						...finding.evidence.map(({ turnId, speaker, role, quote, shortened }) =>
+							turnId + ' · ' + (speaker ?? 'UNKNOWN') + ' · ' + role + ' · ' + quote + (shortened ? '…' : ''))
+					].join('\n')
+				}))
+			]);
 			trace?.audits.push({
 				attempt, issues,
 				attributionIssues: issues.includes('MISATTRIBUTION')
@@ -778,17 +898,27 @@ export async function assessConversation(
 					: []
 			});
 			if (issues.length) {
+				if (!wordingRepair && issues.every((issue) => issue === 'UNSUPPORTED_PROSE') &&
+					proposed.data.topics.some((topic) => topic.prose)) {
+					wordingRepair = { extracted, grounded, draft: proposed.data, indexes };
+					const repair = { stage: 'audit' as const, reason: 'UNSUPPORTED_PROSE' };
+					provenance.repairs.push(repair);
+					trace?.repairs.push(repair);
+					continue;
+				}
 				const reason = issues.includes('MISATTRIBUTION') ? 'MISATTRIBUTION'
 					: issues.includes('BAD_SUBJECT') ? 'BAD_SUBJECT' : issues[0];
 				const failure = new AssessmentError(reason);
 				failure.reviewFindings = reviewFindings.slice(0, 6);
 				throw failure;
 			}
+			if (stageReview?.length) provenance.stageReview = stageReview;
 			return { candidate, provenance, unresolvedMentions: grounded.mentions };
 		} catch (error) {
 			if (!(error instanceof AssessmentError)) throw error;
+			if (stageReview) recordStagePanel(stageReview, stage, attempt, [], error.reason);
 			if (
-				attempt === 2 ||
+				attempt >= 2 ||
 				['MODEL_FAILURE', 'MODEL_TIMEOUT', 'CANCELLED', 'INPUT_LIMIT'].includes(error.reason)
 			) {
 				error.diagnostic = { stage, attempt };

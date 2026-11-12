@@ -10,7 +10,8 @@ import {
 	auditOwnerWording,
 	AssessmentError,
 	type AssessmentModel,
-	type AssessmentTrace
+	type AssessmentTrace,
+	type AssessmentStagePanel
 } from '../livingUnderstanding/semanticAssessment';
 import { resolveFoundationAccess } from './policy';
 import {
@@ -56,7 +57,7 @@ export async function assessFoundationConversation(
 	personId: string,
 	sourceId: string,
 	requestKey: string,
-	options: { signal?: AbortSignal; sourceVersionId?: string; trace?: AssessmentTrace } = {}
+	options: { signal?: AbortSignal; sourceVersionId?: string; trace?: AssessmentTrace; stageReview?: AssessmentStagePanel[] } = {}
 ) {
 	const { signal } = options;
 	signal?.throwIfAborted();
@@ -74,8 +75,14 @@ export async function assessFoundationConversation(
 		privateAssessmentModel(assessmentDeadline),
 		() => verifyLuAssessment(prepare, personId, input),
 		signal,
-		options.trace
-	);
+		options.trace,
+		options.stageReview
+	).catch(async (cause: unknown) => {
+		// Check access and the same source again before returning a private failed-run preview.
+		if (cause instanceof AssessmentError && options.stageReview?.length)
+			await verifyLuAssessment(prepare, personId, input);
+		throw cause;
+	});
 	signal?.throwIfAborted();
 	if (assessmentDeadline.aborted) throw new AssessmentError('MODEL_TIMEOUT');
 	return storeLuCandidate(

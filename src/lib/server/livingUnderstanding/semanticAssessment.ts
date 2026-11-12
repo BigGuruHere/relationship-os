@@ -35,7 +35,7 @@ export type PriorTopic = {
 	}[];
 };
 export type AssessmentInput = { packet: SourcePacket; prior: PriorTopic[] };
-export const semanticPromptVersion = 'foundation-lu-2026-11-v3';
+export const semanticPromptVersion = 'foundation-lu-2026-11-v4';
 export const semanticStages = ['decompose', 'compose', 'audit'] as const;
 type Stage = (typeof semanticStages)[number];
 export type ModelRequest = {
@@ -58,7 +58,19 @@ export type AssessmentProvenance = {
 	ownerEdits?: { topic: string; fromCandidateId: string; invocationId: string; model: string }[];
 };
 
+export type AssessmentTrace = {
+	stages: { stage: Stage; attempt: number; durationMs: number; outcome: string }[];
+	audits: { attempt: number; issues: string[]; attributionIssues: string[] }[];
+	repairs: AssessmentProvenance['repairs'];
+};
+export type AssessmentReviewFinding = {
+	issue: string;
+	claim: string;
+	evidence: { turnId: string; speaker?: string; role: string; quote: string; shortened: boolean }[];
+};
+
 export class AssessmentError extends Error {
+	reviewFindings?: AssessmentReviewFinding[];
 	diagnostic?: { stage: Stage; attempt: number };
 
 	constructor(readonly reason: string) {
@@ -137,12 +149,23 @@ const audit = z.strictObject({
 		)
 		.max(16)
 });
+const attributionIssue = z.enum([
+	'AGENT_AS_OWNER', 'REPORTED_AS_DIRECT', 'ONE_SIDED_AS_SHARED', 'UNCERTAINTY_LOST',
+	'OTHER_WRONG_SPEAKER', 'INSUFFICIENT_OWNER_SUPPORT'
+]);
 const assessmentAudit = audit.extend({
 	subjectFindings: z.array(z.strictObject({
 		meaningId: ref,
 		suggestedDestination: ref
-	})).max(16).optional()
+	})).max(16).optional(),
+	attributionFindings: z.array(z.discriminatedUnion('target', [
+		z.strictObject({ target: z.literal('MEANING'), meaningId: ref, issue: attributionIssue }),
+		z.strictObject({ target: z.literal('TOPIC'), topicIndex: z.number().int().min(0).max(383), issue: attributionIssue })
+	])).max(16).optional()
 });
+type AttributionRepair = {
+	issue: z.infer<typeof attributionIssue>; claim: string; turnIds: string[];
+};
 type SubjectRepair = { meaning: string; turnIds: string[]; from: string; suggestedDestination: string };
 
 function parse<S extends z.ZodType>(schema: S, raw: unknown): z.output<S> {
@@ -159,6 +182,7 @@ const common = [
 	'Route by what the claim describes, regardless of whose words or grammatical subject it uses.',
 	'SELF covers the owner’s general preferences, experiences and goals. PERSON covers the owner’s description of the selected person, including what that person reportedly said or did. RELATIONSHIP covers what happens between them and either person’s reported wishes or boundaries specific to their relationship.',
 	'For example, “I prefer quiet cafés” is SELF, “I think they enjoy cycling” is PERSON, and “I want us to meet monthly” is RELATIONSHIP. Keep a unilateral wish attributed to its speaker.',
+	'Subject and attribution are independent. “John told me he wants us to meet monthly” describes the RELATIONSHIP, is John’s reported wish, and is evidenced by the OWNER reporting it. “I want us to meet monthly” is the OWNER’s own wish. Neither establishes shared intent.',
 	'Unknown names stay unresolved. Do not assume someone mentioned is the selected person or infer reciprocal views or disclosure permission.'
 ].join('\n');
 
@@ -549,11 +573,32 @@ function composeCandidate(
 	}
 }
 
+function reviewFinding(
+	view: ReturnType<typeof modelInput>,
+	issue: string,
+	claim: string,
+	evidence: Meaning['evidence']
+): AssessmentReviewFinding {
+	// Limit the action response. The complete turns are already available in the private transcript.
+	const excerpts = evidence.filter((item, index) =>
+		evidence.findIndex((other) => other.turnId === item.turnId && other.role === item.role &&
+			other.start === item.start && other.end === item.end) === index
+	).slice(0, 4);
+	return {
+		issue, claim,
+		evidence: excerpts.map(({ turnId, role, quote }) => ({
+			turnId, role, speaker: view.turns.find((turn) => turn.id === turnId)?.role,
+			quote: quote.slice(0, 1200), shortened: quote.length > 1200
+		}))
+	};
+}
+
 export async function assessConversation(
 	input: AssessmentInput,
 	model: AssessmentModel,
 	authorize: () => Promise<void>,
-	signal?: AbortSignal
+	signal?: AbortSignal,
+	trace?: AssessmentTrace
 ) {
 	const view = modelInput(input);
 	const provenance: AssessmentProvenance = {
@@ -564,6 +609,7 @@ export async function assessConversation(
 	};
 	let stage: Stage = 'decompose';
 	let subjectRepair: SubjectRepair[] = [];
+	let attributionRepair: AttributionRepair[] = [];
 	async function invoke<S extends z.ZodType>(
 		step: Stage,
 		schema: S,
@@ -572,40 +618,47 @@ export async function assessConversation(
 		attempt: number
 	) {
 		stage = step;
-		const userPrompt = JSON.stringify({ ...data, repair: provenance.repairs.at(-1) ?? null });
-		check(userPrompt.length <= 300_000, 'INPUT_LIMIT');
-		signal?.throwIfAborted();
-		await authorize();
-		signal?.throwIfAborted();
-		let result;
+		const started = performance.now();
+		let outcome = 'INTERRUPTED';
 		try {
-			result = await model({
+			const userPrompt = JSON.stringify({ ...data, repair: provenance.repairs.at(-1) ?? null });
+			check(userPrompt.length <= 300_000, 'INPUT_LIMIT');
+			signal?.throwIfAborted();
+			await authorize();
+			signal?.throwIfAborted();
+			let result;
+			try {
+				result = await model({
+					stage: step,
+					systemPrompt: common + '\n' + instructions,
+					userPrompt,
+					outputSchema: z.toJSONSchema(schema, { io: 'input' }),
+					signal
+				});
+			} catch (error) {
+				if (signal?.aborted) throw new AssessmentError('CANCELLED');
+				throw new AssessmentError(
+					error instanceof Error && error.name === 'TimeoutError' ? 'MODEL_TIMEOUT' : 'MODEL_FAILURE'
+				);
+			}
+			signal?.throwIfAborted();
+			await authorize();
+			check(result.invocationId && result.model, 'MISSING_PROVENANCE');
+			provenance.invocations.push({
 				stage: step,
-				systemPrompt: common + '\n' + instructions,
-				userPrompt,
-				outputSchema: z.toJSONSchema(schema, { io: 'input' }),
-				signal
+				attempt,
+				invocationId: result.invocationId,
+				model: result.model
 			});
-		} catch (error) {
-			if (signal?.aborted) throw new AssessmentError('CANCELLED');
-			throw new AssessmentError(
-				error instanceof Error && error.name === 'TimeoutError' ? 'MODEL_TIMEOUT' : 'MODEL_FAILURE'
-			);
+			const parsed = parse(schema, result.output);
+			outcome = 'COMPLETED';
+			return { data: parsed, invocationId: result.invocationId, model: result.model };
+		} catch (cause) {
+			if (cause instanceof AssessmentError) outcome = cause.reason;
+			throw cause;
+		} finally {
+			trace?.stages.push({ stage: step, attempt, durationMs: Math.round(performance.now() - started), outcome });
 		}
-		signal?.throwIfAborted();
-		await authorize();
-		check(result.invocationId && result.model, 'MISSING_PROVENANCE');
-		provenance.invocations.push({
-			stage: step,
-			attempt,
-			invocationId: result.invocationId,
-			model: result.model
-		});
-		return {
-			data: parse(schema, result.output),
-			invocationId: result.invocationId,
-			model: result.model
-		};
 	}
 	for (let attempt = 1; attempt <= 2; attempt++) {
 		try {
@@ -623,11 +676,18 @@ export async function assessConversation(
 					...(provenance.repairs.at(-1)?.reason === 'BAD_SUBJECT'
 						? ['Reconsider the affected claims against the transcript and destination map. Subject repair suggestions refer to the previous draft and are advisory. Split distinct claims by subject while retaining exact evidence and attribution.']
 						: []),
+					...(provenance.repairs.at(-1)?.reason === 'MISATTRIBUTION'
+						? ['Recheck who asserted each flagged claim, whether it was reported speech, and whether the owner endorsed it. Treat the attribution repair findings as advisory. Preserve uncertainty and leave unsupported claims out.']
+						: []),
 					'Account for every OWNER turn with supporting evidence or an exclusion. An exclusion is not a shortcut for durable meaning.',
 					'Express an owner report of another person’s assertion as REPORTED_ASSERTION.',
 					'Preserve unresolved name mentions verbatim. Leave them unlinked.'
 				].join('\n'),
-				{ source: view.source, ...(subjectRepair.length ? { subjectRepair } : {}) },
+				{
+					source: view.source,
+					...(subjectRepair.length ? { subjectRepair } : {}),
+					...(attributionRepair.length ? { attributionRepair } : {})
+				},
 				attempt
 			);
 			const grounded = grounding(input, view, extracted.data, {
@@ -671,6 +731,7 @@ export async function assessConversation(
 					'Report every issue code that applies, including missed durable meanings, unsupported prose, bad attribution, missing qualification, wrong temporal scope, duplication or wrong subject/effect.',
 					'Check every claim has meaningful owner support. Reject attribution from an unconfirmed Dorian suggestion, bare acknowledgement, or answer that does not clearly endorse the proposed meaning.',
 					'For BAD_SUBJECT, identify each misrouted extracted meaning in subjectFindings using its existing meaningId and the suggested destination ref from source.destinations. Use an empty array if the subject problem is in topic wording alone or no different destination is supported.',
+					'For MISATTRIBUTION, identify the offending extracted meaning by meaningId or the affected topic paragraph by zero-based topicIndex in draft.topics. Return attributionFindings with the applicable fixed issue for each. If no target can be identified, keep MISATTRIBUTION and leave the findings empty.',
 					'Return an empty issues array only when every material claim, omission and topic change is defensible.'
 				].join('\n'),
 				{
@@ -681,7 +742,8 @@ export async function assessConversation(
 				},
 				attempt
 			);
-			const { issues, subjectFindings } = assessed.data;
+			const { issues, subjectFindings, attributionFindings } = assessed.data;
+			const reviewFindings: AssessmentReviewFinding[] = [];
 			if (issues.includes('BAD_SUBJECT')) {
 				// Carry only findings that refer to a real meaning and another permitted
 				// destination. They guide a fresh extraction and never change a candidate.
@@ -689,13 +751,39 @@ export async function assessConversation(
 					const meaning = extracted.data.meanings.find((item) => item.id === meaningId);
 					if (!meaning || meaning.destination === suggestedDestination ||
 						!view.destinations.some((item) => item.ref === suggestedDestination)) return [];
+					const evidence = grounded.meanings.find((item) => item.id === meaningId)?.evidence ?? [];
+					reviewFindings.push(reviewFinding(view, 'BAD_SUBJECT', meaning.text, evidence));
 					return [{
 						meaning: meaning.text, turnIds: [...new Set(meaning.evidence.map((item) => item.turnId))],
 						from: meaning.destination, suggestedDestination
 					}];
 				});
 			}
-			check(!issues.length, issues.includes('BAD_SUBJECT') ? 'BAD_SUBJECT' : issues[0] ?? 'AUDIT_FAILED');
+			if (issues.includes('MISATTRIBUTION')) {
+				attributionRepair = (attributionFindings ?? []).flatMap((finding) => {
+					const topic = finding.target === 'TOPIC' ? proposed.data.topics[finding.topicIndex] : undefined;
+					const ids = finding.target === 'MEANING' ? [finding.meaningId] : [...(topic?.primary ?? []), ...(topic?.contextual ?? [])];
+					const meanings = grounded.meanings.filter((item) => ids.includes(item.id));
+					const claim = finding.target === 'MEANING' ? meanings[0]?.text : topic?.prose;
+					if (!claim) return [];
+					const evidence = meanings.flatMap((item) => item.evidence);
+					reviewFindings.push(reviewFinding(view, finding.issue, claim, evidence));
+					return [{ issue: finding.issue, claim, turnIds: [...new Set(evidence.map((item) => item.turnId))] }];
+				});
+			}
+			trace?.audits.push({
+				attempt, issues,
+				attributionIssues: issues.includes('MISATTRIBUTION')
+					? [...new Set(attributionRepair.map((finding) => finding.issue))]
+					: []
+			});
+			if (issues.length) {
+				const reason = issues.includes('MISATTRIBUTION') ? 'MISATTRIBUTION'
+					: issues.includes('BAD_SUBJECT') ? 'BAD_SUBJECT' : issues[0];
+				const failure = new AssessmentError(reason);
+				failure.reviewFindings = reviewFindings.slice(0, 6);
+				throw failure;
+			}
 			return { candidate, provenance, unresolvedMentions: grounded.mentions };
 		} catch (error) {
 			if (!(error instanceof AssessmentError)) throw error;
@@ -706,7 +794,9 @@ export async function assessConversation(
 				error.diagnostic = { stage, attempt };
 				throw error;
 			}
-			provenance.repairs.push({ stage, reason: error.reason });
+			const repair = { stage, reason: error.reason };
+			provenance.repairs.push(repair);
+			trace?.repairs.push(repair);
 		}
 	}
 	throw new AssessmentError('ASSESSMENT_FAILED');

@@ -20,13 +20,27 @@ The review inherits the existing authenticated owner and canonical DEV-origin ch
 
 For hosted acceptance, use synthetic conversations about the same person. In the first, describe a general preference, a view of that person and a relationship-specific wish. Approve a subset and compare each saved topic with its evidence. In the second, qualify the preference while retaining its unaffected meaning. Check both revisions, an owner wording edit and the transcript link. Use a second account to confirm the first account's URLs remain private.
 
+## Subject and attribution
+
+| Review group | What it describes | Example |
+| --- | --- | --- |
+| Me | The owner's preferences, experiences or goals beyond this specific relationship | “I prefer catching up one-to-one.” |
+| My view of this person | What the owner observes, believes or reports about the person | “John told me he prefers quiet cafés.” |
+| My view of our relationship | What happens between the two people, or wishes and boundaries specific to that pair | “I'd like John and me to catch up monthly.” |
+
+A relationship wish may be the owner's own wish or something the owner reports John said. It remains attributed to whoever expressed it. A question or suggestion from Dorian provides context. It does not establish that either person holds that view.
+
 ## Diagnosing an analysis failure
 
 DEV reached the review page and logged `decompose / INVALID_QUOTE` after the bounded repair. The assessor can now request a whole turn by ID and Relish copies the immutable text directly. Short excerpts must still match exactly in the cited turn. Repeated excerpts require an exact local offset. The evidence and attribution audit runs on the resolved text.
 
-A later DEV retry reached the audit and returned `audit / BAD_SUBJECT`. The assessor now gives composition the destination map and can pass validated audit findings about specific misrouted meanings into the bounded retry. The retry grounds and audits the new proposal again before it can be shown. Audit findings are transient and application logs continue to record only the fixed reason code.
+A later DEV retry reached the audit and returned `audit / BAD_SUBJECT`. The assessor now gives composition the destination map and can pass validated audit findings about specific misrouted meanings into the bounded retry. The retry grounds and audits the new proposal again before it can be shown. Audit findings are transient.
 
-Search DEV application logs for the page reference or `relish.lu.review`. The warning gives the stage, attempt and fixed reason code. It excludes transcript text, prompts, model responses and source identifiers. Retry the same saved conversation after deployment to verify this case.
+Search DEV application logs for the page reference or `relish.lu.review`. The structured record includes the configured model and prompt version, stage timings and outcomes, audit issue codes and the reason for any repair. It excludes transcript text, prompts, model responses and source identifiers.
+
+A hosted retry logged `decompose / MODEL_TIMEOUT`, followed by `audit / MISATTRIBUTION` on the next submission. Model calls have a 45-second deadline. Assessment and repair distinguish the topic's subject from the person who made the claim. For example, a wish about how often two people meet belongs to the relationship. A wish reported by the owner remains attributed to the person who expressed it. The audit can give the bounded retry an attribution issue tied to a specific draft claim.
+
+If a terminal audit identifies a disputed claim, the authenticated DEV owner can expand **Why these suggestions were held** directly on the failed review. The panel shows a bounded set of disputed claims and cited excerpts. Full turns remain in the saved transcript above. The panel is part of the no-store action response and disappears when the page is reloaded. No failed draft is approved or persisted. Retry the same saved conversation after deployment to verify this case.
 
 ## Validation
 

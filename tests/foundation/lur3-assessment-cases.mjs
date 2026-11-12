@@ -176,7 +176,12 @@ export async function runLuAssessmentCases({ load, vite, otherPersonId, grant, p
 								}))
 							]
 			};
-		} else output = { issues: (stage === 'edit-audit' && rejectEdit) || (stage === 'audit' && rejectAssessment) ? ['UNSUPPORTED_PROSE'] : [] };
+		} else if (stage === 'audit' && rejectAssessment) {
+			output = {
+				issues: ['MISATTRIBUTION'],
+				attributionFindings: [{ target: 'TOPIC', topicIndex: 0, issue: 'ONE_SIDED_AS_SHARED' }]
+			};
+		} else output = { issues: stage === 'edit-audit' && rejectEdit ? ['UNSUPPORTED_PROSE'] : [] };
 		return Response.json({ choices: [{ message: { content: JSON.stringify(output) } }] });
 	};
 	const assess = (id, key) => assessFoundationConversation(owner, personId, id, key);
@@ -233,7 +238,7 @@ export async function runLuAssessmentCases({ load, vite, otherPersonId, grant, p
 		await assert.rejects(route.load(event(first, '', owner, { id: otherPersonId, noteId: first })), status(404));
 		await assert.rejects(action('assessConversation', first, firstFields, '', owner, 'https://example.test'), status(403));
 
-		beforeResponse = async () => { beforeResponse = undefined; throw new Error('Synthetic provider outage'); };
+		beforeResponse = async () => { beforeResponse = undefined; throw new DOMException('Synthetic provider timeout', 'TimeoutError'); };
 		const failed = await action('assessConversation', first, firstFields);
 		assert.equal(failed.status, 503);
 		assert.equal(failed.data.retryKey, firstFields.requestKey);
@@ -252,10 +257,36 @@ export async function runLuAssessmentCases({ load, vite, otherPersonId, grant, p
 			const { reference } = diagnostics[0];
 			assert.match(reference, /^[a-f0-9-]{36}$/);
 			assert.ok(invalid.data.message.endsWith(reference));
-			assert.deepEqual(diagnostics[0], {
+			const { stages, audits, repairs, durationMs, ...logFields } = diagnostics[0];
+			assert.ok(durationMs >= 0);
+			assert.deepEqual(logFields, {
 				component: 'relish.lu.review', operation: 'analyse', reference,
-				stage: 'audit', attempt: 2, reason: 'UNSUPPORTED_PROSE'
+				outcome: 'FAILED', model: 'synthetic-lu-model', promptVersion: 'foundation-lu-2026-11-v4',
+				stage: 'audit', attempt: 2, reason: 'MISATTRIBUTION'
 			});
+			assert.deepEqual(stages.map(({ durationMs: ms, ...stage }) => {
+				assert.ok(ms >= 0);
+				return stage;
+			}), [1, 2].flatMap((attempt) => ['decompose', 'compose', 'audit']
+				.map((stage) => ({ stage, attempt, outcome: 'COMPLETED' }))));
+			assert.deepEqual(audits, [1, 2].map((attempt) => ({
+				attempt, issues: ['MISATTRIBUTION'], attributionIssues: ['ONE_SIDED_AS_SHARED']
+			})));
+			assert.deepEqual(repairs, [{ stage: 'audit', reason: 'MISATTRIBUTION' }]);
+			const finding = invalid.data.reviewFindings[0];
+			assert.equal(finding.claim, 'Prefers mornings for regular catch-ups.');
+			assert.equal(finding.evidence[0].speaker, 'AGENT');
+			assert.ok(finding.evidence.some((item) => item.speaker === 'OWNER' && item.role === 'SUPPORTS'));
+			assert.equal(JSON.stringify(diagnostics).includes(finding.claim), false);
+			const retry = calls.at(-3).data.attributionRepair;
+			assert.deepEqual(retry, [{ issue: 'ONE_SIDED_AS_SHARED', claim: finding.claim, turnIds: ['T1', 'T2'] }]);
+			if (browser) {
+				await browser.page.goto(origin + pathname(first) + '?conversation=1');
+				await browser.page.getByRole('button', { name: 'Analyse conversation' }).click();
+				await browser.page.getByText('Why these suggestions were held', { exact: true }).click();
+				assert.equal(await browser.page.getByText(finding.claim, { exact: true }).count(), 1);
+				assert.ok(await browser.page.getByText('Dorian · context · Turn T1', { exact: true }).count());
+			}
 		} finally {
 			console.warn = warn;
 			rejectAssessment = false;

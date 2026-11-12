@@ -9,7 +9,8 @@ import {
 	assessConversation,
 	auditOwnerWording,
 	AssessmentError,
-	type AssessmentModel
+	type AssessmentModel,
+	type AssessmentTrace
 } from '../livingUnderstanding/semanticAssessment';
 import { resolveFoundationAccess } from './policy';
 import {
@@ -46,7 +47,7 @@ export async function assessFoundationConversation(
 	personId: string,
 	sourceId: string,
 	requestKey: string,
-	options: { signal?: AbortSignal; sourceVersionId?: string } = {}
+	options: { signal?: AbortSignal; sourceVersionId?: string; trace?: AssessmentTrace } = {}
 ) {
 	const { signal } = options;
 	signal?.throwIfAborted();
@@ -61,7 +62,8 @@ export async function assessFoundationConversation(
 		input,
 		privateAssessmentModel(),
 		() => verifyLuAssessment(prepare, personId, input),
-		signal
+		signal,
+		options.trace
 	);
 	signal?.throwIfAborted();
 	return storeLuCandidate(

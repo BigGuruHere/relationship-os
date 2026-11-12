@@ -1,7 +1,7 @@
 <script lang="ts">
   import { enhance } from '$app/forms';
   import type { SubmitFunction } from '@sveltejs/kit';
-  import type { AssessmentReviewFinding } from '$lib/server/livingUnderstanding/semanticAssessment';
+  import type { AssessmentReviewFinding, AssessmentStagePanel } from '$lib/server/livingUnderstanding/semanticAssessment';
   import type { loadConversationLuReview } from '$lib/server/foundation/luReview';
 
   export let data: Awaited<ReturnType<typeof loadConversationLuReview>>;
@@ -11,8 +11,21 @@
     checked?: string[];
     retryKey?: string;
     reviewFindings?: AssessmentReviewFinding[];
+    stageReview?: AssessmentStagePanel[];
   } | null | undefined;
   let busy = false;
+  let copyStatus = '';
+  const stageLabels = { decompose: 'Extraction', compose: 'Composition', audit: 'Audit' };
+  $: stageReview = form?.stageReview ?? data.candidate?.stageReview ?? [];
+
+  async function copyItem(attempt: number, stage: AssessmentStagePanel['stage'], title: string, text: string) {
+    try {
+      await navigator.clipboard.writeText(stageLabels[stage] + ' · Attempt ' + attempt + '\n' + title + '\n' + text);
+      copyStatus = 'Item copied.';
+    } catch {
+      copyStatus = 'Clipboard unavailable. Select and copy the item text.';
+    }
+  }
   $: labels = { self: 'Me', person: 'My view of ' + data.person.name, relationship: 'My view of our relationship' };
   $: base = '?conversation=1' + (data.candidate ? '&candidate=' + data.candidate.id : '');
   $: back = '/people/' + data.person.id + '?conversation=' + data.conversation.id;
@@ -80,6 +93,28 @@
           {/each}
         </article>
       {/each}
+    </details>
+  {/if}
+  {#if data.enabled && stageReview.length}
+    <details>
+      <summary>Analysis steps</summary>
+      <p>Private previews from this run. Earlier attempts may contain rejected wording or citations.</p>
+      {#each stageReview as panel}
+        <details>
+          <summary>{stageLabels[panel.stage]} · Attempt {panel.attempt}{panel.reason ? ' · ' + label(panel.reason) : ''}</summary>
+          {#each panel.items as item}
+            <article>
+              <h3>{item.title}</h3>
+              <p class="text">{item.text}</p>
+              <button type="button" class="btn" on:click={() => copyItem(panel.attempt, panel.stage, item.title, item.text)}>Copy item</button>
+            </article>
+          {/each}
+          {#if panel.omitted}<p>{panel.omitted} more items omitted from this preview.</p>{/if}
+          {#if panel.reason}<p>This step reported {label(panel.reason)}.</p>{/if}
+          {#if !panel.items.length && !panel.reason}<p>No items in this step.</p>{/if}
+        </details>
+      {/each}
+      <p role="status">{copyStatus}</p>
     </details>
   {/if}
   {#if data.stale}

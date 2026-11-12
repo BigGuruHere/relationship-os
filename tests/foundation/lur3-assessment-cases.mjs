@@ -296,6 +296,16 @@ export async function runLuAssessmentCases({ load, vite, otherPersonId, grant, p
 				attempt, issues: ['MISATTRIBUTION'], attributionIssues: ['ONE_SIDED_AS_SHARED']
 			})));
 			assert.deepEqual(repairs, [{ stage: 'audit', reason: 'MISATTRIBUTION' }]);
+			const panels = invalid.data.stageReview;
+			assert.deepEqual(panels.map(({ stage, attempt, reason }) => [stage, attempt, reason]), [
+				['decompose', 1, undefined], ['compose', 1, undefined], ['audit', 1, undefined],
+				['audit', 1, 'MISATTRIBUTION'],
+				['decompose', 2, undefined], ['compose', 2, undefined], ['audit', 2, undefined],
+				['audit', 2, 'MISATTRIBUTION']
+			]);
+			assert.ok(panels[0].items[0].text.includes('Whole turn'));
+			assert.ok(panels[1].items[0].text.includes('Primary meanings: M1'));
+			assert.equal(JSON.stringify(diagnostics).includes('stageReview'), false);
 			const finding = invalid.data.reviewFindings[0];
 			assert.equal(finding.claim, 'Prefers mornings for regular catch-ups.');
 			assert.equal(finding.evidence[0].speaker, 'AGENT');
@@ -306,6 +316,9 @@ export async function runLuAssessmentCases({ load, vite, otherPersonId, grant, p
 			if (browser) {
 				await browser.page.goto(origin + pathname(first) + '?conversation=1');
 				await browser.page.getByRole('button', { name: 'Analyse conversation' }).click();
+				await browser.page.getByText('Analysis steps', { exact: true }).click();
+				await browser.page.getByText('Extraction · Attempt 1', { exact: true }).click();
+				assert.ok(await browser.page.getByRole('button', { name: 'Copy item' }).first().isVisible());
 				await browser.page.getByText('Why these suggestions were held', { exact: true }).click();
 				assert.equal(await browser.page.getByText(finding.claim, { exact: true }).count(), 1);
 				assert.ok(await browser.page.getByText('Dorian · context · Turn T1', { exact: true }).count());
@@ -320,6 +333,8 @@ export async function runLuAssessmentCases({ load, vite, otherPersonId, grant, p
 		const ready = retried.searchParams.get('candidate');
 		const query = '&candidate=' + ready;
 		const initialReview = await route.load(event(first, query));
+		assert.deepEqual(initialReview.candidate.stageReview.map(({ stage }) => stage), ['decompose', 'compose', 'audit']);
+		assert.ok(initialReview.candidate.stageReview[0].items.some(({ title }) => title.includes('My view of our relationship')));
 		assert.deepEqual(initialReview.candidate.groups.map((group) => group.group), ['self', 'person', 'relationship']);
 		const initialTopic = initialReview.candidate.groups[0].topics[0];
 		assert.equal(initialTopic.prose, 'Prefers mornings for regular catch-ups.');

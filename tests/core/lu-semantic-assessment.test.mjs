@@ -148,6 +148,7 @@ test('Dorian suggestions and non-committal replies cannot provide owner evidence
 test('an invalid quote and unsupported wording get separate bounded repairs', async () => {
 	const { input, responses } = initialModel();
 	const calls = [];
+	const stageReview = [];
 	const original = responses.compose.topics[0].prose;
 	const result = await assessConversation(input, stub(responses, calls, (request) => {
 		const data = JSON.parse(request.userPrompt);
@@ -167,12 +168,18 @@ test('an invalid quote and unsupported wording get separate bounded repairs', as
 			return { paragraphs: [{ topicIndex: 0, prose: original }] };
 		}
 		if (calls.length === 6) assert.deepEqual(data.draft, responses.compose);
-	}), allow);
+	}), allow, undefined, undefined, stageReview);
 	assert.deepEqual(calls.map(({ stage }) => stage), ['decompose', 'decompose', 'compose', 'audit', 'compose', 'audit']);
 	assert.deepEqual(result.provenance.repairs, [
 		{ stage: 'decompose', reason: 'INVALID_QUOTE' }, { stage: 'audit', reason: 'UNSUPPORTED_PROSE' }
 	]);
 	assert.equal(result.candidate.meanings[0].generation.invocationId, 'test-2');
+	assert.deepEqual(stageReview.filter(({ reason }) => !reason).map(({ stage, attempt }) => [stage, attempt]), [
+		['decompose', 1], ['decompose', 2], ['compose', 2], ['audit', 2], ['compose', 3], ['audit', 3]
+	]);
+	assert.ok(stageReview.find(({ stage, attempt }) => stage === 'audit' && attempt === 2)
+		.items.some(({ text }) => text.includes('Unsupported wording.')));
+	assert.deepEqual(result.provenance.stageReview, stageReview);
 });
 
 test('a repeated semantic audit failure still blocks review', async () => {

@@ -13,7 +13,7 @@ import { noteReviewAvailable } from './noteReview';
 import { foundationPage, peopleRouteDomain } from './peopleRouting';
 import { resolveFoundationAccess } from './policy';
 import { readPerson } from './subjects';
-import { AssessmentError, semanticPromptVersion, type AssessmentTrace } from '../livingUnderstanding/semanticAssessment';
+import { AssessmentError, semanticPromptVersion, type AssessmentTrace, type AssessmentStagePanel } from '../livingUnderstanding/semanticAssessment';
 
 export function conversationReviewAvailable(locals: App.Locals, url: URL) {
 	return noteReviewAvailable(locals, url) && process.env.RELISH_FOUNDATION_LU_REVIEW === 'YES';
@@ -45,6 +45,7 @@ function proposalView(receipt: Awaited<ReturnType<typeof readLuCandidateForRevie
 	const { packet, prior } = receipt.input;
 	return {
 		id: receipt.candidateId,
+		stageReview: receipt.provenance.stageReview,
 		noChange: receipt.outcome === 'NO_CHANGE',
 		groups: receipt.candidate.streams.map((stream) => {
 			const subject = packet.subjects.find((item) => item.id === stream.subjectId);
@@ -143,6 +144,7 @@ export const conversationLuActions = {
 		// The request reference is independent of the owner, source and idempotency key.
 		const reference = randomUUID();
 		const trace: AssessmentTrace = { stages: [], audits: [], repairs: [] };
+		const stageReview: AssessmentStagePanel[] = [];
 		const started = performance.now();
 		const model = process.env.DATING_REVISION_MODEL;
 		const log = (outcome: string) => ({
@@ -156,7 +158,7 @@ export const conversationLuActions = {
 			const access = await resolveFoundationAccess(locals, 'REVISE_CONVERSATION_SOURCE');
 			const source = await reviseConversationSource(access, params.id, params.noteId, expected.data, 'PRIVATE_ANALYSIS');
 			const result = await assessFoundationConversation(locals, params.id, params.noteId, requestKey.data,
-				{ signal: request.signal, sourceVersionId: source.id, trace });
+				{ signal: request.signal, sourceVersionId: source.id, trace, stageReview });
 			console.info(JSON.stringify(log(result.outcome)));
 			return reviewRedirect(url, { candidate: result.candidateId });
 		} catch (cause) {
@@ -178,6 +180,7 @@ export const conversationLuActions = {
 						: 'Relish could not validate updates from this conversation. You can retry.';
 				return fail(unavailable ? 503 : 422, {
 					message: message + ' Reference: ' + reference, retryKey: requestKey.data,
+					...(stageReview.length ? { stageReview } : {}),
 					...(cause.reviewFindings?.length ? { reviewFindings: cause.reviewFindings } : {})
 				});
 			}

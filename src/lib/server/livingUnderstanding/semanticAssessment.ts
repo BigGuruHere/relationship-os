@@ -55,7 +55,17 @@ export type AssessmentProvenance = {
 	pipelineVersion: 'LUR-3';
 	invocations: { stage: Stage; attempt: number; invocationId: string; model: string }[];
 	repairs: { stage: Stage; reason: string }[];
+	stageReview?: AssessmentStagePanel[];
 	ownerEdits?: { topic: string; fromCandidateId: string; invocationId: string; model: string }[];
+};
+
+// Private stage previews are kept separate from the operational trace.
+export type AssessmentStagePanel = {
+	stage: Stage;
+	attempt: number;
+	items: { title: string; text: string }[];
+	omitted: number;
+	reason?: string;
 };
 
 export type AssessmentTrace = {
@@ -600,12 +610,31 @@ function reviewFinding(
 	};
 }
 
+function recordStagePanel(
+	panels: AssessmentStagePanel[],
+	stage: Stage,
+	attempt: number,
+	items: { title: string; text: string }[],
+	reason?: string
+) {
+	// Keep bounded previews in the action response and the encrypted candidate.
+	const limit = 36;
+	panels.push({
+		stage, attempt, omitted: Math.max(0, items.length - limit), reason,
+		items: items.slice(0, limit).map(({ title, text }) => ({
+			title: title.length > 240 ? title.slice(0, 240) + '…' : title,
+			text: text.length > 2400 ? text.slice(0, 2400) + '…' : text
+		}))
+	});
+}
+
 export async function assessConversation(
 	input: AssessmentInput,
 	model: AssessmentModel,
 	authorize: () => Promise<void>,
 	signal?: AbortSignal,
-	trace?: AssessmentTrace
+	trace?: AssessmentTrace,
+	stageReview?: AssessmentStagePanel[]
 ) {
 	const view = modelInput(input);
 	const provenance: AssessmentProvenance = {
@@ -613,6 +642,11 @@ export async function assessConversation(
 		pipelineVersion: 'LUR-3',
 		invocations: [],
 		repairs: []
+	};
+	const groupFor = (ref: string) => {
+		const role = view.destinations.find((item) => item.ref === ref)?.role;
+		return role === 'SELF' ? 'Me' : role === 'PERSON' ? 'My view of this person'
+			: role === 'RELATIONSHIP' ? 'My view of our relationship' : 'Unknown subject';
 	};
 	let stage: Stage = 'decompose';
 	let subjectRepair: SubjectRepair[] = [];
@@ -704,6 +738,28 @@ export async function assessConversation(
 				},
 				attempt
 			);
+			if (stageReview && !wordingRepair) recordStagePanel(stageReview, 'decompose', attempt, [
+				...extracted.data.meanings.map((meaning) => ({
+					title: meaning.id + ' · ' + groupFor(meaning.destination) + ' · ' + meaning.topic,
+					text: [
+						meaning.text,
+						meaning.kind + ' · ' + meaning.basis + (meaning.uncertainty ? ' · ' + meaning.uncertainty : ''),
+						...meaning.evidence.map(({ turnId, role, quote }) => {
+							const turn = view.turns.find((item) => item.id === turnId);
+							const excerpt = quote ?? turn?.text ?? 'Turn not found';
+							return turnId + ' · ' + (turn?.role ?? 'UNKNOWN') + ' · ' + role +
+								(quote === null ? ' · Whole turn' : '') + ' · ' +
+								(excerpt.length > 360 ? excerpt.slice(0, 360) + '…' : excerpt);
+						})
+					].join('\n')
+				})),
+				...extracted.data.exclusions.map(({ turnId, reason }) => ({
+					title: 'Excluded turn ' + turnId, text: reason
+				})),
+				...extracted.data.unresolvedMentions.map(({ turnId, text }) => ({
+					title: 'Unresolved mention · ' + turnId, text
+				}))
+			]);
 			const grounded = wordingRepair?.grounded ?? grounding(input, view, extracted.data, {
 				kind: 'MODEL_DRAFTED',
 				invocationId: extracted.invocationId,
@@ -756,6 +812,15 @@ export async function assessConversation(
 				},
 				attempt
 			);
+			if (stageReview) recordStagePanel(stageReview, 'compose', attempt, proposed.data.topics.map((topic) => ({
+				title: groupFor(topic.destination) + ' · ' + (topic.title ?? view.prior.find((item) => item.ref === topic.prior)?.title ?? 'Prior topic'),
+				text: [
+					topic.prose ?? 'Prior paragraph retained.',
+					topic.effect + (topic.timeScope ? ' · ' + topic.timeScope : ''),
+					'Primary meanings: ' + (topic.primary.join(', ') || 'None'),
+					'Contextual meanings: ' + (topic.contextual.join(', ') || 'None')
+				].join('\n')
+			})));
 			const candidate = composeCandidate(input, view, grounded, extracted.data, proposed.data);
 			const assessed = await invoke(
 				'audit',
@@ -807,6 +872,25 @@ export async function assessConversation(
 					return [{ issue: finding.issue, claim, turnIds: [...new Set(evidence.map((item) => item.turnId))] }];
 				});
 			}
+			const indexes = [...new Set(unsupportedTopicIndexes ?? [])].filter((index) => proposed.data.topics[index]?.prose);
+			if (issues.includes('UNSUPPORTED_PROSE')) {
+				for (const index of indexes) {
+					const topic = proposed.data.topics[index];
+					const ids = [...topic.primary, ...topic.contextual];
+					const evidence = grounded.meanings.filter((meaning) => ids.includes(meaning.id)).flatMap((meaning) => meaning.evidence);
+					reviewFindings.push(reviewFinding(view, 'UNSUPPORTED_PROSE', topic.prose!, evidence));
+				}
+			}
+			if (stageReview) recordStagePanel(stageReview, 'audit', attempt, [
+				{ title: issues.length ? 'Audit raised issues' : 'Audit passed', text: issues.join(', ') || 'No issues reported.' },
+				...reviewFindings.map((finding) => ({
+					title: finding.issue, text: [
+						finding.claim,
+						...finding.evidence.map(({ turnId, speaker, role, quote, shortened }) =>
+							turnId + ' · ' + (speaker ?? 'UNKNOWN') + ' · ' + role + ' · ' + quote + (shortened ? '…' : ''))
+					].join('\n')
+				}))
+			]);
 			trace?.audits.push({
 				attempt, issues,
 				attributionIssues: issues.includes('MISATTRIBUTION')
@@ -814,15 +898,6 @@ export async function assessConversation(
 					: []
 			});
 			if (issues.length) {
-				const indexes = [...new Set(unsupportedTopicIndexes ?? [])].filter((index) => proposed.data.topics[index]?.prose);
-				if (issues.includes('UNSUPPORTED_PROSE')) {
-					for (const index of indexes) {
-						const topic = proposed.data.topics[index];
-						const ids = [...topic.primary, ...topic.contextual];
-						const evidence = grounded.meanings.filter((meaning) => ids.includes(meaning.id)).flatMap((meaning) => meaning.evidence);
-						reviewFindings.push(reviewFinding(view, 'UNSUPPORTED_PROSE', topic.prose!, evidence));
-					}
-				}
 				if (!wordingRepair && issues.every((issue) => issue === 'UNSUPPORTED_PROSE') &&
 					proposed.data.topics.some((topic) => topic.prose)) {
 					wordingRepair = { extracted, grounded, draft: proposed.data, indexes };
@@ -837,9 +912,11 @@ export async function assessConversation(
 				failure.reviewFindings = reviewFindings.slice(0, 6);
 				throw failure;
 			}
+			if (stageReview?.length) provenance.stageReview = stageReview;
 			return { candidate, provenance, unresolvedMentions: grounded.mentions };
 		} catch (error) {
 			if (!(error instanceof AssessmentError)) throw error;
+			if (stageReview) recordStagePanel(stageReview, stage, attempt, [], error.reason);
 			if (
 				attempt >= 2 ||
 				['MODEL_FAILURE', 'MODEL_TIMEOUT', 'CANCELLED', 'INPUT_LIMIT'].includes(error.reason)

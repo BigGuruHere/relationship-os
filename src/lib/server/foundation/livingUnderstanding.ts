@@ -19,6 +19,8 @@ import { insertRelationship } from './subjects';
 import type {
 	AssessmentInput,
 	AssessmentProvenance,
+	AssessmentReviewFinding,
+	AssessmentStagePanel,
 	PriorTopic
 } from '../livingUnderstanding/semanticAssessment';
 import { decodeLuTopic, luEligibility, recordLuMeaning, requireLuPerspective } from './luEvidence';
@@ -323,7 +325,7 @@ async function readAssessmentReceipt(
 	prior: PriorTopic[]
 ) {
 	const row = await tx.foundationLuCandidate.findFirst({ where: { id: candidateId } });
-	if (!row) return null;
+	if (!row || row.outcome === 'FAILED') return null;
 	if (
 		row.epoch !== access.epoch ||
 		row.expiresAt <= new Date() ||
@@ -398,6 +400,57 @@ export function readLuCandidateForReview(
 		const receipt = await readAssessmentReceipt(tx, access, candidateId, personId, packet, prior);
 		if (!receipt?.provenance) throw new FoundationDenied();
 		return { ...receipt, input: { packet, prior } };
+	});
+}
+
+type FailedReview = {
+	reference: string;
+	reason: string;
+	stageReview: AssessmentStagePanel[];
+	reviewFindings?: AssessmentReviewFinding[];
+};
+
+export function storeLuFailedReview(
+	access: FoundationAccess, personId: string, input: AssessmentInput, failedReview: FailedReview
+) {
+	return withFoundationAccess(access, 'STORE_LU_CANDIDATE', async (tx) => {
+		const packet = await loadPacket(tx, access, personId, input.packet.source.id, false);
+		comparePacket(packet, input.packet);
+		await checkAssessmentPrior(tx, access, packet, input.prior);
+		await tx.foundationLuCandidate.create({
+			data: {
+				...scope(access), id: failedReview.reference, epoch: access.epoch,
+				sourceId: packet.source.id, sourceVersionId: packet.source.versionId,
+				sourceVersionNumber: packet.source.version, sourceContentMac: packet.source.contentMac,
+				expiresAt: new Date(Date.now() + 60 * 60 * 1000), outcome: 'FAILED',
+				proposalEnc: encrypt(JSON.stringify({
+					personId, baselines: packet.baselines, inventoryMac: inventoryMac(access, input.prior),
+					failedReview
+				}), aad(access, candidateTable, 'proposalEnc', failedReview.reference))
+			}
+		});
+	});
+}
+
+export function readLatestLuFailedReview(
+	access: FoundationAccess, personId: string, sourceId: string, sourceVersion: number
+) {
+	return withFoundationAccess(access, 'STORE_LU_CANDIDATE', async (tx) => {
+		const row = await tx.foundationLuCandidate.findFirst({
+			where: { sourceId, sourceVersionNumber: sourceVersion, epoch: access.epoch },
+			orderBy: [{ createdAt: 'desc' }, { id: 'desc' }]
+		});
+		// A newer successful analysis supersedes the failed preview.
+		if (row?.outcome !== 'FAILED' || row.expiresAt <= new Date()) return null;
+		const packet = await loadPacket(tx, access, personId, sourceId, false);
+		if (row.sourceVersionId !== packet.source.versionId || row.sourceContentMac !== packet.source.contentMac)
+			return null;
+		const stored = JSON.parse(decrypt(row.proposalEnc, aad(access, candidateTable, 'proposalEnc', row.id)));
+		if (stored.personId !== personId ||
+			JSON.stringify(stored.baselines) !== JSON.stringify(packet.baselines) ||
+			stored.inventoryMac !== inventoryMac(access, await loadAssessmentPrior(tx, access, packet)))
+			return null;
+		return stored.failedReview as FailedReview;
 	});
 }
 

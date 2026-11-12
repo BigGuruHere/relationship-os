@@ -20,6 +20,7 @@ import {
 	stableTopicKey,
 	resumeLuAssessment,
 	storeLuCandidate,
+	storeLuFailedReview,
 	verifyLuAssessment
 } from './livingUnderstanding';
 
@@ -57,7 +58,7 @@ export async function assessFoundationConversation(
 	personId: string,
 	sourceId: string,
 	requestKey: string,
-	options: { signal?: AbortSignal; sourceVersionId?: string; trace?: AssessmentTrace; stageReview?: AssessmentStagePanel[] } = {}
+	options: { signal?: AbortSignal; sourceVersionId?: string; trace?: AssessmentTrace; stageReview?: AssessmentStagePanel[]; failureReference?: string } = {}
 ) {
 	const { signal } = options;
 	signal?.throwIfAborted();
@@ -78,9 +79,16 @@ export async function assessFoundationConversation(
 		options.trace,
 		options.stageReview
 	).catch(async (cause: unknown) => {
-		// Check access and the same source again before returning a private failed-run preview.
-		if (cause instanceof AssessmentError && options.stageReview?.length)
-			await verifyLuAssessment(prepare, personId, input);
+		if (cause instanceof AssessmentError && options.stageReview?.length) {
+			// Persist under the current transcript and baseline. The failed receipt
+			// is separate from the retry key and cannot be proposed or approved.
+			if (options.failureReference) {
+				await storeLuFailedReview(store, personId, input, {
+					reference: options.failureReference, reason: cause.reason,
+					stageReview: options.stageReview, reviewFindings: cause.reviewFindings
+				});
+			} else await verifyLuAssessment(prepare, personId, input);
+		}
 		throw cause;
 	});
 	signal?.throwIfAborted();

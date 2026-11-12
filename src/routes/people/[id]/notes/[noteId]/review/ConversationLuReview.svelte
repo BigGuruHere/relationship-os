@@ -16,7 +16,9 @@
   let busy = false;
   let copyStatus = '';
   const stageLabels = { decompose: 'Extraction', compose: 'Composition', audit: 'Audit' };
-  $: stageReview = form?.stageReview ?? data.candidate?.stageReview ?? [];
+  $: stageReview = form?.stageReview ?? data.candidate?.stageReview ?? data.failedReview?.stageReview ?? [];
+  $: reviewFindings = form?.reviewFindings ?? data.failedReview?.reviewFindings ?? [];
+  $: reviewMessage = form?.message ?? data.failedReview?.message;
 
   async function copyItem(attempt: number, stage: AssessmentStagePanel['stage'], title: string, text: string) {
     try {
@@ -76,12 +78,12 @@
       <p class="text"><strong>{speaker(turn.role)}</strong> {turn.text}</p>
     {/each}
   </details>
-  {#if form?.message}<p role="alert">{form.message}</p>{/if}
-  {#if form?.reviewFindings?.length}
+  {#if reviewMessage}<p role="alert">{reviewMessage}</p>{/if}
+  {#if reviewFindings.length}
     <details>
       <summary>Why these suggestions were held</summary>
       <p>The audit flagged these draft claims. They were held before review and approval.</p>
-      {#each form.reviewFindings as finding}
+      {#each reviewFindings as finding}
         <article>
           <h3>{label(finding.issue)}</h3>
           <p class="text">{finding.claim}</p>

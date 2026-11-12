@@ -225,6 +225,38 @@ test('subject audit identifies the misrouted meaning for a fresh extraction and 
 	assert.equal(repeated.length, 6);
 });
 
+test('attribution repair keeps a wish about the pair under the relationship and restores who expressed it', async () => {
+	const { input, responses } = initialModel();
+	const index = 5;
+	const wish = responses.decompose.meanings[index];
+	const unsupported = 'Both people want to spend more time together.';
+	const calls = [];
+	const result = await assessConversation(input, stub(responses, calls, (request) => {
+		if (calls.length === 2) {
+			const draft = structuredClone(responses.compose);
+			draft.topics[index].prose = unsupported;
+			return draft;
+		}
+		if (calls.length === 3) return {
+			issues: ['MISATTRIBUTION'],
+			attributionFindings: [
+				{ target: 'TOPIC', topicIndex: index, issue: 'ONE_SIDED_AS_SHARED' },
+				{ target: 'MEANING', meaningId: 'missing', issue: 'AGENT_AS_OWNER' }
+			]
+		};
+		if (calls.length === 4) {
+			assert.deepEqual(JSON.parse(request.userPrompt).attributionRepair, [{
+				issue: 'ONE_SIDED_AS_SHARED', claim: unsupported, turnIds: [wish.evidence[0].turnId]
+			}]);
+		}
+	}), allow);
+	assert.equal(calls.length, 6);
+	const relationship = result.candidate.streams.find((stream) => stream.subjectId === input.packet.subjects[2].id);
+	assert.equal(relationship.topics.find((topic) => topic.meaningIds.includes(wish.id)).prose, wish.text);
+	assert.equal(result.candidate.meanings[index].speakerId, 'owner');
+	assert.deepEqual(result.provenance.repairs, [{ stage: 'audit', reason: 'MISATTRIBUTION' }]);
+});
+
 test('strict model shapes, omitted evidence, wrong subjects and cancellation fail closed', async () => {
 	for (const [change, error] of [
 		[

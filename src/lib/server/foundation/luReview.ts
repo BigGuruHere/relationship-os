@@ -13,7 +13,7 @@ import { noteReviewAvailable } from './noteReview';
 import { foundationPage, peopleRouteDomain } from './peopleRouting';
 import { resolveFoundationAccess } from './policy';
 import { readPerson } from './subjects';
-import { AssessmentError } from '../livingUnderstanding/semanticAssessment';
+import { AssessmentError, semanticPromptVersion, type AssessmentTrace } from '../livingUnderstanding/semanticAssessment';
 
 export function conversationReviewAvailable(locals: App.Locals, url: URL) {
 	return noteReviewAvailable(locals, url) && process.env.RELISH_FOUNDATION_LU_REVIEW === 'YES';
@@ -140,21 +140,33 @@ export const conversationLuActions = {
 		const expected = number.safeParse(fields.get('sourceVersion'));
 		if (!requestKey.success || !expected.success || conversation.completeness !== 'COMPLETE')
 			return fail(400, { message: 'A complete saved transcript is required to analyse this conversation.' });
+		// The request reference is independent of the owner, source and idempotency key.
+		const reference = randomUUID();
+		const trace: AssessmentTrace = { stages: [], audits: [], repairs: [] };
+		const started = performance.now();
+		const model = process.env.DATING_REVISION_MODEL;
+		const log = (outcome: string) => ({
+			component: 'relish.lu.review', operation: 'analyse', reference,
+			outcome, durationMs: Math.round(performance.now() - started),
+			promptVersion: semanticPromptVersion,
+			model: model && /^[a-z0-9._:-]{1,100}$/i.test(model) ? model : undefined,
+			...trace
+		});
 		try {
 			const access = await resolveFoundationAccess(locals, 'REVISE_CONVERSATION_SOURCE');
 			const source = await reviseConversationSource(access, params.id, params.noteId, expected.data, 'PRIVATE_ANALYSIS');
 			const result = await assessFoundationConversation(locals, params.id, params.noteId, requestKey.data,
-				{ signal: request.signal, sourceVersionId: source.id });
+				{ signal: request.signal, sourceVersionId: source.id, trace });
+			console.info(JSON.stringify(log(result.outcome)));
 			return reviewRedirect(url, { candidate: result.candidateId });
 		} catch (cause) {
 			if (cause instanceof FoundationConflict || cause instanceof FoundationDenied)
 				return fail(409, { message: 'The transcript or understanding changed. Review the current version and try again.' });
 			if (cause instanceof AssessmentError) {
-				// Use an independent reference and fixed reason codes. Never log private
-				// source identifiers, transcript content, prompts or provider responses.
-				const reference = randomUUID();
+				// Log only timing and fixed reason codes. Return private findings to
+				// this authenticated owner in the no-store action response.
 				console.warn(JSON.stringify({
-					component: 'relish.lu.review', operation: 'analyse', reference,
+					...log('FAILED'),
 					stage: cause.diagnostic?.stage ?? 'prepare',
 					attempt: cause.diagnostic?.attempt ?? 0, reason: cause.reason
 				}));
@@ -163,7 +175,8 @@ export const conversationLuActions = {
 					? 'Analysis is temporarily unavailable. You can retry.'
 					: 'Relish could not validate updates from this conversation. You can retry.';
 				return fail(unavailable ? 503 : 422, {
-					message: message + ' Reference: ' + reference, retryKey: requestKey.data
+					message: message + ' Reference: ' + reference, retryKey: requestKey.data,
+					...(cause.reviewFindings?.length ? { reviewFindings: cause.reviewFindings } : {})
 				});
 			}
 			throw cause;

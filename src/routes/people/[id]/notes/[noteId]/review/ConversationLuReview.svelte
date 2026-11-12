@@ -1,6 +1,7 @@
 <script lang="ts">
   import { enhance } from '$app/forms';
   import type { SubmitFunction } from '@sveltejs/kit';
+  import type { AssessmentReviewFinding } from '$lib/server/livingUnderstanding/semanticAssessment';
   import type { loadConversationLuReview } from '$lib/server/foundation/luReview';
 
   export let data: Awaited<ReturnType<typeof loadConversationLuReview>>;
@@ -9,6 +10,7 @@
     draft?: { topic: string; prose: string };
     checked?: string[];
     retryKey?: string;
+    reviewFindings?: AssessmentReviewFinding[];
   } | null | undefined;
   let busy = false;
   $: labels = { self: 'Me', person: 'My view of ' + data.person.name, relationship: 'My view of our relationship' };
@@ -62,6 +64,24 @@
     {/each}
   </details>
   {#if form?.message}<p role="alert">{form.message}</p>{/if}
+  {#if form?.reviewFindings?.length}
+    <details>
+      <summary>Why these suggestions were held</summary>
+      <p>The audit flagged these draft claims. They were held before review and approval.</p>
+      {#each form.reviewFindings as finding}
+        <article>
+          <h3>{label(finding.issue)}</h3>
+          <p class="text">{finding.claim}</p>
+          {#each finding.evidence as item}
+            <blockquote>
+              <strong>{speaker(item.speaker)} · {label(item.role)} · Turn {item.turnId}</strong>
+              <p class="text">{item.quote}{item.shortened ? '…' : ''}</p>
+            </blockquote>
+          {/each}
+        </article>
+      {/each}
+    </details>
+  {/if}
   {#if data.stale}
     <p>These suggestions are no longer available. You can analyse the current conversation again.</p>
     {#if draft}<label>Your wording <textarea readonly value={draft.prose}></textarea></label>{/if}

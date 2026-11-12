@@ -35,7 +35,7 @@ export type PriorTopic = {
 	}[];
 };
 export type AssessmentInput = { packet: SourcePacket; prior: PriorTopic[] };
-export const semanticPromptVersion = 'foundation-lu-2026-11-v1';
+export const semanticPromptVersion = 'foundation-lu-2026-11-v2';
 export const semanticStages = ['decompose', 'compose', 'audit'] as const;
 type Stage = (typeof semanticStages)[number];
 export type ModelRequest = {
@@ -72,7 +72,8 @@ const label = z.string().trim().min(1).max(120);
 const ref = z.string().min(1).max(200);
 const cite = z.strictObject({
 	turnId: ref,
-	quote: z.string().min(1).max(12000),
+	// A null quote explicitly selects the complete original turn.
+	quote: z.string().min(1).max(12000).nullable(),
 	// A local UTF-16 offset disambiguates repeated exact phrases in one turn.
 	offset: z.number().int().nonnegative().optional(),
 	role: z.enum(['SUPPORTS', 'QUALIFIES', 'CONTRADICTS', 'CONTEXT'])
@@ -238,30 +239,34 @@ function grounding(
 		for (const citation of unit.evidence) {
 			const t = turns.get(citation.turnId);
 			check(t, 'UNKNOWN_TURN');
-			const index = citation.offset ?? t.text.indexOf(citation.quote);
-			check(
-				index >= 0 &&
-					t.text.slice(index, index + citation.quote.length) === citation.quote &&
-					(citation.offset !== undefined || t.text.indexOf(citation.quote, index + 1) < 0),
-				'INVALID_QUOTE'
-			);
+			const quote = citation.quote ?? t.text;
+			check(quote.length && (citation.quote !== null || citation.offset === undefined), 'INVALID_QUOTE');
+			const first = t.text.indexOf(quote);
+			const unique = first >= 0 && t.text.indexOf(quote, first + 1) < 0;
+			// Resolve a unique exact match server-side. A repeated phrase still
+			// requires an exact local offset, even if both matches have the same speaker.
+			const index = unique ? first : citation.offset ?? -1;
+			check(index >= 0 && t.text.slice(index, index + quote.length) === quote, 'INVALID_QUOTE');
+			// Subsequent model stages receive the validated offset if one was supplied.
+			if (citation.offset !== undefined) citation.offset = index;
 			if (citation.role !== 'CONTEXT') check(t.role === 'OWNER', 'NON_OWNER_EVIDENCE');
 			if (citation.role === 'SUPPORTS') {
 				check(
-					!acknowledgement.test(citation.quote.trim()) && !nonCommitment.test(t.text.trim()),
+					!acknowledgement.test(quote.trim()) && !nonCommitment.test(t.text.trim()),
 					'AMBIGUOUS_ASSENT'
 				);
-				if (binaryAnswer.test(citation.quote.trim())) {
+				if (binaryAnswer.test(quote.trim())) {
 					// A bare yes/no can only be considered with its immediately preceding question.
 					// The independent audit still decides whether the response is clear assent.
 					const preceding = view.turns[t.index - 1];
 					check(
-						t.text.trim() === citation.quote.trim() &&
+						t.text.trim() === quote.trim() &&
 							preceding?.role === 'AGENT' &&
 							preceding.text.trim().endsWith('?') &&
 							unit.evidence.some(
 								(e) =>
-									e.role === 'CONTEXT' && e.turnId === preceding.id && e.quote === preceding.text
+									e.role === 'CONTEXT' && e.turnId === preceding.id &&
+									(e.quote === null || e.quote === preceding.text)
 							),
 						'AMBIGUOUS_ASSENT'
 					);
@@ -274,8 +279,8 @@ function grounding(
 				sourceVersionId: packet.source.versionId,
 				turnId: t.id,
 				start: t.start + index,
-				end: t.start + index + citation.quote.length,
-				quote: citation.quote,
+				end: t.start + index + quote.length,
+				quote,
 				role: citation.role
 			});
 		}
@@ -598,7 +603,12 @@ export async function assessConversation(
 				decomposition,
 				[
 					'Decompose the complete transcript into all distinct durable meanings, without merging unrelated areas.',
-					'Use exact quotes and turn IDs. Cite a prior question as CONTEXT if an answer depends on it.',
+					'Cite the supporting turn ID. Use quote: null and omit offset to cite the whole turn. Relish will copy the original wording.',
+					'For a shorter excerpt, copy one exact contiguous substring from that turn. Omit offset unless the exact excerpt repeats in the turn. In that case, supply its exact zero-based UTF-16 offset or cite the whole turn.',
+					'Cite a prior question as CONTEXT if an answer depends on it.',
+					...(provenance.repairs.at(-1)?.reason === 'INVALID_QUOTE'
+						? ['The previous attempt had an invalid quote. Use quote: null and omit offset for all citations on this repair. Check each turn ID and evidence role.']
+						: []),
 					'Account for every OWNER turn with supporting evidence or an exclusion. An exclusion is not a shortcut for durable meaning.',
 					'Express an owner report of another person’s assertion as REPORTED_ASSERTION.',
 					'Preserve unresolved name mentions verbatim. Leave them unlinked.'
@@ -613,11 +623,15 @@ export async function assessConversation(
 				promptVersion: semanticPromptVersion,
 				pipelineVersion: 'LUR-3'
 			});
+			const wholeTurnIds = new Set(extracted.data.meanings.flatMap((meaning) =>
+				meaning.evidence.filter((citation) => citation.quote === null).map((citation) => citation.turnId)
+			));
 			const proposed = await invoke(
 				'compose',
 				composition,
 				[
 					'Construct distinct, readable topic paragraphs from the meanings and eligible prior topics.',
+					'A citation with a null quote refers to the complete source turn with that ID.',
 					'Return exactly one disposition for every supplied prior topic. For UNCHANGED return null prose and empty meaning and retirement lists.',
 					'Use REINFORCED for new support without changed meaning, REFINED for precision, EXPANDED for added detail, QUALIFIED for conditions, CONTRADICTED for unresolved conflict, SUPERSEDED only for explicit newer replacement.',
 					'Absence is not contradiction. Preserve historical distinctions and all unaffected prior meaning. Retire only exact, explicitly superseded meaning references.',
@@ -627,7 +641,8 @@ export async function assessConversation(
 				{
 					occurredAt: input.packet.source.occurredAt,
 					prior: view.inventory,
-					decomposition: extracted.data
+					decomposition: extracted.data,
+					wholeTurns: view.turns.filter((turn) => wholeTurnIds.has(turn.id))
 				},
 				attempt
 			);
@@ -637,6 +652,7 @@ export async function assessConversation(
 				audit,
 				[
 					'Independently audit the complete proposed understanding against the full transcript and prior meanings.',
+					'A null quote refers to the complete source turn with that ID. Use the transcript text and speaker to verify evidence.',
 					'Report every issue code that applies, including missed durable meanings, unsupported prose, bad attribution, missing qualification, wrong temporal scope, duplication or wrong subject/effect.',
 					'Check every claim has meaningful owner support. Reject attribution from an unconfirmed Dorian suggestion, bare acknowledgement, or answer that does not clearly endorse the proposed meaning.',
 					'Return an empty issues array only when every material claim, omission and topic change is defensible.'

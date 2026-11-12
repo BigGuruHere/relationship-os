@@ -22,7 +22,9 @@ For hosted acceptance, use synthetic conversations about the same person. In the
 
 ## Diagnosing an analysis failure
 
-The owner reported reaching the DEV review page and seeing the generic validation error during live analysis. The cause is unconfirmed. The diagnostics patch adds a reference to that error. Search DEV application logs for the reference or `relish.lu.review`. The warning gives the stage, attempt and fixed reason code. It excludes transcript text, prompts, model responses and source identifiers. The saved conversation can be retried from the review page after the patch is deployed.
+DEV reached the review page and logged `decompose / INVALID_QUOTE` after the bounded repair. The assessor can now request a whole turn by ID and Relish copies the immutable text directly. Short excerpts must still match exactly in the cited turn. Repeated excerpts require an exact local offset. The evidence and attribution audit runs on the resolved text.
+
+Search DEV application logs for the page reference or `relish.lu.review`. The warning gives the stage, attempt and fixed reason code. It excludes transcript text, prompts, model responses and source identifiers. Retry the same saved conversation after deployment to verify this case.
 
 ## Validation
 

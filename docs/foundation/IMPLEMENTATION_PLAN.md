@@ -117,7 +117,7 @@ P-303 gains an owner-only DEV conversation draft adapter on `feature/dorian-peop
 
 `feature/note-understanding-review` connects P-303 notes to F-205 statements for owners on DEV. Accept when a general preference, reported view of the other person and relationship-specific want remain distinct, approved passages are exact, retries are idempotent and corrections make old support ineligible. No migration. Revert the application entry point to stop further writes while retaining versioned records. Hosted acceptance is pending.
 
-[LUR-1](LUR1_CONTRACTS.md) merged in PR #66 at `f79cd8af`. [LUR-2](LUR2_PERSISTENCE.md) merged in PR #67 at `b855aa45` with guarded conversation, presentation and topic persistence. Existing notes and approvals remain readable in their original form. [LUR-3](LUR3_SEMANTIC_ASSESSMENT.md) connects the semantic process to current source packets and snapshot repositories. LUR-4 will expose rich review and history.
+[LUR-1](LUR1_CONTRACTS.md) merged in PR #66 at `f79cd8af`. [LUR-2](LUR2_PERSISTENCE.md) merged in PR #67 at `b855aa45` with guarded conversation, presentation and topic persistence. Existing notes and approvals remain readable in their original form. [LUR-3](LUR3_SEMANTIC_ASSESSMENT.md) merged in PR #68 at `992a8121` and connects the semantic process to current source packets and snapshot repositories. [LUR-4](LUR4_OWNER_REVIEW.md) exposes owner review and history behind the DEV opt-in.
 
 ## Stage register
 
@@ -131,7 +131,8 @@ P-303 gains an owner-only DEV conversation draft adapter on `feature/dorian-peop
 | 5-7 | Direction and gates only | No | No | No | Not deployed |
 | LUR-1 | Preservation assessment in PR #65; physical handoff in [LUR-1](LUR1_CONTRACTS.md) | Shared validators, typed contracts and fixtures on `feature/lu-contracts-extraction`; zero schema changes | Focused deterministic checks and unchanged legacy baseline failures; see linked validation | PR #66, `f79cd8af` | Hosted verification pending |
 | LUR-2 | [Persistence and operation contract](LUR2_PERSISTENCE.md) | Private source and summary save/reload, topic revisions, approval transactions and erasure | Isolated migration, route and repository acceptance, including PostgreSQL CI | PR #67, `b855aa45` | Existing owner-only DEV entry point, hosted acceptance pending |
-| LUR-3 | [Semantic assessment and provenance](LUR3_SEMANTIC_ASSESSMENT.md) | Internal first and longitudinal assessment, audit, repair and candidate resume | Synthetic parity cases and guarded repository integration | Pending | Review UI and controlled model replay remain staged |
+| LUR-3 | [Semantic assessment and provenance](LUR3_SEMANTIC_ASSESSMENT.md) | Internal first and longitudinal assessment, audit, repair and candidate resume | Synthetic parity cases and guarded repository integration | PR #68, `992a8121` | Eight Railway DEV semantic tests passed per operator. Live quality replay pending. |
+| LUR-4 | [Owner review and history](LUR4_OWNER_REVIEW.md) | Grouped review, wording audit, explicit disposition, and eligible revision and evidence navigation | Disposable database and Chromium acceptance | Feature branch | Hosted DEV acceptance pending. Production activation deferred. |
 
 S-403 DEV acceptance correction (2026-11-07): operator confirmed deployment and one-way intake, but claim native forms failed origin validation. `fix/profile-publish-exchange-origin` corrects referrer policy and improves publication visibility. Focused regressions and native Chromium CI cover the fix; no migration, schema rollback or live send. See [acceptance fixes and operational diagnosis](S403_DEV_FIXES.md). Both-direction live SMS acceptance remains pending.
 

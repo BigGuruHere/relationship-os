@@ -10,6 +10,7 @@ import { noteReviewAvailable, proposeNoteReview } from '$lib/server/foundation/n
 import { foundationPage, peopleRouteDomain } from '$lib/server/foundation/peopleRouting';
 import { resolveFoundationAccess } from '$lib/server/foundation/policy';
 import { readPerson } from '$lib/server/foundation/subjects';
+import { conversationLuActions, loadConversationLuReview } from '$lib/server/foundation/luReview';
 import type { Actions, PageServerLoad } from './$types';
 
 const purpose = 'foundation-note-review:v1';
@@ -34,6 +35,7 @@ function requireOrigin(request: Request, url: URL) {
 
 export const load: PageServerLoad = async ({ locals, params, url, setHeaders }) => {
 	setHeaders({ 'cache-control': 'private, no-store' });
+	if (url.searchParams.get('conversation') === '1') return loadConversationLuReview({ locals, params, url });
 	const { note } = await context(locals, url, params);
 	const person = await foundationPage(async () => readPerson(await resolveFoundationAccess(locals, 'READ'), params.id));
 	const approved = [];
@@ -49,10 +51,11 @@ export const load: PageServerLoad = async ({ locals, params, url, setHeaders }) 
 			}
 		}
 	}
-	return { text: note.text, person: { id: person.id, name: person.name }, reviewed: Boolean(note.review), approved };
+	return { kind: 'note' as const, text: note.text, person: { id: person.id, name: person.name }, reviewed: Boolean(note.review), approved };
 };
 
-export const actions: Actions = {
+export const actions = {
+	...conversationLuActions,
 	analyse: async ({ locals, params, url, request, fetch, setHeaders }) => {
 		requireOrigin(request, url);
 		setHeaders({ 'cache-control': 'private, no-store' });
@@ -108,4 +111,4 @@ export const actions: Actions = {
 		}
 		throw redirect(303, url.pathname);
 	}
-};
+} satisfies Actions;

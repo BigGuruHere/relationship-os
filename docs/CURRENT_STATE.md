@@ -35,7 +35,11 @@ The first approved relationship statement creates a default private relationship
 
 ## LUR-3 Foundation semantic assessment
 
-[LUR-3](foundation/LUR3_SEMANTIC_ASSESSMENT.md) is implemented on `feature/lu-foundation-semantic` from `b855aa45`. The internal service creates candidates from explicitly admitted transcripts, using both speakers for context and exact owner passages as support. It handles initial and longitudinal assessment and rechecks source and inherited evidence eligibility at each processing boundary. Owner review and activation are staged separately. No Prisma migration.
+[LUR-3](foundation/LUR3_SEMANTIC_ASSESSMENT.md) merged into Development in PR #68 at `992a8121`. The operator ran all eight synthetic semantic assessment checks on Railway DEV successfully. This does not establish live model quality or hosted end-to-end acceptance.
+
+## LUR-4 Private Living Understanding review
+
+[LUR-4](foundation/LUR4_OWNER_REVIEW.md) is implemented on `feature/lu-owner-review` from `992a8121`. The My People conversation review groups updates by private subject, keeps the full transcript and summary separate, validates owner wording edits, and saves only selected updates. The same screen displays eligible current paragraphs, prior versions and source evidence. Writes require the existing owner-only DEV boundary and an explicit opt-in. No Prisma migration. Hosted activation and quality replay remain pending.
 
 ## Dorian notes in My People
 

@@ -1,4 +1,5 @@
 import { conversationSummary, editConversationSummary, listPersonConversations, readPersonConversation } from '$lib/server/foundation/conversations';
+import { conversationReviewAvailable } from '$lib/server/foundation/luReview';
 import { noteReviewAvailable } from '$lib/server/foundation/noteReview';
 import { peopleDorianAgent } from '$lib/server/integrations/elevenlabs/peopleWebNote';
 import { appendOwnerNote, listPersonNotes, FoundationConflict } from '$lib/server/foundation/evidence';
@@ -36,7 +37,7 @@ export const load: PageServerLoad = async ({ locals, params, url, setHeaders }) 
       };
     });
     if (conversations.selected) setHeaders({ 'cache-control': 'private, no-store' });
-    return { contact, conversations, origin: contact.origin, notes: history.notes, nextNote: history.next, foundation: true, dorianAvailable, noteReviewAvailable: Boolean(url && noteReviewAvailable(locals, url)), followup: null };
+    return { contact, conversations, transcriptRequested: url?.searchParams.get('transcript') === '1', conversationReviewAvailable: Boolean(url && conversationReviewAvailable(locals, url)), origin: contact.origin, notes: history.notes, nextNote: history.next, foundation: true, dorianAvailable, noteReviewAvailable: Boolean(url && noteReviewAvailable(locals, url)), followup: null };
   }
   const { context, contact } = await requirePeopleContact(locals, params.id);
   const rows = await prisma.interaction.findMany({ where: { userId: context.workspaceUserId, contextSpaceId: context.contextSpaceId, contactId: contact.id },

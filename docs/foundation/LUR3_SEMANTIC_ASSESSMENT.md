@@ -1,6 +1,6 @@
 # LUR-3 Foundation semantic assessment
 
-Implemented on `feature/lu-foundation-semantic` from Development `b855aa45`, which includes [LUR-2](LUR2_PERSISTENCE.md). This stage connects the rich assessment process to the Foundation source and candidate repositories. The owner review interface follows in LUR-4.
+Implemented on `feature/lu-foundation-semantic` from Development `b855aa45`, which includes [LUR-2](LUR2_PERSISTENCE.md). This stage connects the rich assessment process to the Foundation source and candidate repositories. Merged into Development in PR #68 at `992a8121`. The operator reported eight passing synthetic tests in Railway DEV. The [LUR-4 review interface](LUR4_OWNER_REVIEW.md) uses this service.
 
 ## Assessment
 

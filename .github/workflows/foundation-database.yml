@@ -144,3 +144,6 @@ jobs:
       - run: npm install --no-save --package-lock=false playwright@1.61.1
       - run: npx playwright install --with-deps chromium
       - run: node tests/browser/exchange-native-forms.mjs
+      - run: node --test tests/foundation/lur2-persistence.test.mjs
+        env:
+          RELISH_BROWSER_LU_TEST: YES

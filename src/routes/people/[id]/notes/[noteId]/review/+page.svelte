@@ -1,14 +1,19 @@
 <script lang="ts">
+  import ConversationLuReview from './ConversationLuReview.svelte';
   import { enhance } from '$app/forms';
   import type { ActionData, PageData } from './$types';
   export let data: PageData;
   export let form: ActionData;
   let busy = false;
+  $: noteForm = form && 'proposals' in form ? form : undefined;
   $: labels = { self: 'Me', person: data.person.name, relationship: 'Our relationship' };
   $: back = '/people/' + encodeURIComponent(data.person.id);
 </script>
 
 <svelte:head><title>Review for Living Understanding - Relish</title></svelte:head>
+{#if data.kind === 'conversation'}
+  <ConversationLuReview {data} {form} />
+{:else}
 <section class="container" style="max-width: 44rem">
   <a href={back}>← Back to {data.person.name}</a>
   <h1>Review for Living Understanding</h1>
@@ -28,17 +33,17 @@
         <blockquote>{item.quote}</blockquote>
       </article>
     {:else}<p>No current updates from this note are available.</p>{/each}
-  {:else if form?.proposals && form.token && form.proposals.length}
+  {:else if noteForm?.proposals && noteForm.token && noteForm.proposals.length}
     <form method="POST" action="?/approve" use:enhance={() => {
       busy = true;
       return async ({ update }) => { try { await update(); } finally { busy = false; } };
     }}>
-      <input type="hidden" name="proposalToken" value={form.token} />
+      <input type="hidden" name="proposalToken" value={noteForm.token} />
       {#each (['self', 'person', 'relationship'] as const) as bucket}
-        {#if form.proposals.some(item => item.bucket === bucket)}
+        {#if noteForm.proposals.some(item => item.bucket === bucket)}
           <fieldset>
             <legend>{labels[bucket]}</legend>
-            {#each form.proposals as item, index}
+            {#each noteForm.proposals as item, index}
               {#if item.bucket === bucket}
                 <div>
                   <label><input type="checkbox" name="selected" value={index} />
@@ -55,7 +60,7 @@
     </form>
   {:else}
     <p>Choose Analyse note to send this saved note and the person's display name to OpenAI for suggestions.</p>
-    {#if form?.proposals?.length === 0}<p>No supported updates were suggested.</p>{/if}
+    {#if noteForm?.proposals?.length === 0}<p>No supported updates were suggested.</p>{/if}
     <form method="POST" action="?/analyse" use:enhance={() => {
       busy = true;
       return async ({ update }) => { try { await update(); } finally { busy = false; } };
@@ -65,6 +70,7 @@
   {/if}
   {#if form?.message}<p role="alert">{form.message}</p>{/if}
 </section>
+{/if}
 
 <style>
   fieldset, article { margin: 1rem 0; padding: 1rem; border: 1px solid var(--border); }

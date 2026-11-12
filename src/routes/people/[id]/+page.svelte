@@ -26,6 +26,9 @@
     <article>
       <h3>Conversation summary</h3>
       <p class="note-text">{conversation.summary}</p>
+      {#if data.conversationReviewAvailable}
+        <p><a href={'/people/' + data.contact.id + '/notes/' + conversation.id + '/review?conversation=1'} data-sveltekit-preload-data="off">Review conversation for Living Understanding</a></p>
+      {/if}
       <details open={Boolean(form?.conversationError)}>
         <summary>Edit summary</summary>
         <form method="post" action={'?conversation=' + encodeURIComponent(conversation.id) + '&/editConversation'}>
@@ -35,11 +38,11 @@
           <button class="btn" type="submit">Save summary</button>
         </form>
       </details>
-      <details>
-        <summary>Full transcript</summary>
+      <details open={data.transcriptRequested}>
+        <summary id="conversation-transcript">Full transcript</summary>
         {#if conversation.completeness === 'INCOMPLETE'}<p>Only part of the transcript was available.</p>{/if}
         {#each conversation.turns as turn (turn.id)}
-          <p class="note-text"><strong>{turn.role === 'OWNER' ? 'You' : turn.role === 'AGENT' ? 'Dorian' : 'Unknown speaker'}:</strong> {turn.text}</p>
+          <p class="note-text" id={'turn-' + turn.id}><strong>{turn.role === 'OWNER' ? 'You' : turn.role === 'AGENT' ? 'Dorian' : 'Unknown speaker'}:</strong> {turn.text}</p>
         {/each}
       </details>
     </article>

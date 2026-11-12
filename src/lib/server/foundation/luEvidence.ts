@@ -215,5 +215,6 @@ export function decodeLuTopic(
 		area: string;
 		title: string;
 		prose: string;
+		ownerEdited?: boolean;
 	};
 }

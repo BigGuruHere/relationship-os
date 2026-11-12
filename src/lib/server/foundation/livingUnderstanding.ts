@@ -1,5 +1,5 @@
 // Foundation repository for prepared candidates and immutable topic snapshots.
-// No route invokes candidate storage or approval until semantic validation is integrated.
+// Review reads and writes recheck source admission and the exact baseline.
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { decrypt, encrypt } from '$lib/crypto';
@@ -13,6 +13,7 @@ import {
 import { FoundationDenied } from './internal';
 import { withFoundationAccess, type FoundationAccess } from './policy';
 import { aad, activeSubjects, FoundationConflict, mac, scope, scopedId } from './evidenceRecords';
+import { segmentState } from './evidence';
 import { currentConversation } from './conversations';
 import { insertRelationship } from './subjects';
 import type {
@@ -383,8 +384,21 @@ function changedTopics(candidate: UnderstandingCandidate) {
 			}))
 	);
 }
-function stableTopicKey(topic: Destination & { topicKey: string }) {
+export function stableTopicKey(topic: Destination & { topicKey: string }) {
 	return JSON.stringify([topic.subjectId, topic.perspectiveId, topic.topicKey]);
+}
+
+// Resume only an unreviewed assessment bound to this person's current transcript.
+export function readLuCandidateForReview(
+	access: FoundationAccess, personId: string, sourceId: string, candidateId: string
+) {
+	return withFoundationAccess(access, 'STORE_LU_CANDIDATE', async (tx) => {
+		const packet = await loadPacket(tx, access, personId, sourceId, false);
+		const prior = await loadAssessmentPrior(tx, access, packet);
+		const receipt = await readAssessmentReceipt(tx, access, candidateId, personId, packet, prior);
+		if (!receipt?.provenance) throw new FoundationDenied();
+		return { ...receipt, input: { packet, prior } };
+	});
 }
 
 // The caller is the server-side assessor. A supplied packet never substitutes for
@@ -470,7 +484,8 @@ async function writeTopic(
 	access: FoundationAccess,
 	revision: { id: string; streamId: string },
 	topic: TopicDraft,
-	meanings: Map<string, string>
+	meanings: Map<string, string>,
+	ownerEdited: boolean
 ) {
 	const custody = scope(access);
 	const previous = topic.previousVersionId
@@ -501,7 +516,7 @@ async function writeTopic(
 			effect: topic.effect,
 			timeScope: topic.timeScope,
 			contentEnc: encrypt(
-				JSON.stringify({ area: topic.area, title: topic.title, prose: topic.prose }),
+				JSON.stringify({ area: topic.area, title: topic.title, prose: topic.prose, ...(ownerEdited ? { ownerEdited } : {}) }),
 				aad(access, 'FoundationLuTopicVersion', 'contentEnc', id)
 			)
 		}
@@ -535,7 +550,8 @@ async function writeTopic(
 export function approveLuCandidate(
 	access: FoundationAccess,
 	candidateId: string,
-	rawSelection: ReviewSelection
+	rawSelection: ReviewSelection,
+	binding?: { personId: string; sourceId: string }
 ) {
 	const input = selectionSchema.parse(rawSelection);
 	const selectedKeys = input.selected.map(stableTopicKey).sort();
@@ -549,7 +565,7 @@ export function approveLuCandidate(
 		const requestMac = mac(
 			access,
 			'lu-review-request',
-			JSON.stringify([candidateId, input.decision, selectedKeys])
+			JSON.stringify([candidateId, input.decision, selectedKeys, ...(binding ? [binding] : [])])
 		);
 		const replay = await tx.foundationLuApproval.findFirst({ where: { requestKeyMac } });
 		// Return only an opaque receipt after rechecking the current vault authority.
@@ -570,6 +586,8 @@ export function approveLuCandidate(
 		const stored = JSON.parse(
 			decrypt(row.proposalEnc, aad(access, candidateTable, 'proposalEnc', row.id))
 		);
+		if (binding && (binding.personId !== stored.personId || binding.sourceId !== row.sourceId))
+			throw new FoundationDenied();
 		const packet = await loadPacket(tx, access, stored.personId, row.sourceId, false);
 		if (
 			packet.source.versionId !== row.sourceVersionId ||
@@ -666,7 +684,10 @@ export function approveLuCandidate(
 							meaningIds.set(key, await recordLuMeaning(tx, access, packet, meaning));
 						}
 					}
-					member = await writeTopic(tx, access, revision, topic, meaningIds);
+					const editKey = stableTopicKey({ ...destination, topicKey: topic.key });
+					const ownerEdited = (stored.assessment as AssessmentProvenance | undefined)
+						?.ownerEdits?.some((edit) => edit.topic === editKey) ?? false;
+					member = await writeTopic(tx, access, revision, topic, meaningIds, ownerEdited);
 				} else if (topic.topicId) member = old.get(topic.topicId);
 				if (member)
 					await tx.foundationLuRevisionTopic.create({
@@ -685,53 +706,150 @@ export function approveLuCandidate(
 	});
 }
 
+async function readRevision(
+	tx: AppTransactionClient, access: FoundationAccess, destination: Destination, revisionNumber?: number, includeTopicHistory = false
+) {
+	await activeSubjects(tx, [destination.subjectId]);
+	await requireLuPerspective(tx, destination.perspectiveId);
+	const stream = await tx.foundationLuStream.findFirst({
+		where: { subjectId: destination.subjectId, perspectiveId: destination.perspectiveId }
+	});
+	if (!stream) return null;
+	const revision = await tx.foundationLuRevision.findFirst({
+		where: { streamId: stream.id, ...(revisionNumber === undefined ? {} : { revisionNumber }) },
+		orderBy: { revisionNumber: 'desc' }
+	});
+	if (!revision) return null;
+	const eligible = luEligibility(tx);
+	const topics = [];
+	for (const member of await snapshotMembers(tx, revision.id)) {
+		const version = await tx.foundationLuTopicVersion.findFirst({
+			where: { id: member.topicVersionId, streamId: stream.id }
+		});
+		if (!version) throw new FoundationDenied();
+		const meanings = await topicMeanings(tx, version.id);
+		try {
+			for (const meaning of meanings)
+				await eligible(
+					meaning.statementVersionId,
+					destination.subjectId,
+					destination.perspectiveId
+				);
+		} catch (e) {
+			// A withdrawn dependency suppresses this topic, including title and evidence.
+			if (e instanceof FoundationDenied) continue;
+			throw e;
+		}
+		const created = includeTopicHistory && version.previousVersionId
+			? await tx.foundationLuRevision.findFirst({
+				where: { id: version.creatingRevisionId, streamId: stream.id }, select: { previousRevisionNumber: true }
+			}) : null;
+		topics.push({
+			...(created?.previousRevisionNumber ? { previousTopicRevision: created.previousRevisionNumber } : {}),
+			topicId: version.topicId,
+			versionId: version.id,
+			version: version.version,
+			timeScope: version.timeScope,
+			effect: version.effect,
+			...decodeLuTopic(access, version),
+			meaningVersionIds: meanings.map((m) => m.statementVersionId)
+		});
+	}
+	return topics.length ? {
+		revisionNumber: revision.revisionNumber, topics,
+		...(includeTopicHistory ? { savedAt: revision.createdAt.toISOString() } : {})
+	} : null;
+}
+
 export function readLuRevision(
-	access: FoundationAccess,
-	destination: Destination,
-	revisionNumber?: number
+	access: FoundationAccess, destination: Destination, revisionNumber?: number
+) {
+	return withFoundationAccess(access, 'READ_LU', (tx) =>
+		readRevision(tx, access, destination, revisionNumber));
+}
+
+export const reviewGroups = ['self', 'person', 'relationship'] as const;
+export type ReviewGroup = typeof reviewGroups[number];
+
+export function readPersonLuHistory(
+	access: FoundationAccess, personId: string,
+	selection: { group?: ReviewGroup; revision?: number; topic?: string; evidence?: string }
 ) {
 	return withFoundationAccess(access, 'READ_LU', async (tx) => {
-		await activeSubjects(tx, [destination.subjectId]);
-		await requireLuPerspective(tx, destination.perspectiveId);
-		const stream = await tx.foundationLuStream.findFirst({
-			where: { subjectId: destination.subjectId, perspectiveId: destination.perspectiveId }
+		const person = await tx.foundationSubject.findFirst({
+			where: { id: personId, kind: 'PERSON', state: 'ACTIVE', selfUserId: null },
+			select: { id: true }
 		});
-		if (!stream) return null;
-		const revision = await tx.foundationLuRevision.findFirst({
-			where: { streamId: stream.id, ...(revisionNumber === undefined ? {} : { revisionNumber }) },
-			orderBy: { revisionNumber: 'desc' }
+		if (!person) throw new FoundationDenied();
+		const self = await tx.foundationSubject.findFirst({
+			where: { kind: 'PERSON', state: 'ACTIVE', selfUserId: access.ownerUserId },
+			select: { id: true }
 		});
-		if (!revision) return null;
-		const eligible = luEligibility(tx);
-		const topics = [];
-		for (const member of await snapshotMembers(tx, revision.id)) {
-			const version = await tx.foundationLuTopicVersion.findFirst({
-				where: { id: member.topicVersionId, streamId: stream.id }
-			});
-			if (!version) throw new FoundationDenied();
-			const meanings = await topicMeanings(tx, version.id);
-			try {
-				for (const meaning of meanings)
-					await eligible(
-						meaning.statementVersionId,
-						destination.subjectId,
-						destination.perspectiveId
-					);
-			} catch (e) {
-				// A withdrawn dependency suppresses this topic, including title and evidence.
-				if (e instanceof FoundationDenied) continue;
-				throw e;
+		const perspective = await tx.foundationPerspective.findFirst({
+			where: { kind: 'OWNER_RECORDED', holderSubjectId: null },
+			orderBy: { id: 'asc' }, select: { id: true }
+		});
+		if (!self || !perspective || self.id === personId) return [];
+		const relationship = await tx.foundationSubject.findFirst({
+			where: { id: scopedId(access, 'note-review-relationship', personId), kind: 'RELATIONSHIP', state: 'ACTIVE' },
+			select: { id: true }
+		});
+		const ids = { self: self.id, person: personId, relationship: relationship?.id };
+		const groups = [];
+		for (const group of reviewGroups) {
+			const subjectId = ids[group];
+			if (!subjectId) continue;
+			const destination = { subjectId, perspectiveId: perspective.id };
+			const selected = selection.group === group;
+			const snapshot = await readRevision(tx, access, destination, selected ? selection.revision : undefined, true);
+			if (!snapshot) continue;
+			const topics = [];
+			for (const { meaningVersionIds, ...topic } of snapshot.topics) {
+				if (selected && selection.topic && selection.topic !== topic.topicId) continue;
+				const evidence = selected && selection.evidence === topic.versionId
+					? await readTopicEvidence(tx, access, meaningVersionIds) : null;
+				topics.push({ ...topic, evidence });
 			}
-			topics.push({
-				topicId: version.topicId,
-				versionId: version.id,
-				version: version.version,
-				timeScope: version.timeScope,
-				effect: version.effect,
-				...decodeLuTopic(access, version),
-				meaningVersionIds: meanings.map((m) => m.statementVersionId)
-			});
+			groups.push({ group, revision: snapshot.revisionNumber, savedAt: snapshot.savedAt, topics });
 		}
-		return topics.length ? { revisionNumber: revision.revisionNumber, topics } : null;
+		return groups;
 	});
+}
+
+async function readTopicEvidence(
+	tx: AppTransactionClient, access: FoundationAccess, meaningVersionIds: string[]
+) {
+	// The snapshot reader checked every dependency before this projection.
+	const evidence = [];
+	for (const outputVersionId of meaningVersionIds) {
+		const origin = await tx.foundationLuMeaningOrigin.findFirst({
+			where: { statementVersionId: outputVersionId },
+			select: { contentKind: true, epistemicBasis: true, asserterKind: true, generatorKind: true }
+		});
+		const edges = await tx.foundationSupport.findMany({ where: { outputVersionId }, orderBy: { id: 'asc' }, take: 128 });
+		for (const edge of edges) {
+			if (!edge.segmentId) continue;
+			const { segment } = await segmentState(tx, edge.segmentId, true);
+			const anchor = JSON.parse(decrypt(segment.anchorEnc,
+				aad(access, 'FoundationEvidenceSegment', 'anchorEnc', segment.id)));
+			const source = await tx.foundationSourceVersion.findFirst({
+				where: { id: segment.sourceVersionId }, select: { sourceId: true, version: true }
+			});
+			const binding = source && await tx.foundationSourcePresentationVersion.findFirst({
+				where: { sourceId: source.sourceId, version: 1 }, select: { subjectId: true }
+			});
+			evidence.push({
+				quote: decrypt(segment.excerptEnc, aad(access, 'FoundationEvidenceSegment', 'excerptEnc', segment.id)),
+				role: edge.relation,
+				speaker: anchor.speakerRole as string | undefined,
+				origin,
+				link: source && binding
+					? '/people/' + binding.subjectId + '?conversation=' + source.sourceId + '&transcript=1#' +
+						(typeof anchor.turnId === 'string' ? 'turn-' + encodeURIComponent(anchor.turnId) : 'conversation-transcript')
+					: null
+			});
+			if (evidence.length === 128) return evidence;
+		}
+	}
+	return evidence;
 }

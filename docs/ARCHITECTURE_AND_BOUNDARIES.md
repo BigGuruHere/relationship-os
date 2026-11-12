@@ -34,6 +34,8 @@ LUR-2 introduces a full conversation source in the existing private vault. The s
 
 LUR-3 connects the semantic assessment to these private sources. The model receives scoped transcript turns and eligible baseline prose through the shared model gateway. Only owner turns can support claims. Encrypted candidates retain the exact proposal, invocation provenance and the assessed baseline binding. Source or inherited evidence changes invalidate that binding before storage or approval. See [LUR-3](foundation/LUR3_SEMANTIC_ASSESSMENT.md).
 
+LUR-4 adds explicit transcript admission and review on the existing My People route. Review is bound to the owner, person, source and current evidence inventory. Wording edits keep the original evidence and record an independent audit. Eligible revision readers project exact excerpts after checking current custody and admission, and the DEV write opt-in does not change the storage path. See [LUR-4](foundation/LUR4_OWNER_REVIEW.md).
+
 ## Stack and environments
 
 - Main app: SvelteKit, TypeScript, Node 22, Prisma 6, PostgreSQL/Neon with pgvector, OpenAI integrations; Railway DEV and PROD.

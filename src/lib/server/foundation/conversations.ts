@@ -328,7 +328,8 @@ export function readPersonConversation(
 			completeness: capture.completeness,
 			turns: capture.turns,
 			summary: decrypt(latest.summaryEnc, aad(access, presentationTable, 'summaryEnc', latest.id)),
-			summaryVersion: latest.version
+			summaryVersion: latest.version,
+			sourceVersion: version.version
 		};
 	});
 }

@@ -55,6 +55,7 @@ export type AssessmentProvenance = {
 	pipelineVersion: 'LUR-3';
 	invocations: { stage: Stage; attempt: number; invocationId: string; model: string }[];
 	repairs: { stage: Stage; reason: string }[];
+	ownerEdits?: { topic: string; fromCandidateId: string; invocationId: string; model: string }[];
 };
 
 export class AssessmentError extends Error {
@@ -659,4 +660,59 @@ export async function assessConversation(
 		}
 	}
 	throw new AssessmentError('ASSESSMENT_FAILED');
+}
+
+// Owner wording retains the audited topic membership, evidence and attribution.
+export async function auditOwnerWording(
+	input: AssessmentInput,
+	candidate: UnderstandingCandidate,
+	destination: { subjectId: string; perspectiveId: string; topicKey: string },
+	model: AssessmentModel,
+	authorize: () => Promise<void>,
+	signal?: AbortSignal
+) {
+	const view = modelInput(input);
+	const stream = candidate.streams.find((item) =>
+		item.subjectId === destination.subjectId && item.perspectiveId === destination.perspectiveId);
+	const topic = stream?.topics.find((item) => item.key === destination.topicKey);
+	check(stream && topic && topic.effect !== 'UNCHANGED', 'INVALID_CANDIDATE');
+	check(!findExactCrossTopicSentenceDuplication(stream.topics.filter((item) =>
+		item.prose !== 'Withheld').map((item) => ({
+		ref: item.key, understanding: item.prose, editable: item.key === topic.key
+	}))).length, 'DUPLICATE_TOPIC_PROSE');
+	const meanings = candidate.meanings.filter((meaning) => topic.meaningIds.includes(meaning.id))
+		.map(({ text, basis, kind, expressedUncertainty, evidence }) => ({
+			text, basis, kind, expressedUncertainty,
+			evidence: evidence.map(({ turnId, role, quote }) => ({ turnId, role, quote }))
+		}));
+	const prior = view.prior.find((item) => item.topicId === topic.topicId &&
+		item.subjectId === destination.subjectId && item.perspectiveId === destination.perspectiveId);
+	const retained = prior?.meanings.filter((meaning) => topic.retainedMeaningVersionIds.includes(meaning.versionId))
+		.map(({ text, kind, basis, uncertainty, observedAt }) => ({ text, kind, basis, uncertainty, observedAt }));
+	const userPrompt = JSON.stringify({
+		source: view.source, meanings, retained,
+		topic: { area: topic.area, title: topic.title, prose: topic.prose, timeScope: topic.timeScope, effect: topic.effect },
+		subject: view.destinations.find((item) => item.subjectId === destination.subjectId)?.role
+	});
+	check(userPrompt.length <= 300_000, 'INPUT_LIMIT');
+	signal?.throwIfAborted();
+	await authorize();
+	let result;
+	try {
+		result = await model({
+			stage: 'audit',
+			systemPrompt: common + '\nAudit this owner wording edit. Require the same meanings, attribution, temporal scope and qualifications. Use only the attached evidence and retained meanings to support it. Return issues for unsupported claims or omissions.',
+			userPrompt,
+			outputSchema: z.toJSONSchema(audit, { io: 'input' }),
+			signal
+		});
+	} catch {
+		throw new AssessmentError(signal?.aborted ? 'CANCELLED' : 'MODEL_FAILURE');
+	}
+	signal?.throwIfAborted();
+	await authorize();
+	const { issues } = parse(audit, result.output);
+	check(!issues.length, issues[0] ?? 'AUDIT_FAILED');
+	check(result.invocationId && result.model, 'MISSING_PROVENANCE');
+	return { invocationId: result.invocationId, model: result.model };
 }

@@ -574,10 +574,15 @@ test(
 				}
 			);
 			await t.test(
-				'LUR-3 uses authorised transcripts through the shared model gateway and resumes safely',
+				'LUR-3 and LUR-4 assess, edit and approve authorised transcripts across two revisions',
 				async () => {
+					await db.exec(`INSERT INTO "User"(id) VALUES ('stranger');`);
+					await provision.prepareFoundationAccount('stranger');
+					await db.exec(`UPDATE "FoundationEnrollment" SET state='ACTIVE',epoch=epoch+1 WHERE "userId"='stranger';`);
 					await runLuAssessmentCases({
 						load,
+						vite,
+						otherPersonId: person.id,
 						grant,
 						personId: otherPerson.id,
 						conversations,

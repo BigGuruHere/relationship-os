@@ -124,8 +124,8 @@ export async function runLuAssessmentCases({ load, vite, otherPersonId, grant, p
 									confidence: 'HIGH',
 									uncertainty: null,
 									evidence: [
-										{ turnId: agent.id, quote: agent.text, role: 'CONTEXT' },
-										{ turnId: answer.id, quote: answer.text, role: 'SUPPORTS' }
+										{ turnId: agent.id, quote: null, role: 'CONTEXT' },
+										{ turnId: answer.id, quote: null, role: 'SUPPORTS' }
 									]
 								},
 								...additional.map((turn, index) => ({

@@ -422,6 +422,8 @@ test('a direct answer retains its question and repeated excerpts require an exac
 			prose: meaning.text
 		}
 	];
+	meaning.evidence[0].quote = null;
+	meaning.evidence[1].quote = null;
 	const first = await assessConversation(input, stub(responses, []), allow);
 	assert.deepEqual(
 		first.candidate.meanings[0].evidence.map((e) => e.role),
@@ -435,9 +437,53 @@ test('a direct answer retains its question and repeated excerpts require an exac
 	input.packet.turns[1].end = input.packet.text.length;
 	meaning.evidence[0] = { turnId: 'A', quote: phrase, role: 'SUPPORTS' };
 	await assert.rejects(assessConversation(input, stub(responses, []), allow), /INVALID_QUOTE/);
+	meaning.evidence[0].offset = 1;
+	await assert.rejects(assessConversation(input, stub(responses, []), allow), /INVALID_QUOTE/);
 	meaning.evidence[0].offset = phrase.length + 1;
 	const result = await assessConversation(input, stub(responses, []), allow);
 	const anchor = result.candidate.meanings[0].evidence[0];
 	assert.equal(anchor.start, question.length + phrase.length + 2);
 	assert.equal(input.packet.text.slice(anchor.start, anchor.end), phrase);
+});
+
+
+test('invalid excerpts can be repaired by citing whole turns and unique exact excerpts resolve their own offsets', async () => {
+	const { input, responses } = initialModel();
+	const citation = responses.decompose.meanings[0].evidence[0];
+	const exactQuote = citation.quote;
+	const turn = input.packet.turns.find((item) => item.id === citation.turnId);
+	const original = input.packet.text.slice(turn.start, turn.end);
+	citation.quote = 'A paraphrase absent from the transcript';
+	const calls = [];
+	const result = await assessConversation(input, stub(responses, calls, (request) => {
+		if (request.stage === 'decompose' && calls.length === 2) {
+			assert.match(request.systemPrompt, /Use quote: null and omit offset for all citations on this repair/);
+			const repair = structuredClone(responses.decompose);
+			repair.meanings[0].evidence[0].quote = null;
+			return repair;
+		}
+		if (request.stage === 'compose' || request.stage === 'audit') {
+			const prompt = JSON.parse(request.userPrompt);
+			const turns = request.stage === 'compose' ? prompt.wholeTurns : prompt.source.turns;
+			assert.equal(turns.find((item) => item.id === turn.id).text, original);
+			assert.equal(prompt.decomposition.meanings[0].evidence[0].quote, null);
+		}
+	}), allow);
+	assert.deepEqual(result.provenance.repairs, [{ stage: 'decompose', reason: 'INVALID_QUOTE' }]);
+	const [anchor] = result.candidate.meanings[0].evidence;
+	assert.equal(anchor.quote, original);
+	assert.equal(anchor.start, turn.start);
+	assert.equal(anchor.end, turn.end);
+
+	citation.quote = exactQuote;
+	citation.offset = original.length + 1;
+	const unique = await assessConversation(input, stub(responses, [], (request) => {
+		if (request.stage === 'audit') {
+			const prompt = JSON.parse(request.userPrompt);
+			assert.equal(prompt.decomposition.meanings[0].evidence[0].offset, original.indexOf(exactQuote));
+		}
+	}), allow);
+	const [resolved] = unique.candidate.meanings[0].evidence;
+	assert.equal(resolved.quote, exactQuote);
+	assert.equal(resolved.start, turn.start + original.indexOf(exactQuote));
 });

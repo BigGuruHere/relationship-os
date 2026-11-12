@@ -85,6 +85,7 @@ export async function runLuAssessmentCases({ load, vite, otherPersonId, grant, p
 	let phase = 'initial';
 	let beforeResponse;
 	let rejectEdit = false;
+	let rejectAssessment = false;
 	process.env.DATING_REVISION_MODEL = 'synthetic-lu-model';
 	process.env.OPENAI_API_KEY = 'synthetic-intercepted-lu-key';
 	globalThis.fetch = async (url, init) => {
@@ -175,7 +176,7 @@ export async function runLuAssessmentCases({ load, vite, otherPersonId, grant, p
 								}))
 							]
 			};
-		} else output = { issues: stage === 'edit-audit' && rejectEdit ? ['UNSUPPORTED_PROSE'] : [] };
+		} else output = { issues: (stage === 'edit-audit' && rejectEdit) || (stage === 'audit' && rejectAssessment) ? ['UNSUPPORTED_PROSE'] : [] };
 		return Response.json({ choices: [{ message: { content: JSON.stringify(output) } }] });
 	};
 	const assess = (id, key) => assessFoundationConversation(owner, personId, id, key);
@@ -239,6 +240,28 @@ export async function runLuAssessmentCases({ load, vite, otherPersonId, grant, p
 		assert.equal(await count('FoundationLuRevision'), 0);
 		assert.equal((await route.load(event(first))).conversation.summary, 'First private summary');
 		assert.equal((await action('assessConversation', first, firstFields)).status, 409);
+		const warn = console.warn;
+		const diagnostics = [];
+		rejectAssessment = true;
+		try {
+			console.warn = (message) => diagnostics.push(JSON.parse(message));
+			const invalid = await action('assessConversation', first, { ...firstFields, sourceVersion: '2' });
+			assert.equal(invalid.status, 422);
+			assert.equal(invalid.data.retryKey, firstFields.requestKey);
+			assert.equal(diagnostics.length, 1);
+			const { reference } = diagnostics[0];
+			assert.match(reference, /^[a-f0-9-]{36}$/);
+			assert.ok(invalid.data.message.endsWith(reference));
+			assert.deepEqual(diagnostics[0], {
+				component: 'relish.lu.review', operation: 'analyse', reference,
+				stage: 'audit', attempt: 2, reason: 'UNSUPPORTED_PROSE'
+			});
+		} finally {
+			console.warn = warn;
+			rejectAssessment = false;
+		}
+		assert.equal(await count('FoundationLuCandidate'), 0);
+		assert.equal(await count('FoundationLuRevision'), 0);
 		const retried = await redirectTo(action('assessConversation', first, { ...firstFields, sourceVersion: '2' }));
 		const ready = retried.searchParams.get('candidate');
 		const query = '&candidate=' + ready;

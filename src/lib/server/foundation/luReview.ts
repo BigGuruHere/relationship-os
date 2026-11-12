@@ -149,11 +149,23 @@ export const conversationLuActions = {
 		} catch (cause) {
 			if (cause instanceof FoundationConflict || cause instanceof FoundationDenied)
 				return fail(409, { message: 'The transcript or understanding changed. Review the current version and try again.' });
-			if (cause instanceof AssessmentError && cause.reason.startsWith('MODEL_'))
-				return fail(503, { message: 'Analysis is temporarily unavailable. You can retry.', retryKey: requestKey.data });
-			if (cause instanceof AssessmentError)
-				return fail(422, { message: 'Relish could not validate updates from this conversation. You can retry.',
-					retryKey: requestKey.data });
+			if (cause instanceof AssessmentError) {
+				// Use an independent reference and fixed reason codes. Never log private
+				// source identifiers, transcript content, prompts or provider responses.
+				const reference = randomUUID();
+				console.warn(JSON.stringify({
+					component: 'relish.lu.review', operation: 'analyse', reference,
+					stage: cause.diagnostic?.stage ?? 'prepare',
+					attempt: cause.diagnostic?.attempt ?? 0, reason: cause.reason
+				}));
+				const unavailable = cause.reason.startsWith('MODEL_');
+				const message = unavailable
+					? 'Analysis is temporarily unavailable. You can retry.'
+					: 'Relish could not validate updates from this conversation. You can retry.';
+				return fail(unavailable ? 503 : 422, {
+					message: message + ' Reference: ' + reference, retryKey: requestKey.data
+				});
+			}
 			throw cause;
 		}
 	},

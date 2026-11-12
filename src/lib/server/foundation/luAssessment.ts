@@ -22,7 +22,11 @@ import {
 	verifyLuAssessment
 } from './livingUnderstanding';
 
-function privateAssessmentModel(): AssessmentModel {
+const extractionTimeoutMs = 90_000;
+const modelTimeoutMs = 45_000;
+const assessmentTimeoutMs = 240_000;
+
+function privateAssessmentModel(assessmentDeadline?: AbortSignal): AssessmentModel {
 	// Pin the configured rich LU model for all steps of one assessment.
 	let model: string;
 	try {
@@ -31,13 +35,18 @@ function privateAssessmentModel(): AssessmentModel {
 		throw new AssessmentError('MODEL_UNAVAILABLE');
 	}
 	return async (request) => {
-		const timeout = AbortSignal.timeout(45_000);
+		const timeout = AbortSignal.timeout(request.stage === 'decompose' ? extractionTimeoutMs : modelTimeoutMs);
+		const deadlines = [timeout];
+		if (assessmentDeadline) deadlines.push(assessmentDeadline);
+		if (request.signal) deadlines.push(request.signal);
+		const signal = AbortSignal.any(deadlines);
+		signal.throwIfAborted();
 		return generateFoundationStructured({
 			model,
 			systemPrompt: request.systemPrompt,
 			userPrompt: request.userPrompt,
 			outputSchema: request.outputSchema,
-			signal: request.signal ? AbortSignal.any([timeout, request.signal]) : timeout
+			signal
 		});
 	};
 }
@@ -58,14 +67,17 @@ export async function assessFoundationConversation(
 		throw new FoundationConflict();
 	const existing = await resumeLuAssessment(store, personId, input, requestKey);
 	if (existing) return { candidateId: existing.candidateId, outcome: existing.outcome };
+	// A bounded repair shares the initial attempt's overall model deadline.
+	const assessmentDeadline = AbortSignal.timeout(assessmentTimeoutMs);
 	const result = await assessConversation(
 		input,
-		privateAssessmentModel(),
+		privateAssessmentModel(assessmentDeadline),
 		() => verifyLuAssessment(prepare, personId, input),
 		signal,
 		options.trace
 	);
 	signal?.throwIfAborted();
+	if (assessmentDeadline.aborted) throw new AssessmentError('MODEL_TIMEOUT');
 	return storeLuCandidate(
 		store,
 		personId,

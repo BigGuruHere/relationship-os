@@ -59,6 +59,8 @@ export type AssessmentProvenance = {
 };
 
 export class AssessmentError extends Error {
+	diagnostic?: { stage: Stage; attempt: number };
+
 	constructor(readonly reason: string) {
 		super('Living Understanding assessment failed: ' + reason);
 	}
@@ -650,12 +652,14 @@ export async function assessConversation(
 			check(!assessed.data.issues.length, assessed.data.issues[0] ?? 'AUDIT_FAILED');
 			return { candidate, provenance, unresolvedMentions: grounded.mentions };
 		} catch (error) {
+			if (!(error instanceof AssessmentError)) throw error;
 			if (
-				!(error instanceof AssessmentError) ||
 				attempt === 2 ||
 				['MODEL_FAILURE', 'MODEL_TIMEOUT', 'CANCELLED', 'INPUT_LIMIT'].includes(error.reason)
-			)
+			) {
+				error.diagnostic = { stage, attempt };
 				throw error;
+			}
 			provenance.repairs.push({ stage, reason: error.reason });
 		}
 	}

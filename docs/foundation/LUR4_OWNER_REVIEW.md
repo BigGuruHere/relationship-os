@@ -20,6 +20,10 @@ The review inherits the existing authenticated owner and canonical DEV-origin ch
 
 For hosted acceptance, use synthetic conversations about the same person. In the first, describe a general preference, a view of that person and a relationship-specific wish. Approve a subset and compare each saved topic with its evidence. In the second, qualify the preference while retaining its unaffected meaning. Check both revisions, an owner wording edit and the transcript link. Use a second account to confirm the first account's URLs remain private.
 
+## Diagnosing an analysis failure
+
+The owner reported reaching the DEV review page and seeing the generic validation error during live analysis. The cause is unconfirmed. The diagnostics patch adds a reference to that error. Search DEV application logs for the reference or `relish.lu.review`. The warning gives the stage, attempt and fixed reason code. It excludes transcript text, prompts, model responses and source identifiers. The saved conversation can be retried from the review page after the patch is deployed.
+
 ## Validation
 
 The LUR-2 disposable database suite includes LUR-3 assessment and LUR-4 route cases with a simulated model. The browser job exercises native forms with Chromium against that same isolated fixture. The suite covers the first and second revisions, edited wording and its origin, provider-failure recovery, defer and reject, prior evidence eligibility, read-only rollback and denied cross-account access. The browser fixture renders the real review component and calls the real route handlers. A hosted Dorian/OpenAI quality replay remains part of LUR-5.

@@ -39,7 +39,7 @@ The first approved relationship statement creates a default private relationship
 
 ## LUR-4 Private Living Understanding review
 
-[LUR-4](foundation/LUR4_OWNER_REVIEW.md) is implemented on `feature/lu-owner-review` from `992a8121`. The My People conversation review groups updates by private subject, keeps the full transcript and summary separate, validates owner wording edits, and saves only selected updates. The same screen displays eligible current paragraphs, prior versions and source evidence. Writes require the existing owner-only DEV boundary and an explicit opt-in. No Prisma migration. Hosted activation and quality replay remain pending.
+[LUR-4](foundation/LUR4_OWNER_REVIEW.md) merged in PR #69 at Development `b5f133b3`. PostgreSQL and Chromium CI passed. The My People conversation review groups updates by private subject, keeps the full transcript and summary separate, validates owner wording edits, and saves only selected updates. The same screen displays eligible current paragraphs, prior versions and source evidence. Writes require the existing owner-only DEV boundary and an explicit opt-in. No Prisma migration. The owner reached review on DEV and reported a live validation failure. The diagnostics patch adds a private log reference, and the cause and quality replay remain pending.
 
 ## Dorian notes in My People
 

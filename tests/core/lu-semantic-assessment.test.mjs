@@ -174,6 +174,57 @@ test('a bounded repair reruns the assessment once and checks the repaired result
 	assert.equal(failed.length, 6);
 });
 
+test('subject audit identifies the misrouted meaning for a fresh extraction and rechecks the repair', async () => {
+	const { input, responses } = initialModel();
+	const index = 5;
+	const correct = responses.decompose.meanings[index];
+	const badDestination = 'D1';
+	const calls = [];
+	const model = stub(responses, calls, (request) => {
+		const prompt = JSON.parse(request.userPrompt);
+		if (calls.length === 1) {
+			const draft = structuredClone(responses.decompose);
+			draft.meanings[index].destination = badDestination;
+			return draft;
+		}
+		if (calls.length === 2) {
+			const draft = structuredClone(responses.compose);
+			draft.topics[index].destination = badDestination;
+			return draft;
+		}
+		if (calls.length === 3) return {
+			issues: ['BAD_SUBJECT'],
+			subjectFindings: [
+				{ meaningId: correct.id, suggestedDestination: correct.destination },
+				{ meaningId: 'unknown', suggestedDestination: correct.destination },
+				{ meaningId: correct.id, suggestedDestination: 'unknown' }
+			]
+		};
+		if (calls.length === 4) {
+			assert.deepEqual(prompt.subjectRepair, [{
+				meaning: correct.text, turnIds: correct.evidence.map(({ turnId }) => turnId),
+				from: badDestination, suggestedDestination: correct.destination
+			}]);
+			assert.match(request.systemPrompt, /suggestions refer to the previous draft and are advisory/);
+		}
+		if (calls.length === 5) {
+			assert.deepEqual(prompt.destinations.map(({ role }) => role), ['SELF', 'PERSON', 'RELATIONSHIP']);
+		}
+	});
+	const result = await assessConversation(input, model, allow);
+	assert.equal(calls.length, 6);
+	assert.deepEqual(result.provenance.repairs, [{ stage: 'audit', reason: 'BAD_SUBJECT' }]);
+	assert.equal(result.candidate.meanings[index].subjectId, input.packet.subjects[2].id);
+
+	const repeated = [];
+	await assert.rejects(
+		assessConversation(input, stub(responses, repeated, (request) =>
+			request.stage === 'audit' ? { issues: ['BAD_SUBJECT'] } : undefined), allow),
+		{ reason: 'BAD_SUBJECT', diagnostic: { stage: 'audit', attempt: 2 } }
+	);
+	assert.equal(repeated.length, 6);
+});
+
 test('strict model shapes, omitted evidence, wrong subjects and cancellation fail closed', async () => {
 	for (const [change, error] of [
 		[

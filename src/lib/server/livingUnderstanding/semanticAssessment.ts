@@ -35,7 +35,7 @@ export type PriorTopic = {
 	}[];
 };
 export type AssessmentInput = { packet: SourcePacket; prior: PriorTopic[] };
-export const semanticPromptVersion = 'foundation-lu-2026-11-v2';
+export const semanticPromptVersion = 'foundation-lu-2026-11-v3';
 export const semanticStages = ['decompose', 'compose', 'audit'] as const;
 type Stage = (typeof semanticStages)[number];
 export type ModelRequest = {
@@ -137,6 +137,14 @@ const audit = z.strictObject({
 		)
 		.max(16)
 });
+const assessmentAudit = audit.extend({
+	subjectFindings: z.array(z.strictObject({
+		meaningId: ref,
+		suggestedDestination: ref
+	})).max(16).optional()
+});
+type SubjectRepair = { meaning: string; turnIds: string[]; from: string; suggestedDestination: string };
+
 function parse<S extends z.ZodType>(schema: S, raw: unknown): z.output<S> {
 	const result = schema.safeParse(raw);
 	check(result.success, 'INVALID_MODEL_OUTPUT');
@@ -148,7 +156,9 @@ const common = [
 	'Dorian (AGENT) can supply context for the OWNER’s answer. Only OWNER words may support, qualify or contradict a meaning.',
 	'Do not turn suggestions, guesses, leading questions, silence or conversational acknowledgements into owner beliefs.',
 	'Keep explicit experiences, reported speech, uncertainty, preferences, needs, offers and temporal qualifications distinct.',
-	'General preferences belong to SELF. Owner views of the selected person belong to PERSON. Hopes or patterns specific to their relationship belong to RELATIONSHIP.',
+	'Route by what the claim describes, regardless of whose words or grammatical subject it uses.',
+	'SELF covers the owner’s general preferences, experiences and goals. PERSON covers the owner’s description of the selected person, including what that person reportedly said or did. RELATIONSHIP covers what happens between them and either person’s reported wishes or boundaries specific to their relationship.',
+	'For example, “I prefer quiet cafés” is SELF, “I think they enjoy cycling” is PERSON, and “I want us to meet monthly” is RELATIONSHIP. Keep a unilateral wish attributed to its speaker.',
 	'Unknown names stay unresolved. Do not assume someone mentioned is the selected person or infer reciprocal views or disclosure permission.'
 ].join('\n');
 
@@ -553,6 +563,7 @@ export async function assessConversation(
 		repairs: []
 	};
 	let stage: Stage = 'decompose';
+	let subjectRepair: SubjectRepair[] = [];
 	async function invoke<S extends z.ZodType>(
 		step: Stage,
 		schema: S,
@@ -609,11 +620,14 @@ export async function assessConversation(
 					...(provenance.repairs.at(-1)?.reason === 'INVALID_QUOTE'
 						? ['The previous attempt had an invalid quote. Use quote: null and omit offset for all citations on this repair. Check each turn ID and evidence role.']
 						: []),
+					...(provenance.repairs.at(-1)?.reason === 'BAD_SUBJECT'
+						? ['Reconsider the affected claims against the transcript and destination map. Subject repair suggestions refer to the previous draft and are advisory. Split distinct claims by subject while retaining exact evidence and attribution.']
+						: []),
 					'Account for every OWNER turn with supporting evidence or an exclusion. An exclusion is not a shortcut for durable meaning.',
 					'Express an owner report of another person’s assertion as REPORTED_ASSERTION.',
 					'Preserve unresolved name mentions verbatim. Leave them unlinked.'
 				].join('\n'),
-				{ source: view.source },
+				{ source: view.source, ...(subjectRepair.length ? { subjectRepair } : {}) },
 				attempt
 			);
 			const grounded = grounding(input, view, extracted.data, {
@@ -640,6 +654,7 @@ export async function assessConversation(
 				].join('\n'),
 				{
 					occurredAt: input.packet.source.occurredAt,
+					destinations: view.source.destinations,
 					prior: view.inventory,
 					decomposition: extracted.data,
 					wholeTurns: view.turns.filter((turn) => wholeTurnIds.has(turn.id))
@@ -649,12 +664,13 @@ export async function assessConversation(
 			const candidate = composeCandidate(input, view, grounded, extracted.data, proposed.data);
 			const assessed = await invoke(
 				'audit',
-				audit,
+				assessmentAudit,
 				[
 					'Independently audit the complete proposed understanding against the full transcript and prior meanings.',
 					'A null quote refers to the complete source turn with that ID. Use the transcript text and speaker to verify evidence.',
 					'Report every issue code that applies, including missed durable meanings, unsupported prose, bad attribution, missing qualification, wrong temporal scope, duplication or wrong subject/effect.',
 					'Check every claim has meaningful owner support. Reject attribution from an unconfirmed Dorian suggestion, bare acknowledgement, or answer that does not clearly endorse the proposed meaning.',
+					'For BAD_SUBJECT, identify each misrouted extracted meaning in subjectFindings using its existing meaningId and the suggested destination ref from source.destinations. Use an empty array if the subject problem is in topic wording alone or no different destination is supported.',
 					'Return an empty issues array only when every material claim, omission and topic change is defensible.'
 				].join('\n'),
 				{
@@ -665,7 +681,21 @@ export async function assessConversation(
 				},
 				attempt
 			);
-			check(!assessed.data.issues.length, assessed.data.issues[0] ?? 'AUDIT_FAILED');
+			const { issues, subjectFindings } = assessed.data;
+			if (issues.includes('BAD_SUBJECT')) {
+				// Carry only findings that refer to a real meaning and another permitted
+				// destination. They guide a fresh extraction and never change a candidate.
+				subjectRepair = (subjectFindings ?? []).flatMap(({ meaningId, suggestedDestination }) => {
+					const meaning = extracted.data.meanings.find((item) => item.id === meaningId);
+					if (!meaning || meaning.destination === suggestedDestination ||
+						!view.destinations.some((item) => item.ref === suggestedDestination)) return [];
+					return [{
+						meaning: meaning.text, turnIds: [...new Set(meaning.evidence.map((item) => item.turnId))],
+						from: meaning.destination, suggestedDestination
+					}];
+				});
+			}
+			check(!issues.length, issues.includes('BAD_SUBJECT') ? 'BAD_SUBJECT' : issues[0] ?? 'AUDIT_FAILED');
 			return { candidate, provenance, unresolvedMentions: grounded.mentions };
 		} catch (error) {
 			if (!(error instanceof AssessmentError)) throw error;

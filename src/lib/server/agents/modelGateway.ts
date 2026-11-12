@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { requiredEnv } from '$lib/server/config/requiredEnv';
 // src/lib/server/agents/modelGateway.ts
 // PURPOSE: Provider-independent model gateway for agents.
@@ -24,6 +25,8 @@ type GenerateStructuredInput = {
   userPrompt: string;
   outputSchema?: unknown;
   auditDataClass?: AgentAuditDataClass;
+  signal?: AbortSignal;
+  strictJson?: boolean;
 };
 
 type GenerateStructuredResult<T> = {
@@ -125,11 +128,23 @@ export async function generateStructured<T>(
   }
 }
 
-async function generateWithOpenAI<T>(input: GenerateStructuredInput): Promise<GenerateStructuredResult<T>> {
+// Foundation records this invocation in its encrypted candidate provenance. Reuse
+// the provider transport without creating a legacy ContextSpace audit record.
+export async function generateFoundationStructured(input: Pick<GenerateStructuredInput,
+  'model' | 'systemPrompt' | 'userPrompt' | 'outputSchema' | 'signal'>) {
+  const result = await generateWithOpenAI<unknown>({
+    ...input, auditDataClass: 'sensitive', strictJson: true
+  });
+  return { output: result.structured, invocationId: randomUUID(), model: input.model };
+}
+
+async function generateWithOpenAI<T>(input: Pick<GenerateStructuredInput,
+  'model' | 'systemPrompt' | 'userPrompt' | 'outputSchema' | 'signal' | 'auditDataClass' | 'strictJson'>): Promise<GenerateStructuredResult<T>> {
   const apiKey = requiredEnv('OPENAI_API_KEY');
 
   const res = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
+    signal: input.signal,
     headers: {
       Authorization: `Bearer ${apiKey}`,
       'Content-Type': 'application/json'
@@ -155,13 +170,15 @@ async function generateWithOpenAI<T>(input: GenerateStructuredInput): Promise<Ge
   });
 
   if (!res.ok) {
+    // Private provider errors can echo request text.
+    if (input.strictJson && input.auditDataClass === 'sensitive') throw new Error(`OpenAI model call failed: ${res.status}`);
     const bodyText = await res.text().catch(() => '');
     throw new Error(`OpenAI model call failed: ${res.status} ${res.statusText} ${bodyText}`);
   }
 
   const body = await res.json();
   const text = String(body?.choices?.[0]?.message?.content ?? '').trim();
-  const structured = extractJson(text) as T;
+  const structured = (input.strictJson ? JSON.parse(text) : extractJson(text)) as T;
 
   return {
     text,

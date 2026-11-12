@@ -107,9 +107,9 @@ const luSnapshotModels = [
 	'FoundationLuTopicMeaning', 'FoundationLuRevision', 'FoundationLuRevisionTopic'
 ];
 const luModels = [...luSnapshotModels, 'FoundationLuMeaningOrigin', 'FoundationLuCandidate', 'FoundationLuApproval'];
-function luOperationAllowed(mode: Boundary['mode'], model: string, op: string) {
+function luOperationAllowed(mode: Boundary['mode'], model: string, op: string, args: any) {
 	const conversationReads = ['FoundationSubject', 'FoundationSource', 'FoundationSourceVersion', presentationModel];
-	const graphReads = [...conversationReads, ...domainModels, ...sourceModels, ...statementModels, ...luSnapshotModels];
+	const graphReads = [...conversationReads, ...domainModels, ...sourceModels, ...statementModels, ...luSnapshotModels, 'FoundationLuMeaningOrigin'];
 	switch (mode) {
 		case 'READ_CONVERSATION':
 			return reads.has(op) && conversationReads.includes(model);
@@ -122,7 +122,12 @@ function luOperationAllowed(mode: Boundary['mode'], model: string, op: string) {
 		case 'PREPARE_LU':
 			return (reads.has(op) && graphReads.includes(model)) || (op === 'create' && domainModels.has(model));
 		case 'STORE_LU_CANDIDATE':
-			return (reads.has(op) && graphReads.includes(model)) || (op === 'create' && model === 'FoundationLuCandidate');
+			// Resume needs the existence of this candidate's disposition, not its review payload.
+			if (model === 'FoundationLuApproval')
+				return op === 'findFirst' && typeof args?.where?.candidateId === 'string' &&
+					args?.select?.id === true && Object.keys(args.select).length === 1;
+			return (reads.has(op) && [...graphReads, 'FoundationLuCandidate'].includes(model)) ||
+				(op === 'create' && model === 'FoundationLuCandidate');
 		case 'APPROVE_LU':
 			return (reads.has(op) && [...graphReads, ...luModels].includes(model)) ||
 				(op === 'create' && [...sourceModels.slice(2), ...statementModels, ...luSnapshotModels,
@@ -335,7 +340,7 @@ export function guardFoundationQuery(model: string | undefined, operation: strin
 				? captureOperationAllowed(model, operation, args, scope.capturePrefix)
 				: evidenceOperationAllowed(scope.mode, model, operation) ||
 					privacyOperationAllowed(scope.mode, model, operation, args) ||
-					luOperationAllowed(scope.mode, model, operation) || presentationBindingRead;
+					luOperationAllowed(scope.mode, model, operation, args) || presentationBindingRead;
 	if (scope.mode === 'PRIVACY_CONTROL' && !evidenceAllowed) throw new FoundationDenied();
 	if (
 		!evidenceAllowed &&

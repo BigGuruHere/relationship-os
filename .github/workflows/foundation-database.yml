@@ -19,6 +19,7 @@ on:
       - 'tests/core/multi-profiles.test.mjs'
       - 'tests/core/exchange-browser.test.mjs'
       - 'tests/core/lu-contracts.test.mjs'
+      - 'tests/core/lu-semantic-assessment.test.mjs'
       - 'tests/core/fixtures/lu/**'
       - 'src/routes/u/**'
       - 'src/routes/exchange/**'
@@ -68,6 +69,7 @@ jobs:
       - run: npm ci
       - run: >-
           node --import tsx --test tests/core/lu-contracts.test.mjs
+          tests/core/lu-semantic-assessment.test.mjs
           tests/core/stage8-12-13-9-core-validation-suite.test.mjs
           tests/core/stage8-14-0-initial-living-understanding-alignment.test.mjs
           tests/core/stage8-14-0-5-structural-audit-consistency.test.mjs

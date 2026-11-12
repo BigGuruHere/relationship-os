@@ -202,7 +202,7 @@ export async function runLuAssessmentCases({ load, vite, otherPersonId, grant, p
 			await browser.page.getByRole('checkbox', { name: 'Approve Catch-up time' }).check();
 			await browser.page.getByRole('button', { name: 'Approve selected' }).click();
 			await browser.page.waitForURL(/status=APPROVE/);
-			assert.equal(await browser.page.locator('details').first().getAttribute('open'), null);
+			assert.equal(await browser.page.locator('details').filter({ hasText: 'Full transcript' }).getAttribute('open'), null);
 			assert.equal(await browser.page.getByText('Selected updates saved.').count(), 1);
 		} else {
 			const fields = { selected: key, decision: 'APPROVE' };
@@ -264,9 +264,12 @@ export async function runLuAssessmentCases({ load, vite, otherPersonId, grant, p
 		let edited;
 		if (browser) {
 			await browser.page.goto(origin + pathname(first) + '?conversation=1' + query);
-			await browser.page.getByText('Edit wording', { exact: true }).click();
-			await browser.page.getByRole('textbox', { name: 'Paragraph' }).fill(editFields.prose);
-			await browser.page.getByRole('button', { name: 'Validate edit' }).click();
+			const catchUpTopic = browser.page.locator('article').filter({
+				has: browser.page.getByRole('heading', { name: 'Catch-up time', exact: true })
+			});
+			await catchUpTopic.getByText('Edit wording', { exact: true }).click();
+			await catchUpTopic.getByRole('textbox', { name: 'Paragraph' }).fill(editFields.prose);
+			await catchUpTopic.getByRole('button', { name: 'Validate edit' }).click();
 			await browser.page.waitForURL((url) => url.searchParams.has('candidate') && url.searchParams.get('candidate') !== ready);
 			edited = new URL(browser.page.url()).searchParams.get('candidate');
 		} else {

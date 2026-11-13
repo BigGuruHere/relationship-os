@@ -10,7 +10,8 @@ export async function reviewBrowser(vite, route, owner) {
 	const { chromium } = require(process.env.RELISH_TEST_PLAYWRIGHT_PATH || 'playwright');
 	const file = 'src/routes/people/[id]/notes/[noteId]/review/ConversationLuReview.svelte';
 	const source = (await readFile(file, 'utf8'))
-		.replace("import { enhance } from '$app/forms';", 'const enhance = () => {};');
+		.replace("import { enhance } from '$app/forms';", 'const enhance = () => {};')
+		.replace("import { invalidateAll } from '$app/navigation';", 'const invalidateAll = async () => {};');
 	const compiled = compile(source, { filename: file, generate: 'server' });
 	await mkdir('.svelte-kit/browser-check', { recursive: true });
 	await writeFile('.svelte-kit/browser-check/lu-review.js', compiled.js.code);

@@ -1,7 +1,8 @@
 <script lang="ts">
   import { enhance } from '$app/forms';
+  import { invalidateAll } from '$app/navigation';
   import type { SubmitFunction } from '@sveltejs/kit';
-  import type { AssessmentReviewFinding, AssessmentStagePanel } from '$lib/server/livingUnderstanding/semanticAssessment';
+  import type { AssessmentReviewFinding, AssessmentStagePanel, WritingComparison } from '$lib/server/livingUnderstanding/semanticAssessment';
   import type { loadConversationLuReview } from '$lib/server/foundation/luReview';
 
   export let data: Awaited<ReturnType<typeof loadConversationLuReview>>;
@@ -12,6 +13,10 @@
     retryKey?: string;
     reviewFindings?: AssessmentReviewFinding[];
     stageReview?: AssessmentStagePanel[];
+    comparison?: WritingComparison;
+    comparisonSourceVersion?: number;
+    comparisonMessage?: string;
+    comparisonReason?: string;
   } | null | undefined;
   let busy = false;
   let copyStatus = '';
@@ -35,14 +40,19 @@
   $: checked = form?.checked ?? [];
   $: reviewAction = '?/decide&' + base.slice(1);
 
-  const submit: SubmitFunction = ({ cancel }) => {
+  const submit: SubmitFunction = ({ cancel, action }) => {
     if (busy) {
       cancel();
       return;
     }
     busy = true;
-    return async ({ update }) => {
-      try { await update({ reset: false }); } finally { busy = false; }
+    return async ({ update, result }) => {
+      // Refresh the source version after explicit admission, even when the preview returns a failure.
+      try {
+        await update({ reset: false });
+        if (action.searchParams.has('/compareWriting') && result.type === 'failure') await invalidateAll();
+      }
+      finally { busy = false; }
     };
   };
 
@@ -75,7 +85,7 @@
   <details>
     <summary>Full transcript</summary>
     {#each data.conversation.turns as turn (turn.id)}
-      <p class="text"><strong>{speaker(turn.role)}</strong> {turn.text}</p>
+      <p class="text"><strong>{speaker(turn.role)} · {turn.id}</strong> {turn.text}</p>
     {/each}
   </details>
   {#if reviewMessage}<p role="alert">{reviewMessage}</p>{/if}
@@ -195,6 +205,71 @@
   {/if}
   {#if !data.enabled}<p>Conversation review is read-only.</p>{/if}
 
+  {#if data.enabled && data.conversation.completeness === 'COMPLETE'}
+    <details open={Boolean(form?.comparison || form?.comparisonMessage)}>
+      <summary>Compare writing approaches</summary>
+      <p>This DEV preview sends the transcript and relevant private Living Understanding to OpenAI.
+        It compares two drafts from the same claims and topics. Drafts are available on this page until you leave or reload.</p>
+      <form method="POST" action={'?/compareWriting&' + base.slice(1)} use:enhance={submit}>
+        <input type="hidden" name="sourceVersion" value={data.conversation.sourceVersion} />
+        <button type="submit" class="btn" disabled={busy}>{busy ? 'Processing…' : 'Compare writing approaches'}</button>
+      </form>
+      {#if form?.comparisonMessage}
+        <p role="alert">{form.comparisonMessage} {form.comparisonReason ? '(' + label(form.comparisonReason) + ')' : ''}</p>
+      {/if}
+      {#if form?.comparison && form.comparisonSourceVersion === data.conversation.sourceVersion}
+        <p>Model {form.comparison.model} · Transcript version {form.comparisonSourceVersion}</p>
+        <div class="comparison">
+          {#each [{ title: 'All topics together', audit: form.comparison.together },
+            { title: 'One topic at a time', audit: form.comparison.focused }] as column}
+            <section>
+              <h3>{column.title}</h3>
+              {#if column.audit.error}<p>Audit unavailable ({label(column.audit.error)}).</p>
+              {:else if column.audit.issues.length}<p>Audit held this draft. {column.audit.issues.map(label).join(', ')}.</p>
+              {:else}<p>Audit passed.</p>{/if}
+              {#each column.audit.findings as finding}
+                <details>
+                  <summary>{label(finding.issue)}</summary>
+                  <p class="text">{finding.claim}</p>
+                  {#each finding.evidence as item}
+                    <blockquote>
+                      <strong>{speaker(item.speaker)} · {label(item.role)} · Turn {item.turnId}</strong>
+                      <p class="text">{item.quote}{item.shortened ? '…' : ''}</p>
+                    </blockquote>
+                  {/each}
+                </details>
+              {/each}
+            </section>
+          {/each}
+        </div>
+        {#each form.comparison.topics as topic}
+          <article>
+            <h3>{topic.title}</h3>
+            <p>{topic.group} · {label(topic.effect)}</p>
+            <details>
+              <summary>Shared claims and source turns</summary>
+              <ul>
+                {#each topic.claims as claim}
+                  <li class="text">{claim.text} · {claim.turnIds.join(', ')}</li>
+                {/each}
+              </ul>
+            </details>
+            <div class="comparison">
+              <section>
+                <h4>All topics together</h4>
+                <p class="text">{topic.together}</p>
+              </section>
+              <section>
+                <h4>One topic at a time</h4>
+                <p class="text">{topic.focused ?? (topic.error ? 'Writing failed (' + label(topic.error) + ').' : 'Paragraph unavailable.')}</p>
+              </section>
+            </div>
+          </article>
+        {:else}<p>The shared outline proposed no topic updates.</p>{/each}
+      {/if}
+    </details>
+  {/if}
+
   <h2 id="history">Saved Living Understanding</h2>
   {#if data.historySelection.revision || data.historySelection.topic}
     <p><a href={base + '#history'}>Back to current understanding</a></p>
@@ -246,5 +321,7 @@
   .selection input { width: auto; }
   .buttons { display: flex; flex-wrap: wrap; gap: .5rem; }
   .history { margin-block: 1.25rem; }
+  .comparison { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
+  @media (max-width: 38rem) { .comparison { grid-template-columns: 1fr; } }
   blockquote { margin: .65rem 0; padding-inline-start: .75rem; border-inline-start: 2px solid var(--border); }
 </style>

@@ -35,7 +35,7 @@ export type PriorTopic = {
 	}[];
 };
 export type AssessmentInput = { packet: SourcePacket; prior: PriorTopic[] };
-export const semanticPromptVersion = 'foundation-lu-2026-11-v5';
+export const semanticPromptVersion = 'foundation-lu-2026-11-v6';
 export const semanticStages = ['decompose', 'compose', 'audit'] as const;
 type Stage = (typeof semanticStages)[number];
 export type ModelRequest = {
@@ -164,6 +164,11 @@ const attributionIssue = z.enum([
 	'OTHER_WRONG_SPEAKER', 'INSUFFICIENT_OWNER_SUPPORT'
 ]);
 const topicIndex = z.number().int().min(0).max(383);
+const topicLinkPatch = z.strictObject({
+	topics: z.array(composition.shape.topics.element.pick({
+		prose: true, primary: true, contextual: true
+	}).extend({ topicIndex })).min(1).max(384)
+});
 const wordingPatch = z.strictObject({
 	paragraphs: z.array(z.strictObject({
 		topicIndex, prose: z.string().trim().min(1).max(6500)
@@ -648,9 +653,22 @@ export async function assessConversation(
 		return role === 'SELF' ? 'Me' : role === 'PERSON' ? 'My view of this person'
 			: role === 'RELATIONSHIP' ? 'My view of our relationship' : 'Unknown subject';
 	};
+	function previewComposition(draft: z.infer<typeof composition>, attempt: number, reason?: string) {
+		if (!stageReview) return;
+		recordStagePanel(stageReview, 'compose', attempt, draft.topics.map((topic) => ({
+			title: groupFor(topic.destination) + ' · ' + (topic.title ?? view.prior.find((item) => item.ref === topic.prior)?.title ?? 'Prior topic'),
+			text: [
+				topic.prose ?? 'Prior paragraph retained.',
+				topic.effect + (topic.timeScope ? ' · ' + topic.timeScope : ''),
+				'Primary meanings: ' + (topic.primary.join(', ') || 'None'),
+				'Contextual meanings: ' + (topic.contextual.join(', ') || 'None')
+			].join('\n')
+		})), reason);
+	}
 	let stage: Stage = 'decompose';
 	let subjectRepair: SubjectRepair[] = [];
 	let attributionRepair: AttributionRepair[] = [];
+	let compositionRepairUsed = false;
 	async function invoke<S extends z.ZodType>(
 		step: Stage,
 		schema: S,
@@ -709,12 +727,15 @@ export async function assessConversation(
 	} | undefined;
 
 	for (let attempt = 1; attempt <= 3; attempt++) {
+		let repairingTopicLinks = false;
 		try {
 			const extracted = wordingRepair?.extracted ?? await invoke(
 				'decompose',
 				decomposition,
 				[
 					'Decompose the complete transcript into all distinct durable meanings, without merging unrelated areas.',
+					'One passage can support separate meanings in different destinations. Give each distinct claim its own ID and reuse the same source turn where it supports both.',
+					'Retain material motivations, the reason an experience matters, and the difference between a tentative possibility and a settled plan.',
 					'Cite the supporting turn ID. Use quote: null and omit offset to cite the whole turn. Relish will copy the original wording.',
 					'For a shorter excerpt, copy one exact contiguous substring from that turn. Omit offset unless the exact excerpt repeats in the turn. In that case, supply its exact zero-based UTF-16 offset or cite the whole turn.',
 					'Cite a prior question as CONTEXT if an answer depends on it.',
@@ -800,7 +821,9 @@ export async function assessConversation(
 					'Return exactly one disposition for every supplied prior topic. For UNCHANGED return null prose and empty meaning and retirement lists.',
 					'Use REINFORCED for new support without changed meaning, REFINED for precision, EXPANDED for added detail, QUALIFIED for conditions, CONTRADICTED for unresolved conflict, SUPERSEDED only for explicit newer replacement.',
 					'Absence is not contradiction. Preserve historical distinctions and all unaffected prior meaning. Retire only exact, explicitly superseded meaning references.',
-					'Use NEW only if an enduring meaning has no suitable existing topic. Each meaning needs one primary home. Legitimate overlap may be contextual in another topic.',
+					'Use NEW only if an enduring meaning has no suitable existing topic. Each meaning needs one primary home.',
+					'Both primary and contextual IDs must match the topic destination exactly. The same source passage can support separately extracted meanings in different destinations.',
+					'Preserve material reasons and qualifications that make the topics distinct, such as why a reconnection matters and why the owner separately wants advice.',
 					'Use existing topic identifiers exactly. Do not add evidence or paraphrases that the supplied meanings and prior understanding cannot support.'
 				].join('\n'),
 				{
@@ -812,16 +835,82 @@ export async function assessConversation(
 				},
 				attempt
 			);
-			if (stageReview) recordStagePanel(stageReview, 'compose', attempt, proposed.data.topics.map((topic) => ({
-				title: groupFor(topic.destination) + ' · ' + (topic.title ?? view.prior.find((item) => item.ref === topic.prior)?.title ?? 'Prior topic'),
-				text: [
-					topic.prose ?? 'Prior paragraph retained.',
-					topic.effect + (topic.timeScope ? ' · ' + topic.timeScope : ''),
-					'Primary meanings: ' + (topic.primary.join(', ') || 'None'),
-					'Contextual meanings: ' + (topic.contextual.join(', ') || 'None')
-				].join('\n')
-			})));
-			const candidate = composeCandidate(input, view, grounded, extracted.data, proposed.data);
+			let draft = proposed.data;
+			previewComposition(draft, attempt);
+			let candidate: UnderstandingCandidate;
+			try {
+				candidate = composeCandidate(input, view, grounded, extracted.data, draft);
+			} catch (error) {
+				if (!(error instanceof AssessmentError) || error.reason !== 'MEANING_TOPIC' ||
+					compositionRepairUsed) throw error;
+				const destinations = new Map(extracted.data.meanings.map((meaning) => [meaning.id, meaning.destination]));
+				const affected = draft.topics.flatMap((topic, topicIndex) => {
+					const wrongLinks = (['primary', 'contextual'] as const).flatMap((role) =>
+						topic[role].flatMap((meaningId) => {
+							const destination = destinations.get(meaningId);
+							return destination && destination !== topic.destination
+								? [{ meaningId, destination, role }]
+								: [];
+						}));
+					return wrongLinks.length && topic.prose && view.destinations.some((d) => d.ref === topic.destination)
+						? [{ topicIndex, topic, wrongLinks }]
+						: [];
+				});
+				if (!affected.length) throw error;
+				compositionRepairUsed = true;
+				repairingTopicLinks = true;
+				const repair = { stage: 'compose' as const, reason: 'MEANING_TOPIC' };
+				provenance.repairs.push(repair);
+				trace?.repairs.push(repair);
+				if (stageReview) recordStagePanel(stageReview, 'compose', attempt, affected.map(({ topicIndex, topic, wrongLinks }) => ({
+					title: 'Topic ' + (topicIndex + 1) + ' · ' + groupFor(topic.destination) + ' · ' +
+						(topic.title ?? view.prior.find((item) => item.ref === topic.prior)?.title ?? 'Prior topic'),
+					text: wrongLinks.map(({ meaningId, destination, role }) =>
+						meaningId + ' (' + role + ') belongs to ' + groupFor(destination) + '.'
+					).join('\n')
+				})), repair.reason);
+
+				const affectedDestinations = new Set(affected.map(({ topic }) => topic.destination));
+				const meanings = extracted.data.meanings.filter((meaning) => affectedDestinations.has(meaning.destination));
+				const citedWholeTurns = new Set(meanings.flatMap((meaning) => meaning.evidence.flatMap(
+					({ turnId, quote }) => quote === null ? [turnId] : []
+				)));
+				const patched = await invoke(
+					'compose', topicLinkPatch,
+					[
+						'Correct only the supplied affected topics. Return exactly one patch for each supplied topicIndex.',
+						'Remove each flagged link. Keep every other link in its current role. Use only supplied meanings with the same destination as the topic.',
+						'Each meaning needs one primary home. A meaning with an existing valid primary home must stay there.',
+						'Revise prose only as needed to ground it in the corrected links and eligible prior topic. Preserve supported reasons and qualifications.',
+						'Destinations, prior references, effects, labels, time scope and retirements are fixed. Do not invent meanings or evidence.'
+					].join('\n'),
+					{
+						affected,
+						meanings,
+						prior: view.inventory.filter((item) => affected.some(({ topic }) => topic.prior === item.ref)),
+						primaryHomes: draft.topics.flatMap((topic, topicIndex) => topic.primary.flatMap((meaningId) =>
+							destinations.get(meaningId) === topic.destination && affectedDestinations.has(topic.destination)
+								? [{ meaningId, topicIndex }] : []
+						)),
+						wholeTurns: view.turns.filter((turn) => citedWholeTurns.has(turn.id))
+					},
+					attempt
+				);
+				const changes = new Map(patched.data.topics.map(({ topicIndex, ...fields }) => [topicIndex, fields]));
+				check(patched.data.topics.length === affected.length && changes.size === affected.length, 'INVALID_TOPIC_LINK_REPAIR');
+				for (const { topicIndex, topic, wrongLinks } of affected) {
+					const change = changes.get(topicIndex);
+					check(change && (['primary', 'contextual'] as const).every((role) =>
+						topic[role].every((id) => wrongLinks.some((link) => link.meaningId === id && link.role === role) ||
+							change[role].includes(id))
+					), 'INVALID_TOPIC_LINK_REPAIR');
+				}
+				// Only these fields can change. Validate the full draft again before the audit.
+				draft = { topics: draft.topics.map((topic, index) => ({ ...topic, ...changes.get(index) })) };
+				previewComposition(draft, attempt, 'REPAIRED_TOPIC_LINKS');
+				candidate = composeCandidate(input, view, grounded, extracted.data, draft);
+				repairingTopicLinks = false;
+			}
 			const assessed = await invoke(
 				'audit',
 				assessmentAudit,
@@ -839,7 +928,7 @@ export async function assessConversation(
 					source: view.source,
 					prior: view.inventory,
 					decomposition: extracted.data,
-					draft: proposed.data
+					draft
 				},
 				attempt
 			);
@@ -862,7 +951,7 @@ export async function assessConversation(
 			}
 			if (issues.includes('MISATTRIBUTION')) {
 				attributionRepair = (attributionFindings ?? []).flatMap((finding) => {
-					const topic = finding.target === 'TOPIC' ? proposed.data.topics[finding.topicIndex] : undefined;
+					const topic = finding.target === 'TOPIC' ? draft.topics[finding.topicIndex] : undefined;
 					const ids = finding.target === 'MEANING' ? [finding.meaningId] : [...(topic?.primary ?? []), ...(topic?.contextual ?? [])];
 					const meanings = grounded.meanings.filter((item) => ids.includes(item.id));
 					const claim = finding.target === 'MEANING' ? meanings[0]?.text : topic?.prose;
@@ -872,10 +961,10 @@ export async function assessConversation(
 					return [{ issue: finding.issue, claim, turnIds: [...new Set(evidence.map((item) => item.turnId))] }];
 				});
 			}
-			const indexes = [...new Set(unsupportedTopicIndexes ?? [])].filter((index) => proposed.data.topics[index]?.prose);
+			const indexes = [...new Set(unsupportedTopicIndexes ?? [])].filter((index) => draft.topics[index]?.prose);
 			if (issues.includes('UNSUPPORTED_PROSE')) {
 				for (const index of indexes) {
-					const topic = proposed.data.topics[index];
+					const topic = draft.topics[index];
 					const ids = [...topic.primary, ...topic.contextual];
 					const evidence = grounded.meanings.filter((meaning) => ids.includes(meaning.id)).flatMap((meaning) => meaning.evidence);
 					reviewFindings.push(reviewFinding(view, 'UNSUPPORTED_PROSE', topic.prose!, evidence));
@@ -899,8 +988,8 @@ export async function assessConversation(
 			});
 			if (issues.length) {
 				if (!wordingRepair && issues.every((issue) => issue === 'UNSUPPORTED_PROSE') &&
-					proposed.data.topics.some((topic) => topic.prose)) {
-					wordingRepair = { extracted, grounded, draft: proposed.data, indexes };
+					draft.topics.some((topic) => topic.prose)) {
+					wordingRepair = { extracted, grounded, draft, indexes };
 					const repair = { stage: 'audit' as const, reason: 'UNSUPPORTED_PROSE' };
 					provenance.repairs.push(repair);
 					trace?.repairs.push(repair);
@@ -919,6 +1008,7 @@ export async function assessConversation(
 			if (stageReview) recordStagePanel(stageReview, stage, attempt, [], error.reason);
 			if (
 				attempt >= 2 ||
+				repairingTopicLinks ||
 				['MODEL_FAILURE', 'MODEL_TIMEOUT', 'CANCELLED', 'INPUT_LIMIT'].includes(error.reason)
 			) {
 				error.diagnostic = { stage, attempt };

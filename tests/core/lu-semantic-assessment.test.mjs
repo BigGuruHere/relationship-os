@@ -1,7 +1,7 @@
 // Synthetic fixtures exercise both Foundation output and the earlier semantic validators.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { assessConversation } from '../../src/lib/server/livingUnderstanding/semanticAssessment.ts';
+import { assessConversation, compareConversationWriting } from '../../src/lib/server/livingUnderstanding/semanticAssessment.ts';
 import {
 	validateLongitudinalAnalysisDraft,
 	validateSemanticDecompositionDraft
@@ -90,6 +90,57 @@ function stub(responses, calls, change = () => undefined) {
 	};
 }
 const allow = async () => {};
+
+test('writing comparison keeps one extraction, topic outline and audit contract across both drafts', async () => {
+	const { input, responses } = initialModel();
+	const audits = [];
+	const calls = [];
+	const model = stub(responses, calls, (request) => {
+		const data = JSON.parse(request.userPrompt);
+		if (request.stage === 'compose' && data.topic) {
+			const row = responses.compose.topics.find(({ title }) => title === data.topic.title);
+			assert.deepEqual(data.meanings.map(({ id }) => id).sort(), [...row.primary, ...row.contextual].sort());
+			assert.equal(data.neighbours.length, responses.compose.topics.length - 1);
+			assert.ok(!data.neighbours.some((topic) => 'prose' in topic));
+			assert.ok(!('prose' in data.topic));
+			return { prose: 'Focused wording for ' + row.title + '.' };
+		}
+		if (request.stage === 'audit') {
+			audits.push({ data, systemPrompt: request.systemPrompt, outputSchema: request.outputSchema });
+			return audits.length === 1 ? { issues: ['UNSUPPORTED_PROSE'], unsupportedTopicIndexes: [0] } : { issues: [] };
+		}
+	});
+	const preview = await compareConversationWriting(input, model, allow);
+	assert.deepEqual(calls.map(({ stage }) => stage), ['decompose', 'compose', 'audit',
+		...responses.compose.topics.map(() => 'compose'), 'audit']);
+	const [together, focused] = audits;
+	assert.equal(together.systemPrompt, focused.systemPrompt);
+	assert.deepEqual(together.outputSchema, focused.outputSchema);
+	const withoutProse = ({ draft, ...shared }) => ({
+		...shared, topics: draft.topics.map(({ prose, ...outline }) => outline)
+	});
+	assert.deepEqual(withoutProse(together.data), withoutProse(focused.data));
+	assert.equal(preview.topics.length, responses.compose.topics.length);
+	assert.equal(preview.topics[0].together, responses.compose.topics[0].prose);
+	assert.deepEqual(preview.topics[0].claims, [{ text: responses.decompose.meanings[0].text, turnIds: ['T1'] }]);
+	assert.equal(preview.topics[0].focused, 'Focused wording for Meeting rhythm.');
+	assert.equal(preview.together.findings[0].issue, 'UNSUPPORTED_PROSE');
+	assert.deepEqual(preview.focused.issues, []);
+});
+
+test('writing comparison keeps the together draft when a focused paragraph fails', async () => {
+	const { input, responses } = initialModel();
+	const calls = [];
+	const preview = await compareConversationWriting(input, stub(responses, calls, (request) => {
+		const { topic } = JSON.parse(request.userPrompt);
+		if (topic) return topic.title === 'Meeting rhythm' ? { prose: '', primary: [] } : { prose: topic.title };
+	}), allow);
+	assert.equal(preview.topics[0].error, 'INVALID_MODEL_OUTPUT');
+	assert.equal(preview.topics[1].focused, 'Social needs');
+	assert.equal(preview.focused.error, 'INCOMPLETE_DRAFT');
+	assert.deepEqual(preview.together.issues, []);
+	assert.equal(calls.filter(({ stage }) => stage === 'audit').length, 1);
+});
 
 function sharedPassageModel() {
 	const { packet } = initialFixture();
@@ -590,6 +641,28 @@ function followupModel() {
 		}
 	};
 }
+
+test('focused follow-up receives its own prior topic and never rewrites an unchanged topic', async () => {
+	const { input, responses } = followupModel();
+	const calls = [];
+	const preview = await compareConversationWriting(input, stub(responses, calls, (request) => {
+		const data = JSON.parse(request.userPrompt);
+		if (data.topic) {
+			const row = responses.compose.topics.find(({ title }) => title === data.topic.title);
+			assert.notEqual(data.topic.effect, 'UNCHANGED');
+			if (row.prior) {
+				assert.equal(data.prior.ref, row.prior);
+				assert.ok(data.prior.meanings.some(({ text }) => text.startsWith('Unaffected detail')));
+			} else {
+				assert.equal(data.prior, null);
+			}
+			return { prose: row.prose };
+		}
+		if (request.stage === 'audit') assert.deepEqual(data.draft, responses.compose);
+	}), allow);
+	assert.equal(preview.topics.length, responses.compose.topics.filter(({ prose }) => prose !== null).length);
+	assert.deepEqual(preview.focused.issues, []);
+});
 
 test('longitudinal assessment preserves each earlier effect, exact version and unaffected meaning', async () => {
 	const { input, responses } = followupModel();

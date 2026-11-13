@@ -86,6 +86,7 @@ export async function runLuAssessmentCases({ load, vite, otherPersonId, grant, p
 	let beforeResponse;
 	let rejectEdit = false;
 	let rejectAssessment = false;
+	let mismatchQuote = false;
 	process.env.DATING_REVISION_MODEL = 'synthetic-lu-model';
 	process.env.OPENAI_API_KEY = 'synthetic-intercepted-lu-key';
 	globalThis.fetch = async (url, init) => {
@@ -125,7 +126,7 @@ export async function runLuAssessmentCases({ load, vite, otherPersonId, grant, p
 									uncertainty: null,
 									evidence: [
 										{ turnId: agent.id, quote: null, role: 'CONTEXT' },
-										{ turnId: answer.id, quote: null, role: 'SUPPORTS' }
+										{ turnId: answer.id, quote: mismatchQuote ? 'Mornings suit me.' : null, role: 'SUPPORTS' }
 									]
 								},
 								...additional.map((turn, index) => ({
@@ -288,7 +289,7 @@ export async function runLuAssessmentCases({ load, vite, otherPersonId, grant, p
 			assert.ok(durationMs >= 0);
 			assert.deepEqual(logFields, {
 				component: 'relish.lu.review', operation: 'analyse', reference,
-				outcome: 'FAILED', model: 'synthetic-lu-model', promptVersion: 'foundation-lu-2026-11-v6',
+				outcome: 'FAILED', model: 'synthetic-lu-model', promptVersion: 'foundation-lu-2026-11-v7',
 				stage: 'audit', attempt: 2, reason: 'MISATTRIBUTION'
 			});
 			assert.deepEqual(stages.map(({ durationMs: ms, ...stage }) => {
@@ -339,23 +340,29 @@ export async function runLuAssessmentCases({ load, vite, otherPersonId, grant, p
 		}
 		assert.equal(await count('FoundationLuCandidate'), 2);
 		assert.equal(await count('FoundationLuRevision'), 0);
+		mismatchQuote = true;
 		const retried = await redirectTo(action('assessConversation', first, { ...firstFields, sourceVersion: '2' }));
+		mismatchQuote = false;
 		const ready = retried.searchParams.get('candidate');
 		const query = '&candidate=' + ready;
 		assert.equal((await route.load(event(first))).failedReview, null);
 		const initialReview = await route.load(event(first, query));
-		assert.deepEqual(initialReview.candidate.stageReview.map(({ stage }) => stage), ['decompose', 'compose', 'audit']);
+		assert.deepEqual(initialReview.candidate.stageReview.map(({ stage, reason }) => [stage, reason]), [
+			['decompose', undefined], ['decompose', 'REPAIRED_CITATIONS'], ['compose', undefined], ['audit', undefined]
+		]);
 		assert.ok(initialReview.candidate.stageReview[0].items.some(({ title }) => title.includes('My view of our relationship')));
 		assert.deepEqual(initialReview.candidate.groups.map((group) => group.group), ['self', 'person', 'relationship']);
 		const initialTopic = initialReview.candidate.groups[0].topics[0];
 		assert.equal(initialTopic.prose, 'Prefers mornings for regular catch-ups.');
 		assert.equal(initialTopic.meanings[0].evidence[0].role, 'CONTEXT');
+		assert.equal(initialTopic.meanings[0].evidence[1].quote, 'Yes, mornings are best for me.');
 		assert.equal((await route.load(event(next, query))).candidate, null);
 		assert.equal((await action('decide', next, { selected: initialTopic.key, decision: 'APPROVE' }, query)).status, 409);
 		assert.equal(await count('FoundationLuRevision'), 0);
 		const input = await lu.prepareLuAssessment(prepare, personId, first);
 		const original = await lu.resumeLuAssessment(store, personId, input, firstFields.requestKey);
 		assert.equal(original.provenance.invocations.length, 3);
+		assert.deepEqual(original.provenance.repairs, [{ stage: 'decompose', reason: 'INVALID_QUOTE' }]);
 		assert.ok(original.provenance.invocations.every((inv) => inv.model === 'synthetic-lu-model'));
 		assert.equal(original.candidate.meanings[0].generation.invocationId, original.provenance.invocations[0].invocationId);
 		const editFields = { topic: initialTopic.key, prose: 'Morning catch-ups suit me best.' };

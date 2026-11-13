@@ -91,6 +91,133 @@ function stub(responses, calls, change = () => undefined) {
 }
 const allow = async () => {};
 
+function sharedPassageModel() {
+	const { packet } = initialFixture();
+	const passage = 'My old music teacher made me feel I belonged. I met his daughter Alex again at choir. I might like to stay in touch through choir. I also want to ask her how to help my son prepare for auditions.';
+	packet.text = passage;
+	packet.turns = [{ id: 'T0', speakerId: 'owner', start: 0, end: passage.length }];
+	packet.unresolvedMentions = [];
+	const meanings = [
+		['M1', 'D1', 'Personal history', 'Importance of the music teacher',
+			'The owner’s former music teacher gave them a sense of belonging.', 'OTHER', null],
+		['M2', 'D3', 'Friendships', 'Staying in touch through choir',
+			'The owner met Alex again at choir and might like to stay in touch through choir.', 'WANT',
+			'Staying in touch is a possibility.'],
+		['M3', 'D3', 'Family support', 'Asking for audition advice',
+			'The owner would like to ask Alex how to help their son prepare for auditions.', 'WANT', null]
+	].map(([id, destination, area, topic, text, kind, uncertainty]) => ({
+		id, destination, area, topic, text, kind, uncertainty,
+		basis: 'DIRECT_ACCOUNT', confidence: 'HIGH',
+		evidence: [{ turnId: 'T0', quote: null, role: 'SUPPORTS' }]
+	}));
+	const compose = { topics: meanings.map((meaning, index) => ({
+		...blankTopic(meaning.destination),
+		area: meaning.area,
+		title: meaning.topic,
+		prose: meaning.text,
+		timeScope: index === 0 ? 'HISTORICAL' : 'CURRENT',
+		primary: [meaning.id]
+	})) };
+	const invalid = structuredClone(compose);
+	invalid.topics[0].contextual = ['M2'];
+	invalid.topics[1].contextual = ['M1'];
+	// The advice topic already has a valid primary home and must survive intact.
+	return {
+		input: { packet, prior: [] }, compose,
+		responses: { decompose: { meanings, exclusions: [], unresolvedMentions: [] }, compose: invalid, audit: { issues: [] } }
+	};
+}
+
+test('after a citation retry, repair only cross-group composition links and audit the complete draft', async () => {
+	const { input, responses, compose } = sharedPassageModel();
+	const calls = [];
+	const stageReview = [];
+	const trace = { stages: [], audits: [], repairs: [] };
+	const result = await assessConversation(input, stub(responses, calls, (request) => {
+		const data = JSON.parse(request.userPrompt);
+		if (calls.length === 1) {
+			const invalid = structuredClone(responses.decompose);
+			invalid.meanings[0].evidence[0].quote = 'My old maths teacher';
+			return invalid;
+		}
+		if (calls.length === 4) {
+			assert.deepEqual(data.affected.map(({ topicIndex, wrongLinks }) => [topicIndex, wrongLinks]), [
+				[0, [{ meaningId: 'M2', destination: 'D3', role: 'contextual' }]],
+				[1, [{ meaningId: 'M1', destination: 'D1', role: 'contextual' }]]
+			]);
+			assert.deepEqual(data.primaryHomes, [
+				{ meaningId: 'M1', topicIndex: 0 }, { meaningId: 'M2', topicIndex: 1 }, { meaningId: 'M3', topicIndex: 2 }
+			]);
+			assert.equal(data.wholeTurns[0].text, input.packet.text);
+			return { topics: compose.topics.slice(0, 2).map(({ prose, primary, contextual }, topicIndex) =>
+				({ topicIndex, prose, primary, contextual })) };
+		}
+		if (calls.length === 5) {
+			assert.deepEqual(data.draft, compose);
+			assert.deepEqual(data.decomposition, responses.decompose);
+		}
+	}), allow, undefined, trace, stageReview);
+
+	assert.deepEqual(calls.map(({ stage }) => stage), ['decompose', 'decompose', 'compose', 'compose', 'audit']);
+	assert.deepEqual(trace.repairs, [
+		{ stage: 'decompose', reason: 'INVALID_QUOTE' },
+		{ stage: 'compose', reason: 'MEANING_TOPIC' }
+	]);
+	assert.ok(!JSON.stringify(trace).includes('M1'));
+	const [self, relationship, advice] = result.candidate.meanings;
+	assert.deepEqual(self.evidence, relationship.evidence);
+	assert.deepEqual(advice.evidence, relationship.evidence);
+	assert.equal(self.subjectId, 'self');
+	assert.equal(relationship.subjectId, 'relationship');
+	assert.equal(relationship.expressedUncertainty, 'Staying in touch is a possibility.');
+	assert.ok(result.candidate.meanings.every((meaning) => meaning.generation.invocationId === 'test-2'));
+	assert.deepEqual(result.candidate.streams.flatMap((stream) => stream.topics.map(({ prose }) => prose)),
+		compose.topics.map(({ prose }) => prose));
+	assert.match(stageReview.find(({ reason }) => reason === 'MEANING_TOPIC').items[0].text,
+		/M2 \(contextual\) belongs to My view of our relationship/);
+	assert.equal(stageReview.find(({ reason }) => reason === 'REPAIRED_TOPIC_LINKS').items.length, 3);
+	assert.equal(stageReview.at(-1).items[0].title, 'Audit passed');
+});
+
+test('a composition link patch cannot touch unrelated topics, discard valid links, or keep foreign IDs', async () => {
+	for (const [change, reason] of [
+		[(topics) => { topics[1].topicIndex = 2; }, 'INVALID_TOPIC_LINK_REPAIR'],
+		[(topics) => { topics[0].primary = []; }, 'INVALID_TOPIC_LINK_REPAIR'],
+		[(topics) => { topics[0].contextual = ['M2']; }, 'MEANING_TOPIC']
+	]) {
+		const { input, responses, compose } = sharedPassageModel();
+		const calls = [];
+		await assert.rejects(assessConversation(input, stub(responses, calls, () => {
+			if (calls.length !== 3) return;
+			const topics = compose.topics.slice(0, 2).map(({ prose, primary, contextual }, topicIndex) =>
+				({ topicIndex, prose, primary, contextual }));
+			change(topics);
+			return { topics };
+		}), allow), (error) => error.reason === reason && error.diagnostic.stage === 'compose');
+		assert.deepEqual(calls.map(({ stage }) => stage), ['decompose', 'compose', 'compose']);
+	}
+});
+
+test('a composition repair restores unassigned primary meanings to their own destinations', async () => {
+	const { input, responses, compose } = sharedPassageModel();
+	responses.compose.topics[0].primary = ['M2'];
+	responses.compose.topics[0].contextual = [];
+	responses.compose.topics[1].primary = ['M1'];
+	responses.compose.topics[1].contextual = [];
+	const calls = [];
+	await assessConversation(input, stub(responses, calls, (request) => {
+		const data = JSON.parse(request.userPrompt);
+		if (calls.length === 3) {
+			assert.deepEqual(data.primaryHomes, [{ meaningId: 'M3', topicIndex: 2 }]);
+			assert.ok(data.affected.every(({ wrongLinks }) => wrongLinks[0].role === 'primary'));
+			return { topics: compose.topics.slice(0, 2).map(({ prose, primary, contextual }, topicIndex) =>
+				({ topicIndex, prose, primary, contextual })) };
+		}
+		if (calls.length === 4) assert.deepEqual(data.draft, compose);
+	}), allow);
+	assert.deepEqual(calls.map(({ stage }) => stage), ['decompose', 'compose', 'compose', 'audit']);
+});
+
 test('initial assessment preserves the earlier decomposition across every labelled area and three subjects', async () => {
 	const { input, responses } = initialModel();
 	const calls = [];
@@ -319,9 +446,9 @@ test('strict model shapes, omitted evidence, wrong subjects and cancellation fai
 		],
 		[
 			(r) => {
-				r.compose.topics[0].destination = 'D2';
+				r.compose.topics[0].destination = 'unknown';
 			},
-			/MEANING_TOPIC/
+			/TOPIC_TARGET/
 		],
 		[
 			(r) => {

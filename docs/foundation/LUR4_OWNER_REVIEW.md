@@ -44,6 +44,8 @@ If a terminal audit identifies a disputed claim, the authenticated DEV owner can
 
 A later DEV analysis repaired its quote citations and then hit `UNSUPPORTED_PROSE` in the audit. A prose-only finding now gets one wording repair using the grounded extraction. The repair keeps the same evidence, destinations and topic dispositions, then runs the complete audit again. If the audit identifies specific paragraphs, the owner can inspect those findings on a terminal failure. The existing four-minute model deadline covers both repairs.
 
+A subsequent DEV replay repaired an invalid citation, then rejected composition because topic paragraphs linked meanings assigned to other subjects. The same passage may support distinct meanings under different subjects. Each meaning has its own primary topic, and contextual links stay within its subject and perspective. When composition attaches a meaning to the wrong destination, one bounded repair keeps the validated extraction and revises only affected paragraphs and their meaning links. It preserves valid links and all topic dispositions. The full candidate must pass validation and the complete audit before review. The private steps show the affected topic, offending link and repaired composition. Application logs retain the stage and reason code only.
+
 ## Inspect the analysis stages
 
 In the DEV owner review, expand **Analysis steps** after an analysis. Each attempt shows extraction (groups, meanings, citations and exclusions), composition (draft paragraphs and assigned meanings), and the audit outcome. The panels preview a bounded amount of each step and identify omitted items. Use **Copy item** to copy only the item you want to discuss. Earlier drafts can contain rejected statements.
@@ -53,6 +55,8 @@ Successful previews are encrypted with the private draft candidate and remain av
 ## Validation
 
 The LUR-2 disposable database suite includes LUR-3 assessment and LUR-4 route cases with a simulated model. The browser job exercises native forms with Chromium against that same isolated fixture. The suite covers the first and second revisions, edited wording and its origin, provider-failure recovery, defer and reject, prior evidence eligibility, read-only rollback and denied cross-account access. The browser fixture renders the real review component and calls the real route handlers. A hosted Dorian/OpenAI quality replay remains part of LUR-5.
+
+The composition regression replays a rejected citation followed by cross-subject links using a synthetic conversation. It checks that several meanings can cite the same turn and that the repaired proposal preserves why the reconnection matters, the tentative wish to stay in touch, and the separate reason for seeking advice. The hosted replay should check these distinctions on the previously saved call. No Prisma migration is required for this repair.
 
 ```sh
 # Run the assessment and review suite against a disposable local database.

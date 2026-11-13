@@ -35,7 +35,7 @@ export type PriorTopic = {
 	}[];
 };
 export type AssessmentInput = { packet: SourcePacket; prior: PriorTopic[] };
-export const semanticPromptVersion = 'foundation-lu-2026-11-v6';
+export const semanticPromptVersion = 'foundation-lu-2026-11-v7';
 export const semanticStages = ['decompose', 'compose', 'audit'] as const;
 type Stage = (typeof semanticStages)[number];
 export type ModelRequest = {
@@ -286,6 +286,7 @@ function grounding(
 	const ids = new Set<string>();
 	const covered = new Set<string>();
 	const meanings: Meaning[] = [];
+	const repairedCitations: { meaningId: string; turnId: string; role: Meaning['evidence'][number]['role'] }[] = [];
 	for (const unit of data.meanings) {
 		const target = view.destinations.find((d) => d.ref === unit.destination);
 		check(target && !ids.has(unit.id), 'MEANING_DESTINATION');
@@ -295,13 +296,22 @@ function grounding(
 		for (const citation of unit.evidence) {
 			const t = turns.get(citation.turnId);
 			check(t, 'UNKNOWN_TURN');
-			const quote = citation.quote ?? t.text;
-			check(quote.length && (citation.quote !== null || citation.offset === undefined), 'INVALID_QUOTE');
+			let quote = citation.quote ?? t.text;
 			const first = t.text.indexOf(quote);
 			const unique = first >= 0 && t.text.indexOf(quote, first + 1) < 0;
 			// Resolve a unique exact match server-side. A repeated phrase still
 			// requires an exact local offset, even if both matches have the same speaker.
-			const index = unique ? first : citation.offset ?? -1;
+			let index = unique ? first : citation.offset ?? -1;
+			if (citation.quote !== null && first < 0) {
+				// Widen an unmatched excerpt to the same immutable turn. Keep the
+				// claim and citation role for the independent semantic audit.
+				citation.quote = null;
+				delete citation.offset;
+				quote = t.text;
+				index = 0;
+				repairedCitations.push({ meaningId: unit.id, turnId: t.id, role: citation.role });
+			}
+			check(quote.length && (citation.quote !== null || citation.offset === undefined), 'INVALID_QUOTE');
 			check(index >= 0 && t.text.slice(index, index + quote.length) === quote, 'INVALID_QUOTE');
 			// Subsequent model stages receive the validated offset if one was supplied.
 			if (citation.offset !== undefined) citation.offset = index;
@@ -398,7 +408,7 @@ function grounding(
 		check(turn?.role === 'OWNER' && turn.text.includes(m.text), 'INVALID_MENTION');
 		return { ...m, reason: 'Identity was not resolved from the transcript.' };
 	});
-	return { meanings, mentions };
+	return { meanings, mentions, repairedCitations };
 }
 
 function composeCandidate(
@@ -739,9 +749,6 @@ export async function assessConversation(
 					'Cite the supporting turn ID. Use quote: null and omit offset to cite the whole turn. Relish will copy the original wording.',
 					'For a shorter excerpt, copy one exact contiguous substring from that turn. Omit offset unless the exact excerpt repeats in the turn. In that case, supply its exact zero-based UTF-16 offset or cite the whole turn.',
 					'Cite a prior question as CONTEXT if an answer depends on it.',
-					...(provenance.repairs.at(-1)?.reason === 'INVALID_QUOTE'
-						? ['The previous attempt had an invalid quote. Use quote: null and omit offset for all citations on this repair. Check each turn ID and evidence role.']
-						: []),
 					...(provenance.repairs.at(-1)?.reason === 'BAD_SUBJECT'
 						? ['Reconsider the affected claims against the transcript and destination map. Subject repair suggestions refer to the previous draft and are advisory. Split distinct claims by subject while retaining exact evidence and attribution.']
 						: []),
@@ -788,6 +795,16 @@ export async function assessConversation(
 				promptVersion: semanticPromptVersion,
 				pipelineVersion: 'LUR-3'
 			});
+			if (!wordingRepair && grounded.repairedCitations.length) {
+				const repair = { stage: 'decompose' as const, reason: 'INVALID_QUOTE' };
+				provenance.repairs.push(repair);
+				trace?.repairs.push(repair);
+				if (stageReview) recordStagePanel(stageReview, 'decompose', attempt,
+					grounded.repairedCitations.map(({ meaningId, turnId, role }) => ({
+						title: meaningId + ' · ' + turnId,
+						text: 'Replaced an unmatched excerpt with the original whole turn (' + role + ').'
+					})), 'REPAIRED_CITATIONS');
+			}
 			const wholeTurnIds = new Set(extracted.data.meanings.flatMap((meaning) =>
 				meaning.evidence.filter((citation) => citation.quote === null).map((citation) => citation.turnId)
 			));
@@ -917,6 +934,7 @@ export async function assessConversation(
 				[
 					'Independently audit the complete proposed understanding against the full transcript and prior meanings.',
 					'A null quote refers to the complete source turn with that ID. Use the transcript text and speaker to verify evidence.',
+					'With a whole-turn citation, locate the words that support each part of the claim. When the turn names several people, verify who each action and time detail applies to.',
 					'Report every issue code that applies, including missed durable meanings, unsupported prose, bad attribution, missing qualification, wrong temporal scope, duplication or wrong subject/effect.',
 					'Check every claim has meaningful owner support. Reject attribution from an unconfirmed Dorian suggestion, bare acknowledgement, or answer that does not clearly endorse the proposed meaning.',
 					'For BAD_SUBJECT, identify each misrouted extracted meaning in subjectFindings using its existing meaningId and the suggested destination ref from source.destinations. Use an empty array if the subject problem is in topic wording alone or no different destination is supported.',
@@ -1009,7 +1027,7 @@ export async function assessConversation(
 			if (
 				attempt >= 2 ||
 				repairingTopicLinks ||
-				['MODEL_FAILURE', 'MODEL_TIMEOUT', 'CANCELLED', 'INPUT_LIMIT'].includes(error.reason)
+				['MODEL_FAILURE', 'MODEL_TIMEOUT', 'CANCELLED', 'INPUT_LIMIT', 'INVALID_QUOTE'].includes(error.reason)
 			) {
 				error.diagnostic = { stage, attempt };
 				throw error;

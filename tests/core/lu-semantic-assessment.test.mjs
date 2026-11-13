@@ -128,7 +128,7 @@ function sharedPassageModel() {
 	};
 }
 
-test('after a citation retry, repair only cross-group composition links and audit the complete draft', async () => {
+test('after a citation repair, repair only cross-group composition links and audit the complete draft', async () => {
 	const { input, responses, compose } = sharedPassageModel();
 	const calls = [];
 	const stageReview = [];
@@ -140,7 +140,7 @@ test('after a citation retry, repair only cross-group composition links and audi
 			invalid.meanings[0].evidence[0].quote = 'My old maths teacher';
 			return invalid;
 		}
-		if (calls.length === 4) {
+		if (calls.length === 3) {
 			assert.deepEqual(data.affected.map(({ topicIndex, wrongLinks }) => [topicIndex, wrongLinks]), [
 				[0, [{ meaningId: 'M2', destination: 'D3', role: 'contextual' }]],
 				[1, [{ meaningId: 'M1', destination: 'D1', role: 'contextual' }]]
@@ -152,13 +152,13 @@ test('after a citation retry, repair only cross-group composition links and audi
 			return { topics: compose.topics.slice(0, 2).map(({ prose, primary, contextual }, topicIndex) =>
 				({ topicIndex, prose, primary, contextual })) };
 		}
-		if (calls.length === 5) {
+		if (calls.length === 4) {
 			assert.deepEqual(data.draft, compose);
 			assert.deepEqual(data.decomposition, responses.decompose);
 		}
 	}), allow, undefined, trace, stageReview);
 
-	assert.deepEqual(calls.map(({ stage }) => stage), ['decompose', 'decompose', 'compose', 'compose', 'audit']);
+	assert.deepEqual(calls.map(({ stage }) => stage), ['decompose', 'compose', 'compose', 'audit']);
 	assert.deepEqual(trace.repairs, [
 		{ stage: 'decompose', reason: 'INVALID_QUOTE' },
 		{ stage: 'compose', reason: 'MEANING_TOPIC' }
@@ -170,7 +170,7 @@ test('after a citation retry, repair only cross-group composition links and audi
 	assert.equal(self.subjectId, 'self');
 	assert.equal(relationship.subjectId, 'relationship');
 	assert.equal(relationship.expressedUncertainty, 'Staying in touch is a possibility.');
-	assert.ok(result.candidate.meanings.every((meaning) => meaning.generation.invocationId === 'test-2'));
+	assert.ok(result.candidate.meanings.every((meaning) => meaning.generation.invocationId === 'test-1'));
 	assert.deepEqual(result.candidate.streams.flatMap((stream) => stream.topics.map(({ prose }) => prose)),
 		compose.topics.map(({ prose }) => prose));
 	assert.match(stageReview.find(({ reason }) => reason === 'MEANING_TOPIC').items[0].text,
@@ -260,7 +260,9 @@ test('initial assessment preserves the earlier decomposition across every labell
 test('Dorian suggestions and non-committal replies cannot provide owner evidence', async () => {
 	for (const [turnId, quote, error] of [
 		['T10', initialTurns[10][1], /NON_OWNER_EVIDENCE/],
+		['T10', 'Unmatched excerpt from an agent turn', /NON_OWNER_EVIDENCE/],
 		['T11', 'Maybe', /AMBIGUOUS_ASSENT/],
+		['T11', 'Unmatched excerpt from a non-committal answer', /AMBIGUOUS_ASSENT/],
 		['T11', initialTurns[11][1], /AMBIGUOUS_ASSENT/],
 		['T13', 'Yes', /AMBIGUOUS_ASSENT/]
 	]) {
@@ -284,27 +286,27 @@ test('an invalid quote and unsupported wording get separate bounded repairs', as
 			invalid.meanings[0].evidence[0].quote = 'Invented quote';
 			return invalid;
 		}
-		if (calls.length === 3) {
+		if (calls.length === 2) {
 			const draft = structuredClone(responses.compose);
 			draft.topics[0].prose = 'Unsupported wording.';
 			return draft;
 		}
-		if (calls.length === 4) return { issues: ['UNSUPPORTED_PROSE'], unsupportedTopicIndexes: [0] };
-		if (calls.length === 5) {
+		if (calls.length === 3) return { issues: ['UNSUPPORTED_PROSE'], unsupportedTopicIndexes: [0] };
+		if (calls.length === 4) {
 			assert.deepEqual(data.topics.map((topic) => topic.topicIndex), [0]);
 			return { paragraphs: [{ topicIndex: 0, prose: original }] };
 		}
-		if (calls.length === 6) assert.deepEqual(data.draft, responses.compose);
+		if (calls.length === 5) assert.deepEqual(data.draft, responses.compose);
 	}), allow, undefined, undefined, stageReview);
-	assert.deepEqual(calls.map(({ stage }) => stage), ['decompose', 'decompose', 'compose', 'audit', 'compose', 'audit']);
+	assert.deepEqual(calls.map(({ stage }) => stage), ['decompose', 'compose', 'audit', 'compose', 'audit']);
 	assert.deepEqual(result.provenance.repairs, [
 		{ stage: 'decompose', reason: 'INVALID_QUOTE' }, { stage: 'audit', reason: 'UNSUPPORTED_PROSE' }
 	]);
-	assert.equal(result.candidate.meanings[0].generation.invocationId, 'test-2');
+	assert.equal(result.candidate.meanings[0].generation.invocationId, 'test-1');
 	assert.deepEqual(stageReview.filter(({ reason }) => !reason).map(({ stage, attempt }) => [stage, attempt]), [
-		['decompose', 1], ['decompose', 2], ['compose', 2], ['audit', 2], ['compose', 3], ['audit', 3]
+		['decompose', 1], ['compose', 1], ['audit', 1], ['compose', 2], ['audit', 2]
 	]);
-	assert.ok(stageReview.find(({ stage, attempt }) => stage === 'audit' && attempt === 2)
+	assert.ok(stageReview.find(({ stage, attempt }) => stage === 'audit' && attempt === 1)
 		.items.some(({ text }) => text.includes('Unsupported wording.')));
 	assert.deepEqual(result.provenance.stageReview, stageReview);
 });
@@ -323,6 +325,40 @@ test('a repeated semantic audit failure still blocks review', async () => {
 		/MISATTRIBUTION/
 	);
 	assert.equal(failed.length, 6);
+});
+
+test('whole-turn citation repair leaves semantic audit and its retry in charge of attribution', async () => {
+	const { input, responses } = sharedPassageModel();
+	responses.compose.topics.forEach((topic) => { topic.contextual = []; });
+	// The transcript says who the teacher was. The new claim changes who taught whom.
+	const meaning = responses.decompose.meanings[0];
+	meaning.text = 'The owner was Alex’s music teacher and gave her a sense of belonging.';
+	meaning.evidence[0].quote = 'My old maths teacher made me feel I belonged.';
+	responses.compose.topics[0].prose = meaning.text;
+	const calls = [];
+	const trace = { stages: [], audits: [], repairs: [] };
+	await assert.rejects(assessConversation(input, stub(responses, calls, (request) => {
+		const data = JSON.parse(request.userPrompt);
+		if (calls.length === 4) {
+			assert.deepEqual(data.attributionRepair, [{
+				claim: meaning.text, turnIds: ['T0'], issue: 'INSUFFICIENT_OWNER_SUPPORT'
+			}]);
+			assert.deepEqual(data.repair, { stage: 'audit', reason: 'MISATTRIBUTION' });
+		}
+		if (request.stage === 'audit') {
+			assert.equal(data.decomposition.meanings[0].evidence[0].quote, null);
+			return {
+				issues: ['MISATTRIBUTION', 'UNSUPPORTED_PROSE', 'OMITTED_MEANING'],
+				attributionFindings: [{ target: 'MEANING', meaningId: meaning.id, issue: 'INSUFFICIENT_OWNER_SUPPORT' }]
+			};
+		}
+	}), allow, undefined, trace), { reason: 'MISATTRIBUTION', diagnostic: { stage: 'audit', attempt: 2 } });
+	assert.deepEqual(calls.map(({ stage }) => stage), ['decompose', 'compose', 'audit', 'decompose', 'compose', 'audit']);
+	assert.deepEqual(trace.repairs, [
+		{ stage: 'decompose', reason: 'INVALID_QUOTE' },
+		{ stage: 'audit', reason: 'MISATTRIBUTION' },
+		{ stage: 'decompose', reason: 'INVALID_QUOTE' }
+	]);
 });
 
 test('unsupported prose after a wording repair still blocks review with private findings', async () => {
@@ -440,9 +476,9 @@ test('strict model shapes, omitted evidence, wrong subjects and cancellation fai
 		],
 		[
 			(r) => {
-				r.decompose.meanings[0].evidence[0].quote = 'Invented quote';
+				r.decompose.meanings[0].evidence[0].turnId = 'unknown';
 			},
-			/INVALID_QUOTE/
+			/UNKNOWN_TURN/
 		],
 		[
 			(r) => {
@@ -703,23 +739,31 @@ test('invalid excerpts can be repaired by citing whole turns and unique exact ex
 	const exactQuote = citation.quote;
 	const turn = input.packet.turns.find((item) => item.id === citation.turnId);
 	const original = input.packet.text.slice(turn.start, turn.end);
-	citation.quote = 'A paraphrase absent from the transcript';
+	const expected = structuredClone(responses.decompose);
+	expected.meanings[0].evidence[0].quote = null;
 	const calls = [];
+	const stageReview = [];
 	const result = await assessConversation(input, stub(responses, calls, (request) => {
-		if (request.stage === 'decompose' && calls.length === 2) {
-			assert.match(request.systemPrompt, /Use quote: null and omit offset for all citations on this repair/);
-			const repair = structuredClone(responses.decompose);
-			repair.meanings[0].evidence[0].quote = null;
-			return repair;
+		if (request.stage === 'decompose') {
+			const draft = structuredClone(responses.decompose);
+			Object.assign(draft.meanings[0].evidence[0], {
+				quote: 'A paraphrase absent from the transcript', offset: 4
+			});
+			return draft;
 		}
 		if (request.stage === 'compose' || request.stage === 'audit') {
 			const prompt = JSON.parse(request.userPrompt);
 			const turns = request.stage === 'compose' ? prompt.wholeTurns : prompt.source.turns;
 			assert.equal(turns.find((item) => item.id === turn.id).text, original);
-			assert.equal(prompt.decomposition.meanings[0].evidence[0].quote, null);
+			assert.deepEqual(prompt.decomposition, expected);
 		}
-	}), allow);
+	}), allow, undefined, undefined, stageReview);
+	assert.deepEqual(calls.map(({ stage }) => stage), ['decompose', 'compose', 'audit']);
 	assert.deepEqual(result.provenance.repairs, [{ stage: 'decompose', reason: 'INVALID_QUOTE' }]);
+	assert.equal(result.candidate.meanings[0].generation.invocationId, 'test-1');
+	assert.deepEqual(stageReview.find(({ reason }) => reason === 'REPAIRED_CITATIONS').items, [{
+		title: 'M0 · ' + turn.id, text: 'Replaced an unmatched excerpt with the original whole turn (SUPPORTS).'
+	}]);
 	const [anchor] = result.candidate.meanings[0].evidence;
 	assert.equal(anchor.quote, original);
 	assert.equal(anchor.start, turn.start);

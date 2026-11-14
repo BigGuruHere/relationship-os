@@ -43,6 +43,8 @@ The first approved relationship statement creates a default private relationship
 
 PR #78 merged cross-subject topic link repair at `2900132b`. A hosted v6 run reached the audit after re-extraction for an invalid quote. The owner preview showed lost meanings and a timing detail assigned to the wrong person. On `fix/lu-preserve-extraction-on-citation-repair`, an unmatched excerpt is anchored to its original whole turn. The same extraction proceeds to composition and full audit. The audit can still request its bounded semantic repair. Hosted v7 replay remains pending. No Prisma migration.
 
+PR #79 merged citation repair at `83f91d90`. On `feature/lu-writing-comparison`, the DEV owner review can preview the current all-topics draft alongside a focused paragraph per changed topic. Both use the same extraction, outline, model and audit. The preview creates no candidate or revision. Synthetic checks cover the comparison. Live replay across three conversations remains pending. No Prisma migration.
+
 ## Dorian notes in My People
 
 The owner-only DEV flow is live-tested by the operator through note save. The `feature/dorian-person-note-quality` branch replaces provider call recaps with a person-centred draft from caller speech through the existing OpenAI summariser. The user can still review, edit, save, or discard. If no draft is generated, the editor opens blank and offers the caller's own words as reference. Existing saved notes remain editable. No migration.

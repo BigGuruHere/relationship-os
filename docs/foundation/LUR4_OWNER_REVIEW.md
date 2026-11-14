@@ -56,6 +56,22 @@ Successful previews are encrypted with the private draft candidate and remain av
 
 ## Validation
 
+### Compare writing approaches on DEV
+
+On a complete saved conversation's owner review page, expand **Compare writing approaches** and submit the preview. It uses the existing `RELISH_FOUNDATION_LU_REVIEW=YES` DEV gate and requires the same explicit private analysis admission as **Analyse conversation**. It sends the transcript and eligible prior understanding to the configured model. Preview results are returned only to the current page. They create no candidate or revision. The existing preparation can record the transcript's analysis admission and initialise private subject references. No Prisma migration or configuration change is required for an existing DEV review setup.
+
+Both drafts use one successful extraction and the topic outline produced by the current composer, including the subject, claim assignments, previous topic, and proposed effect. The focused writer receives one changed topic, its assigned claims and evidence, its eligible prior paragraph, and neighbouring topic labels. Both complete drafts use the same audit and candidate checks. The preview shows the shared claims and source turn IDs, both versions of each paragraph, and any audit findings the auditor can identify. It keeps both drafts visible when an audit raises an issue. The focused pass handles up to 24 changed topics, in waves of at most four calls, under the existing four-minute deadline. An incomplete pass shows the available text and its status. This experiment measures writing with a fixed outline. Topic discovery and routing are shared inputs.
+
+Replay three saved DEV conversations with the configured model:
+
+| Case | What to compare |
+| --- | --- |
+| The previously inspected reconnection call | Meaning of the encounter, separate reason for seeking advice, and uncertainty about who the speaker wanted to stay in touch with |
+| A straightforward conversation about one person | Coherent wording, evidence coverage, and whether incidental details become lasting topics |
+| A follow-up after approving an initial understanding in DEV | The changed detail, preservation of unaffected meaning, and whether the prior topic and new evidence stay distinct |
+
+For each case, compare the shared claims with the source before comparing the paragraphs. Record omissions at extraction separately from omissions or attribution changes in the writing. Use the same person's saved baseline for the two drafts. Hosted model quality and latency still need this replay. Local synthetic tests exercise the shared inputs, scoped writing, audit findings, partial provider failure, longitudinal carry-forward and the preview route. Revert the application change to remove the comparison entry.
+
 The LUR-2 disposable database suite includes LUR-3 assessment and LUR-4 route cases with a simulated model. The browser job exercises native forms with Chromium against that same isolated fixture. The suite covers the first and second revisions, edited wording and its origin, provider-failure recovery, defer and reject, prior evidence eligibility, read-only rollback and denied cross-account access. The browser fixture renders the real review component and calls the real route handlers. A hosted Dorian/OpenAI quality replay remains part of LUR-5.
 
 The composition regression replays a rejected citation followed by cross-subject links using a synthetic conversation. It checks that several meanings can cite the same turn and that the repaired proposal preserves why the reconnection matters, the tentative wish to stay in touch, and the separate reason for seeking advice. The hosted replay should check these distinctions on the previously saved call. No Prisma migration is required for this repair.

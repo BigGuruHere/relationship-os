@@ -97,7 +97,8 @@ export async function runLuAssessmentCases({ load, vite, otherPersonId, grant, p
 			'\n\nReturn strict JSON matching this schema:'
 		)[0];
 		const data = JSON.parse(prompt);
-		const stage = data.topic ? 'edit-audit' : data.draft ? 'audit' : data.decomposition ? 'compose' : 'decompose';
+		const stage = data.topic ? (data.neighbours ? 'focused-compose' : 'edit-audit')
+			: data.draft ? 'audit' : data.decomposition ? 'compose' : 'decompose';
 		calls.push({ stage, data });
 		if (beforeResponse) await beforeResponse(stage, init.signal);
 		let output;
@@ -177,6 +178,8 @@ export async function runLuAssessmentCases({ load, vite, otherPersonId, grant, p
 								}))
 							]
 			};
+		} else if (stage === 'focused-compose') {
+			output = { prose: data.meanings[0].text };
 		} else if (stage === 'audit' && rejectAssessment) {
 			output = {
 				issues: ['MISATTRIBUTION'],
@@ -229,6 +232,7 @@ export async function runLuAssessmentCases({ load, vite, otherPersonId, grant, p
 		const initial = await route.load(event(first));
 		const firstFields = { sourceVersion: '1', requestKey: initial.requestKey };
 		assert.equal(initial.enabled, false);
+		await assert.rejects(action('compareWriting', first, firstFields), status(404));
 		await assert.rejects(action('assessConversation', first, firstFields), status(404));
 		await assert.rejects(assess(first, 'initial'), /unavailable/);
 		assert.equal(calls.length, 0);
@@ -238,6 +242,7 @@ export async function runLuAssessmentCases({ load, vite, otherPersonId, grant, p
 		await assert.rejects(route.load(event(first, '', { ...owner, user: { id: 'other', role: 'member' } })), status(404));
 		await assert.rejects(route.load(event(first, '', owner, { id: otherPersonId, noteId: first })), status(404));
 		await assert.rejects(action('assessConversation', first, firstFields, '', owner, 'https://example.test'), status(403));
+		await assert.rejects(action('compareWriting', first, firstFields, '', owner, 'https://example.test'), status(403));
 
 		const nativeTimeout = AbortSignal.timeout;
 		const budgets = [];
@@ -365,6 +370,28 @@ export async function runLuAssessmentCases({ load, vite, otherPersonId, grant, p
 		assert.deepEqual(original.provenance.repairs, [{ stage: 'decompose', reason: 'INVALID_QUOTE' }]);
 		assert.ok(original.provenance.invocations.every((inv) => inv.model === 'synthetic-lu-model'));
 		assert.equal(original.candidate.meanings[0].generation.invocationId, original.provenance.invocations[0].invocationId);
+		const beforeComparison = calls.length;
+		const beforeCandidates = await count('FoundationLuCandidate');
+		if (browser) {
+			await browser.page.goto(origin + pathname(first) + '?conversation=1' + query);
+			await browser.page.getByText('Compare writing approaches', { exact: true }).first().click();
+			await browser.page.getByRole('button', { name: 'Compare writing approaches' }).click();
+			await browser.page.getByText('One topic at a time', { exact: true }).first().waitFor();
+			assert.equal(await browser.page.getByText('Audit passed.', { exact: true }).count(), 2);
+		} else {
+			const result = await action('compareWriting', first, { sourceVersion: '2' }, query);
+			assert.equal(result.comparisonSourceVersion, 2);
+			assert.equal(result.comparison.topics.length, 3);
+			assert.equal(result.comparison.topics[0].together, initialTopic.prose);
+			assert.equal(result.comparison.topics[0].focused, 'Yes, mornings are best for me.');
+			assert.deepEqual(result.comparison.together.issues, []);
+			assert.deepEqual(result.comparison.focused.issues, []);
+		}
+		assert.deepEqual(calls.slice(beforeComparison).map(({ stage }) => stage),
+			['decompose', 'compose', 'audit', 'focused-compose', 'focused-compose', 'focused-compose', 'audit']);
+		assert.equal(await count('FoundationLuCandidate'), beforeCandidates);
+		assert.equal(await count('FoundationLuRevision'), 0);
+		assert.equal((await route.load(event(first, query))).candidate.id, ready);
 		const editFields = { topic: initialTopic.key, prose: 'Morning catch-ups suit me best.' };
 		rejectEdit = true;
 		const invalidEdit = await action('editProposal', first, editFields, query);

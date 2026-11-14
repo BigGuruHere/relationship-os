@@ -7,6 +7,7 @@ import { requiredEnv } from '$lib/server/config/requiredEnv';
 import { generateFoundationStructured } from '$lib/server/agents/modelGateway';
 import {
 	assessConversation,
+	compareConversationWriting,
 	auditOwnerWording,
 	AssessmentError,
 	type AssessmentModel,
@@ -51,6 +52,25 @@ function privateAssessmentModel(assessmentDeadline?: AbortSignal): AssessmentMod
 			signal
 		});
 	};
+}
+
+export async function compareFoundationConversationWriting(
+	locals: Pick<App.Locals, 'user'>,
+	personId: string,
+	sourceId: string,
+	sourceVersionId: string,
+	signal: AbortSignal
+) {
+	signal.throwIfAborted();
+	const access = await resolveFoundationAccess(locals, 'PREPARE_LU');
+	const input = await prepareLuAssessment(access, personId, sourceId);
+	if (input.packet.source.versionId !== sourceVersionId) throw new FoundationConflict();
+	const authorize = () => verifyLuAssessment(access, personId, input);
+	const deadline = AbortSignal.timeout(assessmentTimeoutMs);
+	const comparison = await compareConversationWriting(input, privateAssessmentModel(deadline), authorize, signal);
+	signal.throwIfAborted();
+	await authorize();
+	return comparison;
 }
 
 export async function assessFoundationConversation(

@@ -8,7 +8,7 @@ import { FoundationDenied } from './internal';
 import {
 	approveLuCandidate, readLatestLuFailedReview, readLuCandidateForReview, readPersonLuHistory, reviewGroups, stableTopicKey
 } from './livingUnderstanding';
-import { assessFoundationConversation, editFoundationProposal } from './luAssessment';
+import { assessFoundationConversation, compareFoundationConversationWriting, editFoundationProposal } from './luAssessment';
 import { noteReviewAvailable } from './noteReview';
 import { foundationPage, peopleRouteDomain } from './peopleRouting';
 import { resolveFoundationAccess } from './policy';
@@ -155,6 +155,25 @@ function failedAnalysisMessage(reason: string, reference: string) {
 }
 
 export const conversationLuActions = {
+	compareWriting: async (event: FormEvent) => {
+		const { locals, params, request } = event;
+		const { conversation, fields } = await writeContext(event);
+		const expected = number.safeParse(fields.get('sourceVersion'));
+		if (!expected.success || conversation.completeness !== 'COMPLETE')
+			return fail(400, { comparisonMessage: 'A complete saved transcript is required to compare drafts.' });
+		try {
+			const access = await resolveFoundationAccess(locals, 'REVISE_CONVERSATION_SOURCE');
+			const source = await reviseConversationSource(access, params.id, params.noteId, expected.data, 'PRIVATE_ANALYSIS');
+			const comparison = await compareFoundationConversationWriting(locals, params.id, params.noteId, source.id, request.signal);
+			return { comparison, comparisonSourceVersion: source.version };
+		} catch (cause) {
+			if (cause instanceof FoundationConflict || cause instanceof FoundationDenied)
+				return fail(409, { comparisonMessage: 'The transcript or understanding changed. Open the current review and try again.' });
+			if (cause instanceof AssessmentError)
+				return fail(422, { comparisonMessage: 'Could not prepare a shared draft for the comparison.', comparisonReason: cause.reason });
+			throw cause;
+		}
+	},
 	assessConversation: async (event: FormEvent) => {
 		const { locals, params, url, request } = event;
 		const { conversation, fields } = await writeContext(event);

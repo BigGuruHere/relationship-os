@@ -46,6 +46,7 @@ function proposalView(receipt: Awaited<ReturnType<typeof readLuCandidateForRevie
 	const { packet, prior } = receipt.input;
 	return {
 		id: receipt.candidateId,
+		sourceVersion: packet.source.version,
 		selfTopics: isSelfTopicPromptVersion(receipt.provenance.promptVersion),
 		stageReview: receipt.provenance.stageReview,
 		noChange: receipt.outcome === 'NO_CHANGE',
@@ -66,7 +67,7 @@ function proposalView(receipt: Awaited<ReturnType<typeof readLuCandidateForRevie
 							text: meaning.text, basis: meaning.basis, kind: meaning.kind,
 							uncertainty: meaning.expressedUncertainty, asserter: meaning.asserter.kind,
 							evidence: meaning.evidence.map(({ quote, turnId, role }) => ({
-								quote, role, speaker: packet.turns.find((turn) => turn.id === turnId)?.speakerId
+								quote, role, turnId, speaker: packet.turns.find((turn) => turn.id === turnId)?.speakerId
 							}))
 						}))
 				};

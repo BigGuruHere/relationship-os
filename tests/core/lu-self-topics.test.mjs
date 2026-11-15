@@ -525,3 +525,54 @@ test('a rejected discovery records bounded private diagnostics and never reaches
 	);
 	assert.ok(panels.every((panel) => panel.reason === 'DISCOVERY_MISSING_LABEL'));
 });
+
+test('topic drafting grounds separate exact excerpts and falls back when the proposed wording is not verbatim', async () => {
+	const input = fixture([
+		['agent', 'What do you recall?'],
+		[
+			'owner',
+			'Sam was my mentor. I changed jobs that year. Sam died, I don’t know, maybe five years ago.'
+		],
+		[
+			'owner',
+			'My daughter applied to three colleges. She has one offer and two pending applications.'
+		],
+		['agent', 'Would you like her to accept?'],
+		['owner', 'Maybe, but I really do not know.']
+	]);
+	const excerpts = ['Sam was my mentor.', 'Sam died, I don’t know, maybe five years ago.'];
+	const { model, calls } = modelFor(input, {
+		change({ request, data, output }) {
+			if (request.stage !== 'compose') return;
+			if (data.area.title === 'Mentorship and reconnection') {
+				output.prose = 'Sam was my mentor and died perhaps five years ago.';
+				output.meanings = [
+					{
+						...meaning(output.prose, 'T1'),
+						evidence: excerpts.map((quote) => ({ turnId: 'T1', quote, role: 'SUPPORTS' }))
+					}
+				];
+			} else {
+				output.meanings[0].evidence[0].quote = 'She received a college offer.';
+			}
+		}
+	});
+	const { candidate } = await assessSelfTopics(input, model, allow);
+	const [mentor, daughter] = candidate.meanings;
+	assert.deepEqual(
+		mentor.evidence.map((item) => item.quote),
+		excerpts
+	);
+	for (const item of mentor.evidence)
+		assert.equal(input.packet.text.slice(item.start, item.end), item.quote);
+	assert.equal(
+		daughter.evidence[0].quote,
+		'My daughter applied to three colleges. She has one offer and two pending applications.'
+	);
+	const audit = calls.find((call) => call.stage === 'audit').data;
+	assert.deepEqual(
+		audit.meanings[0].evidence.map((item) => item.quote),
+		excerpts
+	);
+	assert.equal(audit.meanings[1].evidence[0].quote, null);
+});

@@ -23,12 +23,13 @@ import {
 	type AssessmentStagePanel
 } from './semanticAssessment';
 
-export const selfTopicPromptVersion = 'foundation-self-topics-v4';
+export const selfTopicPromptVersion = 'foundation-self-topics-v5';
 export function isSelfTopicPromptVersion(version: string) {
 	return [
 		'foundation-self-topics-v1',
 		'foundation-self-topics-v2',
 		'foundation-self-topics-v3',
+		'foundation-self-topics-v4',
 		selfTopicPromptVersion
 	].includes(version);
 }
@@ -416,7 +417,10 @@ export async function assessSelfTopics(
 					[
 						'Return the Foundation topic draft schema instead of existingKnowledge/newKnowledge.',
 						'Write the coherent understanding first. Then attach evidence-backed assertions covering its new or changed meaning, with kind, basis and uncertainty.',
-						"Use whole-turn citations (quote: null). Supporting citations must come from the area's OWNER turns. Context citations may use supplied AGENT turns.",
+						"Supporting citations must come from the area's OWNER turns. Context citations may use supplied AGENT turns.",
+						'For each claim copy the shortest exact contiguous excerpt that supports it. Include words that identify who or what it refers to, and preserve negation, uncertainty and time qualifiers.',
+						'If separate passages are needed, cite each separately with its own turn ID. Copy the original wording and punctuation without ellipses. If a phrase occurs twice, include enough surrounding words to make the excerpt unique, or give its exact UTF-16 offset within the turn.',
+						'Use quote: null only when the whole turn is needed, such as a brief turn or the full question behind a bare yes/no answer. If a compact exact excerpt cannot safely express the evidence, use the whole turn.',
 						'For a new topic use NEW. For a prior topic choose the supported effect and preserve all unaffected prose and meanings.',
 						'Do not label an affected topic UNCHANGED; use REINFORCED if it receives only new supporting evidence.',
 						'Retire prior meanings only for explicit SUPERSEDED evidence, using their exact refs. Preserve unresolved contradictions and historical detail.',
@@ -667,6 +671,7 @@ export async function assessSelfTopics(
 				'Check depth and omissions against the full conversation, not just the supporting assertions. Nuance may remain in topic prose, but each substantive assertion needs source or retained prior support.',
 				'Check attribution, facts versus opinions/reports, uncertainty, temporal scope, topic effects, and preservation of unaffected prior understanding.',
 				'No AGENT suggestion becomes owner knowledge without clear owner endorsement. A whole-turn citation is not evidence for every possible interpretation of that turn.',
+				'Check the cited excerpts jointly support the claim, including qualifiers and who is speaking. Read surrounding text to catch missing negation, uncertainty or context. For a missing supporting span, use UNSUPPORTED_PROSE and specify the citation to repair within that topic.',
 				'Only self-understanding is in scope. Do not report omissions merely because independent person or relationship streams were not developed.',
 				'Return issues and specific findings identifying the affected topic and missing or unsupported meaning. Empty issues means this is eligible for owner review, not authoritative.',
 				'Put a meaningful assertion in one primary topic. Accept a brief reference in another topic when it is necessary context. Flag duplication only when it repeats the primary meaning or fragments a coherent topic.',

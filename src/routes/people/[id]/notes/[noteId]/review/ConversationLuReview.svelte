@@ -18,6 +18,12 @@
     comparisonMessage?: string;
     comparisonReason?: string;
   } | null | undefined;
+  // The full turn is already part of the private review. Use it only when
+  // it matches the exact transcript version that supplied the draft citation.
+  $: candidateTurns = data.candidate?.sourceVersion === data.conversation.sourceVersion
+    ? new Map(data.conversation.turns.map(turn => [turn.id, turn.text]))
+    : new Map<string, string>();
+  const expandedQuoteLimit = 360;
   let busy = false;
   let copyStatus = '';
   const stageLabels = { decompose: 'Extraction', compose: 'Composition', audit: 'Audit' };
@@ -165,7 +171,21 @@
                 <p class="muted">{label(meaning.kind)} · {label(meaning.basis)} · {label(meaning.asserter)}</p>
                 {#if meaning.uncertainty}<p>{meaning.uncertainty}</p>{/if}
                 {#each meaning.evidence as evidence}
-                  <blockquote><strong>{speaker(evidence.speaker)} · {label(evidence.role)}</strong><p class="text">{evidence.quote}</p></blockquote>
+                  {@const fullTurn = candidateTurns.get(evidence.turnId)}
+                  <blockquote>
+                    <strong>{speaker(evidence.speaker)} · {label(evidence.role)}</strong>
+                    {#if evidence.quote.length > expandedQuoteLimit}
+                      <details>
+                        <summary>{fullTurn === evidence.quote ? 'Full turn used as evidence' : 'Read evidence excerpt'}</summary>
+                        <p class="text">{evidence.quote}</p>
+                      </details>
+                    {:else}
+                      <p class="text">{evidence.quote}</p>
+                    {/if}
+                    {#if fullTurn && fullTurn !== evidence.quote}
+                      <details><summary>Read full source turn</summary><p class="text">{fullTurn}</p></details>
+                    {/if}
+                  </blockquote>
                 {/each}
               {/each}
             </details>
@@ -300,7 +320,11 @@
             {#each topic.evidence as item}
               <blockquote>
                 <strong>{speaker(item.speaker)} · {label(item.role)}</strong>
-                <p class="text">{item.quote}</p>
+                {#if item.quote.length > expandedQuoteLimit}
+                  <details><summary>Read saved evidence</summary><p class="text">{item.quote}</p></details>
+                {:else}
+                  <p class="text">{item.quote}</p>
+                {/if}
                 {#if item.origin}
                   <p class="muted">{label(item.origin.contentKind)} · {label(item.origin.epistemicBasis)} · {label(item.origin.asserterKind)} · {label(item.origin.generatorKind)}</p>
                 {/if}

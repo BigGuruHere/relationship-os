@@ -134,3 +134,11 @@ PR #84 merged at `5e8fc0e1`. The first reported hosted follow-up reached topic d
 Version v4 on `fix/lu-dev-discovery-validation` gives discovery an explicit list of allowed saved-topic references and owner-turn IDs. The server checks those references, new topic labels, coverage and exclusions in the discovery stage. A rejected draft receives one guided retry and the same validation. **Analysis steps** shows any correction or terminal reason under **Extraction**, without including untrusted model references in the operational log. A repeatedly invalid discovery remains held; successful discovery proceeds through the usual topic drafting, audit and owner approval.
 
 After rollout, reopen the same imported transcript's review and select **Analyse conversation**. If discovery passes, check the existing topic and **Previously saved** wording. If it is held, check **Analysis steps → Extraction** and the logged discovery reason. No re-import, configuration change or Prisma migration is required. The hosted model replay remains pending.
+
+### Exact excerpts for supporting evidence (2026-11-15)
+
+PR #85 merged at `737b856c`. The hosted follow-up produced a qualified update of the existing topic and showed its prior wording. The owner then reported that evidence in the earlier revision repeated a long transcript turn for each statement.
+
+The v5 topic writer on `fix/lu-evidence-excerpts` prefers the smallest exact passage that supports the drafted statement and retains its qualifications. It can cite separate spans when a statement depends on more than one passage. Existing grounding checks verify the spans against the transcript; a quote that does not occur falls back to the same original turn, which is then reviewed by the audit. The audit checks whether the cited passages jointly support the assertion and whether the surrounding text qualifies it.
+
+Draft evidence displays short excerpts directly with **Read full source turn** for context. Long saved evidence is expandable and retains its source link. Existing saved revisions keep their original anchors. To reproduce in DEV, analyse a long transcript turn with several distinct claims and compare each citation with the original source. No Prisma migration. Revert the prompt and presentation changes to restore the previous behavior; stored excerpts remain readable.

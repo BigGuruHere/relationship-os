@@ -331,3 +331,146 @@ test('a second invalid citation holds the run and preserves valid sibling drafts
 		)
 	);
 });
+
+test('structural review repairs only named topics and re-audits the full draft', async () => {
+	const input = fixture();
+	let auditCount = 0;
+	const issues = ['DUPLICATE_TOPIC', 'UNSUPPORTED_PROSE', 'OMITTED_MEANING'];
+	const { model, calls } = modelFor(input, {
+		change({ request, data, output }) {
+			if (request.stage === 'decompose') output.areas.push(area('Family history', ['T1']));
+			if (request.stage === 'compose' && data.area.title === 'Family history') {
+				output.prose = 'Meeting his family again felt meaningful.';
+				output.meanings = [meaning(output.prose, 'T1')];
+			}
+			if (data.auditRepair) {
+				assert.equal(data.area.title, 'Supporting my daughter');
+				assert.deepEqual(data.allowedCitations.owner, ['T2']);
+				assert.equal(data.auditRepair.findings.length, 3);
+				assert.deepEqual(
+					data.auditRepair.otherDrafts.map((topic) => topic.topicRef),
+					['A1', 'A3']
+				);
+				output.title = 'Musical theatre plans';
+				output.prose =
+					'My daughter is applying to music colleges and I want to understand her options.';
+				output.meanings = [meaning(output.prose, 'T2')];
+			}
+			if (request.stage !== 'audit') return;
+			assert.deepEqual(
+				data.draft.map((topic) => topic.topicRef),
+				['A1', 'A2', 'A3']
+			);
+			if (++auditCount === 1) {
+				output.issues = issues;
+				output.findings = [
+					'One topic repeats a wish, implies a motive and omits relevant context.'
+				];
+				output.topicRepairs = issues.map((issue) => ({
+					issue,
+					editTopics: ['A2'],
+					instruction: 'Recheck the selected draft against what the owner said.'
+				}));
+			} else {
+				assert.equal(data.draft[0].title, 'Mentorship and reconnection');
+				assert.equal(data.draft[1].title, 'Musical theatre plans');
+				assert.equal(data.draft[2].prose, 'Meeting his family again felt meaningful.');
+				assert.ok(
+					data.meanings.some(
+						(meaning) => meaning.id === 'A2M1' && meaning.evidence[0].turnId === 'T2'
+					)
+				);
+			}
+		}
+	});
+	const trace = { stages: [], audits: [], repairs: [] };
+	const panels = [];
+	const result = await assessSelfTopics(input, model, allow, undefined, trace, panels);
+	assert.equal(calls.filter((call) => call.data.auditRepair).length, 1);
+	assert.deepEqual(
+		trace.audits.map((audit) => [audit.attempt, audit.issues]),
+		[
+			[1, issues],
+			[2, []]
+		]
+	);
+	assert.deepEqual(result.provenance.repairs, [{ stage: 'audit', reason: 'DUPLICATE_TOPIC' }]);
+	assert.equal(result.candidate.streams[0].topics[1].title, 'Musical theatre plans');
+	assert.ok(
+		panels.some((panel) =>
+			panel.items.some((item) => item.title === 'Revise topic: Supporting my daughter')
+		)
+	);
+});
+
+test('unknown, incomplete, and out-of-scope audit plans leave the draft held', async () => {
+	for (const { issues, target } of [
+		{ issues: ['UNSUPPORTED_PROSE'], target: 'A3' },
+		{ issues: ['UNSUPPORTED_PROSE', 'MISATTRIBUTION'], target: 'A2' },
+		{ issues: ['UNSUPPORTED_PROSE', 'OMITTED_MEANING'], target: 'A2' }
+	]) {
+		const input = fixture();
+		const { model, calls } = modelFor(input, {
+			change({ request, output }) {
+				if (request.stage !== 'audit') return;
+				output.issues = issues;
+				output.topicRepairs = [
+					{ issue: 'UNSUPPORTED_PROSE', editTopics: [target], instruction: 'Clarify the wording.' }
+				];
+			}
+		});
+		await assert.rejects(
+			assessSelfTopics(input, model, allow),
+			(error) => error.reason === 'UNSUPPORTED_PROSE' && error.diagnostic.attempt === 1
+		);
+		assert.equal(
+			calls.some((call) => call.data.auditRepair),
+			false
+		);
+	}
+});
+
+test('a repeated structural issue never triggers a second rewrite', async () => {
+	const input = fixture();
+	const { model, calls } = modelFor(input, {
+		change({ request, output }) {
+			if (request.stage !== 'audit') return;
+			output.issues = ['DUPLICATE_TOPIC'];
+			output.topicRepairs = [
+				{ issue: 'DUPLICATE_TOPIC', editTopics: ['A2'], instruction: 'Keep the wish in A1 only.' }
+			];
+		}
+	});
+	await assert.rejects(
+		assessSelfTopics(input, model, allow),
+		(error) => error.reason === 'DUPLICATE_TOPIC' && error.diagnostic.attempt === 2
+	);
+	assert.equal(calls.filter((call) => call.data.auditRepair).length, 1);
+	assert.equal(calls.filter((call) => call.stage === 'audit').length, 2);
+});
+
+test('audit repair cannot borrow a citation or change the topic effect', async () => {
+	for (const reason of ['OUT_OF_TOPIC_EVIDENCE', 'TOPIC_REVISION_SCOPE']) {
+		const input = fixture();
+		const { model, calls } = modelFor(input, {
+			change({ request, data, output }) {
+				if (data.auditRepair) {
+					if (reason === 'OUT_OF_TOPIC_EVIDENCE') output.meanings[0].evidence[0].turnId = 'T1';
+					else output.timeScope = 'CURRENT';
+				}
+				if (request.stage !== 'audit') return;
+				output.issues = ['OMITTED_MEANING'];
+				output.topicRepairs = [
+					{
+						issue: 'OMITTED_MEANING',
+						editTopics: ['A2'],
+						instruction: 'Preserve why the conversation mattered.'
+					}
+				];
+			}
+		});
+		await assert.rejects(assessSelfTopics(input, model, allow), (error) => error.reason === reason);
+		assert.equal(calls.filter((call) => call.data.auditRepair).length, 1);
+		assert.equal(calls.filter((call) => call.stage === 'audit').length, 1);
+	}
+});

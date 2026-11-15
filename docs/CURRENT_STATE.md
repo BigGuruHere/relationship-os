@@ -41,7 +41,7 @@ The first approved relationship statement creates a default private relationship
 
 `feature/lu-self-topic-workflow` adapts the established semantic-area discovery and topic-writing prompts to Foundation, initially for **Me**. The existing DEV review form uses this path; evidence, explicit approval, exact prior versions and private history use the existing writer. Other perspectives remain unchanged. Shared prompts and structural principles are reused; automatic restructuring and between-stage selection are not ported in this slice. No migration. 99 focused tests and eight isolated DB/route tests passed, including Chromium mobile-width forms. Hosted quality replay, merge and deployment remain pending. See [scope and realism replay](foundation/LUR4_OWNER_REVIEW.md#topic-first-self-understanding-2026-11-15).
 
-PR #81 merged at `69419999`. A hosted topic-first run reached composition and stopped before structural review because a citation exceeded its topic scope. The `fix/lu-self-topic-citations` branch adds a single topic-specific retry and owner-visible failure details. Hosted replay is pending. No Prisma migration.
+PR #81 merged at `69419999`. A hosted topic-first run reached composition and stopped before structural review because a citation exceeded its topic scope. PR #82 merged at `5a033344` and added a topic-specific citation retry. The hosted v2 replay passed citation validation and reached structural review, which held the draft for overlapping meaning, unsupported wording and omissions. On `fix/lu-self-topic-audit-repair`, v3 can revise named topics once and re-audit the full draft before offering it for approval. Hosted v3 replay is pending. No Prisma migration.
 
 ## LUR-4 Private Living Understanding review
 

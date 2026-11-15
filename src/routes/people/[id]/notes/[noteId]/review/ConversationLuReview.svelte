@@ -70,7 +70,7 @@
   }
 
   function speaker(value?: string) {
-    return value === 'OWNER' ? 'You' : value === 'AGENT' ? 'Dorian' : 'Unknown speaker';
+    return value === 'OWNER' ? 'You' : value === 'AGENT' ? 'Dorian' : data.conversation.imported ? 'Context' : 'Unknown speaker';
   }
 </script>
 
@@ -79,7 +79,7 @@
   <h1>Review for Living Understanding</h1>
   <p>Your understanding reflects your perspective and stays private to you.</p>
   <details>
-    <summary>Conversation summary</summary>
+    <summary>{data.conversation.imported ? 'Imported transcript title' : 'Conversation summary'}</summary>
     <p class="text">{data.conversation.summary}</p>
   </details>
   <details>

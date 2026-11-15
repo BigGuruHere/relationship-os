@@ -6,6 +6,7 @@ import type { AppTransactionClient } from '$lib/db';
 import { FoundationDenied } from './internal';
 import { withFoundationAccess, type FoundationAccess } from './policy';
 import { aad, FoundationConflict, lineage, mac, scope } from './evidenceRecords';
+import { parseDatingTranscript, transcriptTurnBody } from '../datingTranscriptImportPolicy';
 
 const turnSchema = z.strictObject({
 	id: z.string().min(1).max(200),
@@ -34,16 +35,27 @@ const bindingSchema = z.strictObject({
 	conversationId: z.string().regex(/^conv_[a-z0-9_-]{1,235}$/i),
 	agentId: z.string().min(1).max(240)
 });
+const importBindingSchema = z.strictObject({
+	provider: z.literal('OWNER_IMPORT'),
+	importId: z.uuid()
+});
 const captureSchema = z.strictObject({
 	format: z.literal('conversation-v1'),
-	binding: bindingSchema,
+	binding: z.discriminatedUnion('provider', [bindingSchema, importBindingSchema]),
 	occurredAt: z.iso.datetime().nullable(),
 	completeness: z.enum(['COMPLETE', 'INCOMPLETE']),
 	turns: turnsSchema
 });
 export type CapturedConversation = z.infer<typeof captureSchema>;
 type Binding = CapturedConversation['binding'];
+type ProviderBinding = z.infer<typeof bindingSchema>;
 export const conversationSummary = z.string().trim().min(1).max(20000);
+const importFields = z.strictObject({
+	importId: z.uuid(),
+	summary: conversationSummary,
+	occurredAt: z.iso.datetime(),
+	transcript: z.string().min(10).max(60000)
+});
 type SummaryOrigin =
 	| { kind: 'HUMAN_AUTHORED' }
 	| {
@@ -65,7 +77,10 @@ function sourceKey(access: FoundationAccess, binding: Binding) {
 	return mac(
 		access,
 		'conversation-ingest',
-		JSON.stringify([binding.provider, binding.conversationId])
+		JSON.stringify([
+			binding.provider,
+			binding.provider === 'ELEVENLABS' ? binding.conversationId : binding.importId
+		])
 	);
 }
 function parseCapture(raw: unknown) {
@@ -73,7 +88,7 @@ function parseCapture(raw: unknown) {
 	if (
 		capture.completeness === 'COMPLETE' &&
 		(!capture.turns.some((t) => t.role === 'OWNER') ||
-			!capture.turns.some((t) => t.role === 'AGENT'))
+			(capture.binding.provider === 'ELEVENLABS' && !capture.turns.some((t) => t.role === 'AGENT')))
 	)
 		throw new FoundationDenied();
 	return capture;
@@ -84,7 +99,7 @@ async function replaySave(
 	access: FoundationAccess,
 	personId: string,
 	binding: Binding,
-	summary: string
+	requestMac: string
 ) {
 	const source = await tx.foundationSource.findFirst({
 		where: { ingestKey: sourceKey(access, binding) }
@@ -96,11 +111,7 @@ async function replaySave(
 	});
 	if (!first || source.kind !== 'IMPORTED_CONVERSATION' || source.state !== 'ACTIVE')
 		throw new FoundationDenied();
-	if (
-		first.requestMac !==
-		mac(access, 'conversation-save', JSON.stringify([binding, personId, summary]))
-	)
-		throw new FoundationConflict();
+	if (first.requestMac !== requestMac) throw new FoundationConflict();
 	return { sourceId: source.id };
 }
 
@@ -108,17 +119,22 @@ async function replaySave(
 export function savedConversationReceipt(
 	access: FoundationAccess,
 	personId: string,
-	binding: Binding,
+	binding: ProviderBinding,
 	summary: string
 ) {
 	return withFoundationAccess(access, 'SAVE_CONVERSATION', async (tx) => {
 		await requirePerson(tx, personId);
+		const provider = bindingSchema.parse(binding);
 		return replaySave(
 			tx,
 			access,
 			personId,
-			bindingSchema.parse(binding),
-			conversationSummary.parse(summary)
+			provider,
+			mac(
+				access,
+				'conversation-save',
+				JSON.stringify([provider, personId, conversationSummary.parse(summary)])
+			)
 		);
 	});
 }
@@ -142,7 +158,7 @@ async function appendSourceVersion(
 			...lineage(previous),
 			processingAdmission: admission,
 			occurredAt: capture.occurredAt ? new Date(capture.occurredAt) : null,
-			recordedByKind: 'SERVICE',
+			recordedByKind: capture.binding.provider === 'OWNER_IMPORT' ? 'OWNER' : 'SERVICE',
 			contentMac: mac(access, 'conversation-content', payload),
 			payloadEnc: encrypt(payload, aad(access, sourceVersionTable, 'payloadEnc', id)),
 			provenanceEnc: encrypt(
@@ -202,10 +218,87 @@ export function savePersonConversation(
 	origin: SummaryOrigin
 ) {
 	const capture = parseCapture(rawCapture);
+	if (capture.binding.provider !== 'ELEVENLABS') throw new FoundationDenied();
 	const summary = conversationSummary.parse(rawSummary);
+	// Keep existing provider replay receipts compatible.
+	const requestMac = mac(
+		access,
+		'conversation-save',
+		JSON.stringify([capture.binding, personId, summary])
+	);
+	return persistConversation(access, personId, capture, summary, origin, requestMac);
+}
+
+export class InvalidConversationImport extends Error {}
+
+export function importPersonConversation(
+	access: FoundationAccess,
+	personId: string,
+	input: z.input<typeof importFields>
+) {
+	const fields = importFields.safeParse(input);
+	if (!fields.success)
+		throw new InvalidConversationImport(
+			'Enter a title, a valid conversation date and time, and a transcript of 10 to 60,000 characters.'
+		);
+	const { importId, summary, occurredAt, transcript } = fields.data;
+	let parsed;
+	try {
+		parsed = parseDatingTranscript(transcript);
+	} catch {
+		throw new InvalidConversationImport('Enter a labelled transcript with up to 600 turns.');
+	}
+	// Only an explicit You label becomes self evidence. Other text is background.
+	const turns = parsed.turns.map((turn) => {
+		const label = turn.speaker.toLowerCase();
+		if (label !== 'you' && label !== 'context')
+			throw new InvalidConversationImport(
+				'Use You: for your words and Context: for any other speaker.'
+			);
+		const text = transcriptTurnBody(turn);
+		if (!text.trim())
+			throw new InvalidConversationImport('Every speaker label needs transcript text.');
+		return {
+			id: turn.id,
+			role: label === 'you' ? ('OWNER' as const) : ('UNRESOLVED' as const),
+			text
+		};
+	});
+	if (!turns.some((turn) => turn.role === 'OWNER'))
+		throw new InvalidConversationImport('Include at least one turn beginning with You:.');
+	const capture = parseCapture({
+		format: 'conversation-v1',
+		binding: { provider: 'OWNER_IMPORT', importId },
+		occurredAt,
+		completeness: 'COMPLETE',
+		turns
+	});
+	const requestMac = mac(
+		access,
+		'conversation-owner-import',
+		JSON.stringify([capture, personId, summary])
+	);
+	return persistConversation(
+		access,
+		personId,
+		capture,
+		summary,
+		{ kind: 'HUMAN_AUTHORED' },
+		requestMac
+	);
+}
+
+function persistConversation(
+	access: FoundationAccess,
+	personId: string,
+	capture: CapturedConversation,
+	summary: string,
+	origin: SummaryOrigin,
+	requestMac: string
+) {
 	return withFoundationAccess(access, 'SAVE_CONVERSATION', async (tx) => {
 		await requirePerson(tx, personId);
-		const replay = await replaySave(tx, access, personId, capture.binding, summary);
+		const replay = await replaySave(tx, access, personId, capture.binding, requestMac);
 		if (replay) return replay;
 		const source = await tx.foundationSource.create({
 			data: {
@@ -215,18 +308,11 @@ export function savePersonConversation(
 			}
 		});
 		const version = await appendSourceVersion(tx, access, source.id, capture, 'STORED_ONLY', null, {
-			capture: 'DORIAN_WEB'
+			...(capture.binding.provider === 'OWNER_IMPORT'
+				? { capture: 'OWNER_IMPORT', actor: access.actorId }
+				: { capture: 'DORIAN_WEB' })
 		});
-		await appendSummary(
-			tx,
-			access,
-			personId,
-			version,
-			summary,
-			origin,
-			mac(access, 'conversation-save', JSON.stringify([capture.binding, personId, summary])),
-			null
-		);
+		await appendSummary(tx, access, personId, version, summary, origin, requestMac, null);
 		return { sourceId: source.id };
 	});
 }
@@ -326,6 +412,7 @@ export function readPersonConversation(
 			id: sourceId,
 			at: (version.occurredAt ?? version.createdAt).toISOString(),
 			completeness: capture.completeness,
+			imported: capture.binding.provider === 'OWNER_IMPORT',
 			turns: capture.turns,
 			summary: decrypt(latest.summaryEnc, aad(access, presentationTable, 'summaryEnc', latest.id)),
 			summaryVersion: latest.version,

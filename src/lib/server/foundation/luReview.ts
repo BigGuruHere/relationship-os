@@ -1,4 +1,4 @@
-import { selfTopicPromptVersion } from '../livingUnderstanding/selfTopicAssessment';
+import { isSelfTopicPromptVersion, selfTopicPromptVersion } from '../livingUnderstanding/selfTopicAssessment';
 // Presentation and form handling for the owner-only conversation review.
 import { randomUUID } from 'node:crypto';
 import { error, fail, redirect } from '@sveltejs/kit';
@@ -46,7 +46,7 @@ function proposalView(receipt: Awaited<ReturnType<typeof readLuCandidateForRevie
 	const { packet, prior } = receipt.input;
 	return {
 		id: receipt.candidateId,
-		selfTopics: receipt.provenance.promptVersion === selfTopicPromptVersion,
+		selfTopics: isSelfTopicPromptVersion(receipt.provenance.promptVersion),
 		stageReview: receipt.provenance.stageReview,
 		noChange: receipt.outcome === 'NO_CHANGE',
 		groups: receipt.candidate.streams.map((stream) => {

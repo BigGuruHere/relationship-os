@@ -146,8 +146,30 @@ test('later conversations preserve exact prior versions and untouched other pers
 				meaningVersionIds: p.meanings.map((m) => m.versionId)
 			}))
 	}));
-	const { model, calls } = modelFor(input);
-	const result = await assessSelfTopics(input, model, allow);
+	const { model, calls } = modelFor(input, {
+		change({ request, data, output }) {
+			if (request.stage === 'decompose' && !data.correction) {
+				// A real private topic ID is not the model's run-local saved topic reference.
+				output.areas[0].existingTopicId = 'mentor';
+			}
+		}
+	});
+	const trace = { stages: [], audits: [], repairs: [] };
+	const result = await assessSelfTopics(input, model, allow, undefined, trace);
+	assert.deepEqual(calls[0].data.allowedExistingTopicIds, ['P1']);
+	assert.equal(calls[0].data.prior[0].existingTopicId, 'P1');
+	assert.deepEqual(
+		calls.slice(0, 2).map((call) => call.stage),
+		['decompose', 'decompose']
+	);
+	assert.match(calls[1].data.correction, /copy an allowed existingTopicId/);
+	assert.deepEqual(
+		trace.stages.slice(0, 2).map(({ stage, attempt, outcome }) => ({ stage, attempt, outcome })),
+		[
+			{ stage: 'decompose', attempt: 1, outcome: 'DISCOVERY_UNKNOWN_TOPIC' },
+			{ stage: 'decompose', attempt: 2, outcome: 'COMPLETED' }
+		]
+	);
 	const self = result.candidate.streams.find((s) => s.subjectId === 'self');
 	assert.equal(self.topics[0].effect, 'EXPANDED');
 	assert.equal(self.topics[0].previousVersionId, 'mentor-v1');
@@ -188,7 +210,7 @@ test('a source passage can support several coherent areas without exclusive owne
 test('agent support, evidence outside the area, omissions and structural failures are held', async () => {
 	for (const [reason, change] of [
 		[
-			'DECOMPOSITION_POLICY',
+			'DISCOVERY_INVALID_TURN',
 			({ request, output }) => {
 				if (request.stage === 'decompose') output.areas[0].relevantTurnIds = ['T0'];
 			}
@@ -200,7 +222,7 @@ test('agent support, evidence outside the area, omissions and structural failure
 			}
 		],
 		[
-			'OMITTED_OWNER_TURN',
+			'DISCOVERY_OMITTED_OWNER_TURN',
 			({ request, output }) => {
 				if (request.stage === 'decompose') output.exclusions = [];
 			}
@@ -473,4 +495,33 @@ test('audit repair cannot borrow a citation or change the topic effect', async (
 		assert.equal(calls.filter((call) => call.data.auditRepair).length, 1);
 		assert.equal(calls.filter((call) => call.stage === 'audit').length, 1);
 	}
+});
+
+test('a rejected discovery records bounded private diagnostics and never reaches writing', async () => {
+	const input = fixture();
+	const { model, calls } = modelFor(input, {
+		change({ request, output }) {
+			if (request.stage !== 'decompose') return;
+			// A shape-valid new topic with a blank label is not a usable discovery result.
+			output.areas[0].suggestedTopic = ' ';
+		}
+	});
+	const panels = [];
+	await assert.rejects(
+		assessSelfTopics(input, model, allow, undefined, undefined, panels),
+		(err) => {
+			assert.equal(err.reason, 'DISCOVERY_MISSING_LABEL');
+			assert.deepEqual(err.diagnostic, { stage: 'decompose', attempt: 2 });
+			return true;
+		}
+	);
+	assert.deepEqual(
+		calls.map((call) => call.stage),
+		['decompose', 'decompose']
+	);
+	assert.deepEqual(
+		panels.map((panel) => panel.items[0].title),
+		['Discovery needs correction', 'Discovery held']
+	);
+	assert.ok(panels.every((panel) => panel.reason === 'DISCOVERY_MISSING_LABEL'));
 });

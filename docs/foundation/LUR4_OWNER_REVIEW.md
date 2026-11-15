@@ -126,3 +126,11 @@ PR #83 merged at `baa4744e`. The owner reported a hosted run that reached manual
 4. Approve the selected update and inspect the history. The prior topic version remains available and evidence for the revised topic should point to both the earlier and follow-up transcripts where it builds on both.
 
 The import is available only under the existing authenticated owner DEV review gate. It records a separate, encrypted owner-import source. Saving the source is stored-only, and selecting **Analyse conversation** separately admits it to the existing model workflow. The selected person supplies the same private review context as the original source. Only labelled owner turns are eligible as self evidence. Same-form retries with the same input resolve to the same source. The Dorian call paths are unchanged. No migration or configuration change. Rolling back the import form and action can disable future imports while retaining the reader for already imported sources.
+
+### Follow-up discovery validation (2026-11-15)
+
+PR #84 merged at `5e8fc0e1`. The first reported hosted follow-up reached topic discovery, then failed the discovery policy before any drafting. The `prepare` label and generic `DECOMPOSITION_POLICY` code did not identify which discovery rule rejected the response.
+
+Version v4 on `fix/lu-dev-discovery-validation` gives discovery an explicit list of allowed saved-topic references and owner-turn IDs. The server checks those references, new topic labels, coverage and exclusions in the discovery stage. A rejected draft receives one guided retry and the same validation. **Analysis steps** shows any correction or terminal reason under **Extraction**, without including untrusted model references in the operational log. A repeatedly invalid discovery remains held; successful discovery proceeds through the usual topic drafting, audit and owner approval.
+
+After rollout, reopen the same imported transcript's review and select **Analyse conversation**. If discovery passes, check the existing topic and **Previously saved** wording. If it is held, check **Analysis steps → Extraction** and the logged discovery reason. No re-import, configuration change or Prisma migration is required. The hosted model replay remains pending.

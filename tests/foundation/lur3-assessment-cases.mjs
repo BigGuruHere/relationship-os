@@ -107,7 +107,9 @@ export async function runLuAssessmentCases({ load, vite, otherPersonId, grant, p
 		if (data.targetSpeaker === 'OWNER' && data.source) {
             // Topic-first discovery sees the full transcript and only the self inventory.
             const existing = data.prior.find(p => p.title === 'Catch-up time');
-            output = { areas: [{ existingTopicId: existing?.ref ?? '', suggestedRealm: 'Friendships',
+            // Replay a plausible invalid follow-up reference before returning the exact permitted ID.
+            const topicRef = existing && !data.correction ? 'invented-saved-topic' : existing?.existingTopicId ?? '';
+            output = { areas: [{ existingTopicId: topicRef, suggestedRealm: 'Friendships',
                 suggestedTopic: 'Catch-up time', impact: 'SIGNIFICANT', reason: "The owner's preferred timing for social contact.", relevantTurnIds: [data.source.turns.find(t=>t.role==='OWNER').id] }],
                 exclusions: data.source.turns.filter(t=>t.role==='OWNER').slice(1).map(t=>({turnId:t.id,reason:'NO_DURABLE_MEANING'})), unresolvedMentions: [] };
         } else if (data.area) {
@@ -566,7 +568,10 @@ export async function runLuAssessmentCases({ load, vite, otherPersonId, grant, p
             const candidateId = location.searchParams.get('candidate');
             const reviewed = await route.load(event(source, '&candidate=' + candidateId));
             assert.deepEqual(reviewed.candidate.groups.map(g=>g.group), ['self']);
-            assert.equal(reviewed.candidate.stageReview[0].items[0].title, 'Area of understanding: Catch-up time');
+            assert.ok(reviewed.candidate.stageReview.some(panel =>
+                panel.items[0]?.title === 'Area of understanding: Catch-up time'));
+            if (round) assert.ok(reviewed.candidate.stageReview.some(panel =>
+                panel.stage === 'decompose' && panel.reason === 'DISCOVERY_UNKNOWN_TOPIC'));
             const oldCalls = calls.length;
             fields.sourceVersion = String(reviewed.conversation.sourceVersion);
             assert.equal(String(await redirectTo(action('assessConversation', source, fields))), String(location));

@@ -23,11 +23,12 @@ import {
 	type AssessmentStagePanel
 } from './semanticAssessment';
 
-export const selfTopicPromptVersion = 'foundation-self-topics-v3';
+export const selfTopicPromptVersion = 'foundation-self-topics-v4';
 export function isSelfTopicPromptVersion(version: string) {
 	return [
 		'foundation-self-topics-v1',
 		'foundation-self-topics-v2',
+		'foundation-self-topics-v3',
 		selfTopicPromptVersion
 	].includes(version);
 }
@@ -186,51 +187,168 @@ export async function assessSelfTopics(
 			});
 		}
 	}
-	const found = await invoke(
-		'decompose',
-		discoverySchema,
-		semanticAreaDiscoveryPrompt +
-			'\n' +
-			[
-				'For this adapter return areas only, with exclusions and unresolvedMentions; do not generate operationalKnowledge.',
-				'Identify coherent areas of understanding, not one topic per isolated fact. Preserve meaningful connections supported by the speaker.',
-				'Use exact existingTopicId refs. Cite OWNER turn IDs. A turn may support several areas.',
-				'Account for every OWNER turn through an area or an exclusion. Use NO_DURABLE_MEANING for material outside this self-understanding scope.',
-				'Return at most 12 areas. If the source needs more, do not silently omit meaning; the structural review must hold the draft.'
-			].join('\n'),
-		{
-			targetSpeaker: 'OWNER',
-			source: { occurredAt: input.packet.source.occurredAt, turns: view.turns },
-			prior: inventory
-		}
-	);
 	const topics = prior.map((p) => ({
 		id: p.ref,
 		label: `${p.area} / ${p.title}`,
 		realmName: p.area,
 		topicName: p.title
 	}));
-	const validated = validateSemanticDecompositionDraft(found.data, topics, ownerTurns, view.turns);
-	requireValue(
-		validated.validForReview && validated.areas.length === found.data.areas.length,
-		'DECOMPOSITION_POLICY'
-	);
-	const areas = found.data.areas;
-	const oldIds = areas.map((a) => a.existingTopicId).filter(Boolean);
-	requireValue(new Set(oldIds).size === oldIds.length, 'DUPLICATE_TOPIC');
-	const covered = new Set(areas.flatMap((a) => a.relevantTurnIds));
-	for (const e of found.data.exclusions) {
-		requireValue(
-			ownerTurns.some((t) => t.id === e.turnId) && !covered.has(e.turnId),
-			'INVALID_EXCLUSION'
+	const approvedRefs = topics.map((topic) => topic.id);
+	const approvedIds = new Set(approvedRefs);
+	const ownerTurnIds = ownerTurns.map((turn) => turn.id);
+	const allowedTurns = new Set(ownerTurnIds);
+	const ownerText = new Map(ownerTurns.map((turn) => [turn.id, turn.text]));
+	requireValue(ownerTurnIds.length, 'MISSING_OWNER_TURN');
+	const scopedDiscovery = discoverySchema.extend({
+		areas: discoverySchema.shape.areas.element
+			.extend({
+				existingTopicId: z.enum(['', ...approvedRefs]),
+				relevantTurnIds: z.array(z.enum(ownerTurnIds)).min(1).max(12)
+			})
+			.array()
+			.max(12),
+		exclusions: discoverySchema.shape.exclusions.element
+			.extend({ turnId: z.enum(ownerTurnIds) })
+			.array()
+			.max(1200),
+		unresolvedMentions: discoverySchema.shape.unresolvedMentions.element
+			.extend({ turnId: z.enum(ownerTurnIds) })
+			.array()
+			.max(128)
+	});
+	const discoveryNotes = {
+		INVALID_MODEL_OUTPUT:
+			'Return the complete discovery object, including arrays for areas, exclusions and unresolved mentions.',
+		DISCOVERY_UNKNOWN_TOPIC:
+			'For an existing topic, copy an allowed existingTopicId from the saved topic inventory exactly. For a new topic use an empty existingTopicId.',
+		DISCOVERY_MISSING_LABEL: 'Every new topic needs a non-empty suggestedRealm and suggestedTopic.',
+		DISCOVERY_INVALID_TURN:
+			'Cite the exact IDs of owner turns in this transcript. Prior evidence and other speakers are context only.',
+		DISCOVERY_DUPLICATE_TOPIC:
+			'Return each existing topic at most once. Combine supported updates to it in one area.',
+		DISCOVERY_INVALID_EXCLUSION:
+			'Exclude an owner turn only once, and only if it is not cited by any area.',
+		DISCOVERY_OMITTED_OWNER_TURN:
+			'Account for each owner turn either in a cited area or with an explicit exclusion.',
+		DISCOVERY_INVALID_MENTION:
+			'Use exact text from the cited owner turn for an unresolved mention.',
+		DISCOVERY_POLICY:
+			'Recheck all existing topic references, new topic labels and owner turn IDs against the supplied data.'
+	};
+	function discover(attempt: number, correction?: string) {
+		return invoke(
+			'decompose',
+			discoverySchema,
+			semanticAreaDiscoveryPrompt +
+				'\n' +
+				[
+					'For this adapter return areas only, with exclusions and unresolvedMentions; do not generate operationalKnowledge.',
+					'Identify coherent areas of understanding, not one topic per isolated fact. Preserve meaningful connections supported by the speaker.',
+					'Use existingTopicId from the allowed list for a saved topic, copying the exact value of its existingTopicId field. Earlier meaning refs and turn IDs cannot identify topics.',
+					'Use an empty existingTopicId only for a new topic, with both a realm and topic name. A turn may support several areas.',
+					'Use ownerTurnIds for citations, exclusions and unresolved mentions. Context can inform interpretation.',
+					'Account for every OWNER turn through an area or an exclusion. Use NO_DURABLE_MEANING for material outside this self-understanding scope.',
+					'Return at most 12 areas. If the source needs more, do not silently omit meaning; the structural review must hold the draft.'
+				].join('\n'),
+			{
+				targetSpeaker: 'OWNER',
+				source: { occurredAt: input.packet.source.occurredAt, turns: view.turns },
+				prior: inventory.map((topic) => ({ ...topic, existingTopicId: topic.ref })),
+				allowedExistingTopicIds: approvedRefs,
+				ownerTurnIds,
+				...(correction ? { correction } : {})
+			},
+			{
+				attempt,
+				modelSchema: scopedDiscovery,
+				validate(draft) {
+					// The provider sees a restricted schema. Check it on the server too, with a
+					// specific reason instead of forwarding model-provided IDs or private text to logs.
+					const used = new Set<string>();
+					const covered = new Set<string>();
+					for (const area of draft.areas) {
+						if (area.existingTopicId) {
+							requireValue(approvedIds.has(area.existingTopicId), 'DISCOVERY_UNKNOWN_TOPIC');
+							requireValue(!used.has(area.existingTopicId), 'DISCOVERY_DUPLICATE_TOPIC');
+							used.add(area.existingTopicId);
+						} else {
+							requireValue(
+								area.suggestedRealm.trim() && area.suggestedTopic.trim(),
+								'DISCOVERY_MISSING_LABEL'
+							);
+						}
+						for (const id of area.relevantTurnIds) {
+							requireValue(allowedTurns.has(id), 'DISCOVERY_INVALID_TURN');
+							covered.add(id);
+						}
+					}
+					for (const { turnId } of draft.exclusions) {
+						requireValue(
+							allowedTurns.has(turnId) && !covered.has(turnId),
+							'DISCOVERY_INVALID_EXCLUSION'
+						);
+						covered.add(turnId);
+					}
+					requireValue(
+						ownerTurnIds.every((id) => covered.has(id)),
+						'DISCOVERY_OMITTED_OWNER_TURN'
+					);
+					for (const mention of draft.unresolvedMentions)
+						requireValue(
+							ownerText.get(mention.turnId)?.includes(mention.text),
+							'DISCOVERY_INVALID_MENTION'
+						);
+					const validated = validateSemanticDecompositionDraft(
+						draft,
+						topics,
+						ownerTurns,
+						view.turns
+					);
+					requireValue(
+						validated.validForReview && validated.areas.length === draft.areas.length,
+						'DISCOVERY_POLICY'
+					);
+				}
+			}
 		);
-		covered.add(e.turnId);
 	}
-	requireValue(
-		ownerTurns.every((t) => covered.has(t.id)),
-		'OMITTED_OWNER_TURN'
-	);
-	recordStagePanel(panels, 'decompose', 1, [
+	let discoveryAttempt = 1;
+	let found: Awaited<ReturnType<typeof discover>>;
+	let correction: string | undefined;
+	while (true) {
+		try {
+			found = await discover(discoveryAttempt, correction);
+			break;
+		} catch (cause) {
+			if (!(cause instanceof AssessmentError) || !Object.hasOwn(discoveryNotes, cause.reason))
+				throw cause;
+			correction = discoveryNotes[cause.reason as keyof typeof discoveryNotes];
+			recordStagePanel(
+				panels,
+				'decompose',
+				discoveryAttempt,
+				[
+					{
+						title: discoveryAttempt === 1 ? 'Discovery needs correction' : 'Discovery held',
+						text: correction
+					}
+				],
+				cause.reason
+			);
+			if (discoveryAttempt === 2) throw cause;
+			const repair = { stage: 'decompose' as const, reason: cause.reason };
+			provenance.repairs.push(repair);
+			trace?.repairs.push(repair);
+			discoveryAttempt = 2;
+		}
+	}
+	const areas = found.data.areas;
+	const oldIds = areas.map((area) => area.existingTopicId).filter(Boolean);
+	const covered = new Set([
+		...areas.flatMap((area) => area.relevantTurnIds),
+		...found.data.exclusions.map((exclusion) => exclusion.turnId)
+	]);
+	recordStagePanel(panels, 'decompose', discoveryAttempt, [
 		...areas.map((a) => ({
 			title:
 				'Area of understanding: ' +

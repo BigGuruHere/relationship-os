@@ -169,3 +169,7 @@ S-403 adds a fixed exchange auth return and encrypted browser continuation. New-
 ## S-405d exact claims reuse account proof
 
 [Guest assurance reuse](foundation/S405D_GUEST_ASSURANCE.md) adds immutable version-2 submitted-channel snapshots and resolves current account proof under settlement/revocation locks. Proof commits independently of reciprocal saving. Existing version-1 SMS continuations drain without backfill; new browser intake has one version-2 writer. Email uses a configurable, default-disabled Resend adapter through the existing encrypted outbox and shared budgets. Newly validated Google callbacks can record exact email proof after strict token/nonce validation; revoked channels stay revoked. Feature-branch implementation only, with one additive migration and no new tables.
+
+## Topic-first self-understanding adapter
+
+On `feature/lu-self-topic-workflow`, the DEV conversation review uses shared legacy semantic-area prompts with Foundation source packets and eligible self-topic baselines. Topic development precedes evidence assertion assembly. Exact anchors, generation provenance, scoped approval and immutable history reuse LUR-2/LUR-3 contracts. No Contact/ContextSpace LU writes or additional persistence system are introduced. Existing other-subject baselines remain unchanged. Analysis-method identity is part of the retry key and stored prompt provenance. The shared structure principles currently diagnose problems rather than moving saved topics automatically. See [LUR-4](foundation/LUR4_OWNER_REVIEW.md).

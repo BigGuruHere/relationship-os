@@ -63,3 +63,7 @@ For each material change update the relevant living docs, backlog item and stage
 Select the next task from the earliest unmet gate. New capability replaces existing code only through a demonstrated gap and explicit compatibility plan. No production writes, migration execution or deployment follow automatically from this roadmap.
 
 The 2026-11-05 production deferral and invited-cohort launch policy are superseded by D-029. Prepare an ordinary production release with the full target diff/migration review, DEV evidence, recovery readiness and privacy controls appropriate to the enabled scope. Production execution still requires separate authorization; this roadmap is not a deployment record.
+
+## Immediate LU quality priority (2026-11-15)
+
+Restore and validate topic-first self-understanding on Foundation before extending three-perspective analysis. The first adapter is implemented on `feature/lu-self-topic-workflow`; hosted replay must establish coherent themes, supported depth, attribution and later revision quality on multiple conversations. Additional person/relationship analysis, multi-conversation processing and full structural transformations remain deferred. Three full perspective passes remain a possible experiment. No production activation follows from this stage.

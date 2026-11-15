@@ -176,7 +176,8 @@ test('core case 10 - unrelated later conversation leaves prior topics unchanged 
 });
 
 test('core suite prompt contracts preserve the architecture invariants used by the live model path', () => {
-  const service = fs.readFileSync(new URL('../../src/lib/server/datingUnderstandingRevisionExperiment.ts', import.meta.url), 'utf8');
+  // Prompt contracts moved into a shared module without changing the legacy instructions.
+  const service = fs.readFileSync(new URL('../../src/lib/server/datingUnderstandingRevisionExperiment.ts', import.meta.url), 'utf8') + fs.readFileSync(new URL('../../src/lib/server/livingUnderstanding/topicPrompts.ts', import.meta.url), 'utf8');
   assert.match(service, /only target-speaker turns describe the target person directly/i);
   assert.match(service, /Preserve uncertainty/);
   assert.match(service, /Do not treat absence from the new source as contradiction or supersession/);

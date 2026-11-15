@@ -1,3 +1,4 @@
+import { assessSelfTopics, selfTopicPromptVersion } from '../livingUnderstanding/selfTopicAssessment';
 // Application orchestration for the internal Foundation assessment operation.
 // The review route grants admission and records the owner decision separately.
 import { createHash } from 'node:crypto';
@@ -78,7 +79,7 @@ export async function assessFoundationConversation(
 	personId: string,
 	sourceId: string,
 	requestKey: string,
-	options: { signal?: AbortSignal; sourceVersionId?: string; trace?: AssessmentTrace; stageReview?: AssessmentStagePanel[]; failureReference?: string } = {}
+	options: { signal?: AbortSignal; sourceVersionId?: string; trace?: AssessmentTrace; stageReview?: AssessmentStagePanel[]; failureReference?: string; method?: 'SELF_TOPICS' } = {}
 ) {
 	const { signal } = options;
 	signal?.throwIfAborted();
@@ -87,11 +88,14 @@ export async function assessFoundationConversation(
 	const input = await prepareLuAssessment(prepare, personId, sourceId);
 	if (options.sourceVersionId && input.packet.source.versionId !== options.sourceVersionId)
 		throw new FoundationConflict();
-	const existing = await resumeLuAssessment(store, personId, input, requestKey);
+	// Bind retries to the analysis method so earlier drafts cannot resume under a new workflow.
+	const assessmentKey = options.method === 'SELF_TOPICS' ? 'self-topics:' + requestKey : requestKey;
+	const existing = await resumeLuAssessment(store, personId, input, assessmentKey);
 	if (existing) return { candidateId: existing.candidateId, outcome: existing.outcome };
 	// A bounded repair shares the initial attempt's overall model deadline.
 	const assessmentDeadline = AbortSignal.timeout(assessmentTimeoutMs);
-	const result = await assessConversation(
+	const assess = options.method === 'SELF_TOPICS' ? assessSelfTopics : assessConversation;
+	const result = await assess(
 		input,
 		privateAssessmentModel(assessmentDeadline),
 		() => verifyLuAssessment(prepare, personId, input),
@@ -118,7 +122,7 @@ export async function assessFoundationConversation(
 		personId,
 		{ ...input.packet, unresolvedMentions: result.unresolvedMentions },
 		result.candidate,
-		{ requestKey, prior: input.prior, provenance: result.provenance }
+		{ requestKey: assessmentKey, prior: input.prior, provenance: result.provenance }
 	);
 }
 
@@ -149,7 +153,7 @@ export async function editFoundationProposal(
 	topic.prose = prose;
 	const candidate = parseCandidate(current.candidate, input.packet);
 	const audit = await auditOwnerWording(input, candidate, destination, privateAssessmentModel(),
-		() => verifyLuAssessment(prepare, personId, input), signal);
+		() => verifyLuAssessment(prepare, personId, input), signal, provenance.promptVersion === selfTopicPromptVersion);
 	signal?.throwIfAborted();
 	return storeLuCandidate(store, personId, { ...input.packet, unresolvedMentions: current.unresolvedMentions },
 		candidate, {

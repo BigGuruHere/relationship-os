@@ -1,3 +1,4 @@
+import { selfTopicPromptVersion } from '../livingUnderstanding/selfTopicAssessment';
 // Presentation and form handling for the owner-only conversation review.
 import { randomUUID } from 'node:crypto';
 import { error, fail, redirect } from '@sveltejs/kit';
@@ -45,6 +46,7 @@ function proposalView(receipt: Awaited<ReturnType<typeof readLuCandidateForRevie
 	const { packet, prior } = receipt.input;
 	return {
 		id: receipt.candidateId,
+		selfTopics: receipt.provenance.promptVersion === selfTopicPromptVersion,
 		stageReview: receipt.provenance.stageReview,
 		noChange: receipt.outcome === 'NO_CHANGE',
 		groups: receipt.candidate.streams.map((stream) => {
@@ -177,6 +179,7 @@ export const conversationLuActions = {
 	assessConversation: async (event: FormEvent) => {
 		const { locals, params, url, request } = event;
 		const { conversation, fields } = await writeContext(event);
+		const method = fields.get('method') === 'SELF_TOPICS' ? 'SELF_TOPICS' as const : undefined;
 		const requestKey = id.safeParse(fields.get('requestKey'));
 		const expected = number.safeParse(fields.get('sourceVersion'));
 		if (!requestKey.success || !expected.success || conversation.completeness !== 'COMPLETE')
@@ -190,7 +193,7 @@ export const conversationLuActions = {
 		const log = (outcome: string) => ({
 			component: 'relish.lu.review', operation: 'analyse', reference,
 			outcome, durationMs: Math.round(performance.now() - started),
-			promptVersion: semanticPromptVersion,
+			promptVersion: method ? selfTopicPromptVersion : semanticPromptVersion,
 			model: model && /^[a-z0-9._:-]{1,100}$/i.test(model) ? model : undefined,
 			...trace
 		});
@@ -198,7 +201,7 @@ export const conversationLuActions = {
 			const access = await resolveFoundationAccess(locals, 'REVISE_CONVERSATION_SOURCE');
 			const source = await reviseConversationSource(access, params.id, params.noteId, expected.data, 'PRIVATE_ANALYSIS');
 			const result = await assessFoundationConversation(locals, params.id, params.noteId, requestKey.data,
-				{ signal: request.signal, sourceVersionId: source.id, trace, stageReview, failureReference: reference });
+				{ signal: request.signal, sourceVersionId: source.id, trace, stageReview, failureReference: reference, method });
 			console.info(JSON.stringify(log(result.outcome)));
 			return reviewRedirect(url, { candidate: result.candidateId });
 		} catch (cause) {

@@ -102,7 +102,21 @@ export async function runLuAssessmentCases({ load, vite, otherPersonId, grant, p
 		calls.push({ stage, data });
 		if (beforeResponse) await beforeResponse(stage, init.signal);
 		let output;
-		if (stage === 'decompose') {
+		if (data.targetSpeaker === 'OWNER' && data.source) {
+            // Topic-first discovery sees the full transcript and only the self inventory.
+            const existing = data.prior.find(p => p.title === 'Catch-up time');
+            output = { areas: [{ existingTopicId: existing?.ref ?? '', suggestedRealm: 'Friendships',
+                suggestedTopic: 'Catch-up time', impact: 'SIGNIFICANT', reason: "The owner's preferred timing for social contact.", relevantTurnIds: ['T2'] }],
+                exclusions: data.source.turns.filter(t=>t.role==='OWNER' && t.id!=='T2').map(t=>({turnId:t.id,reason:'NO_DURABLE_MEANING'})), unresolvedMentions: [] };
+        } else if (data.area) {
+            output = { prose: data.prior ? 'Prefers mornings for catch-ups, on weekends only now.' : 'Prefers mornings for regular catch-ups.',
+                effect: data.prior ? 'QUALIFIED' : 'NEW', timeScope: 'CURRENT', retire: [], meanings: [{
+                    text: data.turns.find(t=>t.id==='T2').text, kind: 'PREFERENCE', basis: 'DIRECT_ACCOUNT',
+                    uncertainty: null, confidence: 'HIGH', evidence: [{turnId:'T2',quote:null,role:'SUPPORTS'}]
+                }] };
+        } else if (data.areas) {
+            output = { issues: [], findings: [] };
+        } else if (stage === 'decompose') {
 			const [agent, answer, ...additional] = data.source.turns;
 			assert.equal(agent.role, 'AGENT');
 			assert.equal(answer.role, 'OWNER');
@@ -501,6 +515,28 @@ export async function runLuAssessmentCases({ load, vite, otherPersonId, grant, p
 		await assert.rejects(assess(next, 'current-source-withdrawal'), /unavailable/);
 		assert.equal(await count('FoundationLuCandidate'), before);
 		assert.equal(await count('FoundationLuRevision'), 2);
+        // Exercise the new UI method through admission, persisted review, approval and history.
+        for (let round = 0; round < 2; round++) {
+            const source = (await conversations.savePersonConversation(save, personId,
+                turnCapture('self_topics_' + round, '2026-11-12T03:00:00Z', round ? 'Only on weekends now.' : 'Mornings are best for me.'),
+                'Synthetic topic-first summary', {kind:'HUMAN_AUTHORED'})).sourceId;
+            const initialSelf = await route.load(event(source));
+            const fields = { method: 'SELF_TOPICS', sourceVersion: String(initialSelf.conversation.sourceVersion), requestKey: initialSelf.requestKey };
+            const location = await redirectTo(action('assessConversation', source, fields));
+            const candidateId = location.searchParams.get('candidate');
+            const reviewed = await route.load(event(source, '&candidate=' + candidateId));
+            assert.deepEqual(reviewed.candidate.groups.map(g=>g.group), ['self']);
+            assert.equal(reviewed.candidate.stageReview[0].items[0].title, 'Area of understanding: Catch-up time');
+            const oldCalls = calls.length;
+            fields.sourceVersion = String(reviewed.conversation.sourceVersion);
+            assert.equal(String(await redirectTo(action('assessConversation', source, fields))), String(location));
+            assert.equal(calls.length, oldCalls);
+            const topic = reviewed.candidate.groups[0].topics[0];
+            assert.equal(topic.effect, round ? 'QUALIFIED' : 'NEW');
+            await redirectTo(action('decide', source, {decision:'APPROVE',selected:topic.key}, '&candidate='+candidateId));
+            const history = (await route.load(event(source))).history;
+            assert.ok(history.some(h=>h.group==='self'));
+        }
 	} finally {
 		await browser?.close();
 		globalThis.fetch = previousFetch;

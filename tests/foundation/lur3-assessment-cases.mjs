@@ -109,13 +109,19 @@ export async function runLuAssessmentCases({ load, vite, otherPersonId, grant, p
                 suggestedTopic: 'Catch-up time', impact: 'SIGNIFICANT', reason: "The owner's preferred timing for social contact.", relevantTurnIds: ['T2'] }],
                 exclusions: data.source.turns.filter(t=>t.role==='OWNER' && t.id!=='T2').map(t=>({turnId:t.id,reason:'NO_DURABLE_MEANING'})), unresolvedMentions: [] };
         } else if (data.area) {
-            output = { prose: data.prior ? 'Prefers mornings for catch-ups, on weekends only now.' : 'Prefers mornings for regular catch-ups.',
+            output = { prose: data.prior && data.auditRepair ? 'Prefers morning catch-ups on weekends.' :
+                    data.prior ? 'Prefers all catch-ups on weekends.' : 'Prefers mornings for regular catch-ups.',
                 effect: data.prior ? 'QUALIFIED' : 'NEW', timeScope: 'CURRENT', retire: [], meanings: [{
                     text: data.turns.find(t=>t.id==='T2').text, kind: 'PREFERENCE', basis: 'DIRECT_ACCOUNT',
                     uncertainty: null, confidence: 'HIGH', evidence: [{turnId:'T2',quote:null,role:'SUPPORTS'}]
                 }] };
         } else if (data.areas) {
-            output = { issues: [], findings: [] };
+            // Make the follow-up reject the first draft and verify the revised complete draft.
+            const changed = data.draft.find(topic => topic.topicRef === 'A1');
+            output = changed?.prose === 'Prefers all catch-ups on weekends.'
+                ? { issues: ['UNSUPPORTED_PROSE'], findings: ['The wording overstates the timing preference.'],
+                    topicRepairs: [{issue:'UNSUPPORTED_PROSE', editTopics:['A1'], instruction:'Keep the prior morning preference and qualify it with weekends.'}] }
+                : { issues: [], findings: [] };
         } else if (stage === 'decompose') {
 			const [agent, answer, ...additional] = data.source.turns;
 			assert.equal(agent.role, 'AGENT');
@@ -533,6 +539,10 @@ export async function runLuAssessmentCases({ load, vite, otherPersonId, grant, p
             assert.equal(calls.length, oldCalls);
             const topic = reviewed.candidate.groups[0].topics[0];
             assert.equal(topic.effect, round ? 'QUALIFIED' : 'NEW');
+            if (round) {
+                assert.equal(topic.prose, 'Prefers morning catch-ups on weekends.');
+                assert.ok(reviewed.candidate.stageReview.some(panel => panel.stage === 'audit' && panel.attempt === 2));
+            }
             await redirectTo(action('decide', source, {decision:'APPROVE',selected:topic.key}, '&candidate='+candidateId));
             const history = (await route.load(event(source))).history;
             assert.ok(history.some(h=>h.group==='self'));

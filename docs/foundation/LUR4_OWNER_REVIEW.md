@@ -107,3 +107,11 @@ Rollback: revert the application/UI change to restore the earlier analysis entry
 ### DEV citation failure follow-up (2026-11-15)
 
 PR #81 merged at `69419999`. A hosted v1 replay returned three topic drafts and then held the run with `OUT_OF_TOPIC_EVIDENCE` before structural review. Version v2 lists permitted turn IDs by citation role and retries only the affected topic once. The same evidence boundary and overall deadline apply to the retry. If it fails, the owner can inspect the held topic and valid sibling previews, and the run remains ineligible for approval. Logs now report the rejected composition attempt without private text. Replay the same conversation on DEV and confirm it reaches **Structure and evidence review** or shows the specific topic held. No Prisma migration or configuration change. Revert the application change to restore v1 processing.
+
+### Targeted structural review retry (2026-11-15)
+
+PR #82 merged at `5a033344`. The hosted v2 replay reached structural review, which held the draft for overlapping primary meaning, unsupported wording and omitted context.
+
+Version v3 on `fix/lu-self-topic-audit-repair` accepts an explicit repair plan for those three issue types. The auditor identifies the exact draft topics to change and gives each writer specific feedback. The retry uses the topic's original source scope, preserves saved topic identity and revision effects, and can suggest a more accurate title for a new topic. The full draft is rebuilt, validated and audited again once. A missing or invalid plan, a failed rewrite or any unresolved audit issue holds the draft. The audit distinguishes relevant context that explains an intention from incidental detail that need not block approval.
+
+In DEV, rerun the conversation and open **Analysis steps**. If the first audit identifies a repairable issue, look for the named revision in **Audit · Attempt 1**, the revised topic, and the result in **Audit · Attempt 2**. Confirm the proposed conversation has one primary home and meaningful supporting context. A passing audit makes the draft available for manual approval. The existing model deadline applies. No migration, configuration change or data rollback is needed.

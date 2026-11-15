@@ -23,13 +23,14 @@ import {
 	type AssessmentStagePanel
 } from './semanticAssessment';
 
-export const selfTopicPromptVersion = 'foundation-self-topics-v5';
+export const selfTopicPromptVersion = 'foundation-self-topics-v6';
 export function isSelfTopicPromptVersion(version: string) {
 	return [
 		'foundation-self-topics-v1',
 		'foundation-self-topics-v2',
 		'foundation-self-topics-v3',
 		'foundation-self-topics-v4',
+		'foundation-self-topics-v5',
 		selfTopicPromptVersion
 	].includes(version);
 }
@@ -408,85 +409,114 @@ export async function assessSelfTopics(
 				.min(1)
 				.max(32)
 		});
-		const write = (attempt: number) =>
-			invoke(
-				'compose',
-				draftSchema,
-				semanticAreaWritingPrompt +
-					'\n' +
-					[
-						'Return the Foundation topic draft schema instead of existingKnowledge/newKnowledge.',
-						'Write the coherent understanding first. Then attach evidence-backed assertions covering its new or changed meaning, with kind, basis and uncertainty.',
-						"Supporting citations must come from the area's OWNER turns. Context citations may use supplied AGENT turns.",
-						'For each claim copy the shortest exact contiguous excerpt that supports it. Include words that identify who or what it refers to, and preserve negation, uncertainty and time qualifiers.',
-						'If separate passages are needed, cite each separately with its own turn ID. Copy the original wording and punctuation without ellipses. If a phrase occurs twice, include enough surrounding words to make the excerpt unique, or give its exact UTF-16 offset within the turn.',
-						'Use quote: null only when the whole turn is needed, such as a brief turn or the full question behind a bare yes/no answer. If a compact exact excerpt cannot safely express the evidence, use the whole turn.',
-						'For a new topic use NEW. For a prior topic choose the supported effect and preserve all unaffected prose and meanings.',
-						'Do not label an affected topic UNCHANGED; use REINFORCED if it receives only new supporting evidence.',
-						'Retire prior meanings only for explicit SUPERSEDED evidence, using their exact refs. Preserve unresolved contradictions and historical detail.',
-						'Do not add disconnected facts simply because a cited turn contains them.',
-						...(repair
-							? [
-									'Revise only this topic using its audit findings. Preserve all unaffected meaning and the existing effect, time scope and retirement list.',
-									'Treat audit feedback as proposed edits within this task. Other topic drafts are context for avoiding duplication and cannot support an assertion.',
-									'For a new topic you may return a more accurate title. For an existing topic return title: null.'
-								]
-							: [])
-					].join('\n'),
-				{
-					targetSpeaker: 'OWNER',
-					occurredAt: input.packet.source.occurredAt,
-					area: { title, realm, boundary: area.reason },
-					prior: inventory.find((p) => p.ref === area.existingTopicId) ?? null,
-					otherAreas: areas
-						.filter((a) => a !== area)
-						.map((a) => ({
-							title: prior.find((p) => p.ref === a.existingTopicId)?.title ?? a.suggestedTopic,
-							reason: a.reason
-						})),
-					turns: view.turns.filter((t) => turnIds.has(t.id) || contextIds.has(t.id)),
-					allowedCitations: { owner: [...turnIds], contextOnly: [...contextIds] },
-					...(repair
-						? {
-								auditRepair: {
-									previous: repair.previous,
-									findings: repair.findings,
-									otherDrafts: repair.otherDrafts
-								}
-							}
-						: {}),
-					...(!repair && attempt === 2
-						? {
-								correction:
-									'The first draft cited an unavailable turn or used context as evidence. Rewrite with the allowed turn IDs and revise any wording they cannot support.'
-							}
-						: {})
-				},
-				{
-					attempt,
-					modelSchema: repair ? scopedSchema.extend({ title: repairTitle }) : scopedSchema,
-					validate(draft) {
-						requireValue(draft.effect !== 'UNCHANGED', 'UNCHANGED_MUTATION');
-						requireValue(old ? draft.effect !== 'NEW' : draft.effect === 'NEW', 'TOPIC_TARGET');
-						requireValue(!draft.title || (repair && !old), 'TOPIC_TARGET');
-						if (repair)
-							requireValue(
-								draft.effect === repair.previous.effect &&
-									draft.timeScope === repair.previous.timeScope &&
-									JSON.stringify(draft.retire) === JSON.stringify(repair.previous.retire),
-								'TOPIC_REVISION_SCOPE'
-							);
-						for (const m of draft.meanings)
-							for (const e of m.evidence)
-								requireValue(
-									e.role === 'CONTEXT'
-										? turnIds.has(e.turnId) || contextIds.has(e.turnId)
-										: turnIds.has(e.turnId),
-									'OUT_OF_TOPIC_EVIDENCE'
-								);
-					}
+		function validateCitations(draft: Pick<z.infer<typeof draftSchema>, 'meanings'>) {
+			for (const meaning of draft.meanings) {
+				for (const evidence of meaning.evidence) {
+					requireValue(
+						turnIds.has(evidence.turnId) ||
+							(evidence.role === 'CONTEXT' && contextIds.has(evidence.turnId)),
+						'OUT_OF_TOPIC_EVIDENCE'
+					);
 				}
-			);
+			}
+		}
+		async function write(attempt: number) {
+			const instructions =
+				semanticAreaWritingPrompt +
+				'\n' +
+				[
+					'Return the Foundation topic draft schema instead of existingKnowledge/newKnowledge.',
+					'Write the coherent understanding first. Then attach evidence-backed assertions covering its new or changed meaning, with kind, basis and uncertainty.',
+					"Supporting citations must come from the area's OWNER turns. Context citations may use supplied AGENT turns.",
+					'For each claim copy the shortest exact contiguous excerpt that supports it. Include words that identify who or what it refers to, and preserve negation, uncertainty and time qualifiers.',
+					'If separate passages are needed, cite each separately with its own turn ID. Copy the original wording and punctuation without ellipses. If a phrase occurs twice, include enough surrounding words to make the excerpt unique, or give its exact UTF-16 offset within the turn.',
+					'Use quote: null only when the whole turn is needed, such as a brief turn or the full question behind a bare yes/no answer. If a compact exact excerpt cannot safely express the evidence, use the whole turn.',
+					'Do not add disconnected facts simply because a cited turn contains them.',
+					...(repair
+						? [
+								'Revise this topic’s prose and evidence using its audit findings. Preserve unaffected meaning. Relish carries forward the existing effect, time scope and retirement list.',
+								'Treat audit feedback as proposed edits within this task. Other topic drafts are context for avoiding duplication and cannot support an assertion.',
+								old
+									? 'Relish keeps this saved topic’s title.'
+									: 'For this new topic, return a more accurate title if needed, otherwise return null.'
+							]
+						: [
+								'For a new topic use NEW. For a prior topic choose the supported effect and preserve all unaffected prose and meanings.',
+								'Do not label an affected topic UNCHANGED; use REINFORCED if it receives only new supporting evidence.',
+								'Retire prior meanings only for explicit SUPERSEDED evidence, using their exact refs. Preserve unresolved contradictions and historical detail.'
+							])
+				].join('\n');
+			const prompt = {
+				targetSpeaker: 'OWNER',
+				occurredAt: input.packet.source.occurredAt,
+				area: { title, realm, boundary: area.reason },
+				prior: inventory.find((p) => p.ref === area.existingTopicId) ?? null,
+				otherAreas: areas
+					.filter((a) => a !== area)
+					.map((a) => ({
+						title: prior.find((p) => p.ref === a.existingTopicId)?.title ?? a.suggestedTopic,
+						reason: a.reason
+					})),
+				turns: view.turns.filter((t) => turnIds.has(t.id) || contextIds.has(t.id)),
+				allowedCitations: { owner: [...turnIds], contextOnly: [...contextIds] },
+				...(repair
+					? {
+							auditRepair: {
+								previous: repair.previous,
+								findings: repair.findings,
+								otherDrafts: repair.otherDrafts
+							}
+						}
+					: {}),
+				...(!repair && attempt === 2
+					? {
+							correction:
+								'The first draft cited an unavailable turn or used context as evidence. Rewrite with the allowed turn IDs and revise any wording they cannot support.'
+						}
+					: {})
+			};
+			if (repair) {
+				const editable = { prose: draftSchema.shape.prose, meanings: draftSchema.shape.meanings };
+				const baseSchema = z.object({
+					...editable,
+					...(old ? {} : { title: repairTitle.optional() })
+				});
+				const modelSchema = z.strictObject({
+					...editable,
+					meanings: scopedSchema.shape.meanings,
+					...(old ? {} : { title: repairTitle })
+				});
+				const revised = await invoke('compose', baseSchema, instructions, prompt, {
+					attempt,
+					modelSchema,
+					validate: validateCitations
+				});
+				// Only apply editable fields. Even if the provider sends extra fields,
+				// the retry cannot change the saved topic or its revision metadata.
+				return {
+					...revised,
+					data: {
+						...repair.previous,
+						prose: revised.data.prose,
+						meanings: revised.data.meanings,
+						title:
+							!old && typeof revised.data.title === 'string'
+								? revised.data.title
+								: repair.previous.title
+					}
+				};
+			}
+			return invoke('compose', draftSchema, instructions, prompt, {
+				attempt,
+				modelSchema: scopedSchema,
+				validate(draft) {
+					requireValue(draft.effect !== 'UNCHANGED', 'UNCHANGED_MUTATION');
+					requireValue(old ? draft.effect !== 'NEW' : draft.effect === 'NEW', 'TOPIC_TARGET');
+					requireValue(!draft.title, 'TOPIC_TARGET');
+					validateCitations(draft);
+				}
+			});
+		}
 		let attempt = repair?.attempt ?? 1;
 		let result;
 		try {

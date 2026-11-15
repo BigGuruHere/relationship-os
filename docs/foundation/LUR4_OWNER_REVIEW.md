@@ -142,3 +142,11 @@ PR #85 merged at `737b856c`. The hosted follow-up produced a qualified update of
 The v5 topic writer on `fix/lu-evidence-excerpts` prefers the smallest exact passage that supports the drafted statement and retains its qualifications. It can cite separate spans when a statement depends on more than one passage. Existing grounding checks verify the spans against the transcript; a quote that does not occur falls back to the same original turn, which is then reviewed by the audit. The audit checks whether the cited passages jointly support the assertion and whether the surrounding text qualifies it.
 
 Draft evidence displays short excerpts directly with **Read full source turn** for context. Long saved evidence is expandable and retains its source link. Existing saved revisions keep their original anchors. To reproduce in DEV, analyse a long transcript turn with several distinct claims and compare each citation with the original source. No Prisma migration. Revert the prompt and presentation changes to restore the previous behavior; stored excerpts remain readable.
+
+### Keep topic identity fixed during an audit rewrite (2026-11-15)
+
+PR #86 merged at `5d9f74a1`. A hosted v5 run completed discovery and initial writing. Its first audit requested an edit for unsupported prose and duplicate meaning, and the rewrite stopped with `TOPIC_TARGET` before the second audit. The trace does not distinguish an incompatible effect from a proposed saved-topic title.
+
+In v6 on `fix/lu-audit-repair-topic-target`, audit rewrites return prose and supporting meanings. A new topic can also receive a corrected title. Relish carries forward the original topic identity, saved title, effect, time scope and retirement list. Extra provider fields cannot change them. The scoped citations and rebuilt draft still go through validation and the full second audit before owner approval.
+
+Rerun the same transcript in DEV. If an audit requests a rewrite, look for its updated topic and **Audit · Attempt 2**. Open **Supporting evidence** if the result is ready. Hosted replay is pending. No Prisma migration; application rollback leaves approved revisions readable.

@@ -373,7 +373,16 @@ test('structural review repairs only named topics and re-audits the full draft',
 					data.auditRepair.otherDrafts.map((topic) => topic.topicRef),
 					['A1', 'A3']
 				);
+				assert.deepEqual(Object.keys(request.outputSchema.properties).sort(), [
+					'meanings',
+					'prose',
+					'title'
+				]);
 				output.title = 'Musical theatre plans';
+				// Protected revision metadata is ignored even if a provider sends it.
+				output.effect = 'SUPERSEDED';
+				output.timeScope = 'CURRENT';
+				output.retire = [{ meaning: 'unrelated-prior', reason: 'Do not apply.' }];
 				output.prose =
 					'My daughter is applying to music colleges and I want to understand her options.';
 				output.meanings = [meaning(output.prose, 'T2')];
@@ -396,6 +405,9 @@ test('structural review repairs only named topics and re-audits the full draft',
 			} else {
 				assert.equal(data.draft[0].title, 'Mentorship and reconnection');
 				assert.equal(data.draft[1].title, 'Musical theatre plans');
+				assert.equal(data.draft[1].effect, 'NEW');
+				assert.equal(data.draft[1].timeScope, 'MIXED');
+				assert.deepEqual(data.draft[1].retire, []);
 				assert.equal(data.draft[2].prose, 'Meeting his family again felt meaningful.');
 				assert.ok(
 					data.meanings.some(
@@ -471,30 +483,28 @@ test('a repeated structural issue never triggers a second rewrite', async () => 
 	assert.equal(calls.filter((call) => call.stage === 'audit').length, 2);
 });
 
-test('audit repair cannot borrow a citation or change the topic effect', async () => {
-	for (const reason of ['OUT_OF_TOPIC_EVIDENCE', 'TOPIC_REVISION_SCOPE']) {
-		const input = fixture();
-		const { model, calls } = modelFor(input, {
-			change({ request, data, output }) {
-				if (data.auditRepair) {
-					if (reason === 'OUT_OF_TOPIC_EVIDENCE') output.meanings[0].evidence[0].turnId = 'T1';
-					else output.timeScope = 'CURRENT';
+test('audit repair cannot borrow a citation from another topic', async () => {
+	const input = fixture();
+	const { model, calls } = modelFor(input, {
+		change({ request, data, output }) {
+			if (data.auditRepair) output.meanings[0].evidence[0].turnId = 'T1';
+			if (request.stage !== 'audit') return;
+			output.issues = ['OMITTED_MEANING'];
+			output.topicRepairs = [
+				{
+					issue: 'OMITTED_MEANING',
+					editTopics: ['A2'],
+					instruction: 'Preserve why the conversation mattered.'
 				}
-				if (request.stage !== 'audit') return;
-				output.issues = ['OMITTED_MEANING'];
-				output.topicRepairs = [
-					{
-						issue: 'OMITTED_MEANING',
-						editTopics: ['A2'],
-						instruction: 'Preserve why the conversation mattered.'
-					}
-				];
-			}
-		});
-		await assert.rejects(assessSelfTopics(input, model, allow), (error) => error.reason === reason);
-		assert.equal(calls.filter((call) => call.data.auditRepair).length, 1);
-		assert.equal(calls.filter((call) => call.stage === 'audit').length, 1);
-	}
+			];
+		}
+	});
+	await assert.rejects(
+		assessSelfTopics(input, model, allow),
+		(error) => error.reason === 'OUT_OF_TOPIC_EVIDENCE'
+	);
+	assert.equal(calls.filter((call) => call.data.auditRepair).length, 1);
+	assert.equal(calls.filter((call) => call.stage === 'audit').length, 1);
 });
 
 test('a rejected discovery records bounded private diagnostics and never reaches writing', async () => {

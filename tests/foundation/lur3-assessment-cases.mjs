@@ -121,6 +121,13 @@ export async function runLuAssessmentCases({ load, vite, otherPersonId, grant, p
                     text: exactQuote, kind: 'PREFERENCE', basis: 'DIRECT_ACCOUNT',
                     uncertainty: null, confidence: 'HIGH', evidence: [{turnId:ownerTurn.id,quote:exactQuote,role:'SUPPORTS'}]
                 }] };
+            if (data.auditRepair) {
+                // Simulate a saved-topic rewrite returning fields that previously caused TOPIC_TARGET.
+                output.title = 'A replacement title';
+                output.effect = 'NEW';
+                output.timeScope = 'HISTORICAL';
+                output.retire = [{ meaning: 'foreign-meaning', reason: 'Do not apply.' }];
+            }
         } else if (data.areas) {
             // Make the follow-up reject the first draft and verify the revised complete draft.
             const changed = data.draft.find(topic => topic.topicRef === 'A1');
@@ -596,6 +603,8 @@ export async function runLuAssessmentCases({ load, vite, otherPersonId, grant, p
             }
             if (round) {
                 assert.equal(topic.prose, 'Prefers morning catch-ups on weekends.');
+                assert.equal(topic.title, 'Catch-up time');
+                assert.equal(topic.timeScope, 'CURRENT');
                 assert.equal(topic.before, importedV1.topics[0].prose);
                 assert.deepEqual(await lu.readLuRevision(read, destination), importedV1);
                 assert.ok(reviewed.candidate.stageReview.some(panel => panel.stage === 'audit' && panel.attempt === 2));

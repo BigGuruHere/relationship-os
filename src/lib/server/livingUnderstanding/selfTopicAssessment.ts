@@ -23,7 +23,10 @@ import {
 	type AssessmentStagePanel
 } from './semanticAssessment';
 
-export const selfTopicPromptVersion = 'foundation-self-topics-v1';
+export const selfTopicPromptVersion = 'foundation-self-topics-v2';
+export function isSelfTopicPromptVersion(version: string) {
+	return version === 'foundation-self-topics-v1' || version === selfTopicPromptVersion;
+}
 const label = z.string().trim().min(1).max(100);
 const discoverySchema = z.strictObject({
 	areas: z
@@ -100,8 +103,14 @@ export async function assessSelfTopics(
 		stage: 'decompose' | 'compose' | 'audit',
 		schema: S,
 		instructions: string,
-		data: object
+		data: object,
+		options: {
+			attempt?: number;
+			modelSchema?: z.ZodType;
+			validate?: (value: z.output<S>) => void;
+		} = {}
 	) {
+		const attempt = options.attempt ?? 1;
 		const started = performance.now();
 		let outcome = 'INTERRUPTED';
 		try {
@@ -116,7 +125,7 @@ export async function assessSelfTopics(
 					stage,
 					systemPrompt: instructions + '\n' + scopeInstructions,
 					userPrompt,
-					outputSchema: z.toJSONSchema(schema, { io: 'input' }),
+					outputSchema: z.toJSONSchema(options.modelSchema ?? schema, { io: 'input' }),
 					signal
 				});
 			} catch (cause) {
@@ -133,24 +142,25 @@ export async function assessSelfTopics(
 			requireValue(result.invocationId && result.model, 'MISSING_PROVENANCE');
 			provenance.invocations.push({
 				stage,
-				attempt: 1,
+				attempt,
 				invocationId: result.invocationId,
 				model: result.model
 			});
 			const parsed = schema.safeParse(result.output);
 			requireValue(parsed.success, 'INVALID_MODEL_OUTPUT');
+			options.validate?.(parsed.data);
 			outcome = 'COMPLETED';
 			return { data: parsed.data, invocationId: result.invocationId, model: result.model };
 		} catch (cause) {
 			if (cause instanceof AssessmentError) {
 				outcome = cause.reason;
-				cause.diagnostic = { stage, attempt: 1 };
+				cause.diagnostic = { stage, attempt };
 			}
 			throw cause;
 		} finally {
 			trace?.stages.push({
 				stage,
-				attempt: 1,
+				attempt,
 				durationMs: Math.round(performance.now() - started),
 				outcome
 			});
@@ -233,54 +243,139 @@ export async function assessSelfTopics(
 						const previous = view.turns[i - 1];
 						if (previous?.role === 'AGENT') contextIds.add(previous.id);
 					}
-				const result = await invoke(
-					'compose',
-					draftSchema,
-					semanticAreaWritingPrompt +
-						'\n' +
+				const meaningSchema = draftSchema.shape.meanings.element;
+				const citationSchema = meaningSchema.shape.evidence.element;
+				// The model schema lists valid turn IDs per role. The server repeats the
+				// check so nonconforming provider output cannot expand the evidence scope.
+				const modelSchema = draftSchema.extend({
+					meanings: z
+						.array(
+							meaningSchema.extend({
+								evidence: z
+									.array(
+										z.union([
+											citationSchema.extend({
+												turnId: z.enum([...turnIds]),
+												role: z.enum(['SUPPORTS', 'QUALIFIES', 'CONTRADICTS'])
+											}),
+											citationSchema.extend({
+												turnId: z.enum([...turnIds, ...contextIds]),
+												role: z.literal('CONTEXT')
+											})
+										])
+									)
+									.min(1)
+									.max(12)
+							})
+						)
+						.min(1)
+						.max(32)
+				});
+				const write = (attempt: number) =>
+					invoke(
+						'compose',
+						draftSchema,
+						semanticAreaWritingPrompt +
+							'\n' +
+							[
+								'Return the Foundation topic draft schema instead of existingKnowledge/newKnowledge.',
+								'Write the coherent understanding first. Then attach evidence-backed assertions covering its new or changed meaning, with kind, basis and uncertainty.',
+								"Use whole-turn citations (quote: null). Supporting citations must come from the area's OWNER turns. Context citations may use supplied AGENT turns.",
+								'For a new topic use NEW. For a prior topic choose the supported effect and preserve all unaffected prose and meanings.',
+								'Do not label an affected topic UNCHANGED; use REINFORCED if it receives only new supporting evidence.',
+								'Retire prior meanings only for explicit SUPERSEDED evidence, using their exact refs. Preserve unresolved contradictions and historical detail.',
+								'Do not add disconnected facts simply because a cited turn contains them.'
+							].join('\n'),
+						{
+							targetSpeaker: 'OWNER',
+							occurredAt: input.packet.source.occurredAt,
+							area: { title, realm, boundary: area.reason },
+							prior: inventory.find((p) => p.ref === area.existingTopicId) ?? null,
+							otherAreas: areas
+								.filter((a) => a !== area)
+								.map((a) => ({
+									title: prior.find((p) => p.ref === a.existingTopicId)?.title ?? a.suggestedTopic,
+									reason: a.reason
+								})),
+							turns: view.turns.filter((t) => turnIds.has(t.id) || contextIds.has(t.id)),
+							allowedCitations: { owner: [...turnIds], contextOnly: [...contextIds] },
+							...(attempt === 2
+								? {
+										correction:
+											'The first draft cited an unavailable turn or used context as evidence. Rewrite with the allowed turn IDs and revise any wording they cannot support.'
+									}
+								: {})
+						},
+						{
+							attempt,
+							modelSchema,
+							validate(draft) {
+								requireValue(draft.effect !== 'UNCHANGED', 'UNCHANGED_MUTATION');
+								requireValue(old ? draft.effect !== 'NEW' : draft.effect === 'NEW', 'TOPIC_TARGET');
+								for (const m of draft.meanings)
+									for (const e of m.evidence)
+										requireValue(
+											e.role === 'CONTEXT'
+												? turnIds.has(e.turnId) || contextIds.has(e.turnId)
+												: turnIds.has(e.turnId),
+											'OUT_OF_TOPIC_EVIDENCE'
+										);
+							}
+						}
+					);
+				let attempt = 1;
+				let result;
+				try {
+					result = await write(attempt);
+				} catch (cause) {
+					if (!(cause instanceof AssessmentError) || cause.reason !== 'OUT_OF_TOPIC_EVIDENCE')
+						throw cause;
+					const repair = { stage: 'compose' as const, reason: cause.reason };
+					provenance.repairs.push(repair);
+					trace?.repairs.push(repair);
+					recordStagePanel(
+						panels,
+						'compose',
+						attempt,
 						[
-							'Return the Foundation topic draft schema instead of existingKnowledge/newKnowledge.',
-							'Write the coherent understanding first. Then attach evidence-backed assertions covering its new or changed meaning, with kind, basis and uncertainty.',
-							"Use whole-turn citations (quote: null). Supporting citations must come from the area's OWNER turns. Context citations may use supplied AGENT turns.",
-							'For a new topic use NEW. For a prior topic choose the supported effect and preserve all unaffected prose and meanings.',
-							'Do not label an affected topic UNCHANGED; use REINFORCED if it receives only new supporting evidence.',
-							'Retire prior meanings only for explicit SUPERSEDED evidence, using their exact refs. Preserve unresolved contradictions and historical detail.',
-							'Do not add disconnected facts simply because a cited turn contains them.'
-						].join('\n'),
-					{
-						targetSpeaker: 'OWNER',
-						occurredAt: input.packet.source.occurredAt,
-						area: { title, realm, boundary: area.reason },
-						prior: inventory.find((p) => p.ref === area.existingTopicId) ?? null,
-						otherAreas: areas
-							.filter((a) => a !== area)
-							.map((a) => ({
-								title: prior.find((p) => p.ref === a.existingTopicId)?.title ?? a.suggestedTopic,
-								reason: a.reason
-							})),
-						turns: view.turns.filter((t) => turnIds.has(t.id) || contextIds.has(t.id))
+							{
+								title: 'Citation retry: ' + title,
+								text:
+									'The draft used a citation outside the permitted turns or used context as evidence. Allowed owner turns: ' +
+									[...turnIds].join(', ')
+							}
+						],
+						cause.reason
+					);
+					attempt = 2;
+					try {
+						result = await write(attempt);
+					} catch (retryError) {
+						if (retryError instanceof AssessmentError)
+							recordStagePanel(
+								panels,
+								'compose',
+								attempt,
+								[
+									{
+										title: 'Topic held: ' + title,
+										text:
+											'The topic could not be validated after retry. Allowed owner turns: ' +
+											[...turnIds].join(', ')
+									}
+								],
+								retryError.reason
+							);
+						throw retryError;
 					}
-				);
-				requireValue(result.data.effect !== 'UNCHANGED', 'UNCHANGED_MUTATION');
-				requireValue(
-					old ? result.data.effect !== 'NEW' : result.data.effect === 'NEW',
-					'TOPIC_TARGET'
-				);
-				for (const m of result.data.meanings)
-					for (const e of m.evidence)
-						requireValue(
-							e.role === 'CONTEXT'
-								? turnIds.has(e.turnId) || contextIds.has(e.turnId)
-								: turnIds.has(e.turnId),
-							'OUT_OF_TOPIC_EVIDENCE'
-						);
-				return { result, index, old, title, realm };
+				}
+				return { result, index, old, title, realm, attempt };
 			})
 		);
 		// Await every call before surfacing a failure so no provider work outlives the request.
 		for (const entry of settled) {
-			if (entry.status === 'rejected') throw entry.reason;
-			const { result, index, old, title, realm } = entry.value;
+			if (entry.status === 'rejected') continue;
+			const { result, index, old, title, realm, attempt } = entry.value;
 			const meanings = result.data.meanings.map((m, i) => ({
 				...m,
 				id: `A${index + 1}M${i + 1}`,
@@ -302,7 +397,7 @@ export async function assessSelfTopics(
 				contextual: [],
 				retire: result.data.retire
 			});
-			recordStagePanel(panels, 'compose', 1, [
+			recordStagePanel(panels, 'compose', attempt, [
 				{
 					title: 'Topic understanding: ' + title,
 					text:
@@ -319,6 +414,8 @@ export async function assessSelfTopics(
 				}
 			]);
 		}
+		const failure = settled.find((entry) => entry.status === 'rejected');
+		if (failure) throw failure.reason;
 	}
 	// Prior topics outside the discovered areas, including other perspectives, are carried verbatim.
 	for (const old of view.prior.filter((p) => !oldIds.includes(p.ref)))

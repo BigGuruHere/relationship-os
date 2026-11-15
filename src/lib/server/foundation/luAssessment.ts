@@ -1,4 +1,4 @@
-import { assessSelfTopics, selfTopicPromptVersion } from '../livingUnderstanding/selfTopicAssessment';
+import { assessSelfTopics, isSelfTopicPromptVersion } from '../livingUnderstanding/selfTopicAssessment';
 // Application orchestration for the internal Foundation assessment operation.
 // The review route grants admission and records the owner decision separately.
 import { createHash } from 'node:crypto';
@@ -153,7 +153,7 @@ export async function editFoundationProposal(
 	topic.prose = prose;
 	const candidate = parseCandidate(current.candidate, input.packet);
 	const audit = await auditOwnerWording(input, candidate, destination, privateAssessmentModel(),
-		() => verifyLuAssessment(prepare, personId, input), signal, provenance.promptVersion === selfTopicPromptVersion);
+		() => verifyLuAssessment(prepare, personId, input), signal, isSelfTopicPromptVersion(provenance.promptVersion));
 	signal?.throwIfAborted();
 	return storeLuCandidate(store, personId, { ...input.packet, unresolvedMentions: current.unresolvedMentions },
 		candidate, {

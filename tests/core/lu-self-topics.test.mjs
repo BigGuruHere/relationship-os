@@ -253,3 +253,81 @@ test('cancellation and revoked authority stop processing without a candidate', a
 	);
 	assert.equal(calls.length, 1);
 });
+
+test('only the topic with an invalid citation is retried before structural review', async () => {
+	const input = fixture();
+	const { model, calls } = modelFor(input, {
+		change({ request, data, output }) {
+			if (
+				request.stage === 'compose' &&
+				data.area.title === 'Supporting my daughter' &&
+				!data.correction
+			) {
+				// T1 is real evidence for another topic, but unavailable to this writer.
+				output.meanings[0].evidence[0].turnId = 'T1';
+			}
+		}
+	});
+	const trace = { stages: [], audits: [], repairs: [] };
+	const result = await assessSelfTopics(input, model, allow, undefined, trace);
+	const writes = calls.filter((call) => call.stage === 'compose');
+	assert.equal(writes.length, 3);
+	assert.equal(writes.at(-1).data.area.title, 'Supporting my daughter');
+	assert.deepEqual(writes.at(-1).data.allowedCitations.owner, ['T2']);
+	assert.match(writes.at(-1).data.correction, /first draft cited/);
+	assert.equal(calls.at(-1).stage, 'audit');
+	assert.equal(result.candidate.streams[0].topics.length, 2);
+	assert.equal(
+		result.candidate.meanings.find((meaning) => meaning.id === 'A2M1').evidence[0].turnId,
+		'T2'
+	);
+	assert.ok(
+		trace.stages.some(
+			(stage) =>
+				stage.stage === 'compose' &&
+				stage.attempt === 1 &&
+				stage.outcome === 'OUT_OF_TOPIC_EVIDENCE'
+		)
+	);
+	assert.ok(
+		trace.stages.some(
+			(stage) => stage.stage === 'compose' && stage.attempt === 2 && stage.outcome === 'COMPLETED'
+		)
+	);
+});
+
+test('a second invalid citation holds the run and preserves valid sibling drafts in the preview', async () => {
+	const input = fixture();
+	const { model, calls } = modelFor(input, {
+		change({ request, data, output }) {
+			if (request.stage === 'compose' && data.area.title === 'Mentorship and reconnection') {
+				// The adjacent agent question is available as context, not as owner support.
+				output.meanings[0].evidence[0].turnId = 'T0';
+			}
+		}
+	});
+	const panels = [];
+	await assert.rejects(
+		assessSelfTopics(input, model, allow, undefined, undefined, panels),
+		(error) => {
+			assert.equal(error.reason, 'OUT_OF_TOPIC_EVIDENCE');
+			assert.deepEqual(error.diagnostic, { stage: 'compose', attempt: 2 });
+			return true;
+		}
+	);
+	assert.equal(calls.filter((call) => call.stage === 'compose').length, 3);
+	assert.equal(
+		calls.some((call) => call.stage === 'audit'),
+		false
+	);
+	assert.ok(
+		panels.some((panel) =>
+			panel.items.some((item) => item.title === 'Topic understanding: Supporting my daughter')
+		)
+	);
+	assert.ok(
+		panels.some((panel) =>
+			panel.items.some((item) => item.title === 'Topic held: Mentorship and reconnection')
+		)
+	);
+});

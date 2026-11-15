@@ -82,3 +82,24 @@ node --test tests/foundation/lur2-persistence.test.mjs
 ```
 
 Next stage: LUR-5 integration and activation review. Recommended model: GPT-6.1 Sol High.
+
+## Topic-first self-understanding (2026-11-15)
+
+Implemented on `feature/lu-self-topic-workflow`, based on Development `fbf7bcec` (PR #80 merged). Not merged or deployed by this task. The existing DEV **Analyse conversation** form now requests `SELF_TOPICS`: discover meaningful areas, develop each topic from its supporting turns, review structure and evidence, then approve selected topics through Foundation. It reuses the established discovery/writing prompts and structural principles extracted unchanged into `topicPrompts.ts`; the legacy callers import those same strings. No legacy Contact/ContextSpace LU writer is called.
+
+This initially develops the owner's own LU. Personal history, family context and specific wishes remain appropriately qualified; the adapter does not construct independent person/relationship understandings. Other saved streams are carried unchanged. Both speakers remain in discovery/audit context, and adjacent agent questions accompany focused writing, but only owner turns support meaning. The same passage can support several topics. Foundation assertions attach evidence after topic discovery; they do not choose topic granularity. Prior topic/version and retained-meaning references remain exact. Wording edits retain the self-workflow scope. Method-bound retries cannot resume a draft from the older three-subject assessment.
+
+The first adapter runs the stages together, with final topic selection before saving. It does not reproduce the old between-stage selection forms, operational matching layer, or automatic structural split/merge/reclassification machinery. Structural problems hold the draft with private findings instead of rewriting saved topics. The older three-subject assessment and writing comparison remain available internally for regression/comparison; this is one Foundation persistence system. Topic discovery is limited to 12 areas, writing runs in waves of three, and all calls share the existing four-minute budget. Larger inputs or failed validation stop without an approved update. No real provider quality or latency claim follows from synthetic tests.
+
+### DEV realism replay
+
+Use the existing owner-only DEV review gate and model configuration. No new environment variable or Prisma migration.
+
+1. Open a saved Dorian conversation through My People and choose **Review conversation for Living Understanding**, then **Analyse conversation**. A fresh review without an old candidate URL uses the new path.
+2. Expand **Analysis steps**. Inspect **Area of understanding**, each **Topic understanding**, and **Structure and evidence review**. Compare coverage, meaningful connections, uncertainty and attribution with the full transcript. Use Copy item to share selected diagnostics. Previews are bounded and remain owner-private.
+3. Confirm suggestions appear under **Me** and inspect exact supporting evidence before approving selected topics. Existing other perspectives should remain unchanged.
+4. Replay a different conversation and one follow-up that changes a previously approved topic. Check unchanged meaning, new qualifications, chronology, exact source links and revision history. Approval is explicit; a failed audit must create no authoritative revision.
+
+Automated evidence: 99 focused contract, semantic, adapter and legacy-policy tests passed; eight disposable PGlite repository/route tests passed, including new initial and follow-up approvals; the same eight passed with Chromium mobile-width native forms. Typecheck passed with zero errors/warnings before the final documentation pass. A separately run legacy longitudinal-chain source-text assertion fails identically on unchanged Development `fbf7bcec`; it expects `longitudinal.chainHistory` in the older route. Hosted realism replay remains pending. No production data or external configuration was accessed.
+
+Rollback: revert the application/UI change to restore the earlier analysis entry. Approved Foundation evidence and revisions remain readable. No schema or data rollback is needed.

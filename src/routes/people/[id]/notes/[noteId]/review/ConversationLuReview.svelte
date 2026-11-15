@@ -141,6 +141,7 @@
     <p role="status">This conversation yielded no new updates to Living Understanding.</p>
   {:else if data.candidate}
     <h2>Suggested updates</h2>
+    {#if data.candidate.selfTopics}<p>Topic-first understanding about me</p>{/if}
     {#if data.enabled}
       <p>Select the updates to save. Use Edit wording to validate an edit before selecting it.</p>
       <!-- Separate form owners keep every action usable without JavaScript or nested forms. -->
@@ -194,8 +195,10 @@
       </div>
     {/if}
   {:else if data.enabled && data.conversation.completeness === 'COMPLETE'}
+    <p>This analysis develops your own Living Understanding using topic discovery, focused topic writing and structural review. You can inspect each stage before approving updates.</p>
     <p>Analysing sends the full transcript and relevant private Living Understanding to OpenAI. You choose what to save.</p>
     <form method="POST" action="?/assessConversation&conversation=1" use:enhance={submit}>
+      <input type="hidden" name="method" value="SELF_TOPICS" />
       <input type="hidden" name="requestKey" value={form?.retryKey ?? data.requestKey} />
       <input type="hidden" name="sourceVersion" value={data.conversation.sourceVersion} />
       <button type="submit" class="btn primary" disabled={busy}>{busy ? 'Analysing…' : 'Analyse conversation'}</button>

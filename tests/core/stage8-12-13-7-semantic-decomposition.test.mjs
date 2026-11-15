@@ -105,7 +105,8 @@ test('duplicate proposed realm/topic targets consolidate without creating a stor
 });
 
 test('stage 8.12.13.7 service and UI describe selective operational atomicity and read-only suggested topics', () => {
-  const service = fs.readFileSync(new URL('../../src/lib/server/datingUnderstandingRevisionExperiment.ts', import.meta.url), 'utf8');
+  // The legacy service now imports the same prompt text used by Foundation.
+  const service = fs.readFileSync(new URL('../../src/lib/server/datingUnderstandingRevisionExperiment.ts', import.meta.url), 'utf8') + fs.readFileSync(new URL('../../src/lib/server/livingUnderstanding/topicPrompts.ts', import.meta.url), 'utf8');
   const page = fs.readFileSync(new URL('../../src/routes/dating/people/[id]/understanding/revision-experiment/+page.svelte', import.meta.url), 'utf8');
   const route = fs.readFileSync(new URL('../../src/routes/dating/people/[id]/understanding/revision-experiment/+page.server.ts', import.meta.url), 'utf8');
   assert.match(service, /identifySemanticAreasReadOnly/);
@@ -121,7 +122,8 @@ test('stage 8.12.13.7 service and UI describe selective operational atomicity an
 });
 
 test('stage 8.12.13.7.2 semantic revision is topic-bounded and never falls back to all target turns', () => {
-  const service = fs.readFileSync(new URL('../../src/lib/server/datingUnderstandingRevisionExperiment.ts', import.meta.url), 'utf8');
+  // The legacy service now imports the same prompt text used by Foundation.
+  const service = fs.readFileSync(new URL('../../src/lib/server/datingUnderstandingRevisionExperiment.ts', import.meta.url), 'utf8') + fs.readFileSync(new URL('../../src/lib/server/livingUnderstanding/topicPrompts.ts', import.meta.url), 'utf8');
   assert.match(service, /selected semantic area has no validated target-speaker evidence turns/);
   assert.match(service, /A supplied source turn may contain several different ideas/);
   assert.match(service, /OTHER AREAS FROM THIS SOURCE - EXCLUDE THEIR MAIN MEANING/);
@@ -137,7 +139,8 @@ test('stage 8.12.13.7.2 passes sibling semantic areas as exclusion boundaries, n
 });
 
 test('stage 8.12.13.7.2 asks for permissionable operational units without atomising stylistically', () => {
-  const service = fs.readFileSync(new URL('../../src/lib/server/datingUnderstandingRevisionExperiment.ts', import.meta.url), 'utf8');
+  // The legacy service now imports the same prompt text used by Foundation.
+  const service = fs.readFileSync(new URL('../../src/lib/server/datingUnderstandingRevisionExperiment.ts', import.meta.url), 'utf8') + fs.readFileSync(new URL('../../src/lib/server/livingUnderstanding/topicPrompts.ts', import.meta.url), 'utf8');
   assert.match(service, /If a proposed unit combines ideas that could reasonably have different matching, permission, disclosure, verification, retrieval, or action rules, split them/);
   assert.match(service, /Do not split merely for stylistic granularity/);
 });
@@ -231,7 +234,8 @@ test('stage 8.12.13.8 operational evolution cannot silently retire or omit prior
 });
 
 test('stage 8.12.13.8 route exposes later-source comparison and remains read-only', () => {
-  const service = fs.readFileSync(new URL('../../src/lib/server/datingUnderstandingRevisionExperiment.ts', import.meta.url), 'utf8');
+  // The legacy service now imports the same prompt text used by Foundation.
+  const service = fs.readFileSync(new URL('../../src/lib/server/datingUnderstandingRevisionExperiment.ts', import.meta.url), 'utf8') + fs.readFileSync(new URL('../../src/lib/server/livingUnderstanding/topicPrompts.ts', import.meta.url), 'utf8');
   const route = fs.readFileSync(new URL('../../src/routes/dating/people/[id]/understanding/revision-experiment/+page.server.ts', import.meta.url), 'utf8');
   const page = fs.readFileSync(new URL('../../src/routes/dating/people/[id]/understanding/revision-experiment/+page.svelte', import.meta.url), 'utf8');
   assert.match(service, /evolveLongitudinalUnderstandingReadOnly/);
@@ -279,7 +283,8 @@ test('stage 8.12.13.8.1 separates temporary interaction state from persistent op
 });
 
 test('stage 8.12.13.8.1 longitudinal service enforces topic boundaries and stricter persistent atomicity', () => {
-  const service = fs.readFileSync(new URL('../../src/lib/server/datingUnderstandingRevisionExperiment.ts', import.meta.url), 'utf8');
+  // The legacy service now imports the same prompt text used by Foundation.
+  const service = fs.readFileSync(new URL('../../src/lib/server/datingUnderstandingRevisionExperiment.ts', import.meta.url), 'utf8') + fs.readFileSync(new URL('../../src/lib/server/livingUnderstanding/topicPrompts.ts', import.meta.url), 'utf8');
   const page = fs.readFileSync(new URL('../../src/routes/dating/people/[id]/understanding/revision-experiment/+page.svelte', import.meta.url), 'utf8');
   assert.match(service, /Each prior topic includes a semantic boundary/);
   assert.match(service, /suggest a new topic instead of importing the other area into it/);

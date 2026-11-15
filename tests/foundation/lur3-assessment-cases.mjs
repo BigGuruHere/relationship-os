@@ -1,6 +1,7 @@
 // Runs inside the disposable LUR-2 fixture and exercises the real model gateway
 // through a synthetic transport. All repository operations use the guarded client.
 import assert from 'node:assert/strict';
+import { randomUUID } from 'node:crypto';
 import { reviewBrowser } from '../browser/lu-review-forms.mjs';
 
 function turnCapture(id, date, text) {
@@ -23,6 +24,7 @@ function turnCapture(id, date, text) {
 export async function runLuAssessmentCases({ load, vite, otherPersonId, grant, personId, conversations, lu, count }) {
 	const { assessFoundationConversation } = await load('server/foundation/luAssessment');
 	const route = await vite.ssrLoadModule('/src/routes/people/[id]/notes/[noteId]/review/+page.server.ts');
+	const personRoute = await vite.ssrLoadModule('/src/routes/people/[id]/+page.server.ts');
 	const owner = { user: { id: 'other', role: 'owner' }, env: 'dev', sessionId: 'fixture-session' };
 	let browser;
 	let origin = 'https://dev.relish.live';
@@ -106,14 +108,14 @@ export async function runLuAssessmentCases({ load, vite, otherPersonId, grant, p
             // Topic-first discovery sees the full transcript and only the self inventory.
             const existing = data.prior.find(p => p.title === 'Catch-up time');
             output = { areas: [{ existingTopicId: existing?.ref ?? '', suggestedRealm: 'Friendships',
-                suggestedTopic: 'Catch-up time', impact: 'SIGNIFICANT', reason: "The owner's preferred timing for social contact.", relevantTurnIds: ['T2'] }],
-                exclusions: data.source.turns.filter(t=>t.role==='OWNER' && t.id!=='T2').map(t=>({turnId:t.id,reason:'NO_DURABLE_MEANING'})), unresolvedMentions: [] };
+                suggestedTopic: 'Catch-up time', impact: 'SIGNIFICANT', reason: "The owner's preferred timing for social contact.", relevantTurnIds: [data.source.turns.find(t=>t.role==='OWNER').id] }],
+                exclusions: data.source.turns.filter(t=>t.role==='OWNER').slice(1).map(t=>({turnId:t.id,reason:'NO_DURABLE_MEANING'})), unresolvedMentions: [] };
         } else if (data.area) {
             output = { prose: data.prior && data.auditRepair ? 'Prefers morning catch-ups on weekends.' :
                     data.prior ? 'Prefers all catch-ups on weekends.' : 'Prefers mornings for regular catch-ups.',
                 effect: data.prior ? 'QUALIFIED' : 'NEW', timeScope: 'CURRENT', retire: [], meanings: [{
-                    text: data.turns.find(t=>t.id==='T2').text, kind: 'PREFERENCE', basis: 'DIRECT_ACCOUNT',
-                    uncertainty: null, confidence: 'HIGH', evidence: [{turnId:'T2',quote:null,role:'SUPPORTS'}]
+                    text: data.turns.find(t=>t.role==='OWNER').text, kind: 'PREFERENCE', basis: 'DIRECT_ACCOUNT',
+                    uncertainty: null, confidence: 'HIGH', evidence: [{turnId:data.turns.find(t=>t.role==='OWNER').id,quote:null,role:'SUPPORTS'}]
                 }] };
         } else if (data.areas) {
             // Make the follow-up reject the first draft and verify the revised complete draft.
@@ -521,11 +523,43 @@ export async function runLuAssessmentCases({ load, vite, otherPersonId, grant, p
 		await assert.rejects(assess(next, 'current-source-withdrawal'), /unavailable/);
 		assert.equal(await count('FoundationLuCandidate'), before);
 		assert.equal(await count('FoundationLuRevision'), 2);
-        // Exercise the new UI method through admission, persisted review, approval and history.
+        // Exercise two manual imports through the public form action and the existing review route.
+        const importTranscript = (fields, locals = owner, requestOrigin = origin, id = personId) => {
+            const url = new URL('/people/' + id + '?/importTranscript', origin);
+            return personRoute.actions.importTranscript({
+                locals, params: { id }, url,
+                request: new Request(url, { method: 'POST', headers: { origin: requestOrigin }, body: new URLSearchParams(fields) })
+            });
+        };
+        const firstFieldsForImport = { importId: randomUUID(), summary: 'Catch-up preferences', utcTime: '2026-11-12T03:00',
+            transcript: 'Context: What time works for you?\nYou: Mornings are best for me.' };
+        await assert.rejects(importTranscript(firstFieldsForImport, owner, 'https://wrong.example'), status(403));
+        await assert.rejects(importTranscript(firstFieldsForImport, { ...owner, env: 'prod' }), status(404));
+        await assert.rejects(importTranscript(firstFieldsForImport, { ...owner, user: { ...owner.user, role: 'member' } }), status(404));
+        await assert.rejects(importTranscript(firstFieldsForImport, owner, origin, otherPersonId), status(404));
+        assert.equal((await importTranscript({ ...firstFieldsForImport, transcript: 'Mystery: Mornings are best for me.' })).status, 400);
+        assert.equal((await importTranscript({ ...firstFieldsForImport, transcript: 'Context: What time works for you?' })).status, 400);
+
+        let importedFirst;
+        let importedV1;
         for (let round = 0; round < 2; round++) {
-            const source = (await conversations.savePersonConversation(save, personId,
-                turnCapture('self_topics_' + round, '2026-11-12T03:00:00Z', round ? 'Only on weekends now.' : 'Mornings are best for me.'),
-                'Synthetic topic-first summary', {kind:'HUMAN_AUTHORED'})).sourceId;
+            const submitted = round
+                ? { importId: randomUUID(), summary: 'Weekend follow-up', utcTime: '2026-11-13T03:00', transcript: 'You: Only on weekends now.' }
+                : firstFieldsForImport;
+            const callsBeforeImport = calls.length;
+            const imported = await redirectTo(importTranscript(submitted));
+            assert.equal(String(await redirectTo(importTranscript(submitted))), String(imported));
+            assert.equal((await importTranscript({ ...submitted, transcript: 'You: A different transcript.' })).status, 409);
+            assert.equal(calls.length, callsBeforeImport);
+            assert.match(imported.pathname, /\/notes\/[0-9a-f-]+\/review$/);
+            const source = imported.pathname.split('/').at(-2);
+            if (!round) importedFirst = source;
+            const stored = await conversations.readPersonConversation(await grant('READ_CONVERSATION', 'other'), personId, source);
+            assert.equal(stored.imported, true);
+            assert.equal(stored.sourceVersion, 1);
+            assert.equal(stored.turns.at(-1).role, 'OWNER');
+            assert.equal(stored.turns.at(-1).text, round ? 'Only on weekends now.' : 'Mornings are best for me.');
+            if (!round) assert.equal(stored.turns[0].role, 'UNRESOLVED');
             const initialSelf = await route.load(event(source));
             const fields = { method: 'SELF_TOPICS', sourceVersion: String(initialSelf.conversation.sourceVersion), requestKey: initialSelf.requestKey };
             const location = await redirectTo(action('assessConversation', source, fields));
@@ -541,11 +575,26 @@ export async function runLuAssessmentCases({ load, vite, otherPersonId, grant, p
             assert.equal(topic.effect, round ? 'QUALIFIED' : 'NEW');
             if (round) {
                 assert.equal(topic.prose, 'Prefers morning catch-ups on weekends.');
+                assert.equal(topic.before, importedV1.topics[0].prose);
+                assert.deepEqual(await lu.readLuRevision(read, destination), importedV1);
                 assert.ok(reviewed.candidate.stageReview.some(panel => panel.stage === 'audit' && panel.attempt === 2));
             }
             await redirectTo(action('decide', source, {decision:'APPROVE',selected:topic.key}, '&candidate='+candidateId));
             const history = (await route.load(event(source))).history;
             assert.ok(history.some(h=>h.group==='self'));
+            const snapshot = await lu.readLuRevision(read, destination);
+            if (!round) {
+                importedV1 = snapshot;
+            } else {
+                const currentTopic = snapshot.topics.find(item => item.topicId === importedV1.topics[0].topicId);
+                assert.ok(currentTopic);
+                assert.equal(snapshot.revisionNumber, importedV1.revisionNumber + 1);
+                assert.deepEqual(await lu.readLuRevision(read, destination, importedV1.revisionNumber), importedV1);
+                const evidence = await route.load(event(source, '&group=self&topic=' + currentTopic.topicId + '&evidence=' + currentTopic.versionId));
+                const quotes = evidence.history[0].topics[0].evidence;
+                assert.ok(quotes.some(quote => quote.link.includes(importedFirst) && quote.quote === 'Mornings are best for me.'));
+                assert.ok(quotes.some(quote => quote.link.includes(source) && quote.quote === 'Only on weekends now.'));
+            }
         }
 	} finally {
 		await browser?.close();

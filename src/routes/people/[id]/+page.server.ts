@@ -1,4 +1,5 @@
-import { conversationSummary, editConversationSummary, listPersonConversations, readPersonConversation } from '$lib/server/foundation/conversations';
+import { randomUUID } from 'node:crypto';
+import { conversationSummary, editConversationSummary, importPersonConversation, InvalidConversationImport, listPersonConversations, readPersonConversation } from '$lib/server/foundation/conversations';
 import { conversationReviewAvailable } from '$lib/server/foundation/luReview';
 import { noteReviewAvailable } from '$lib/server/foundation/noteReview';
 import { peopleDorianAgent } from '$lib/server/integrations/elevenlabs/peopleWebNote';
@@ -36,8 +37,9 @@ export const load: PageServerLoad = async ({ locals, params, url, setHeaders }) 
         selected: conversationId ? await readPersonConversation(access, params.id, conversationId) : null
       };
     });
-    if (conversations.selected) setHeaders({ 'cache-control': 'private, no-store' });
-    return { contact, conversations, transcriptRequested: url?.searchParams.get('transcript') === '1', conversationReviewAvailable: Boolean(url && conversationReviewAvailable(locals, url)), origin: contact.origin, notes: history.notes, nextNote: history.next, foundation: true, dorianAvailable, noteReviewAvailable: Boolean(url && noteReviewAvailable(locals, url)), followup: null };
+    const reviewAvailable = Boolean(url && conversationReviewAvailable(locals, url));
+    if (conversations.selected || reviewAvailable) setHeaders({ 'cache-control': 'private, no-store' });
+    return { contact, conversations, transcriptRequested: url?.searchParams.get('transcript') === '1', conversationReviewAvailable: reviewAvailable, transcriptImport: reviewAvailable ? { id: randomUUID(), utcTime: new Date().toISOString().slice(0, 16) } : null, origin: contact.origin, notes: history.notes, nextNote: history.next, foundation: true, dorianAvailable, noteReviewAvailable: Boolean(url && noteReviewAvailable(locals, url)), followup: null };
   }
   const { context, contact } = await requirePeopleContact(locals, params.id);
   const rows = await prisma.interaction.findMany({ where: { userId: context.workspaceUserId, contextSpaceId: context.contextSpaceId, contactId: contact.id },
@@ -49,6 +51,33 @@ export const load: PageServerLoad = async ({ locals, params, url, setHeaders }) 
 
 // Archive the existing owner-private person. This does not erase related evidence.
 export const actions: Actions = {
+  importTranscript: async ({ locals, params, request, url }) => {
+    if (!locals.user) throw redirect(303, '/auth/login');
+    if (request.headers.get('origin') !== url.origin) throw error(403, 'Submit from My People.');
+    if (!conversationReviewAvailable(locals, url) ||
+        await peopleRouteDomain(locals.user.id, url.pathname) !== 'FOUNDATION')
+      throw error(404, 'Transcript import unavailable.');
+    const fields = await request.formData();
+    const importId = String(fields.get('importId') ?? '');
+    const summary = String(fields.get('summary') ?? '');
+    const utcTime = String(fields.get('utcTime') ?? '');
+    const transcript = String(fields.get('transcript') ?? '');
+    const draft = { summary: summary.slice(0, 20000), utcTime: utcTime.slice(0, 23), transcript: transcript.slice(0, 60000) };
+    const occurredAt = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(utcTime) ? utcTime + ':00Z' : '';
+    let sourceId: string;
+    try {
+      ({ sourceId } = await foundationPage(async () => importPersonConversation(
+        await resolveFoundationAccess(locals, 'SAVE_CONVERSATION'), params.id,
+        { importId, summary, occurredAt, transcript }
+      )));
+    } catch (e) {
+      if (e instanceof InvalidConversationImport) return fail(400, { importError: e.message, importDraft: draft });
+      if (e instanceof FoundationConflict)
+        return fail(409, { importError: 'This form was already used for another transcript. Submit again to save a new transcript.', importDraft: draft });
+      throw e;
+    }
+    throw redirect(303, '/people/' + encodeURIComponent(params.id) + '/notes/' + sourceId + '/review?conversation=1');
+  },
   editNote: async ({ locals, params, request }) => {
     if (!locals.user) throw redirect(303, '/auth/login');
     const fields = await request.formData();

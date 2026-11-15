@@ -113,11 +113,13 @@ export async function runLuAssessmentCases({ load, vite, otherPersonId, grant, p
                 suggestedTopic: 'Catch-up time', impact: 'SIGNIFICANT', reason: "The owner's preferred timing for social contact.", relevantTurnIds: [data.source.turns.find(t=>t.role==='OWNER').id] }],
                 exclusions: data.source.turns.filter(t=>t.role==='OWNER').slice(1).map(t=>({turnId:t.id,reason:'NO_DURABLE_MEANING'})), unresolvedMentions: [] };
         } else if (data.area) {
+            const ownerTurn = data.turns.find(turn => turn.role === 'OWNER');
+            const exactQuote = data.prior ? 'Only on weekends now.' : 'Mornings are best for me.';
             output = { prose: data.prior && data.auditRepair ? 'Prefers morning catch-ups on weekends.' :
                     data.prior ? 'Prefers all catch-ups on weekends.' : 'Prefers mornings for regular catch-ups.',
                 effect: data.prior ? 'QUALIFIED' : 'NEW', timeScope: 'CURRENT', retire: [], meanings: [{
-                    text: data.turns.find(t=>t.role==='OWNER').text, kind: 'PREFERENCE', basis: 'DIRECT_ACCOUNT',
-                    uncertainty: null, confidence: 'HIGH', evidence: [{turnId:data.turns.find(t=>t.role==='OWNER').id,quote:null,role:'SUPPORTS'}]
+                    text: exactQuote, kind: 'PREFERENCE', basis: 'DIRECT_ACCOUNT',
+                    uncertainty: null, confidence: 'HIGH', evidence: [{turnId:ownerTurn.id,quote:exactQuote,role:'SUPPORTS'}]
                 }] };
         } else if (data.areas) {
             // Make the follow-up reject the first draft and verify the revised complete draft.
@@ -533,8 +535,9 @@ export async function runLuAssessmentCases({ load, vite, otherPersonId, grant, p
                 request: new Request(url, { method: 'POST', headers: { origin: requestOrigin }, body: new URLSearchParams(fields) })
             });
         };
+        const firstOwnerTurn = 'Mornings are best for me. Thanks for asking about the catch-ups. We still have time to settle the arrangements next week.';
         const firstFieldsForImport = { importId: randomUUID(), summary: 'Catch-up preferences', utcTime: '2026-11-12T03:00',
-            transcript: 'Context: What time works for you?\nYou: Mornings are best for me.' };
+            transcript: 'Context: What time works for you?\nYou: ' + firstOwnerTurn };
         await assert.rejects(importTranscript(firstFieldsForImport, owner, 'https://wrong.example'), status(403));
         await assert.rejects(importTranscript(firstFieldsForImport, { ...owner, env: 'prod' }), status(404));
         await assert.rejects(importTranscript(firstFieldsForImport, { ...owner, user: { ...owner.user, role: 'member' } }), status(404));
@@ -560,7 +563,7 @@ export async function runLuAssessmentCases({ load, vite, otherPersonId, grant, p
             assert.equal(stored.imported, true);
             assert.equal(stored.sourceVersion, 1);
             assert.equal(stored.turns.at(-1).role, 'OWNER');
-            assert.equal(stored.turns.at(-1).text, round ? 'Only on weekends now.' : 'Mornings are best for me.');
+            assert.equal(stored.turns.at(-1).text, round ? 'Only on weekends now.' : firstOwnerTurn);
             if (!round) assert.equal(stored.turns[0].role, 'UNRESOLVED');
             const initialSelf = await route.load(event(source));
             const fields = { method: 'SELF_TOPICS', sourceVersion: String(initialSelf.conversation.sourceVersion), requestKey: initialSelf.requestKey };
@@ -578,6 +581,19 @@ export async function runLuAssessmentCases({ load, vite, otherPersonId, grant, p
             assert.equal(calls.length, oldCalls);
             const topic = reviewed.candidate.groups[0].topics[0];
             assert.equal(topic.effect, round ? 'QUALIFIED' : 'NEW');
+            assert.equal(reviewed.candidate.sourceVersion, reviewed.conversation.sourceVersion);
+            assert.equal(topic.meanings[0].evidence[0].turnId, stored.turns.at(-1).id);
+            assert.equal(topic.meanings[0].evidence[0].quote, round ? 'Only on weekends now.' : 'Mornings are best for me.');
+            if (browser && !round) {
+                await browser.page.goto(location.href);
+                await browser.page.getByText('Supporting evidence', { exact: true }).click();
+                const quote = browser.page.locator('blockquote').getByText('Mornings are best for me.', { exact: true });
+                const fullTurn = browser.page.locator('blockquote').getByText(firstOwnerTurn, { exact: true });
+                assert.equal(await quote.isVisible(), true);
+                assert.equal(await fullTurn.isVisible(), false);
+                await browser.page.getByText('Read full source turn', { exact: true }).click();
+                assert.equal(await fullTurn.isVisible(), true);
+            }
             if (round) {
                 assert.equal(topic.prose, 'Prefers morning catch-ups on weekends.');
                 assert.equal(topic.before, importedV1.topics[0].prose);

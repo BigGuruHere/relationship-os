@@ -12,7 +12,7 @@ import {
 } from '../livingUnderstanding/contracts';
 import { FoundationDenied } from './internal';
 import { withFoundationAccess, type FoundationAccess } from './policy';
-import { aad, activeSubjects, FoundationConflict, mac, scope, scopedId } from './evidenceRecords';
+import { aad, activeSubjects, dorianLuPerspectiveId, FoundationConflict, mac, scope, scopedId } from './evidenceRecords';
 import { segmentState } from './evidence';
 import { currentConversation } from './conversations';
 import { insertRelationship } from './subjects';
@@ -79,6 +79,15 @@ async function baselineManifest(
 	return { ...destination, revisionId: revision?.id ?? null, topics };
 }
 
+// Keep the contact experiment's self stream separate from the consented Dorian stream.
+function luPerspectiveWhere(access: FoundationAccess) {
+	const dorianId = dorianLuPerspectiveId(access);
+	return {
+		kind: 'OWNER_RECORDED' as const, holderSubjectId: null,
+		id: access.dorian ? dorianId : { not: dorianId }
+	};
+}
+
 async function loadPacket(
 	tx: AppTransactionClient,
 	access: FoundationAccess,
@@ -95,7 +104,7 @@ async function loadPacket(
 	});
 	if (!self) throw new FoundationDenied();
 	const priorPerspective = await tx.foundationPerspective.findFirst({
-		where: { kind: 'OWNER_RECORDED', holderSubjectId: null },
+		where: luPerspectiveWhere(access),
 		orderBy: { id: 'asc' },
 		select: { id: true }
 	});
@@ -103,33 +112,36 @@ async function loadPacket(
 		priorPerspective ??
 		(provision
 			? await tx.foundationPerspective.create({
-					data: { ...scope(access), kind: 'OWNER_RECORDED' },
+					data: {
+						...scope(access), kind: 'OWNER_RECORDED',
+						...(access.dorian ? { id: dorianLuPerspectiveId(access) } : {})
+					},
 					select: { id: true }
 				})
 			: null);
 	if (!perspective) throw new FoundationDenied();
 
-	// Share the private pair reference already used by note review.
-	const relationshipId = scopedId(access, 'note-review-relationship', personId);
-	const relationship = await tx.foundationSubject.findFirst({ where: { id: relationshipId } });
-	if (relationship && (relationship.kind !== 'RELATIONSHIP' || relationship.state !== 'ACTIVE'))
-		throw new FoundationDenied();
-	if (!relationship && provision)
-		await insertRelationship(
-			tx,
-			scope(access),
-			'Our relationship',
-			[self.id, personId],
-			'RELATIONSHIP',
-			relationshipId
-		);
-	else if (!relationship) throw new FoundationDenied();
+	const subjects: SourcePacket['subjects'] = [{ id: self.id, kind: 'PERSON' }];
+	if (self.id !== personId) {
+		// Share the private pair reference already used by note review.
+		const relationshipId = scopedId(access, 'note-review-relationship', personId);
+		const relationship = await tx.foundationSubject.findFirst({ where: { id: relationshipId } });
+		if (relationship && (relationship.kind !== 'RELATIONSHIP' || relationship.state !== 'ACTIVE'))
+			throw new FoundationDenied();
+		if (!relationship && provision)
+			await insertRelationship(
+				tx,
+				scope(access),
+				'Our relationship',
+				[self.id, personId],
+				'RELATIONSHIP',
+				relationshipId
+			);
+		else if (!relationship) throw new FoundationDenied();
 
-	const subjects = [
-		{ id: self.id, kind: 'PERSON' },
-		{ id: personId, kind: 'PERSON' },
-		{ id: relationshipId, kind: 'RELATIONSHIP' }
-	];
+		subjects.push({ id: personId, kind: 'PERSON' }, { id: relationshipId, kind: 'RELATIONSHIP' });
+	}
+
 	const destinations = subjects.map((s) => ({
 		subjectId: s.id,
 		perspectiveId: perspective.id,
@@ -422,7 +434,7 @@ export function storeLuFailedReview(
 				...scope(access), id: failedReview.reference, epoch: access.epoch,
 				sourceId: packet.source.id, sourceVersionId: packet.source.versionId,
 				sourceVersionNumber: packet.source.version, sourceContentMac: packet.source.contentMac,
-				expiresAt: new Date(Date.now() + 60 * 60 * 1000), outcome: 'FAILED',
+				expiresAt: new Date(Date.now() + (access.dorian ? 7 * 24 : 1) * 60 * 60 * 1000), outcome: 'FAILED',
 				proposalEnc: encrypt(JSON.stringify({
 					personId, baselines: packet.baselines, inventoryMac: inventoryMac(access, input.prior),
 					failedReview
@@ -494,7 +506,7 @@ export function storeLuCandidate(
 				sourceVersionNumber: current.source.version,
 				sourceContentMac: current.source.contentMac,
 				epoch: access.epoch,
-				expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+				expiresAt: new Date(Date.now() + (access.dorian ? 7 * 24 : 1) * 60 * 60 * 1000),
 				outcome,
 				proposalEnc: encrypt(
 					JSON.stringify({
@@ -607,6 +619,9 @@ export function approveLuCandidate(
 	binding?: { personId: string; sourceId: string }
 ) {
 	const input = selectionSchema.parse(rawSelection);
+	if (access.dorian && (candidateId !== access.dorian.candidateId ||
+		binding?.sourceId !== access.dorian.sourceId || binding?.personId !== access.dorian.subjectId))
+		throw new FoundationDenied();
 	const selectedKeys = input.selected.map(stableTopicKey).sort();
 	if (
 		new Set(selectedKeys).size !== selectedKeys.length ||
@@ -679,7 +694,7 @@ export function approveLuCandidate(
 				selectionEnc: encrypt(
 					JSON.stringify({
 						actor: access.actorId,
-						method: 'EXPLICIT_OWNER_REVIEW',
+						method: access.dorian ? 'DORIAN_OPERATOR_REVIEW' : 'EXPLICIT_OWNER_REVIEW',
 						decision: input.decision,
 						topics: possible.map((topic) => ({
 							...topic,
@@ -755,6 +770,14 @@ export function approveLuCandidate(
 					});
 			}
 		}
+		// Keep the queue disposition and authorised revision in the same transaction.
+		if (access.dorian) {
+			const changed = await tx.dorianFoundationCall.updateMany({
+				where: { id: access.dorian.id, state: 'READY', candidateId },
+				data: { state: 'REVIEWED' }
+			});
+			if (changed.count !== 1) throw new FoundationConflict();
+		}
 		return { approvalId };
 	});
 }
@@ -824,13 +847,27 @@ export function readLuRevision(
 export const reviewGroups = ['self', 'person', 'relationship'] as const;
 export type ReviewGroup = typeof reviewGroups[number];
 
+export function readDorianContinuity(access: FoundationAccess) {
+	if (!access.dorian) throw new FoundationDenied();
+	return withFoundationAccess(access, 'READ_LU', async (tx) => {
+		const perspective = await tx.foundationPerspective.findFirst({
+			where: luPerspectiveWhere(access), orderBy: { id: 'asc' }
+		});
+		if (!perspective) return [];
+		const snapshot = await readRevision(tx, access, {
+			subjectId: access.dorian!.subjectId, perspectiveId: perspective.id
+		});
+		return (snapshot?.topics ?? []).slice(-12).map(({ title, prose }) => ({ title, prose: prose.slice(0, 600) }));
+	});
+}
+
 export function readPersonLuHistory(
 	access: FoundationAccess, personId: string,
 	selection: { group?: ReviewGroup; revision?: number; topic?: string; evidence?: string }
 ) {
 	return withFoundationAccess(access, 'READ_LU', async (tx) => {
 		const person = await tx.foundationSubject.findFirst({
-			where: { id: personId, kind: 'PERSON', state: 'ACTIVE', selfUserId: null },
+			where: { id: personId, kind: 'PERSON', state: 'ACTIVE', selfUserId: access.dorian ? access.ownerUserId : null },
 			select: { id: true }
 		});
 		if (!person) throw new FoundationDenied();
@@ -839,15 +876,15 @@ export function readPersonLuHistory(
 			select: { id: true }
 		});
 		const perspective = await tx.foundationPerspective.findFirst({
-			where: { kind: 'OWNER_RECORDED', holderSubjectId: null },
+			where: luPerspectiveWhere(access),
 			orderBy: { id: 'asc' }, select: { id: true }
 		});
-		if (!self || !perspective || self.id === personId) return [];
-		const relationship = await tx.foundationSubject.findFirst({
+		if (!self || !perspective) return [];
+		const relationship = access.dorian ? null : await tx.foundationSubject.findFirst({
 			where: { id: scopedId(access, 'note-review-relationship', personId), kind: 'RELATIONSHIP', state: 'ACTIVE' },
 			select: { id: true }
 		});
-		const ids = { self: self.id, person: personId, relationship: relationship?.id };
+		const ids = { self: self.id, person: access.dorian ? null : personId, relationship: relationship?.id };
 		const groups = [];
 		for (const group of reviewGroups) {
 			const subjectId = ids[group];
@@ -891,12 +928,20 @@ async function readTopicEvidence(
 			const binding = source && await tx.foundationSourcePresentationVersion.findFirst({
 				where: { sourceId: source.sourceId, version: 1 }, select: { subjectId: true }
 			});
+			// A prior self conversation may be opened via its own consented review record.
+			const call = access.dorian && source && await tx.dorianFoundationCall.findFirst({
+				where: { sourceId: source.sourceId, ownerUserId: access.ownerUserId, epoch: access.epoch },
+				select: { id: true }
+			});
+			if (access.dorian && !call) continue;
 			evidence.push({
 				quote: decrypt(segment.excerptEnc, aad(access, 'FoundationEvidenceSegment', 'excerptEnc', segment.id)),
 				role: edge.relation,
 				speaker: anchor.speakerRole as string | undefined,
 				origin,
-				link: source && binding
+				link: call ? '/operator/dorian-foundation/' + call.id +
+					(typeof anchor.turnId === 'string' ? '#turn-' + encodeURIComponent(anchor.turnId) : '')
+					: source && binding
 					? '/people/' + binding.subjectId + '?conversation=' + source.sourceId + '&transcript=1#' +
 						(typeof anchor.turnId === 'string' ? 'turn-' + encodeURIComponent(anchor.turnId) : 'conversation-transcript')
 					: null

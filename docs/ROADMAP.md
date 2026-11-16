@@ -67,3 +67,7 @@ The 2026-11-05 production deferral and invited-cohort launch policy are supersed
 ## Immediate LU quality priority (2026-11-15)
 
 Restore and validate topic-first self-understanding on Foundation before extending three-perspective analysis. The first adapter is implemented on `feature/lu-self-topic-workflow`; hosted replay must establish coherent themes, supported depth, attribution and later revision quality on multiple conversations. Additional person/relationship analysis, multi-conversation processing and full structural transformations remain deferred. Three full perspective passes remain a possible experiment. No production activation follows from this stage.
+
+### Dorian browser continuity
+
+Validate Home to browser call, consented background analysis, operator approval and same-account recall in DEV using two ordinary accounts. Use the existing self-topic pipeline. Link inbound telephone calls to Foundation in a subsequent stage. See [browser continuity](foundation/DORIAN_BROWSER_CONTINUITY.md).

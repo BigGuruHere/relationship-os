@@ -21,7 +21,7 @@ function turnCapture(id, date, text) {
 	};
 }
 
-export async function runLuAssessmentCases({ load, vite, otherPersonId, grant, personId, conversations, lu, count }) {
+export async function runLuAssessmentCases({ db, load, vite, otherPersonId, grant, personId, conversations, lu, count }) {
 	const { assessFoundationConversation } = await load('server/foundation/luAssessment');
 	const route = await vite.ssrLoadModule('/src/routes/people/[id]/notes/[noteId]/review/+page.server.ts');
 	const personRoute = await vite.ssrLoadModule('/src/routes/people/[id]/+page.server.ts');
@@ -82,7 +82,9 @@ export async function runLuAssessmentCases({ load, vite, otherPersonId, grant, p
 	).sourceId;
 	const calls = [];
 	const previousFetch = globalThis.fetch;
-	const env = ['DATING_REVISION_MODEL', 'OPENAI_API_KEY', 'RELISH_FOUNDATION_LU_REVIEW', 'APP_ORIGIN_DEV'];
+	const env = ['DATING_REVISION_MODEL', 'OPENAI_API_KEY', 'RELISH_FOUNDATION_LU_REVIEW', 'APP_ORIGIN_DEV',
+		'RELISH_FOUNDATION_DORIAN', 'RELISH_FOUNDATION_DORIAN_AGENT_ID', 'RELISH_FOUNDATION_DORIAN_TOOL_SECRET',
+		'ELEVENLABS_API_KEY'];
 	const previousEnv = Object.fromEntries(env.map((key) => [key, process.env[key]]));
 	let phase = 'initial';
 	let beforeResponse;
@@ -131,7 +133,14 @@ export async function runLuAssessmentCases({ load, vite, otherPersonId, grant, p
         } else if (data.areas) {
             // Make the follow-up reject the first draft and verify the revised complete draft.
             const changed = data.draft.find(topic => topic.topicRef === 'A1');
-            output = changed?.prose === 'Prefers all catch-ups on weekends.'
+            output = phase === 'dorian-held'
+                ? { issues: ['UNSUPPORTED_PROSE', 'OMITTED_MEANING'],
+                    findings: ['Gendered wording is unsupported.', 'The rewrite omitted the supported timing detail.'],
+                    topicRepairs: [
+                        { issue: 'UNSUPPORTED_PROSE', editTopics: ['A1'], instruction: 'Remove unsupported gendered wording.' },
+                        { issue: 'OMITTED_MEANING', editTopics: ['A1'], instruction: 'Retain the supported timing detail.' }
+                    ] }
+                : changed?.prose === 'Prefers all catch-ups on weekends.'
                 ? { issues: ['UNSUPPORTED_PROSE'], findings: ['The wording overstates the timing preference.'],
                     topicRepairs: [{issue:'UNSUPPORTED_PROSE', editTopics:['A1'], instruction:'Keep the prior morning preference and qualify it with weekends.'}] }
                 : { issues: [], findings: [] };
@@ -626,6 +635,98 @@ export async function runLuAssessmentCases({ load, vite, otherPersonId, grant, p
                 assert.ok(quotes.some(quote => quote.link.includes(source) && quote.quote === 'Only on weekends now.'));
             }
         }
+
+		// Exercise the participant launch, durable worker, operator approval and private next-call tool.
+		process.env.RELISH_FOUNDATION_DORIAN = 'YES';
+		process.env.RELISH_FOUNDATION_DORIAN_AGENT_ID = 'synthetic-agent';
+		process.env.RELISH_FOUNDATION_DORIAN_TOOL_SECRET = 'synthetic-tool-secret';
+		process.env.ELEVENLABS_API_KEY = 'synthetic-elevenlabs-key';
+		const callRoute = await vite.ssrLoadModule('/src/routes/dorian/+page.server.ts');
+		const operator = await vite.ssrLoadModule('/src/routes/operator/dorian-foundation/[id]/+page.server.ts');
+		const tool = await vite.ssrLoadModule('/src/routes/api/webhooks/elevenlabs/tools/foundation-memory/+server.ts');
+		const { processDorianFoundationCall } = await load('server/foundation/dorianCalls');
+		const participant = { ...owner, user: { id: 'stranger', role: 'member' } };
+		const launchUrl = new URL('/dorian', origin);
+		async function launch(number, locals = participant, consent = '1') {
+			const conversationId = 'conv_pilot_' + number;
+			const response = await callRoute.actions.start({ locals, url: launchUrl, setHeaders() {},
+				request: new Request(launchUrl, { method: 'POST', headers: { origin },
+					body: new URLSearchParams({ consent }) }),
+				fetch: async () => Response.json({ token: 'synthetic-call-token', conversation_id: conversationId })
+			});
+			return { conversationId, response };
+		}
+		async function memory(conversationId, secret = 'synthetic-tool-secret') {
+			const url = new URL('/api/webhooks/elevenlabs/tools/foundation-memory', origin);
+			return tool.POST({ url, locals: { env: 'dev' }, request: new Request(url, {
+				method: 'POST', headers: { authorization: 'Bearer ' + secret }, body: JSON.stringify({ conversation_id: conversationId })
+			}) });
+		}
+		assert.equal((await launch('missing-consent', participant, '')).response.status, 400);
+		for (const round of [1, 2]) {
+			const { conversationId, response } = await launch(round);
+			assert.deepEqual(Object.keys(response).sort(), ['reference', 'token']);
+			const before = (await (await memory(conversationId)).json()).topics;
+			assert.equal(before.length, round - 1);
+			assert.equal((await memory(conversationId, 'wrong-secret')).status, 401);
+			assert.deepEqual((await (await memory('conv_nonexistent')).json()).topics, []);
+			await db.query('UPDATE "DorianFoundationCall" SET "nextAttemptAt"=CURRENT_TIMESTAMP WHERE "conversationId"=$1', [conversationId]);
+			const quote = round === 1 ? 'Mornings are best for me.' : 'Only on weekends now.';
+			assert.equal(await processDorianFoundationCall(async () => ({
+				conversation_id: conversationId, agent_id: 'synthetic-agent', status: 'done',
+				transcript: [{ role: 'agent', message: 'When do you like to catch up?' }, { role: 'user', message: quote }]
+			})), true);
+			const row = (await db.query('SELECT * FROM "DorianFoundationCall" WHERE "conversationId"=$1', [conversationId])).rows[0];
+			assert.equal(row.state, 'READY');
+			assert.deepEqual((await (await memory(conversationId)).json()).topics, before);
+			const url = new URL('/operator/dorian-foundation/' + row.id + '?candidate=' + row.candidateId, origin);
+			const input = { locals: owner, params: { id: row.id }, url, setHeaders() {} };
+			await assert.rejects(operator.load({ ...input, locals: participant }), status(404));
+			await assert.rejects(conversations.readPersonConversation(await grant('READ_CONVERSATION', 'stranger'),
+				row.subjectId, row.sourceId), /unavailable/);
+			const reviewed = await operator.load(input);
+			assert.deepEqual(reviewed.candidate.groups.map(group => group.group), ['self']);
+			assert.equal(reviewed.history[0]?.revision ?? 0, round - 1);
+			const topic = reviewed.candidate.groups[0].topics[0];
+			assert.equal(topic.meanings[0].evidence[0].quote, quote);
+			if (round === 2) assert.ok(reviewed.candidate.stageReview.some(panel => panel.stage === 'audit' && panel.attempt === 2));
+			await redirectTo(operator.actions.decide({ ...input, request: new Request(url, {
+				method: 'POST', headers: { origin }, body: new URLSearchParams({ decision: 'APPROVE', selected: topic.key })
+			}) }));
+			const approved = await operator.load(input);
+			assert.equal(approved.history[0].revision, round);
+			assert.equal((await (await memory(conversationId)).json()).topics.length, 1);
+			if (round === 2) {
+				const current = approved.history[0].topics[0];
+				url.searchParams.set('evidence', current.versionId);
+				const result = await operator.load(input);
+				assert.ok(result.history[0].topics[0].evidence.some(item => item.quote === 'Mornings are best for me.'));
+				assert.ok(result.history[0].topics[0].evidence.some(item => item.quote === quote));
+			}
+		}
+		const separateCall = await launch(3, owner);
+		assert.deepEqual((await (await memory(separateCall.conversationId)).json()).topics, []);
+
+		// Replay the two v6 audit findings after a repair and keep the approved revision live.
+		phase = 'dorian-held';
+		const heldCall = await launch(4);
+		await db.query('UPDATE "DorianFoundationCall" SET "nextAttemptAt"=CURRENT_TIMESTAMP WHERE "conversationId"=$1',
+			[heldCall.conversationId]);
+		await processDorianFoundationCall(async () => ({
+			conversation_id: heldCall.conversationId, agent_id: 'synthetic-agent', status: 'done',
+			transcript: [{ role: 'agent', message: 'When should we catch up?' }, { role: 'user', message: 'Only on weekends now.' }]
+		}));
+		const heldRow = (await db.query('SELECT * FROM "DorianFoundationCall" WHERE "conversationId"=$1',
+			[heldCall.conversationId])).rows[0];
+		assert.equal(heldRow.state, 'HELD');
+		assert.equal(heldRow.candidateId, null);
+		const heldUrl = new URL('/operator/dorian-foundation/' + heldRow.id, origin);
+		const heldReview = await operator.load({ locals: owner, params: { id: heldRow.id }, url: heldUrl, setHeaders() {} });
+		assert.ok(heldReview.failedReview.stageReview.some(panel => panel.stage === 'audit' && panel.attempt === 2));
+		assert.equal(heldReview.history[0].revision, 2);
+		assert.deepEqual((await (await memory(heldCall.conversationId)).json()).topics,
+			[{ title: 'Catch-up time', prose: 'Prefers morning catch-ups on weekends.' }]);
+
 	} finally {
 		await browser?.close();
 		globalThis.fetch = previousFetch;

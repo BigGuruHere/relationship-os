@@ -6,6 +6,7 @@
   import type { loadConversationLuReview } from '$lib/server/foundation/luReview';
 
   export let data: Awaited<ReturnType<typeof loadConversationLuReview>>;
+  export let operator = false;
   export let form: {
     message?: string;
     draft?: { topic: string; prose: string };
@@ -41,7 +42,7 @@
   }
   $: labels = { self: 'Me', person: 'My view of ' + data.person.name, relationship: 'My view of our relationship' };
   $: base = '?conversation=1' + (data.candidate ? '&candidate=' + data.candidate.id : '');
-  $: back = '/people/' + data.person.id + '?conversation=' + data.conversation.id;
+  $: back = operator ? '/operator/dorian-foundation' : '/people/' + data.person.id + '?conversation=' + data.conversation.id;
   $: draft = form?.draft;
   $: checked = form?.checked ?? [];
   $: reviewAction = '?/decide&' + base.slice(1);
@@ -76,14 +77,14 @@
   }
 
   function speaker(value?: string) {
-    return value === 'OWNER' ? 'You' : value === 'AGENT' ? 'Dorian' : data.conversation.imported ? 'Context' : 'Unknown speaker';
+    return value === 'OWNER' ? (operator ? 'Participant' : 'You') : value === 'AGENT' ? 'Dorian' : data.conversation.imported ? 'Context' : 'Unknown speaker';
   }
 </script>
 
 <section class="container" style="max-width: 48rem">
-  <a href={back}>← Back to {data.person.name}</a>
+  <a href={back}>← Back to {operator ? 'Dorian reviews' : data.person.name}</a>
   <h1>Review for Living Understanding</h1>
-  <p>Your understanding reflects your perspective and stays private to you.</p>
+  <p>{operator ? "Private participant conversation. Review suggested updates before they are used in future calls." : "Your understanding reflects your perspective and stays private to you."}</p>
   <details>
     <summary>{data.conversation.imported ? 'Imported transcript title' : 'Conversation summary'}</summary>
     <p class="text">{data.conversation.summary}</p>
@@ -91,7 +92,7 @@
   <details>
     <summary>Full transcript</summary>
     {#each data.conversation.turns as turn (turn.id)}
-      <p class="text"><strong>{speaker(turn.role)} · {turn.id}</strong> {turn.text}</p>
+      <p class="text" id={operator ? "turn-" + turn.id : undefined}><strong>{speaker(turn.role)} · {turn.id}</strong> {turn.text}</p>
     {/each}
   </details>
   {#if reviewMessage}<p role="alert">{reviewMessage}</p>{/if}
@@ -147,9 +148,9 @@
     <p role="status">This conversation yielded no new updates to Living Understanding.</p>
   {:else if data.candidate}
     <h2>Suggested updates</h2>
-    {#if data.candidate.selfTopics}<p>Topic-first understanding about me</p>{/if}
+    {#if data.candidate.selfTopics}<p>{operator ? 'Understanding about this participant' : 'Topic-first understanding about me'}</p>{/if}
     {#if data.enabled}
-      <p>Select the updates to save. Use Edit wording to validate an edit before selecting it.</p>
+      <p>Select the updates to save.{operator ? '' : ' Use Edit wording to validate an edit before selecting it.'}</p>
       <!-- Separate form owners keep every action usable without JavaScript or nested forms. -->
       <form id="lu-decision" method="POST" action={reviewAction} use:enhance={submit}></form>
     {/if}
@@ -194,14 +195,14 @@
                 <input form="lu-decision" type="checkbox" name="selected" value={topic.key} checked={checked.includes(topic.key)} />
                 Approve {topic.title}
               </label>
-              <details open={draft?.topic === topic.key}>
+              {#if !operator}<details open={draft?.topic === topic.key}>
                 <summary>Edit wording</summary>
                 <form method="POST" action={'?/editProposal&' + base.slice(1)} use:enhance={submit}>
                   <input type="hidden" name="topic" value={topic.key} />
                   <label>Paragraph <textarea name="prose" required maxlength="6500" rows="5" value={draft?.topic === topic.key ? draft.prose : topic.prose}></textarea></label>
                   <button type="submit" class="btn" disabled={busy}>Validate edit</button>
                 </form>
-              </details>
+              </details>{/if}
             {/if}
           </article>
         {/each}
@@ -214,7 +215,7 @@
         <button form="lu-decision" type="submit" class="btn" name="decision" value="REJECT" disabled={busy}>Reject suggestions</button>
       </div>
     {/if}
-  {:else if data.enabled && data.conversation.completeness === 'COMPLETE'}
+  {:else if !operator && data.enabled && data.conversation.completeness === 'COMPLETE'}
     <p>This analysis develops your own Living Understanding using topic discovery, focused topic writing and structural review. You can inspect each stage before approving updates.</p>
     <p>Analysing sends the full transcript and relevant private Living Understanding to OpenAI. You choose what to save.</p>
     <form method="POST" action="?/assessConversation&conversation=1" use:enhance={submit}>
@@ -223,12 +224,12 @@
       <input type="hidden" name="sourceVersion" value={data.conversation.sourceVersion} />
       <button type="submit" class="btn primary" disabled={busy}>{busy ? 'Analysing…' : 'Analyse conversation'}</button>
     </form>
-  {:else if data.enabled}
+  {:else if !operator && data.enabled}
     <p>A complete transcript is required to suggest updates.</p>
   {/if}
   {#if !data.enabled}<p>Conversation review is read-only.</p>{/if}
 
-  {#if data.enabled && data.conversation.completeness === 'COMPLETE'}
+  {#if !operator && data.enabled && data.conversation.completeness === 'COMPLETE'}
     <details open={Boolean(form?.comparison || form?.comparisonMessage)}>
       <summary>Compare writing approaches</summary>
       <p>This DEV preview sends the transcript and relevant private Living Understanding to OpenAI.

@@ -42,7 +42,7 @@ async function reviewContext(event: ReviewEvent) {
 	return foundationPage(() => readPersonConversation(access, params.id, params.noteId));
 }
 
-function proposalView(receipt: Awaited<ReturnType<typeof readLuCandidateForReview>>) {
+export function proposalView(receipt: Awaited<ReturnType<typeof readLuCandidateForReview>>) {
 	const { packet, prior } = receipt.input;
 	return {
 		id: receipt.candidateId,
@@ -138,7 +138,7 @@ function reviewRedirect(url: URL, next: Record<string, string>) {
 	throw redirect(303, url.pathname + '?' + new URLSearchParams({ conversation: '1', ...next }));
 }
 
-function readKey(value: FormDataEntryValue | null) {
+export function readKey(value: FormDataEntryValue | null) {
 	if (typeof value !== 'string' || value.length > 320) return null;
 	try {
 		const [subjectId, perspectiveId, topicKeyValue] = topicKey.parse(JSON.parse(value));

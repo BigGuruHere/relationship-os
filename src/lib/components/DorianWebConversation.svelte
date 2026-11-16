@@ -6,6 +6,7 @@
   export let onFinished: (reference?: string) => void = () => {};
   export let onStarted: () => void = () => {};
   export let disabled = false;
+  export let startFields: Record<string, string> = {};
 
   let session: { endSession: () => Promise<void> } | null = null;
   let activeReference: string | undefined;
@@ -23,9 +24,11 @@
     // Log only the stage and Relish's diagnostic reference, never SDK payloads or errors.
     const report = (reason: string) => console.warn('[Relish Dorian voice test]', { stage, reason, reference });
     try {
+      const body = new FormData();
+      for (const [key, value] of Object.entries(startFields)) body.set(key, value);
       const response = await fetch(action || window.location.href, {
         method: 'POST',
-        body: new FormData(),
+        body,
         headers: { 'x-sveltekit-action': 'true', accept: 'application/json' }
       });
       const result = deserialize(await response.text());

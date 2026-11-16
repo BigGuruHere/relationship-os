@@ -7,7 +7,8 @@ import { join } from 'node:path';
 export async function legacySchemaFixture(schema) {
 	const legacy = schema
 		.replace(/^(model|enum) Foundation\w+ \{[\s\S]*?^\}/gm, '')
-		.replace(/^\s*\w+ Foundation[^\n]+\n/gm, '\n');
+		.replace(/^(model|enum) DorianFoundationCall\w* \{[\s\S]*?^\}/gm, '')
+		.replace(/^\s*\w+ (?:Foundation|DorianFoundationCall)[^\n]+\n/gm, '\n');
 	const legacyModels = [...legacy.matchAll(/^model (\w+) \{/gm)].map((match) => match[1]);
 	const directory = await mkdtemp(join(tmpdir(), 'relish-foundation-'));
 	try {

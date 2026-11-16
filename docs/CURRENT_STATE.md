@@ -332,3 +332,7 @@ PR #15 is merged at `2d6d1a3`. Operator confirmed DEV deployment and migration s
 - Operator chose `npm run start:with-migrations` for Railway development and reports adding it. This existing script runs `prisma migrate deploy && node scripts/start-relish.mjs`. The historical shadow-database replay issue remains unresolved, but does not block the rehearsed deploy workflow. Do not require `migrate dev` for this rollout.
 
 These are operator-reported Neon results, not direct agent database access or a full data-equivalence/schema-drift audit. DEV deployment and application smoke results are operator-reported; exact running SHA and post-deployment parent database counts have not been independently inspected. Retain the snapshot under the agreed retention policy. See [validation details](foundation/F202_INVARIANTS.md).
+
+### Dorian browser continuity
+
+Implemented on `feature/dorian-foundation-continuity` for Development review. The new Home entry runs the existing topic-first assessment after completed consented calls. Operator-approved topics become eligible for Dorian's next browser call. Includes an additive Prisma migration. Hosted configuration and provider acceptance are pending. See [browser continuity](foundation/DORIAN_BROWSER_CONTINUITY.md).

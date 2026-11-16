@@ -3,6 +3,7 @@ import { error, fail, redirect } from '@sveltejs/kit';
 import { z } from 'zod';
 import { prisma } from '$lib/db';
 import { readPersonConversation } from '$lib/server/foundation/conversations';
+import { requeueDorianAnalysis } from '$lib/server/foundation/dorianCalls';
 import { foundationDorianAvailable } from '$lib/server/foundation/dorianCallConfig';
 import { FoundationConflict } from '$lib/server/foundation/evidenceRecords';
 import { FoundationDenied } from '$lib/server/foundation/internal';
@@ -10,7 +11,7 @@ import {
 	approveLuCandidate, readLatestLuFailedReview, readLuCandidateForReview, readPersonLuHistory, stableTopicKey
 } from '$lib/server/foundation/livingUnderstanding';
 import { proposalView, readKey } from '$lib/server/foundation/luReview';
-import { resolveDorianCallAccess, withFoundationAccess } from '$lib/server/foundation/policy';
+import { resolveDorianCallAccess } from '$lib/server/foundation/policy';
 import type { Actions, PageServerLoad } from './$types';
 
 const uuid = z.uuid();
@@ -108,14 +109,7 @@ export const actions: Actions = {
 					});
 				if (valid) return fail(409, { message: 'Review the current suggestions first.' });
 			}
-			await withFoundationAccess(access, 'STORE_LU_CANDIDATE', async (tx) => {
-				const changed = await tx.dorianFoundationCall.updateMany({
-					where: { id: params.id, state: { in: ['FAILED', 'HELD', 'READY'] }, candidateId },
-					data: { state: 'QUEUED', candidateId: null, lease: null, failures: 0,
-						nextAttemptAt: new Date(), runKey: randomUUID() }
-				});
-				if (!changed.count) throw new FoundationConflict();
-			});
+			await requeueDorianAnalysis(access);
 		} catch (cause) {
 			if (cause instanceof FoundationDenied || cause instanceof FoundationConflict)
 				return fail(409, { message: 'This conversation cannot be queued again.' });

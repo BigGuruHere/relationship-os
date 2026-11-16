@@ -96,3 +96,17 @@ export async function processDorianFoundationCall(fetchConversation = fetchEleve
 	}
 	return true;
 }
+
+// Recheck the issued call grant inside the transaction before replacing a queue entry.
+export function requeueDorianAnalysis(access: FoundationAccess) {
+	const call = access.dorian;
+	if (!call?.sourceId) throw new FoundationDenied();
+	return withFoundationAccess(access, 'STORE_LU_CANDIDATE', async (tx) => {
+		const changed = await tx.dorianFoundationCall.updateMany({
+			where: { id: call.id, state: { in: ['FAILED', 'HELD', 'READY'] }, candidateId: call.candidateId },
+			data: { state: 'QUEUED', candidateId: null, lease: null, failures: 0,
+				nextAttemptAt: new Date(), runKey: randomUUID() }
+		});
+		if (!changed.count) throw new FoundationConflict();
+	});
+}

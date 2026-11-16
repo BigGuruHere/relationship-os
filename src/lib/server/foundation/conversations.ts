@@ -57,16 +57,17 @@ const importFields = z.strictObject({
 	transcript: z.string().min(10).max(60000)
 });
 type SummaryOrigin =
-	| { kind: 'HUMAN_AUTHORED' }
+	| { kind: 'HUMAN_AUTHORED' | 'DORIAN_CALL_LABEL' }
 	| {
 			kind: 'MODEL_DRAFTED' | 'HUMAN_EDITED_MODEL_DRAFT';
 			model: string;
 			invocationId: string;
 	  };
 
-async function requirePerson(tx: AppTransactionClient, personId: string) {
+async function requirePerson(tx: AppTransactionClient, personId: string, access?: FoundationAccess) {
+	if (access?.dorian && access.dorian.subjectId !== personId) throw new FoundationDenied();
 	const person = await tx.foundationSubject.findFirst({
-		where: { id: personId, kind: 'PERSON', selfUserId: null, state: 'ACTIVE' },
+		where: { id: personId, kind: 'PERSON', selfUserId: access?.dorian ? access.ownerUserId : null, state: 'ACTIVE' },
 		select: { id: true }
 	});
 	if (!person) throw new FoundationDenied();
@@ -191,9 +192,9 @@ async function appendSummary(
 			summaryEnc: encrypt(summary, aad(access, presentationTable, 'summaryEnc', id)),
 			provenanceEnc: encrypt(
 				JSON.stringify({
-					editorUserId: access.actorId,
+					...(origin.kind === 'DORIAN_CALL_LABEL' ? { service: access.actorId } : { editorUserId: access.actorId }),
 					origin: origin.kind,
-					...(origin.kind !== 'HUMAN_AUTHORED'
+					...('model' in origin
 						? {
 								generator: 'OpenAI',
 								model: origin.model,
@@ -288,6 +289,17 @@ export function importPersonConversation(
 	);
 }
 
+// Reuse capture and source lineage. The presentation label is service-authored.
+export function saveDorianSelfConversation(access: FoundationAccess, rawCapture: CapturedConversation) {
+	const capture = parseCapture(rawCapture);
+	if (!access.dorian || access.dorian.sourceId || capture.binding.provider !== 'ELEVENLABS' ||
+		capture.binding.conversationId !== access.dorian.conversationId || capture.binding.agentId !== access.dorian.agentId)
+		throw new FoundationDenied();
+	const personId = access.dorian.subjectId;
+	return persistConversation(access, personId, capture, 'Talk to Dorian',
+		{ kind: 'DORIAN_CALL_LABEL' }, mac(access, 'dorian-call-save', JSON.stringify(capture.binding)));
+}
+
 function persistConversation(
 	access: FoundationAccess,
 	personId: string,
@@ -297,7 +309,7 @@ function persistConversation(
 	requestMac: string
 ) {
 	return withFoundationAccess(access, 'SAVE_CONVERSATION', async (tx) => {
-		await requirePerson(tx, personId);
+		await requirePerson(tx, personId, access);
 		const replay = await replaySave(tx, access, personId, capture.binding, requestMac);
 		if (replay) return replay;
 		const source = await tx.foundationSource.create({
@@ -307,8 +319,10 @@ function persistConversation(
 				ingestKey: sourceKey(access, capture.binding)
 			}
 		});
-		const version = await appendSourceVersion(tx, access, source.id, capture, 'STORED_ONLY', null, {
-			...(capture.binding.provider === 'OWNER_IMPORT'
+		const version = await appendSourceVersion(tx, access, source.id, capture,
+			access.dorian && capture.completeness === 'COMPLETE' ? 'PRIVATE_ANALYSIS' : 'STORED_ONLY', null, {
+			...(access.dorian ? { capture: 'DORIAN_FOUNDATION_WEB', actor: access.actorId, callId: access.dorian.id } :
+				capture.binding.provider === 'OWNER_IMPORT'
 				? { capture: 'OWNER_IMPORT', actor: access.actorId }
 				: { capture: 'DORIAN_WEB' })
 		});
@@ -323,7 +337,8 @@ export async function currentConversation(
 	personId: string,
 	sourceId: string
 ) {
-	await requirePerson(tx, personId);
+	await requirePerson(tx, personId, access);
+	if (access.dorian && access.dorian.sourceId !== sourceId) throw new FoundationDenied();
 	const saved = await tx.foundationSourcePresentationVersion.findFirst({
 		where: { sourceId, subjectId: personId, version: 1 },
 		select: { id: true }

@@ -379,6 +379,8 @@ export function eraseFoundationPrivacy(ownerUserId: string) {
 				// Remove links before parents and all versions in each lineage in one SQL
 				// statement. Composite custody FKs prevent touching a second account.
 				let erasedRows = exchangeRows + (await tx.foundationContextAssociation.deleteMany()).count;
+				// The scheduler stores metadata outside the private graph. Erase it under the same account lock.
+				erasedRows += (await tx.dorianFoundationCall.deleteMany({ where: { ownerUserId } })).count;
 				erasedRows += (await tx.foundationLuRevisionTopic.deleteMany()).count;
 				erasedRows += (await tx.foundationLuTopicMeaning.deleteMany()).count;
 				erasedRows += (await tx.foundationLuTopicVersion.deleteMany()).count;

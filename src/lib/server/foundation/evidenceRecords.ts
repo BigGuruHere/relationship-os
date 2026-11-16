@@ -42,6 +42,11 @@ export function scopedId(access: Custody, purpose: string, key: string) {
 	].join('-');
 }
 
+// The browser pilot keeps its separately consented understanding in one private perspective.
+export function dorianLuPerspectiveId(access: Custody) {
+	return scopedId(access, 'dorian-lu-perspective', 'self');
+}
+
 export async function recordEvidenceSegment(
 	tx: AppTransactionClient,
 	access: Custody,

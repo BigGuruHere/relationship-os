@@ -6,7 +6,7 @@ import type { AppTransactionClient } from '$lib/db';
 import { FoundationDenied } from './internal';
 import { withFoundationAccess, type FoundationAccess } from './policy';
 import { insertRelationship } from './subjects';
-import { FoundationConflict, scope, mac, aad, activeSubjects, lineage, scopedId, recordEvidenceSegment } from './evidenceRecords';
+import { FoundationConflict, scope, mac, aad, activeSubjects, dorianLuPerspectiveId, lineage, scopedId, recordEvidenceSegment } from './evidenceRecords';
 export { FoundationConflict } from './evidenceRecords';
 
 const id = z.string().min(1).max(200);
@@ -562,7 +562,7 @@ export function approveNoteReview(access: FoundationAccess, personId: string, so
 		});
 		if (!self) throw new FoundationDenied();
 		const existingPerspective = await tx.foundationPerspective.findFirst({
-			where: { kind: 'OWNER_RECORDED', holderSubjectId: null }, orderBy: { id: 'asc' }, select: { id: true }
+			where: { kind: 'OWNER_RECORDED', holderSubjectId: null, id: { not: dorianLuPerspectiveId(access) } }, orderBy: { id: 'asc' }, select: { id: true }
 		});
 		const perspective = existingPerspective ?? await tx.foundationPerspective.create({
 			data: { ...custody, kind: 'OWNER_RECORDED' }, select: { id: true }

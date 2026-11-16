@@ -8,7 +8,6 @@
     <p>Would you like to add a voice note to remember the conversation?</p>
     <div class="followup-actions">
       <a class="btn primary" href={'/people/' + data.contact.id + '/notes/new?afterExchange=1'}>Create Voice Note</a>
-      {#if data.dorianAvailable}<a class="btn" href={'/people/' + data.contact.id + '/notes/dorian'}>Talk to Dorian</a>{/if}
       <a class="btn" href="/">Not Now</a>
     </div>
   </section>
@@ -17,7 +16,6 @@
 {#if data.contact.email}<p><a href={'mailto:' + data.contact.email}>{data.contact.email}</a></p>{/if}
 {#if data.contact.phone}<p><a href={'tel:' + data.contact.phone}>{data.contact.phone}</a></p>{/if}
 <a class="btn primary" href={'/people/' + data.contact.id + '/notes/new'}>Record voice note / Add note</a>
-{#if data.dorianAvailable}<a class="btn" href={'/people/' + data.contact.id + '/notes/dorian'}>Talk to Dorian</a>{/if}
 <p class="muted">Your private observations. You choose which suggestions to save to Living Understanding.</p>
 {#if data.transcriptImport}
   <details class="transcript-import" open={Boolean(form?.importError)}>

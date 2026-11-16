@@ -212,7 +212,7 @@ const entryRelations = new Set(
 		.filter((m) => !m.name.startsWith('Foundation'))
 		.flatMap((m) =>
 			m.fields
-				.filter((f) => f.kind === 'object' && f.type.startsWith('Foundation'))
+				.filter((f) => f.kind === 'object' && (f.type.startsWith('Foundation') || f.type === 'DorianFoundationCall'))
 				.map((f) => f.name)
 		)
 );

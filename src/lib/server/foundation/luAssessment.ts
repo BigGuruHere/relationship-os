@@ -15,7 +15,7 @@ import {
 	type AssessmentTrace,
 	type AssessmentStagePanel
 } from '../livingUnderstanding/semanticAssessment';
-import { resolveFoundationAccess } from './policy';
+import { resolveFoundationAccess, type FoundationAccess } from './policy';
 import {
 	prepareLuAssessment,
 	readLuCandidateForReview,
@@ -81,10 +81,23 @@ export async function assessFoundationConversation(
 	requestKey: string,
 	options: { signal?: AbortSignal; sourceVersionId?: string; trace?: AssessmentTrace; stageReview?: AssessmentStagePanel[]; failureReference?: string; method?: 'SELF_TOPICS' } = {}
 ) {
-	const { signal } = options;
-	signal?.throwIfAborted();
 	const prepare = await resolveFoundationAccess(locals, 'PREPARE_LU');
 	const store = await resolveFoundationAccess(locals, 'STORE_LU_CANDIDATE');
+	return runFoundationConversationAssessment(prepare, store, personId, sourceId, requestKey, options);
+}
+
+// Both entry points run the same assessor and candidate writer under issued authority.
+export async function runFoundationConversationAssessment(
+	prepare: FoundationAccess,
+	store: FoundationAccess,
+	personId: string,
+	sourceId: string,
+	requestKey: string,
+	options: Parameters<typeof assessFoundationConversation>[4]
+) {
+	options ??= {};
+	const { signal } = options;
+	signal?.throwIfAborted();
 	const input = await prepareLuAssessment(prepare, personId, sourceId);
 	if (options.sourceVersionId && input.packet.source.versionId !== options.sourceVersionId)
 		throw new FoundationConflict();

@@ -1,4 +1,8 @@
 <!-- IT: Reuse the existing workspace tile styles for a simple, context-neutral landing page. -->
+<script lang="ts">
+  import type { PageData } from "./$types";
+  export let data: PageData;
+</script>
 <svelte:head><title>Home - Relish</title></svelte:head>
 
 <div class="workspace-page">
@@ -7,6 +11,12 @@
   <p class="workspace-intro">Keep track of the people you meet, remember what matters, and stay connected.</p>
 
   <div class="workspace-tiles">
+    {#if data.dorianAvailable}
+      <a class="workspace-panel workspace-tile" href="/dorian">
+        <h2>Talk to Dorian - to build my network</h2>
+        <p>Explore what matters to you and the connections you’d like to build.</p>
+      </a>
+    {/if}
     <a class="workspace-panel workspace-tile" href="/people">
       <span class="workspace-tile-icon" aria-hidden="true">♧</span>
       <h2>My People</h2>

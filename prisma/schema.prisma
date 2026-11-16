@@ -34,6 +34,7 @@ enum UserRole {
 // - Primary account for a single tenant
 // - Email is stored encrypted at rest with a deterministic HMAC index for equality
 model User {
+  dorianFoundationCalls DorianFoundationCall[]
   accountChannels FoundationAccountChannel[]
   s402Association FoundationAccountAssociation[]
 
@@ -4964,4 +4965,38 @@ model FoundationLuRevisionTopic {
   @@unique([id, ownerUserId, vaultId])
   @@unique([revisionId, topicId])
   @@unique([revisionId, position])
+}
+
+// A launch grants processing and operator review for one browser conversation.
+model DorianFoundationCall {
+  id             String   @id @default(uuid())
+  ownerUserId    String
+  vaultId        String
+  epoch          Int
+  subjectId      String
+  conversationId String   @unique
+  agentId        String
+  consentVersion Int
+  createdAt      DateTime @default(now()) @db.Timestamptz(3)
+  nextAttemptAt  DateTime @default(now()) @db.Timestamptz(3)
+  lease          String?
+  failures       Int      @default(0)
+  runKey         String
+  state          DorianFoundationCallState @default(QUEUED)
+  sourceId       String?
+  candidateId    String?
+  owner          User     @relation(fields: [ownerUserId], references: [id], onDelete: Cascade)
+
+  @@index([state, nextAttemptAt])
+  @@index([ownerUserId, createdAt])
+}
+
+enum DorianFoundationCallState {
+  QUEUED
+  READY
+  NO_CHANGE
+  HELD
+  FAILED
+  INCOMPLETE
+  REVIEWED
 }

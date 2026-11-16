@@ -135,7 +135,7 @@ test(
 					0
 				);
 			} else db = await PGlite.create();
-			await db.exec(`CREATE TABLE "User" (id text PRIMARY KEY, "email_Enc" text);
+			await db.exec(`CREATE TABLE "User" (id text PRIMARY KEY, "email_Enc" text, role text NOT NULL DEFAULT 'member');
 			CREATE TABLE "Profile" (id text PRIMARY KEY, "userId" text NOT NULL REFERENCES "User"(id));
 			INSERT INTO "User"(id) VALUES ('owner'), ('other');`);
 			for (const migration of [
@@ -578,9 +578,10 @@ test(
 				async () => {
 					await db.exec(`INSERT INTO "User"(id) VALUES ('stranger');`);
 					await provision.prepareFoundationAccount('stranger');
+					await db.exec(`UPDATE "User" SET role='owner' WHERE id='other';`);
 					await db.exec(`UPDATE "FoundationEnrollment" SET state='ACTIVE',epoch=epoch+1 WHERE "userId"='stranger';`);
 					await runLuAssessmentCases({
-						load,
+						db, load,
 						vite,
 						otherPersonId: person.id,
 						grant,

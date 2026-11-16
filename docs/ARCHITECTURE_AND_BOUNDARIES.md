@@ -173,3 +173,7 @@ S-403 adds a fixed exchange auth return and encrypted browser continuation. New-
 ## Topic-first self-understanding adapter
 
 On `feature/lu-self-topic-workflow`, the DEV conversation review uses shared legacy semantic-area prompts with Foundation source packets and eligible self-topic baselines. Topic development precedes evidence assertion assembly. Exact anchors, generation provenance, scoped approval and immutable history reuse LUR-2/LUR-3 contracts. No Contact/ContextSpace LU writes or additional persistence system are introduced. Existing other-subject baselines remain unchanged. Analysis-method identity is part of the retry key and stored prompt provenance. The shared structure principles currently diagnose problems rather than moving saved topics automatically. See [LUR-4](foundation/LUR4_OWNER_REVIEW.md).
+
+### Dorian browser continuity
+
+The dedicated DEV browser agent uses a server-issued call record bound to one Foundation account, vault epoch and conversation ID. Post-call processing and temporary operator review derive limited authority from the consented call. The browser pilot uses an independent self perspective with the existing source, audit, evidence and revision repositories. The authenticated ElevenLabs tool reads approved eligible topics for that binding. See [browser continuity](foundation/DORIAN_BROWSER_CONTINUITY.md).

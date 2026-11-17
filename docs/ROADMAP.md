@@ -71,3 +71,7 @@ Restore and validate topic-first self-understanding on Foundation before extendi
 ### Dorian browser continuity
 
 Validate Home to browser call, consented background analysis, operator approval and same-account recall in DEV using two ordinary accounts. Use the existing self-topic pipeline. Link inbound telephone calls to Foundation in a subsequent stage. See [browser continuity](foundation/DORIAN_BROWSER_CONTINUITY.md).
+
+### LU workflow restoration and acceptance (2026-11-17)
+
+The earlier deferral of structural transformations is narrowed by [LUR-5 restoration](foundation/LUR5_WORKFLOW_RESTORATION.md): new draft topic remapping and explicit successive-conversation impact review are implemented on a feature branch. Validate the held product-vision regression and varied multi-call sequences on DEV. Measure supported meaning retention, appropriate no-change results, contradictions, automatic completion and useful next-call continuity before removing routine owner approval. Saved-topic lifecycle restructuring and additional perspectives remain later work.

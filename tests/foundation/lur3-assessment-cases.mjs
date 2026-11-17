@@ -114,6 +114,11 @@ export async function runLuAssessmentCases({ db, load, vite, otherPersonId, gran
             output = { areas: [{ existingTopicId: topicRef, suggestedRealm: 'Friendships',
                 suggestedTopic: 'Catch-up time', impact: 'SIGNIFICANT', reason: "The owner's preferred timing for social contact.", relevantTurnIds: [data.source.turns.find(t=>t.role==='OWNER').id] }],
                 exclusions: data.source.turns.filter(t=>t.role==='OWNER').slice(1).map(t=>({turnId:t.id,reason:'NO_DURABLE_MEANING'})), unresolvedMentions: [] };
+            if (data.prior.length) output.topicEffects = data.prior.map(p => ({
+                existingTopicId: p.existingTopicId, effect: p === existing ? 'QUALIFIED' : 'UNCHANGED',
+                reason: 'The source qualifies the timing preference.',
+                relevantTurnIds: p === existing ? output.areas[0].relevantTurnIds : []
+            }));
         } else if (data.area) {
             const ownerTurn = data.turns.find(turn => turn.role === 'OWNER');
             const exactQuote = data.prior ? 'Only on weekends now.' : 'Mornings are best for me.';
@@ -594,7 +599,7 @@ export async function runLuAssessmentCases({ db, load, vite, otherPersonId, gran
             const reviewed = await route.load(event(source, '&candidate=' + candidateId));
             assert.deepEqual(reviewed.candidate.groups.map(g=>g.group), ['self']);
             assert.ok(reviewed.candidate.stageReview.some(panel =>
-                panel.items[0]?.title === 'Area of understanding: Catch-up time'));
+                panel.items.some(item => item.title === 'Area of understanding: Catch-up time')));
             if (round) assert.ok(reviewed.candidate.stageReview.some(panel =>
                 panel.stage === 'decompose' && panel.reason === 'DISCOVERY_UNKNOWN_TOPIC'));
             const oldCalls = calls.length;

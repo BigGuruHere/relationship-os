@@ -205,3 +205,11 @@ The synthetic regression covers distinct product purposes, an ambiguous reply, a
 Implemented on `feature/lu-automatic-audit-followup`. The v8 self-topic assessment compares the second audit with its earlier repair instructions. If every blocker has an explicit plan for a newly found prose or evidence issue, it repairs the latest affected drafts automatically and checks the full result once more. This uses the existing source scope, audit and overall deadline. Persistent or unplanned findings remain held. The operator retry remains available when replaying a held analysis from its encrypted checkpoint. The browser pilot still requires operator approval to activate understanding. No migration. Rollback restores the earlier repair limit.
 
 Focused cases cover a new omission with the same issue code, held unresolved findings, and the automatic worker path through the approval boundary. A hosted replay of the held product-vision call should verify preservation of the full stated ambition and no claim of an already working capability.
+
+### LUR-5 workflow restoration
+
+| Stage | Status | Acceptance and remaining work |
+| --- | --- | --- |
+| Whole-inventory impact review and draft restructuring | Implemented on `feature/lu-workflow-restoration`, based on `54f17bc1` | Explicit saved-topic effects, reinforcement fidelity, complete draft-assertion mapping and independent audit; synthetic and isolated persistence checks. Hosted product-vision and successive-call replay pending. |
+
+See [workflow restoration](LUR5_WORKFLOW_RESTORATION.md) for reuse decisions, test scope, checkpoint compatibility, DEV acceptance and application-only rollback. No migration, cohort expansion, automatic approval or deployment accompanies this stage. Existing saved-topic identity restructuring remains deferred.

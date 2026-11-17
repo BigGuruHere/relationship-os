@@ -129,8 +129,10 @@ test('initial creation prompt adopts coherent-view overlap philosophy while lega
   const server = fs.readFileSync('src/routes/dating/people/[id]/understanding/revision-experiment/+page.server.ts', 'utf8');
   assert.match(service, /workflowMode === 'INITIAL' \? '8\.14\.0' : '8\.12\.15'/);
   assert.match(service, /Topics are coherent views of a person, not mutually exclusive containers/);
-  assert.match(service, /Repair REDUNDANT_DUPLICATION and ACTUAL_TOPIC_CONTAMINATION/);
-  assert.match(service, /Preserve LEGITIMATE_CROSS_TOPIC_RELEVANCE and SHARED_UNDERLYING_THEME/);
+  const shared = fs.readFileSync('src/lib/server/livingUnderstanding/topicPrompts.ts', 'utf8');
+  assert.match(service, /const overlapContractPrompt = workflowMode === 'INITIAL'[\s\S]*?legitimateTopicOverlapPrinciples,/);
+  assert.match(shared, /Repair REDUNDANT_DUPLICATION and ACTUAL_TOPIC_CONTAMINATION/);
+  assert.match(shared, /Preserve LEGITIMATE_CROSS_TOPIC_RELEVANCE and SHARED_UNDERLYING_THEME/);
   assert.match(server, /initialCreationMode \? 'INITIAL' : 'EXPERIMENT'/);
 });
 

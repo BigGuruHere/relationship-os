@@ -727,6 +727,27 @@ export async function runLuAssessmentCases({ db, load, vite, otherPersonId, gran
 		assert.deepEqual((await (await memory(heldCall.conversationId)).json()).topics,
 			[{ title: 'Catch-up time', prose: 'Prefers morning catch-ups on weekends.' }]);
 
+		assert.equal(heldReview.failedReview.structuralCheckpoint, undefined);
+		const beforeRetry = calls.length;
+		await redirectTo(operator.actions.retry({
+			locals: owner, params: { id: heldRow.id }, url: heldUrl,
+			request: new Request(heldUrl, { method: 'POST', headers: { origin } })
+		}));
+		phase = 'followup';
+		assert.equal(await processDorianFoundationCall(async () => {
+			assert.fail('A structural retry must use the stored transcript.');
+		}), true);
+		const retryRow = (await db.query('SELECT state, "candidateId" FROM "DorianFoundationCall" WHERE id=$1', [heldRow.id])).rows[0];
+		assert.equal(retryRow.state, 'READY');
+		assert.ok(retryRow.candidateId);
+		const retryCalls = calls.slice(beforeRetry);
+		assert.ok(retryCalls[0].data.draft);
+		assert.ok(retryCalls.every(({ data }) => data.draft || data.auditRepair));
+		const retried = await operator.load({ locals: owner, params: { id: heldRow.id }, url: heldUrl, setHeaders() {} });
+		assert.ok(retried.candidate.stageReview.some((panel) =>
+			panel.items.some((item) => item.title === 'Structural review resumed')));
+		assert.equal(retried.history[0].revision, 2);
+
 	} finally {
 		await browser?.close();
 		globalThis.fetch = previousFetch;

@@ -1,4 +1,4 @@
-import { semanticAreaDiscoveryPrompt, semanticAreaWritingPrompt, topicStructurePrinciples } from './livingUnderstanding/topicPrompts';
+import { semanticAreaDiscoveryPrompt, semanticAreaWritingPrompt, topicStructurePrinciples, legitimateTopicOverlapPrinciples } from './livingUnderstanding/topicPrompts';
 import { requiredEnv } from '$lib/server/config/requiredEnv';
 // PURPOSE: Opt-in read-only experiments for topic-aware Living Understanding revision.
 // SECURITY: No claims, summaries, permissions or comparison events are persisted here.
@@ -767,9 +767,7 @@ export async function restructureLivingUnderstandingReadOnly(
   const overlapContractPrompt = workflowMode === 'INITIAL'
     ? [
         'Stage 8.14 principle: Topics are coherent views of a person, not mutually exclusive containers.',
-        'A durable meaning may legitimately inform multiple topics when it has a different explanatory purpose in each. Preserve that legitimate overlap.',
-        'Distinguish REDUNDANT_DUPLICATION, LEGITIMATE_CROSS_TOPIC_RELEVANCE, SHARED_UNDERLYING_THEME and ACTUAL_TOPIC_CONTAMINATION in your reasoning.',
-        'Repair REDUNDANT_DUPLICATION and ACTUAL_TOPIC_CONTAMINATION. Preserve LEGITIMATE_CROSS_TOPIC_RELEVANCE and SHARED_UNDERLYING_THEME when each topic uses the shared meaning for a distinct explanatory purpose.',
+        legitimateTopicOverlapPrinciples,
         'The primaryMeaningUnitRefs field is a canonical provenance/retrieval anchor only. It must not be used to erase legitimate contextual meaning from another topic.',
         'For semanticOverlapGroups, use REDUNDANT_DUPLICATION when substantially the same proposition is unnecessarily repeated for the same purpose. Use LEGITIMATE_CROSS_TOPIC_RELEVANCE when shared meaning performs a different explanatory role in each topic. Use SHARED_UNDERLYING_THEME when a broader theme genuinely recurs across different areas.',
         'Equivalent or redundant duplicate units should normally converge on one canonical anchor. Legitimate cross-topic relevance and shared underlying themes may retain different canonical anchors when each topic has a distinct purpose/context.',

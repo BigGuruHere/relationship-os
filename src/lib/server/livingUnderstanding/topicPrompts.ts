@@ -52,3 +52,10 @@ export const topicStructurePrinciples = [
 	'Preserve uncertainty, historical wording, superseded-state wording, and unresolved conflict exactly in meaning.',
 	'The proposed understanding for each topic may paraphrase for coherence but must contain only meaning already present in the supplied prior understandings.'
 ].join('\n');
+
+// Shared rules for deciding whether two coherent views can retain related meaning.
+export const legitimateTopicOverlapPrinciples = [
+	'A durable meaning may legitimately inform multiple topics when it has a different explanatory purpose in each. Preserve that legitimate overlap.',
+	'Distinguish REDUNDANT_DUPLICATION, LEGITIMATE_CROSS_TOPIC_RELEVANCE, SHARED_UNDERLYING_THEME and ACTUAL_TOPIC_CONTAMINATION in your reasoning.',
+	'Repair REDUNDANT_DUPLICATION and ACTUAL_TOPIC_CONTAMINATION. Preserve LEGITIMATE_CROSS_TOPIC_RELEVANCE and SHARED_UNDERLYING_THEME when each topic uses the shared meaning for a distinct explanatory purpose.',
+].join('\n');

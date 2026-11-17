@@ -336,3 +336,7 @@ These are operator-reported Neon results, not direct agent database access or a 
 ### Dorian browser continuity
 
 Implemented on `feature/dorian-foundation-continuity` for Development review. The new Home entry runs the existing topic-first assessment after completed consented calls. Operator-approved topics become eligible for Dorian's next browser call. Includes an additive Prisma migration. Hosted configuration and provider acceptance are pending. See [browser continuity](foundation/DORIAN_BROWSER_CONTINUITY.md).
+
+### Dorian structural review reprise
+
+Implemented on `feature/lu-structural-repair-resume`. Dorian's Foundation assessment uses the earlier overlap rules to preserve topics with distinct purposes and can merge redundant new draft topics during one bounded repair. A queued browser retry can resume the structural review from an encrypted checkpoint after rechecking the source and prior understanding. See [LUR-5 structural repair](foundation/IMPLEMENTATION_PLAN.md#lur-5-structural-review-reuse). Hosted DEV replay is pending.

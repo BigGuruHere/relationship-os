@@ -1,4 +1,4 @@
-import { assessSelfTopics, isSelfTopicPromptVersion } from '../livingUnderstanding/selfTopicAssessment';
+import { assessSelfTopics, isSelfTopicPromptVersion, type SelfTopicCheckpoint } from '../livingUnderstanding/selfTopicAssessment';
 // Application orchestration for the internal Foundation assessment operation.
 // The review route grants admission and records the owner decision separately.
 import { createHash } from 'node:crypto';
@@ -21,6 +21,7 @@ import {
 	readLuCandidateForReview,
 	stableTopicKey,
 	resumeLuAssessment,
+	resumeLuStructuralReview,
 	storeLuCandidate,
 	storeLuFailedReview,
 	verifyLuAssessment
@@ -105,17 +106,21 @@ export async function runFoundationConversationAssessment(
 	const assessmentKey = options.method === 'SELF_TOPICS' ? 'self-topics:' + requestKey : requestKey;
 	const existing = await resumeLuAssessment(store, personId, input, assessmentKey);
 	if (existing) return { candidateId: existing.candidateId, outcome: existing.outcome };
-	// A bounded repair shares the initial attempt's overall model deadline.
+	// Resume only the consented browser workflow with a compatible server-side checkpoint.
+	const selfTopics = options.method === 'SELF_TOPICS';
+	const checkpoint = selfTopics && store.dorian
+		? await resumeLuStructuralReview(store, personId, input)
+		: undefined;
+	let structuralCheckpoint: SelfTopicCheckpoint | undefined;
+	// A bounded repair shares the attempt's overall model deadline.
 	const assessmentDeadline = AbortSignal.timeout(assessmentTimeoutMs);
-	const assess = options.method === 'SELF_TOPICS' ? assessSelfTopics : assessConversation;
-	const result = await assess(
-		input,
-		privateAssessmentModel(assessmentDeadline),
-		() => verifyLuAssessment(prepare, personId, input),
-		signal,
-		options.trace,
-		options.stageReview
-	).catch(async (cause: unknown) => {
+	const model = privateAssessmentModel(assessmentDeadline);
+	const authorize = () => verifyLuAssessment(prepare, personId, input);
+	const assessment = selfTopics
+		? assessSelfTopics(input, model, authorize, signal, options.trace, options.stageReview,
+			store.dorian ? { checkpoint, save: (value) => { structuralCheckpoint = value; } } : undefined)
+		: assessConversation(input, model, authorize, signal, options.trace, options.stageReview);
+	const result = await assessment.catch(async (cause: unknown) => {
 		if (cause instanceof AssessmentError && options.stageReview?.length) {
 			// Persist under the current transcript and baseline. The failed receipt
 			// is separate from the retry key and cannot be proposed or approved.
@@ -123,7 +128,7 @@ export async function runFoundationConversationAssessment(
 				await storeLuFailedReview(store, personId, input, {
 					reference: options.failureReference, reason: cause.reason,
 					stageReview: options.stageReview, reviewFindings: cause.reviewFindings
-				});
+				}, structuralCheckpoint);
 			} else await verifyLuAssessment(prepare, personId, input);
 		}
 		throw cause;

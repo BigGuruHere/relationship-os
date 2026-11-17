@@ -16,6 +16,7 @@ import { aad, activeSubjects, dorianLuPerspectiveId, FoundationConflict, mac, sc
 import { segmentState } from './evidence';
 import { currentConversation } from './conversations';
 import { insertRelationship } from './subjects';
+import type { SelfTopicCheckpoint } from '../livingUnderstanding/selfTopicAssessment';
 import type {
 	AssessmentInput,
 	AssessmentProvenance,
@@ -423,7 +424,8 @@ type FailedReview = {
 };
 
 export function storeLuFailedReview(
-	access: FoundationAccess, personId: string, input: AssessmentInput, failedReview: FailedReview
+	access: FoundationAccess, personId: string, input: AssessmentInput, failedReview: FailedReview,
+	structuralCheckpoint?: SelfTopicCheckpoint
 ) {
 	return withFoundationAccess(access, 'STORE_LU_CANDIDATE', async (tx) => {
 		const packet = await loadPacket(tx, access, personId, input.packet.source.id, false);
@@ -437,14 +439,20 @@ export function storeLuFailedReview(
 				expiresAt: new Date(Date.now() + (access.dorian ? 7 * 24 : 1) * 60 * 60 * 1000), outcome: 'FAILED',
 				proposalEnc: encrypt(JSON.stringify({
 					personId, baselines: packet.baselines, inventoryMac: inventoryMac(access, input.prior),
-					failedReview
+					failedReview,
+					...(structuralCheckpoint ? { structuralCheckpoint } : {})
 				}), aad(access, candidateTable, 'proposalEnc', failedReview.reference))
 			}
 		});
 	});
 }
 
-export function readLatestLuFailedReview(
+type StoredLuFailure = {
+	failedReview: FailedReview;
+	structuralCheckpoint?: SelfTopicCheckpoint;
+};
+
+function readLatestLuFailure(
 	access: FoundationAccess, personId: string, sourceId: string, sourceVersion: number
 ) {
 	return withFoundationAccess(access, 'STORE_LU_CANDIDATE', async (tx) => {
@@ -462,8 +470,22 @@ export function readLatestLuFailedReview(
 			JSON.stringify(stored.baselines) !== JSON.stringify(packet.baselines) ||
 			stored.inventoryMac !== inventoryMac(access, await loadAssessmentPrior(tx, access, packet)))
 			return null;
-		return stored.failedReview as FailedReview;
+		return stored as StoredLuFailure;
 	});
+}
+
+export async function readLatestLuFailedReview(
+	access: FoundationAccess, personId: string, sourceId: string, sourceVersion: number
+) {
+	const stored = await readLatestLuFailure(access, personId, sourceId, sourceVersion);
+	// The checkpoint is internal. Operator pages receive only the review preview.
+	return stored?.failedReview ?? null;
+}
+
+export async function resumeLuStructuralReview(access: FoundationAccess, personId: string, input: AssessmentInput) {
+	const { id, version } = input.packet.source;
+	const stored = await readLatestLuFailure(access, personId, id, version);
+	return stored?.structuralCheckpoint;
 }
 
 // The caller is the server-side assessor. A supplied packet never substitutes for

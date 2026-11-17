@@ -586,3 +586,73 @@ test('topic drafting grounds separate exact excerpts and falls back when the pro
 	);
 	assert.equal(audit.meanings[1].evidence[0].quote, null);
 });
+
+test('structural repair merges a redundant draft while preserving related topics and source evidence', async () => {
+	const input = fixture([
+		['owner', 'I am developing a contact tool that lets people save details and exchange them back.'],
+		['agent', 'Which aspect feels most exciting or challenging?'],
+		['owner', 'The contact exchange.'],
+		['owner', 'Eventually I want the contact tool and my conversational assistant to work as one system.'],
+		['owner', 'I am building the assistant to understand what people want and who they want to meet.']
+	]);
+	const { model, calls } = modelFor(input, {
+		change({ request, data, output }) {
+			if (request.stage === 'decompose') {
+				output.areas = [
+					area('Contact exchange tool', ['T0']),
+					area('Current work focus', ['T2']),
+					area('Combined system vision', ['T3']),
+					area('Conversational assistant', ['T4'])
+				];
+				output.exclusions = [];
+			}
+			if (data.auditRepair?.mergedDrafts) {
+				assert.deepEqual(data.allowedCitations.owner, ['T0', 'T2']);
+				assert.deepEqual(data.allowedCitations.contextOnly, ['T1']);
+				assert.equal(data.auditRepair.mergedDrafts.length, 2);
+				output.prose = 'The owner is developing a tool to save and reciprocally share contact details. They selected contact exchange when asked what felt most exciting or challenging.';
+				output.meanings.push(meaning('They selected contact exchange in reply to that question.', 'T2'));
+				output.meanings.at(-1).evidence.push({ turnId: 'T1', quote: null, role: 'CONTEXT' });
+			}
+			if (request.stage !== 'audit') return;
+			if (!data.mergedFrom) {
+				output.issues = ['DUPLICATE_TOPIC', 'UNSUPPORTED_PROSE'];
+				output.findings = ['Keep the answer with the contact topic and preserve what the question asked.'];
+				output.topicMerge = { keep: 'A1', absorb: ['A2'], instruction: 'Combine the contact tool with the answer about it.' };
+				output.topicRepairs = [{ issue: 'UNSUPPORTED_PROSE', editTopics: ['A1'], instruction: 'Avoid inferring how the owner allocates time.' }];
+			} else {
+				assert.deepEqual(data.draft.map((topic) => topic.topicRef), ['A1', 'A3', 'A4']);
+				assert.equal(data.mergedFrom.length, 2);
+			}
+		}
+	});
+	const result = await assessSelfTopics(input, model, allow);
+	assert.deepEqual(result.candidate.streams[0].topics.map((topic) => topic.title),
+		['Contact exchange tool', 'Combined system vision', 'Conversational assistant']);
+	assert.equal(calls.filter((call) => call.data.auditRepair).length, 1);
+	assert.ok(result.candidate.meanings.some((claim) =>
+		claim.evidence.some((citation) => citation.turnId === 'T2' && citation.role === 'SUPPORTS') &&
+		claim.evidence.some((citation) => citation.turnId === 'T1' && citation.role === 'CONTEXT')));
+});
+
+test('a held structural review resumes without repeating successful discovery and writing', async () => {
+	const input = fixture();
+	let checkpoint;
+	const held = modelFor(input, {
+		change({ request, output }) {
+			if (request.stage === 'audit') output.issues = ['MISATTRIBUTION'];
+		}
+	});
+	await assert.rejects(assessSelfTopics(input, held.model, allow, undefined, undefined, [], {
+		save(value) { checkpoint = JSON.parse(JSON.stringify(value)); }
+	}), /MISATTRIBUTION/);
+	assert.ok(checkpoint);
+	const resumed = modelFor(input);
+	const result = await assessSelfTopics(input, resumed.model, allow, undefined, undefined, [], {
+		checkpoint, save() {}
+	});
+	assert.deepEqual(resumed.calls.map((call) => call.stage), ['audit']);
+	assert.deepEqual(result.provenance.invocations.map((call) => call.stage), ['decompose', 'compose', 'compose', 'audit']);
+	assert.ok(result.provenance.stageReview.some((panel) =>
+		panel.items.some((item) => item.title === 'Structural review resumed')));
+});

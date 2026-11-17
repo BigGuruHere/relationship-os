@@ -653,7 +653,10 @@ export async function runLuAssessmentCases({ db, load, vite, otherPersonId, gran
 		process.env.RELISH_FOUNDATION_DORIAN_AGENT_ID = 'synthetic-agent';
 		process.env.RELISH_FOUNDATION_DORIAN_TOOL_SECRET = 'synthetic-tool-secret';
 		process.env.ELEVENLABS_API_KEY = 'synthetic-elevenlabs-key';
-		process.env.APP_ORIGIN = origin;
+		// The Chromium fixture serves HTTP on localhost. The current published
+		// legal policy still uses the deployment's canonical HTTPS origin.
+		const policyOrigin = 'https://dev.relish.live';
+		process.env.APP_ORIGIN = policyOrigin;
 		process.env.RELISH_LEGAL_DOCUMENTS_PUBLISHED = 'YES';
 		process.env.RELISH_PILOT_TERMS_VERSION = 'fixture-v1';
 		process.env.RELISH_PILOT_CONVERSATIONAL_TERMS = 'YES';
@@ -687,7 +690,7 @@ export async function runLuAssessmentCases({ db, load, vite, otherPersonId, gran
 		await db.query(`INSERT INTO "RelishCallPolicyAcceptance"
 			(id, "userId", "policyVersion", "termsUrl", "privacyUrl", "sessionId", "conversationId", method)
 			VALUES ('voice-fixture', $1, 'fixture-v1', $2, $3, 'phone-fixture', 'conv_phone_fixture', 'VOICE_EXPLICIT')`,
-			[owner.user.id, origin + '/legal/terms', origin + '/legal/privacy']);
+			[owner.user.id, policyOrigin + '/legal/terms', policyOrigin + '/legal/privacy']);
 		assert.equal((await termsState(owner)).accepted, true);
 		assert.equal((await termsState(participant)).accepted, false);
 		for (const round of [1, 2]) {

@@ -139,6 +139,7 @@ test(
 			CREATE TABLE "Profile" (id text PRIMARY KEY, "userId" text NOT NULL REFERENCES "User"(id));
 			INSERT INTO "User"(id) VALUES ('owner'), ('other');`);
 			for (const migration of [
+				'20261026170000_stage8_19_first_contact_policy',
 				'20261104010000_f202_foundation_schema',
 				'20261107010000_s402_exchange_claims',
 				'20261107020000_s402b_exchange_service',

@@ -1,6 +1,6 @@
 <!-- PURPOSE: simple register form that immediately signs in -->
 <script lang="ts">
-    export let data: { next: string | null; draft?: { email: string } | null };
+    export let data: { next: string | null; fromSharedDetails?: boolean; draft?: { email: string } | null };
     export let form;
   </script>
 
@@ -35,6 +35,11 @@
       <p style="color:var(--muted); margin-top:14px; font-size:0.95rem;">
         Already have an account? <a href={data.next ? '/auth/login?next=' + encodeURIComponent(data.next) : '/auth/login'}>Sign in</a>
       </p>
+      {#if data.fromSharedDetails}
+        <p style="color:var(--muted); margin-top:14px; font-size:0.95rem;">
+          If you create an account, we’ll ask you to confirm the mobile number you shared, or your email if you only shared an email. Creating an account is optional.
+        </p>
+      {/if}
     </div>
   </div>
 

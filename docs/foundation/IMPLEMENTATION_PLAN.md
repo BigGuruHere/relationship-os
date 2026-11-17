@@ -213,3 +213,7 @@ Focused cases cover a new omission with the same issue code, held unresolved fin
 | Whole-inventory impact review and draft restructuring | Implemented on `feature/lu-workflow-restoration`, based on `54f17bc1` | Explicit saved-topic effects, reinforcement fidelity, complete draft-assertion mapping and independent audit; synthetic and isolated persistence checks. Hosted product-vision and successive-call replay pending. |
 
 See [workflow restoration](LUR5_WORKFLOW_RESTORATION.md) for reuse decisions, test scope, checkpoint compatibility, DEV acceptance and application-only rollback. No migration, cohort expansion, automatic approval or deployment accompanies this stage. Existing saved-topic identity restructuring remains deferred.
+
+### LUR-5 Dorian entry and shared policy acceptance
+
+Implemented on `feature/dorian-home-and-shared-terms`. Browser and voice reuse current policy acceptance for the same account. Isolated checks exercise reuse in both directions, a later browser session, account separation, stale terms, and cross-origin rejection. The legacy inbound phone path uses provisional caller identities. Hosted browser and QR signup acceptance remain pending. Revert the application changes to roll back. No migration, cohort change or deployment accompanies this stage. See [browser continuity](DORIAN_BROWSER_CONTINUITY.md).

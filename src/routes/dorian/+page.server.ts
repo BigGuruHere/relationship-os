@@ -1,5 +1,6 @@
 import { error, fail } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
+import { callerHasAcceptedCurrentTerms, currentRelishPolicy, recordRelishBrowserPolicyAcceptance } from '$lib/server/core/relishCallPolicy';
 import { accountDomain } from '$lib/server/foundation/provisioning';
 import { foundationDorianAgent, foundationDorianAvailable } from '$lib/server/foundation/dorianCallConfig';
 import { registerDorianCall } from '$lib/server/foundation/dorianCalls';
@@ -17,7 +18,11 @@ async function requireDorian(locals: App.Locals, url: URL) {
 export const load: PageServerLoad = async ({ locals, url, setHeaders }) => {
 	await requireDorian(locals, url);
 	setHeaders({ 'cache-control': 'private, no-store' });
-	return {};
+	const policy = currentRelishPolicy();
+	return {
+		policyVersion: policy.valid ? policy.version : null,
+		accepted: await callerHasAcceptedCurrentTerms(locals.user!.id, policy)
+	};
 };
 
 export const actions: Actions = {
@@ -25,13 +30,25 @@ export const actions: Actions = {
 		const agentId = await requireDorian(locals, url);
 		setHeaders({ 'cache-control': 'private, no-store' });
 		if (request.headers.get('origin') !== url.origin) throw error(403, 'Submit from the Dorian page.');
-		if ((await request.formData()).get('consent') !== '1')
-			return fail(400, { error: 'Please agree to the conversation terms to continue.' });
+		const policy = currentRelishPolicy();
+		if (!policy.valid) return fail(503, { error: 'Dorian is temporarily unavailable.' });
+		const userId = locals.user!.id;
 		try {
+			const accepted = await callerHasAcceptedCurrentTerms(userId, policy);
+			if (!accepted) {
+				const form = await request.formData();
+				// The form must refer to the version shown when the participant agreed.
+				if (form.get('consent') !== '1' || form.get('policyVersion') !== policy.version)
+					return fail(400, { error: 'Please refresh the page and agree to the current terms to continue.' });
+				if (!locals.sessionId) return fail(403, { error: 'Sign in again to accept the terms.' });
+			}
 			const access = await resolveFoundationAccess(locals, 'READ');
 			const issued = await issueDorianWebToken(agentId, fetch);
 			if (!('token' in issued)) return issued;
 			if (!issued.conversationId) return fail(502, { error: 'Dorian could not start the conversation.' });
+			if (!accepted) await recordRelishBrowserPolicyAcceptance(policy, {
+				userId, authSessionId: locals.sessionId!, conversationId: issued.conversationId
+			});
 			// Store the provider binding and consent before releasing the token to the browser.
 			await registerDorianCall(access, agentId, issued.conversationId);
 			return { token: issued.token, reference: issued.reference };

@@ -13,8 +13,15 @@
   <div class="workspace-tiles">
     {#if data.dorianAvailable}
       <a class="workspace-panel workspace-tile" href="/dorian">
+        <span class="workspace-tile-icon" aria-hidden="true">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="9" y="3" width="6" height="12" rx="3" />
+            <path d="M5 11a7 7 0 0 0 14 0M12 18v3m-3 0h6" />
+          </svg>
+        </span>
         <h2>Talk to Dorian - to build my network</h2>
         <p>Explore what matters to you and the connections you’d like to build.</p>
+        <span class="workspace-tile-action">Start a conversation →</span>
       </a>
     {/if}
     <a class="workspace-panel workspace-tile" href="/people">

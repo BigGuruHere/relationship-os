@@ -1,5 +1,5 @@
 import { provisionNewFoundationAccount } from '$lib/server/foundation/provisioning';
-import { EXCHANGE_RETURN, exchangeAuthReturn, startExchangeAfterAuth } from '$lib/server/exchangeOnboarding';
+import { EXCHANGE_RETURN, exchangeAuthReturn, readExchange, startExchangeAfterAuth } from '$lib/server/exchangeOnboarding';
 // src/routes/auth/register/+page.server.ts
 // PURPOSE: create a user and immediately sign in
 // NOTES:
@@ -24,7 +24,11 @@ export const load: PageServerLoad = async ({ locals, url, cookies, setHeaders })
   if (locals.user) throw redirect(303, profileReturnForAccount(cookies, next, locals.user.id));
   // SECURITY: Draft data stays out of URLs and shared caches; it proves no identity.
   setHeaders({ 'cache-control': 'private, no-store', 'referrer-policy': 'same-origin' });
-  return { next, draft: (next === PROFILE_ONBOARDING_RETURN || next === EXCHANGE_RETURN || next === '/people') ? readProfileDraft(cookies) : null };
+  return {
+    next,
+    draft: (next === PROFILE_ONBOARDING_RETURN || next === EXCHANGE_RETURN || next === '/people') ? readProfileDraft(cookies) : null,
+    fromSharedDetails: next === EXCHANGE_RETURN && readExchange(cookies)?.version === 2
+  };
 };
 
 export const actions: Actions = {

@@ -12,7 +12,7 @@ type DorianBinding = { id: string; subjectId: string; sourceId: string | null; c
 const dorianOperations = {
 	worker: ['SAVE_CONVERSATION', 'PREPARE_LU', 'STORE_LU_CANDIDATE'],
 	operator: ['READ_CONVERSATION', 'STORE_LU_CANDIDATE', 'APPROVE_LU', 'READ_LU'],
-	launch: ['READ_LU']
+	launch: ['READ_LU', 'READ_CONVERSATION']
 } satisfies Record<DorianGrant['kind'], FoundationOperation[]>;
 // Match capture receipts to the exact shared profile within the owner's vault.
 export function captureProfilePrefix(profileId: string, vaultId: string) {

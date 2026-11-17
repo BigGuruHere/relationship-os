@@ -666,6 +666,8 @@ export async function runLuAssessmentCases({ db, load, vite, otherPersonId, gran
 		const tool = await vite.ssrLoadModule('/src/routes/api/webhooks/elevenlabs/tools/foundation-memory/+server.ts');
 		const { processDorianFoundationCall } = await load('server/foundation/dorianCalls');
 		const participant = { ...owner, sessionId: 'participant-browser-session', user: { id: 'stranger', role: 'member' } };
+		// A private default-profile name personalises only its own account.
+		await db.query('INSERT INTO "Profile" (id, "userId", "displayName", "isDefault") VALUES ($1,$2,$3,true)', ['startup-profile', 'stranger', 'Alex']);
 		const launchUrl = new URL('/dorian', origin);
 		async function launch(number, locals = participant, consent = '', policyVersion = 'fixture-v1', requestOrigin = origin) {
 			const conversationId = 'conv_pilot_' + number;
@@ -706,7 +708,15 @@ export async function runLuAssessmentCases({ db, load, vite, otherPersonId, gran
 			assert.equal((await policyInstructionForCaller(participant.user.id)).accepted, true);
 			assert.equal((await db.query('SELECT method FROM "RelishCallPolicyAcceptance" WHERE "userId"=$1',
 				[participant.user.id])).rows[0].method, 'BROWSER_EXPLICIT');
-			assert.deepEqual(Object.keys(response).sort(), ['reference', 'token']);
+			assert.deepEqual(Object.keys(response).sort(), ['initiation', 'reference', 'token']);
+			assert.equal(response.initiation.dynamicVariables.relish_terms_status, 'ACCEPTED');
+			assert.equal(response.initiation.dynamicVariables.user_name, 'Alex');
+			assert.equal(response.initiation.dynamicVariables.continuity_status, round === 1 ? 'FIRST_SAVED_CALL' : 'RETURNING');
+			assert.equal(JSON.parse(response.initiation.dynamicVariables.living_understanding).length, round - 1);
+			if (round === 2) {
+				assert.match(response.initiation.dynamicVariables.last_call_summary, /Mornings are best for me/);
+				assert.doesNotMatch(response.initiation.dynamicVariables.last_call_summary, /When do you like/);
+			}
 			const before = (await (await memory(conversationId)).json()).topics;
 			assert.equal(before.length, round - 1);
 			assert.equal((await memory(conversationId, 'wrong-secret')).status, 401);
@@ -753,6 +763,8 @@ export async function runLuAssessmentCases({ db, load, vite, otherPersonId, gran
 		await assert.rejects(launch('cross-origin', participant, '', 'fixture-v1', 'https://example.com'), status(403));
 		const separateCall = await launch(3, owner);
 		assert.equal(separateCall.response.token, 'synthetic-call-token');
+		assert.equal(separateCall.response.initiation.dynamicVariables.last_call_summary, '');
+		assert.equal(separateCall.response.initiation.dynamicVariables.living_understanding, '[]');
 		assert.deepEqual((await (await memory(separateCall.conversationId)).json()).topics, []);
 
 		// Replay the two v6 audit findings after a repair and keep the approved revision live.
@@ -814,6 +826,19 @@ export async function runLuAssessmentCases({ db, load, vite, otherPersonId, gran
 		assert.ok(automaticReview.candidate.stageReview.some(panel => panel.stage === 'audit' && panel.attempt === 3));
 		assert.equal(automaticReview.candidate.groups[0].topics[0].prose, 'Now prefers morning catch-ups on weekends.');
 		assert.equal(automaticReview.history[0].revision, 2);
+		// Simulate source withdrawal in this disposable database. Startup must
+		// not turn disabled evidence into a recap or a returning-call assertion.
+		await db.query(`UPDATE "FoundationSource" SET state='DISABLED' WHERE id IN
+			(SELECT "sourceId" FROM "DorianFoundationCall" WHERE "ownerUserId"=$1)`, [participant.user.id]);
+		const withdrawn = await launch('withdrawn');
+		assert.equal(withdrawn.response.initiation.dynamicVariables.last_call_summary, '');
+		assert.equal(withdrawn.response.initiation.dynamicVariables.living_understanding, '[]');
+		const { prepareDorianCall } = await load('server/foundation/dorianCalls');
+		await db.query('UPDATE "DorianFoundationCall" SET "createdAt"=$1 WHERE "conversationId"=$2',
+			[new Date(0), withdrawn.conversationId]);
+		const expired = (await db.query('SELECT id FROM "DorianFoundationCall" WHERE "conversationId"=$1', [withdrawn.conversationId])).rows[0];
+		await assert.rejects(prepareDorianCall(expired.id), /unavailable/);
+
 
 
 	} finally {

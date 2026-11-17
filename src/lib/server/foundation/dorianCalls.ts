@@ -3,11 +3,13 @@ import { prisma } from '$lib/db';
 import { fetchElevenLabsConversation } from '$lib/server/integrations/elevenlabs/conversation';
 import { capturedPeopleConversation } from '$lib/server/integrations/elevenlabs/peopleWebNote';
 import { AssessmentError, type AssessmentStagePanel } from '$lib/server/livingUnderstanding/semanticAssessment';
-import { saveDorianSelfConversation } from './conversations';
+import { readDorianRecentConversation, saveDorianSelfConversation } from './conversations';
 import { dorianConsentVersion, foundationDorianAgent } from './dorianCallConfig';
 import { FoundationConflict } from './evidenceRecords';
 import { FoundationDenied } from './internal';
 import { runFoundationConversationAssessment } from './luAssessment';
+import { readDorianContinuity } from './livingUnderstanding';
+import { foundationCallInitiation } from '../integrations/elevenlabs/foundationCallContext';
 import { resolveDorianCallAccess, withFoundationAccess, type FoundationAccess } from './policy';
 
 export function registerDorianCall(access: FoundationAccess, agentId: string, conversationId: string) {
@@ -18,7 +20,7 @@ export function registerDorianCall(access: FoundationAccess, agentId: string, co
 			where: { selfUserId: access.ownerUserId, kind: 'PERSON', state: 'ACTIVE' }, select: { id: true }
 		});
 		if (!self) throw new FoundationDenied();
-		await tx.dorianFoundationCall.create({
+		return tx.dorianFoundationCall.create({
 			data: {
 				ownerUserId: access.ownerUserId, vaultId: access.vaultId, epoch: access.epoch,
 				subjectId: self.id, conversationId, agentId, consentVersion: dorianConsentVersion,
@@ -109,4 +111,17 @@ export function requeueDorianAnalysis(access: FoundationAccess) {
 		});
 		if (!changed.count) throw new FoundationConflict();
 	});
+}
+
+// Only a server-registered, consented call can select the account and private context.
+export async function prepareDorianCall(id: string) {
+	const access = await resolveDorianCallAccess(id, { kind: 'launch' }, 'READ_LU');
+	const topics = await readDorianContinuity(access);
+	const recent = await readDorianRecentConversation(
+		await resolveDorianCallAccess(id, { kind: 'launch' }, 'READ_CONVERSATION'));
+	const profile = await prisma.profile.findFirst({
+		where: { userId: access.ownerUserId, isDefault: true },
+		select: { displayName: true }, orderBy: { id: 'asc' }
+	});
+	return foundationCallInitiation({ name: profile?.displayName ?? '', topics, ...recent });
 }

@@ -512,3 +512,33 @@ export function reviseConversationSource(
 		return { version: saved.version, id: saved.id };
 	});
 }
+
+// A bounded conversational recap is separate from approved LU. No agent speech,
+// pending candidate prose or rejected analysis is projected into this context.
+export function readDorianRecentConversation(access: FoundationAccess) {
+	if (!access.dorian) throw new FoundationDenied();
+	return withFoundationAccess(access, 'READ_CONVERSATION', async (tx) => {
+		const current = await tx.dorianFoundationCall.findUniqueOrThrow({ where: { id: access.dorian!.id } });
+		const calls = await tx.dorianFoundationCall.findMany({
+			where: { ownerUserId: access.ownerUserId, vaultId: access.vaultId, epoch: access.epoch,
+				subjectId: access.dorian!.subjectId, consentVersion: current.consentVersion,
+				createdAt: { lt: current.createdAt }, sourceId: { not: null } },
+			orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], take: 20
+		});
+		for (const call of calls) {
+			const source = await tx.foundationSource.findFirst({ where: { id: call.sourceId!, state: 'ACTIVE' } });
+			if (!source) continue;
+			// Rebind only inside this checked transaction, using the database-owned
+			// previous call. This object is never issued as a reusable capability.
+			const { version, capture } = await currentConversation(tx,
+				{ ...access, dorian: { ...access.dorian!, sourceId: call.sourceId } },
+				access.dorian!.subjectId, call.sourceId!);
+			if (version.processingAdmission !== 'PRIVATE_ANALYSIS' || capture.completeness !== 'COMPLETE') continue;
+			return { returning: true, lastCallAt: (version.occurredAt ?? version.createdAt).toISOString(),
+				lastCallSummary: 'Participant excerpts from the last saved call (partial recap, not approved LU):\n' +
+					capture.turns.filter(turn => turn.role === 'OWNER').slice(-6)
+						.map(turn => turn.id + ': ' + turn.text.slice(0, 400)).join('\n').slice(0, 1600) };
+		}
+		return { returning: false, lastCallAt: '', lastCallSummary: '' };
+	});
+}

@@ -3,7 +3,7 @@ import type { Actions, PageServerLoad } from './$types';
 import { callerHasAcceptedCurrentTerms, currentRelishPolicy, recordRelishBrowserPolicyAcceptance } from '$lib/server/core/relishCallPolicy';
 import { accountDomain } from '$lib/server/foundation/provisioning';
 import { foundationDorianAgent, foundationDorianAvailable } from '$lib/server/foundation/dorianCallConfig';
-import { registerDorianCall } from '$lib/server/foundation/dorianCalls';
+import { prepareDorianCall, registerDorianCall } from '$lib/server/foundation/dorianCalls';
 import { resolveFoundationAccess } from '$lib/server/foundation/policy';
 import { issueDorianWebToken } from '$lib/server/integrations/elevenlabs/webToken';
 
@@ -50,8 +50,9 @@ export const actions: Actions = {
 				userId, authSessionId: locals.sessionId!, conversationId: issued.conversationId
 			});
 			// Store the provider binding and consent before releasing the token to the browser.
-			await registerDorianCall(access, agentId, issued.conversationId);
-			return { token: issued.token, reference: issued.reference };
+			const call = await registerDorianCall(access, agentId, issued.conversationId);
+			const initiation = await prepareDorianCall(call.id);
+			return { token: issued.token, reference: issued.reference, initiation };
 		} catch {
 			return fail(503, { error: 'Dorian could not start the conversation. Try again.' });
 		}

@@ -352,3 +352,7 @@ Implemented on `feature/lu-workflow-restoration` from Development `54f17bc1`. Th
 ### Dorian entry and QR signup polish
 
 Implemented on `feature/dorian-home-and-shared-terms`. Home uses the same tile layout for Dorian as for the other actions. Browser launches reuse the existing versioned policy record and display a short return greeting for accounts that already accepted. Legacy inbound phone callers still use a separate provisional identity. QR verification guidance appears on the related account creation screen. No Prisma migration. Hosted acceptance is pending.
+
+## Dorian Foundation startup context
+
+`feature/dorian-foundation-call-context` adds a personalised first/returning greeting and bounded startup context to the existing SDK launch: default-profile name, call purpose, accepted terms, approved LU, and a separate partial last-call recap. Legacy flows remain intact. No migration or deployment. Dedicated agent prompt variables and first-message overrides must be configured for hosted acceptance. See [setup and limits](foundation/DORIAN_BROWSER_CONTINUITY.md#foundation-call-startup-context-2026-11-17).

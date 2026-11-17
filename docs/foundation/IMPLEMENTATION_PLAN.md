@@ -217,3 +217,9 @@ See [workflow restoration](LUR5_WORKFLOW_RESTORATION.md) for reuse decisions, te
 ### LUR-5 Dorian entry and shared policy acceptance
 
 Implemented on `feature/dorian-home-and-shared-terms`. Browser and voice reuse current policy acceptance for the same account. Isolated checks exercise reuse in both directions, a later browser session, account separation, stale terms, and cross-origin rejection. The legacy inbound phone path uses provisional caller identities. Hosted browser and QR signup acceptance remain pending. Revert the application changes to roll back. No migration, cohort change or deployment accompanies this stage. See [browser continuity](DORIAN_BROWSER_CONTINUITY.md).
+
+### LUR-5 Foundation startup context
+
+Implemented on `feature/dorian-foundation-call-context`: connect existing SDK initiation to approved Foundation LU and a bounded, separately labelled last-call recap. Preserve legacy engines and provenance. No new migration; rollback the app adapter while retaining stored calls. DEV-only cohort unchanged; no merge/deployment or live agent configuration claimed. See DORIAN_BROWSER_CONTINUITY.md for provider setup and acceptance. Validation results are recorded in the PR.
+
+Local validation: 12 focused projection, legacy compatibility and boundary tests passed; all 8 isolated LUR-2/LUR-3 integration tests passed, including the first/returning call, profile name, account isolation, source withdrawal and expired-launch assertions. `npm run check` passed with zero errors/warnings. Providers were simulated; no live API or database was used.

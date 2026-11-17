@@ -177,3 +177,7 @@ On `feature/lu-self-topic-workflow`, the DEV conversation review uses shared leg
 ### Dorian browser continuity
 
 The dedicated DEV browser agent uses a server-issued call record bound to one Foundation account, vault epoch and conversation ID. Post-call processing and temporary operator review derive limited authority from the consented call. The browser pilot uses an independent self perspective with the existing source, audit, evidence and revision repositories. The authenticated ElevenLabs tool reads approved eligible topics for that binding. See [browser continuity](foundation/DORIAN_BROWSER_CONTINUITY.md).
+
+## Foundation startup projection
+
+Foundation startup uses the existing browser SDK initiation transport with a separate provider projection. A registered call resolves scoped READ_LU and READ_CONVERSATION grants. Previous source reads are limited to the same account, vault, epoch and self subject, with current admission and active source checks. The browser receives its own bounded context but no review UI; no analysis candidate is exposed. Legacy identity, phone and contact-note paths are unchanged.

@@ -676,6 +676,11 @@ export async function runLuAssessmentCases({ db, load, vite, otherPersonId, gran
 			});
 			return { conversationId, response };
 		}
+		// A fixed past deadline keeps the fixture independent of database and worker clock skew.
+		async function makeCallDue(conversationId) {
+			await db.query('UPDATE "DorianFoundationCall" SET "nextAttemptAt"=$1 WHERE "conversationId"=$2',
+				[new Date(0), conversationId]);
+		}
 		async function memory(conversationId, secret = 'synthetic-tool-secret') {
 			const url = new URL('/api/webhooks/elevenlabs/tools/foundation-memory', origin);
 			return tool.POST({ url, locals: { env: 'dev' }, request: new Request(url, {
@@ -706,7 +711,7 @@ export async function runLuAssessmentCases({ db, load, vite, otherPersonId, gran
 			assert.equal(before.length, round - 1);
 			assert.equal((await memory(conversationId, 'wrong-secret')).status, 401);
 			assert.deepEqual((await (await memory('conv_nonexistent')).json()).topics, []);
-			await db.query('UPDATE "DorianFoundationCall" SET "nextAttemptAt"=CURRENT_TIMESTAMP WHERE "conversationId"=$1', [conversationId]);
+			await makeCallDue(conversationId);
 			const quote = round === 1 ? 'Mornings are best for me.' : 'Only on weekends now.';
 			assert.equal(await processDorianFoundationCall(async () => ({
 				conversation_id: conversationId, agent_id: 'synthetic-agent', status: 'done',
@@ -753,8 +758,7 @@ export async function runLuAssessmentCases({ db, load, vite, otherPersonId, gran
 		// Replay the two v6 audit findings after a repair and keep the approved revision live.
 		phase = 'dorian-held';
 		const heldCall = await launch(4);
-		await db.query('UPDATE "DorianFoundationCall" SET "nextAttemptAt"=CURRENT_TIMESTAMP WHERE "conversationId"=$1',
-			[heldCall.conversationId]);
+		await makeCallDue(heldCall.conversationId);
 		await processDorianFoundationCall(async () => ({
 			conversation_id: heldCall.conversationId, agent_id: 'synthetic-agent', status: 'done',
 			transcript: [{ role: 'agent', message: 'When should we catch up?' }, { role: 'user', message: 'Only on weekends now.' }]
@@ -795,8 +799,7 @@ export async function runLuAssessmentCases({ db, load, vite, otherPersonId, gran
 		// can make the repaired topic available to the next Dorian call.
 		phase = 'dorian-auto-follow-up';
 		const automaticCall = await launch(5);
-		await db.query('UPDATE "DorianFoundationCall" SET "nextAttemptAt"=CURRENT_TIMESTAMP WHERE "conversationId"=$1',
-			[automaticCall.conversationId]);
+		await makeCallDue(automaticCall.conversationId);
 		assert.equal(await processDorianFoundationCall(async () => ({
 			conversation_id: automaticCall.conversationId, agent_id: 'synthetic-agent', status: 'done',
 			transcript: [{ role: 'agent', message: 'When works now?' }, { role: 'user', message: 'Only on weekends now.' }]

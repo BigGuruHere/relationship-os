@@ -84,7 +84,8 @@ export async function runLuAssessmentCases({ db, load, vite, otherPersonId, gran
 	const previousFetch = globalThis.fetch;
 	const env = ['DATING_REVISION_MODEL', 'OPENAI_API_KEY', 'RELISH_FOUNDATION_LU_REVIEW', 'APP_ORIGIN_DEV',
 		'RELISH_FOUNDATION_DORIAN', 'RELISH_FOUNDATION_DORIAN_AGENT_ID', 'RELISH_FOUNDATION_DORIAN_TOOL_SECRET',
-		'ELEVENLABS_API_KEY'];
+		'ELEVENLABS_API_KEY', 'APP_ORIGIN', 'RELISH_LEGAL_DOCUMENTS_PUBLISHED',
+		'RELISH_PILOT_TERMS_VERSION', 'RELISH_PILOT_CONVERSATIONAL_TERMS'];
 	const previousEnv = Object.fromEntries(env.map((key) => [key, process.env[key]]));
 	let phase = 'initial';
 	let beforeResponse;
@@ -652,17 +653,22 @@ export async function runLuAssessmentCases({ db, load, vite, otherPersonId, gran
 		process.env.RELISH_FOUNDATION_DORIAN_AGENT_ID = 'synthetic-agent';
 		process.env.RELISH_FOUNDATION_DORIAN_TOOL_SECRET = 'synthetic-tool-secret';
 		process.env.ELEVENLABS_API_KEY = 'synthetic-elevenlabs-key';
+		process.env.APP_ORIGIN = origin;
+		process.env.RELISH_LEGAL_DOCUMENTS_PUBLISHED = 'YES';
+		process.env.RELISH_PILOT_TERMS_VERSION = 'fixture-v1';
+		process.env.RELISH_PILOT_CONVERSATIONAL_TERMS = 'YES';
 		const callRoute = await vite.ssrLoadModule('/src/routes/dorian/+page.server.ts');
+		const { policyInstructionForCaller } = await load('server/core/relishCallPolicy');
 		const operator = await vite.ssrLoadModule('/src/routes/operator/dorian-foundation/[id]/+page.server.ts');
 		const tool = await vite.ssrLoadModule('/src/routes/api/webhooks/elevenlabs/tools/foundation-memory/+server.ts');
 		const { processDorianFoundationCall } = await load('server/foundation/dorianCalls');
-		const participant = { ...owner, user: { id: 'stranger', role: 'member' } };
+		const participant = { ...owner, sessionId: 'participant-browser-session', user: { id: 'stranger', role: 'member' } };
 		const launchUrl = new URL('/dorian', origin);
-		async function launch(number, locals = participant, consent = '1') {
+		async function launch(number, locals = participant, consent = '', policyVersion = 'fixture-v1', requestOrigin = origin) {
 			const conversationId = 'conv_pilot_' + number;
 			const response = await callRoute.actions.start({ locals, url: launchUrl, setHeaders() {},
-				request: new Request(launchUrl, { method: 'POST', headers: { origin },
-					body: new URLSearchParams({ consent }) }),
+				request: new Request(launchUrl, { method: 'POST', headers: { origin: requestOrigin },
+					body: new URLSearchParams({ consent, policyVersion }) }),
 				fetch: async () => Response.json({ token: 'synthetic-call-token', conversation_id: conversationId })
 			});
 			return { conversationId, response };
@@ -674,8 +680,24 @@ export async function runLuAssessmentCases({ db, load, vite, otherPersonId, gran
 			}) });
 		}
 		assert.equal((await launch('missing-consent', participant, '')).response.status, 400);
+		assert.equal((await launch('stale-consent', participant, '1', 'fixture-v0')).response.status, 400);
+		const termsState = locals => callRoute.load({ locals, url: launchUrl, setHeaders() {} });
+		assert.equal((await termsState(participant)).accepted, false);
+		// Seed the exact record made by the voice acceptance tool for a separate account.
+		await db.query(`INSERT INTO "RelishCallPolicyAcceptance"
+			(id, "userId", "policyVersion", "termsUrl", "privacyUrl", "sessionId", "conversationId", method)
+			VALUES ('voice-fixture', $1, 'fixture-v1', $2, $3, 'phone-fixture', 'conv_phone_fixture', 'VOICE_EXPLICIT')`,
+			[owner.user.id, origin + '/legal/terms', origin + '/legal/privacy']);
+		assert.equal((await termsState(owner)).accepted, true);
+		assert.equal((await termsState(participant)).accepted, false);
 		for (const round of [1, 2]) {
-			const { conversationId, response } = await launch(round);
+			const { conversationId, response } = round === 1
+				? await launch(round, participant, '1')
+				: await launch(round, { ...participant, sessionId: 'later-browser-session' });
+			assert.equal((await termsState(participant)).accepted, true);
+			assert.equal((await policyInstructionForCaller(participant.user.id)).accepted, true);
+			assert.equal((await db.query('SELECT method FROM "RelishCallPolicyAcceptance" WHERE "userId"=$1',
+				[participant.user.id])).rows[0].method, 'BROWSER_EXPLICIT');
 			assert.deepEqual(Object.keys(response).sort(), ['reference', 'token']);
 			const before = (await (await memory(conversationId)).json()).topics;
 			assert.equal(before.length, round - 1);
@@ -715,7 +737,14 @@ export async function runLuAssessmentCases({ db, load, vite, otherPersonId, gran
 				assert.ok(result.history[0].topics[0].evidence.some(item => item.quote === quote));
 			}
 		}
+		process.env.RELISH_PILOT_TERMS_VERSION = 'fixture-v2';
+		assert.equal((await termsState(participant)).accepted, false);
+		assert.equal((await policyInstructionForCaller(participant.user.id)).accepted, false);
+		assert.equal((await launch('changed-policy')).response.status, 400);
+		process.env.RELISH_PILOT_TERMS_VERSION = 'fixture-v1';
+		await assert.rejects(launch('cross-origin', participant, '', 'fixture-v1', 'https://example.com'), status(403));
 		const separateCall = await launch(3, owner);
+		assert.equal(separateCall.response.token, 'synthetic-call-token');
 		assert.deepEqual((await (await memory(separateCall.conversationId)).json()).topics, []);
 
 		// Replay the two v6 audit findings after a repair and keep the approved revision live.

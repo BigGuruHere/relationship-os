@@ -348,3 +348,7 @@ Implemented on `feature/lu-automatic-audit-followup`. When re-audit finds new, a
 ### LU workflow restoration (2026-11-17)
 
 Implemented on `feature/lu-workflow-restoration` from Development `54f17bc1`. The v9 self-topic path requires explicit whole-inventory impact dispositions and supports assertion-preserving structural remapping of new drafts with independent re-audit. Reinforcement preserves accepted prose; original drafts remain available through repairs. Older checkpoints regenerate under the new contract. Saved identities, other-perspective analysis and owner approval retain their behaviour. No Prisma migration. Synthetic and isolated persistence validation is recorded in [the stage notes](foundation/LUR5_WORKFLOW_RESTORATION.md); hosted model quality, merge and deployment remain pending.
+
+### Dorian entry and QR signup polish
+
+Implemented on `feature/dorian-home-and-shared-terms`. Home uses the same tile layout for Dorian as for the other actions. Browser launches reuse the existing versioned policy record and display a short return greeting for accounts that already accepted. Legacy inbound phone callers still use a separate provisional identity. QR verification guidance appears on the related account creation screen. No Prisma migration. Hosted acceptance is pending.

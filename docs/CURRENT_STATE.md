@@ -344,3 +344,7 @@ Implemented on `feature/lu-structural-repair-resume`. Dorian's Foundation assess
 ### Automatic LU audit follow-up
 
 Implemented on `feature/lu-automatic-audit-followup`. When re-audit finds new, actionable prose or evidence issues, the worker can make one additional targeted repair in the same analysis and audit the result. Unresolved findings stay held for operator inspection. Operator approval still activates learning in the browser pilot. [Foundation implementation plan](foundation/IMPLEMENTATION_PLAN.md#lur-5-automatic-audit-follow-up)
+
+### LU workflow restoration (2026-11-17)
+
+Implemented on `feature/lu-workflow-restoration` from Development `54f17bc1`. The v9 self-topic path requires explicit whole-inventory impact dispositions and supports assertion-preserving structural remapping of new drafts with independent re-audit. Reinforcement preserves accepted prose; original drafts remain available through repairs. Older checkpoints regenerate under the new contract. Saved identities, other-perspective analysis and owner approval retain their behaviour. No Prisma migration. Synthetic and isolated persistence validation is recorded in [the stage notes](foundation/LUR5_WORKFLOW_RESTORATION.md); hosted model quality, merge and deployment remain pending.

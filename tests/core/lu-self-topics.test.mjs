@@ -80,6 +80,11 @@ function modelFor(input, { change = () => {}, noChange = false } = {}) {
 				meanings: [meaning(turn.text, turn.id)]
 			};
 		} else output = { issues: [], findings: [] };
+		if (request.stage === 'decompose' && data.prior.length)
+			output.topicEffects = data.prior.map((p) => {
+				const a = output.areas.find((a) => a.existingTopicId === p.existingTopicId);
+				return { existingTopicId: p.existingTopicId, effect: a ? 'EXPANDED' : 'UNCHANGED', reason: 'Synthetic impact assessment', relevantTurnIds: a?.relevantTurnIds ?? [] };
+			});
 		change({ request, data, output, calls });
 		return { output, invocationId: 'synthetic-' + calls.length, model: 'synthetic' };
 	};
@@ -647,7 +652,6 @@ test('a held structural review resumes without repeating successful discovery an
 		save(value) { checkpoint = JSON.parse(JSON.stringify(value)); }
 	}), /MISATTRIBUTION/);
 	assert.ok(checkpoint);
-	checkpoint.version = 'foundation-self-topics-v7';
 	const resumed = modelFor(input);
 	const result = await assessSelfTopics(input, resumed.model, allow, undefined, undefined, [], {
 		checkpoint, save() {}
@@ -714,4 +718,189 @@ test('persistent findings are held after the final audit', async () => {
 		(error) => error.reason === 'UNSUPPORTED_PROSE' && error.diagnostic.attempt === 3);
 	assert.equal(calls.filter((call) => call.data.auditRepair).length, 2);
 	assert.equal(auditCount, 3);
+});
+
+// One supported turn contains two independently evolving areas. Mapping retains
+// evidence and original generation metadata while the audit writes new topic prose.
+test('structural mapping splits and reclassifies drafts without losing evidence provenance', async () => {
+ const input = fixture();
+ let audits = 0;
+ const { model, calls } = modelFor(input, { change({ request, data, output }) {
+  if (request.stage === 'compose' && data.area.title === 'Mentorship and reconnection') {
+   output.meanings = [meaning('Sam was my mentor and felt like a father to me.', 'T1'), meaning('I hope to stay in touch with his family.', 'T1')];
+  }
+  if (request.stage === 'audit' && ++audits === 1) {
+   output.issues = ['DUPLICATE_TOPIC'];
+   output.topicRestructure = [
+    { title: 'Mentorship', realm: 'Personal history', prose: 'Sam was my mentor and felt like a father to me.', timeScope: 'HISTORICAL', meaningRefs: ['A1M1'] },
+    { title: 'Reconnecting with family', realm: 'Connections', prose: 'Meeting his family again felt meaningful. I hope to stay in touch.', timeScope: 'CURRENT', meaningRefs: ['A1M2'] },
+    { title: 'Supporting my daughter', realm: 'Family', prose: 'My daughter is applying to music colleges. I want to understand her options so I can support her.', timeScope: 'CURRENT', meaningRefs: ['A2M1'] }
+   ];
+  }
+ }});
+ const result = await assessSelfTopics(input, model, allow);
+ assert.equal(audits, 2);
+ assert.equal(result.candidate.streams[0].topics.length, 3);
+ assert.equal(result.candidate.meanings.length, 3);
+ assert.deepEqual(result.candidate.meanings.map(m => m.generation.invocationId), ['synthetic-2', 'synthetic-2', 'synthetic-3']);
+ assert.ok(result.candidate.meanings.every(m => m.evidence.length));
+ assert.equal(calls.at(-1).data.preservationDrafts.length, 2);
+ assert.equal(calls.at(-1).data.mergedFrom.length, 2);
+});
+
+test('structural mapping rejects missing, duplicate and invented meaning references', async () => {
+ for (const refs of [['A1M1'], ['A1M1', 'A1M1'], ['A1M1', 'A9M1']]) {
+  const input = fixture();
+  const { model } = modelFor(input, { change({ request, output }) {
+   if (request.stage === 'audit') {
+    output.issues = ['DUPLICATE_TOPIC'];
+    output.topicRestructure = [{ title: 'Combined', realm: 'Life', prose: 'A proposed combined understanding.', timeScope: 'CURRENT', meaningRefs: refs }];
+   }
+  }});
+  await assert.rejects(assessSelfTopics(input, model, allow), /STRUCTURE_COVERAGE/);
+ }
+});
+
+test('a structural rewrite must pass an independent source audit', async () => {
+ const input = fixture();
+ let audits = 0;
+ const { model } = modelFor(input, { change({ request, output }) {
+  if (request.stage !== 'audit') return;
+  if (++audits === 1) {
+   output.issues = ['DUPLICATE_TOPIC'];
+   output.topicRestructure = [{ title: 'Life', realm: 'Life', prose: 'Unsupported gendered or overconfident interpretation.', timeScope: 'CURRENT', meaningRefs: ['A1M1', 'A2M1'] }];
+  } else output.issues = ['MISATTRIBUTION'];
+ }});
+ await assert.rejects(assessSelfTopics(input, model, allow), /MISATTRIBUTION/);
+ assert.equal(audits, 2);
+});
+
+test('older checkpoints re-run discovery under the complete impact contract', async () => {
+ const input = fixture();
+ let checkpoint;
+ const held = modelFor(input, { change({ request, output }) {
+  if (request.stage === 'audit') output.issues = ['MISATTRIBUTION'];
+ }});
+ await assert.rejects(assessSelfTopics(input, held.model, allow, undefined, undefined, [], { save(c) { checkpoint = structuredClone(c); } }));
+ checkpoint.version = 'foundation-self-topics-v8';
+ const resumed = modelFor(input);
+ await assessSelfTopics(input, resumed.model, allow, undefined, undefined, [], { checkpoint, save() {} });
+ assert.equal(resumed.calls[0].stage, 'decompose');
+});
+
+function withSelfBaseline(input) {
+ input.prior = [{ subjectId: 'self', perspectiveId: input.packet.baselines.find(b => b.subjectId === 'self').perspectiveId,
+  topicId: 'mentor', versionId: 'mentor-v1', area: 'Personal life', title: 'Mentorship',
+  prose: 'Sam was my mentor.', timeScope: 'HISTORICAL', sourceAt: null,
+  meanings: [{ versionId: 'mentor-m1', text: 'Sam was my mentor.' }] }];
+ const baseline = input.packet.baselines.find(b => b.subjectId === 'self');
+ baseline.revisionId = 'self-v1';
+ baseline.topics = [{ topicId: 'mentor', versionId: 'mentor-v1', meaningVersionIds: ['mentor-m1'] }];
+ return input;
+}
+
+test('reinforcement preserves accepted prose and historical scope while adding evidence', async () => {
+ const input = withSelfBaseline(fixture());
+ const { model } = modelFor(input, { change({ request, data, output }) {
+  if (request.stage === 'decompose') output.topicEffects[0].effect = 'REINFORCED';
+  if (request.stage === 'compose' && data.prior) output.effect = 'REINFORCED';
+ }});
+ const result = await assessSelfTopics(input, model, allow);
+ const topic = result.candidate.streams.find(s => s.subjectId === 'self').topics[0];
+ assert.equal(topic.prose, 'Sam was my mentor.');
+ assert.equal(topic.timeScope, 'HISTORICAL');
+ assert.deepEqual(topic.retainedMeaningVersionIds, ['mentor-m1']);
+ assert.ok(topic.meaningIds.length);
+});
+
+test('impact review rejects omitted, duplicate and mismatched saved-topic dispositions', async () => {
+ for (const mutate of [o => o.topicEffects = [], o => o.topicEffects.push(o.topicEffects[0]), o => o.topicEffects[0].effect = 'UNCHANGED']) {
+  const input = withSelfBaseline(fixture());
+  const { model, calls } = modelFor(input, { change({ request, output }) { if (request.stage === 'decompose') mutate(output); } });
+  await assert.rejects(assessSelfTopics(input, model, allow), /IMPACT_COVERAGE/);
+  assert.equal(calls.length, 2);
+  assert.ok(calls.every(c => c.stage === 'decompose'));
+ }
+});
+
+test('contradiction preserves prior meaning and rejects a writer changing the reviewed effect', async () => {
+ const input = withSelfBaseline(fixture());
+ const setup = wrong => modelFor(input, { change({ request, data, output }) {
+  if (request.stage === 'decompose') output.topicEffects[0].effect = 'CONTRADICTED';
+  if (request.stage === 'compose' && data.prior) output.effect = wrong ? 'SUPERSEDED' : 'CONTRADICTED';
+ }});
+ const result = await assessSelfTopics(input, setup(false).model, allow);
+ const topic = result.candidate.streams[0].topics[0];
+ assert.equal(topic.effect, 'CONTRADICTED');
+ assert.deepEqual(topic.retainedMeaningVersionIds, ['mentor-m1']);
+ await assert.rejects(assessSelfTopics(input, setup(true).model, allow), /BAD_EFFECT/);
+});
+
+test('the product-vision regression retains earlier corrections when a later audit repairs qualification', async () => {
+ // Reduced replay of the owner's supplied Dorian conversation. Provider responses
+ // are scripted so this tests repair orchestration, not live model fidelity.
+ const input = fixture([
+  ['agent', 'Which part feels most exciting or challenging to work on right now?'],
+  ['owner', 'The second part.'],
+  ['owner', 'I invented and developed Dorian. Relish lets someone scan a QR code, save my details in their phone, and share their own details. Dorian should understand what people want and whom they want to connect with. Eventually they could completely manage human relationships.'],
+  ['owner', 'You have got to like each other at a basic level. A joint goal is also very powerful.']
+ ]);
+ let audits = 0;
+ const corrected = 'The owner says they invented and developed Dorian. Relish supports QR contact exchange, saving details in a phone and reciprocal sharing. Dorian should understand what people want and whom they wish to connect with. Their aspiration is eventually to completely manage human relationships. They selected the conversational part when asked what felt most exciting or challenging, without distinguishing between the two.';
+ const calls = [];
+ const model = async request => {
+  const data = JSON.parse(request.userPrompt);
+  calls.push(data);
+  let output;
+  if (request.stage === 'decompose') output = { areas: [area('Product vision', ['T1', 'T2']), area('Collaboration', ['T3'])], exclusions: [], unresolvedMentions: [] };
+  else if (request.stage === 'compose') {
+   const product = data.area.title === 'Product vision';
+   output = { prose: product ? (data.auditRepair ? corrected : 'The owner is excited by the conversational product.') :
+     (data.auditRepair ? 'The owner considers basic mutual liking necessary and a joint goal powerful.' : 'Basic mutual liking is a possible component.'),
+    effect: 'NEW', timeScope: 'CURRENT', retire: [],
+    meanings: product ? [meaning('The second part.', 'T1'), meaning(corrected, 'T2')] : [meaning('Basic mutual liking is necessary; a joint goal is powerful.', 'T3')] };
+  } else {
+   audits++;
+   output = { issues: [], findings: [] };
+   if (audits === 1) {
+    output.issues = ['UNSUPPORTED_PROSE'];
+    output.topicRepairs = [{ issue: 'UNSUPPORTED_PROSE', editTopics: ['A1'], instruction: 'Restore inventor role, reciprocal QR exchange, desired connections and aspirational full scope. Preserve exciting-or-challenging ambiguity.' }];
+   } else if (audits === 2) {
+    assert.equal(data.draft[0].prose, corrected);
+    output.issues = ['LOST_QUALIFICATION'];
+    output.topicRepairs = [{ issue: 'LOST_QUALIFICATION', editTopics: ['A2'], instruction: 'Preserve that basic mutual liking is needed, rather than merely possible.', newFinding: true }];
+   } else {
+    assert.equal(data.draft[0].prose, corrected);
+    assert.match(data.draft[1].prose, /necessary/);
+    assert.equal(data.repairHistory.length, 2);
+    assert.equal(data.preservationDrafts.length, 2);
+   }
+  }
+  return { output, invocationId: 'regression-' + calls.length, model: 'synthetic' };
+ };
+ const result = await assessSelfTopics(input, model, allow);
+ assert.equal(audits, 3);
+ assert.equal(result.candidate.streams[0].topics[0].prose, corrected);
+});
+
+test('deterministic duplicate prose reaches structural review but cannot be passed by model approval', async () => {
+ const input = fixture();
+ let audits = 0;
+ const { model } = modelFor(input, { change({ request, data, output }) {
+  if (request.stage === 'compose') output.prose = 'A sufficiently long identical sentence repeats the same primary understanding across two topics.';
+  if (request.stage === 'audit') { audits++; assert.equal(data.structuralFailure, 'DUPLICATE_TOPIC_PROSE'); }
+ }});
+ await assert.rejects(assessSelfTopics(input, model, allow), /DUPLICATE_TOPIC/);
+ assert.equal(audits, 1);
+});
+
+test('draft restructuring cannot absorb a saved topic or its assertions', async () => {
+ const input = withSelfBaseline(fixture());
+ const { model } = modelFor(input, { change({ request, output }) {
+  if (request.stage === 'audit') {
+   output.issues = ['DUPLICATE_TOPIC'];
+   output.topicRestructure = [{ title: 'Combined', realm: 'Life', prose: 'A combined topic.', timeScope: 'MIXED', meaningRefs: ['A1M1', 'A2M1'] }];
+  }
+ }});
+ await assert.rejects(assessSelfTopics(input, model, allow), /STRUCTURE_COVERAGE/);
 });

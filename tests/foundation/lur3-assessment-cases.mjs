@@ -743,10 +743,10 @@ export async function runLuAssessmentCases({ db, load, vite, otherPersonId, gran
 		const retryCalls = calls.slice(beforeRetry);
 		assert.ok(retryCalls[0].data.draft);
 		assert.ok(retryCalls.every(({ data }) => data.draft || data.auditRepair));
-		const retried = await operator.load({ locals: owner, params: { id: heldRow.id }, url: heldUrl, setHeaders() {} });
-		assert.ok(retried.candidate.stageReview.some((panel) =>
+		const resumedReview = await operator.load({ locals: owner, params: { id: heldRow.id }, url: heldUrl, setHeaders() {} });
+		assert.ok(resumedReview.candidate.stageReview.some((panel) =>
 			panel.items.some((item) => item.title === 'Structural review resumed')));
-		assert.equal(retried.history[0].revision, 2);
+		assert.equal(resumedReview.history[0].revision, 2);
 
 	} finally {
 		await browser?.close();

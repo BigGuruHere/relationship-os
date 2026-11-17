@@ -647,12 +647,71 @@ test('a held structural review resumes without repeating successful discovery an
 		save(value) { checkpoint = JSON.parse(JSON.stringify(value)); }
 	}), /MISATTRIBUTION/);
 	assert.ok(checkpoint);
+	checkpoint.version = 'foundation-self-topics-v7';
 	const resumed = modelFor(input);
 	const result = await assessSelfTopics(input, resumed.model, allow, undefined, undefined, [], {
 		checkpoint, save() {}
 	});
 	assert.deepEqual(resumed.calls.map((call) => call.stage), ['audit']);
+	assert.ok(result.candidate.meanings.every((claim) => claim.generation.promptVersion === checkpoint.version));
 	assert.deepEqual(result.provenance.invocations.map((call) => call.stage), ['decompose', 'compose', 'compose', 'audit']);
 	assert.ok(result.provenance.stageReview.some((panel) =>
 		panel.items.some((item) => item.title === 'Structural review resumed')));
+});
+
+test('a new omission found on re-audit is repaired automatically using the latest draft', async () => {
+	const input = fixture();
+	let auditCount = 0;
+	const { model, calls } = modelFor(input, {
+		change({ request, data, output }) {
+			if (data.auditRepair) {
+				if (data.auditRepair.findings[0].newFinding) {
+					assert.match(data.auditRepair.previous.prose, /family again/);
+					output.prose = 'Sam was my mentor and felt like a father to me. Meeting his family again felt meaningful. I hope to stay in touch.';
+				} else {
+					output.prose = 'Sam was my mentor and felt like a father to me. Meeting his family again felt meaningful.';
+				}
+			}
+			if (request.stage !== 'audit') return;
+			if (++auditCount === 1) {
+				output.issues = ['OMITTED_MEANING'];
+				output.topicRepairs = [{
+					issue: 'OMITTED_MEANING', editTopics: ['A1'], instruction: 'Restore that meeting the family again felt meaningful.'
+				}];
+			} else if (auditCount === 2) {
+				assert.equal(data.previousRepairs[0].editTopics[0], 'A1');
+				output.issues = ['OMITTED_MEANING'];
+				output.topicRepairs = [{
+					issue: 'OMITTED_MEANING', editTopics: ['A1'], instruction: 'Restore the hope to stay in touch (T1).',
+					newFinding: true
+				}];
+			}
+		}
+	});
+	const result = await assessSelfTopics(input, model, allow);
+	assert.deepEqual(calls.filter((call) => call.data.auditRepair).map((call) => call.data.area.title),
+		['Mentorship and reconnection', 'Mentorship and reconnection']);
+	assert.equal(auditCount, 3);
+	assert.match(result.candidate.streams[0].topics[0].prose, /hope to stay in touch/);
+});
+
+test('persistent findings are held after the final audit', async () => {
+	const input = fixture();
+	let auditCount = 0;
+	const { model, calls } = modelFor(input, {
+		change({ request, output }) {
+			if (request.stage !== 'audit') return;
+			output.issues = ['UNSUPPORTED_PROSE'];
+			output.topicRepairs = [{
+				issue: 'UNSUPPORTED_PROSE',
+				editTopics: ['A1'],
+				newFinding: true,
+				instruction: 'Correct unsupported interpretation ' + (++auditCount)
+			}];
+		}
+	});
+	await assert.rejects(assessSelfTopics(input, model, allow),
+		(error) => error.reason === 'UNSUPPORTED_PROSE' && error.diagnostic.attempt === 3);
+	assert.equal(calls.filter((call) => call.data.auditRepair).length, 2);
+	assert.equal(auditCount, 3);
 });

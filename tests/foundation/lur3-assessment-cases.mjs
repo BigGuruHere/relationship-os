@@ -123,6 +123,9 @@ export async function runLuAssessmentCases({ db, load, vite, otherPersonId, gran
                     text: exactQuote, kind: 'PREFERENCE', basis: 'DIRECT_ACCOUNT',
                     uncertainty: null, confidence: 'HIGH', evidence: [{turnId:ownerTurn.id,quote:exactQuote,role:'SUPPORTS'}]
                 }] };
+            if (data.auditRepair?.findings.some((finding) => finding.newFinding)) {
+                output.prose = 'Now prefers morning catch-ups on weekends.';
+            }
             if (data.auditRepair) {
                 // Simulate a saved-topic rewrite returning fields that previously caused TOPIC_TARGET.
                 output.title = 'A replacement title';
@@ -140,6 +143,9 @@ export async function runLuAssessmentCases({ db, load, vite, otherPersonId, gran
                         { issue: 'UNSUPPORTED_PROSE', editTopics: ['A1'], instruction: 'Remove unsupported gendered wording.' },
                         { issue: 'OMITTED_MEANING', editTopics: ['A1'], instruction: 'Retain the supported timing detail.' }
                     ] }
+                : phase === 'dorian-auto-follow-up' && changed?.prose === 'Prefers morning catch-ups on weekends.'
+                ? { issues: ['OMITTED_MEANING'], findings: ['The owner expresses a current change.'],
+                    topicRepairs: [{ issue: 'OMITTED_MEANING', editTopics: ['A1'], instruction: 'Preserve “now” from the owner’s source turn T2.', newFinding: true }] }
                 : changed?.prose === 'Prefers all catch-ups on weekends.'
                 ? { issues: ['UNSUPPORTED_PROSE'], findings: ['The wording overstates the timing preference.'],
                     topicRepairs: [{issue:'UNSUPPORTED_PROSE', editTopics:['A1'], instruction:'Keep the prior morning preference and qualify it with weekends.'}] }
@@ -747,6 +753,28 @@ export async function runLuAssessmentCases({ db, load, vite, otherPersonId, gran
 		assert.ok(resumedReview.candidate.stageReview.some((panel) =>
 			panel.items.some((item) => item.title === 'Structural review resumed')));
 		assert.equal(resumedReview.history[0].revision, 2);
+
+		// A new audit finding is repaired in the same worker run. Only approval
+		// can make the repaired topic available to the next Dorian call.
+		phase = 'dorian-auto-follow-up';
+		const automaticCall = await launch(5);
+		await db.query('UPDATE "DorianFoundationCall" SET "nextAttemptAt"=CURRENT_TIMESTAMP WHERE "conversationId"=$1',
+			[automaticCall.conversationId]);
+		assert.equal(await processDorianFoundationCall(async () => ({
+			conversation_id: automaticCall.conversationId, agent_id: 'synthetic-agent', status: 'done',
+			transcript: [{ role: 'agent', message: 'When works now?' }, { role: 'user', message: 'Only on weekends now.' }]
+		})), true);
+		const automaticRow = (await db.query('SELECT id, state FROM "DorianFoundationCall" WHERE "conversationId"=$1',
+			[automaticCall.conversationId])).rows[0];
+		assert.equal(automaticRow.state, 'READY');
+		const automaticUrl = new URL('/operator/dorian-foundation/' + automaticRow.id, origin);
+		const automaticReview = await operator.load({
+			locals: owner, params: { id: automaticRow.id }, url: automaticUrl, setHeaders() {}
+		});
+		assert.ok(automaticReview.candidate.stageReview.some(panel => panel.stage === 'audit' && panel.attempt === 3));
+		assert.equal(automaticReview.candidate.groups[0].topics[0].prose, 'Now prefers morning catch-ups on weekends.');
+		assert.equal(automaticReview.history[0].revision, 2);
+
 
 	} finally {
 		await browser?.close();

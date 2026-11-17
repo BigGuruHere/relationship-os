@@ -340,3 +340,7 @@ Implemented on `feature/dorian-foundation-continuity` for Development review. Th
 ### Dorian structural review reprise
 
 Implemented on `feature/lu-structural-repair-resume`. Dorian's Foundation assessment uses the earlier overlap rules to preserve topics with distinct purposes and can merge redundant new draft topics during one bounded repair. A queued browser retry can resume the structural review from an encrypted checkpoint after rechecking the source and prior understanding. See [LUR-5 structural repair](foundation/IMPLEMENTATION_PLAN.md#lur-5-structural-review-reuse). Hosted DEV replay is pending.
+
+### Automatic LU audit follow-up
+
+Implemented on `feature/lu-automatic-audit-followup`. When re-audit finds new, actionable prose or evidence issues, the worker can make one additional targeted repair in the same analysis and audit the result. Unresolved findings stay held for operator inspection. Operator approval still activates learning in the browser pilot. [Foundation implementation plan](foundation/IMPLEMENTATION_PLAN.md#lur-5-automatic-audit-follow-up)

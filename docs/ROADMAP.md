@@ -75,3 +75,7 @@ Validate Home to browser call, consented background analysis, operator approval 
 ### LU workflow restoration and acceptance (2026-11-17)
 
 The earlier deferral of structural transformations is narrowed by [LUR-5 restoration](foundation/LUR5_WORKFLOW_RESTORATION.md): new draft topic remapping and explicit successive-conversation impact review are implemented on a feature branch. Validate the held product-vision regression and varied multi-call sequences on DEV. Measure supported meaning retention, appropriate no-change results, contradictions, automatic completion and useful next-call continuity before removing routine owner approval. Saved-topic lifecycle restructuring and additional perspectives remain later work.
+
+## Foundation startup acceptance
+
+Validate first/returning greetings and natural use of startup context on the dedicated DEV agent, then verify two-account isolation and corrected/withdrawn source behavior. The implementation is on `feature/dorian-foundation-call-context`; provider prompt configuration and live acceptance remain pending. Telephone identity linking and production activation remain separate.

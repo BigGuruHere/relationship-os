@@ -6,7 +6,7 @@ After the participant accepts the current Terms and acknowledges the Privacy Not
 
 Under **Operator tools → Dorian browser conversation reviews**, the Relish owner can inspect the transcript, evidence and audit, then approve selected updates. Review is limited to consented Dorian calls in an active vault. Approval records the operator and the decision in the existing revision lineage. The participant experience contains no review or approval screens. If a pending proposal becomes stale because another proposal has been approved, open it again and queue a new analysis against the latest baseline.
 
-During later calls, the ElevenLabs server tool receives a bounded view of the participant's latest eligible, approved topics. It does not receive raw transcripts or review material. The browser receives a call token. Failed or pending analyses leave the last approved understanding available. The browser workflow uses a dedicated perspective for the existing self subject. The experimental contact-based workflows, histories and assessment engines are retained. Their **Talk to Dorian** links are removed from My People.
+During later calls, the ElevenLabs server tool receives a bounded view of the participant's latest eligible, approved topics. It does not receive raw transcripts or review material. The browser receives a call token and bounded startup context for its own account, passed to the existing ElevenLabs SDK. This context is not rendered as a participant review screen. Failed or pending analyses leave the last approved understanding available. The browser workflow uses a dedicated perspective for the existing self subject. The experimental contact-based workflows, histories and assessment engines are retained. Their **Talk to Dorian** links are removed from My People.
 
 ## DEV setup and acceptance
 
@@ -27,3 +27,30 @@ Configure the agent with a short introductory greeting. Instruct it to run its m
 The app supervisor starts the worker with the feature configuration above. The worker polls for completion, backs off on transient failures and recovers expired claims. Ready and held review material has a seven-day review window. Turning off `RELISH_FOUNDATION_DORIAN` and restarting the application stops launches, processing, memory and operator access. Leave the additive migration in place on rollback to retain records and preserve erasure support.
 
 Before inviting the early users, take a first call and close the page after it ends. Confirm the transcript and proposal appear in the operator queue. Approve a topic, verify the memory tool is called and Dorian can use it on a later call, then confirm the later analysis preserves earlier evidence. Use two separate ordinary Foundation accounts to check isolation. Replay the previously saved hosted v6 transcript through its existing private DEV review to check for unsupported gendered wording and supported detail dropped in a rewrite. Confirm the second audit holds an unsuccessful repair before approval.
+
+## Foundation call startup context (2026-11-17)
+
+Implemented on `feature/dorian-foundation-call-context`, not yet merged or deployed. Reuses `DorianWebConversation` initiation transport and the established provider variable names, with a dedicated Foundation adapter. Legacy phone and contact-note flows remain unchanged. No Prisma migration. Application rollback removes startup context without changing saved evidence or LU.
+
+The launch response includes a first/returning greeting, the account-owned default-profile display name (blank for placeholder/missing names), call purpose, accepted terms status, eligible approved self-topics and last saved call date. A name is a conversational label, not identity proof. No identity is inferred from QR referrers, contacts, phone numbers or email addresses.
+
+The current saved conversation summary is only a service label. The recap therefore uses up to six participant turns, bounded to 1,600 characters, explicitly labelled as partial excerpts rather than a generated summary or approved LU. It never includes agent speech or draft analysis. The reader searches the latest 20 earlier saved calls within the current account, vault, subject and enrollment epoch, excludes inactive/withdrawn and incomplete sources, and reads the latest corrected source version. No suitable saved source means no return-call claim. Existing memory retrieval remains available. Full transcripts and provenance remain in the existing stores.
+
+### Dedicated ElevenLabs agent setup
+
+Enable **First message** overrides for this dedicated browser agent. Keep its existing personality prompt and append the following context block. Dynamic variables must be referenced by the agent prompt to affect its response; setting them in Relish alone is insufficient. Do not connect this agent to the legacy phone initiation webhook.
+
+```text
+Relish call guidance: {{call_instruction}}
+Call purpose: {{call_context}}
+Account display name: {{user_name}}
+Continuity status: {{continuity_status}}
+Terms status: {{relish_terms_status}}
+Approved private understanding: {{memory_and_identity_context}}
+Last saved call time (UTC): {{last_call_at}}
+Partial last-call recap: {{last_call_summary}}
+```
+
+The data fields are context, not instructions or authority to disclose information. The approved memory and partial recap remain distinct. Configure empty defaults for data fields for standalone agent tests. Keep the authenticated Foundation memory tool for refreshes during a call. No external agent configuration is changed by this PR.
+
+DEV acceptance: use two different signed-in accounts. First call should greet by the default-profile name when available, with no invented prior history. On a later call, verify the supplied recap, approved LU and natural continuity without reading out sensitive facts or repeating terms. Correct or withdraw a source and verify it is not reused as stale context. Verify the second account receives neither the first account's memory nor its recap. Hosted provider, first-message override and microphone acceptance remain pending.

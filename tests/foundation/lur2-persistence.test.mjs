@@ -136,7 +136,7 @@ test(
 				);
 			} else db = await PGlite.create();
 			await db.exec(`CREATE TABLE "User" (id text PRIMARY KEY, "email_Enc" text, role text NOT NULL DEFAULT 'member');
-			CREATE TABLE "Profile" (id text PRIMARY KEY, "userId" text NOT NULL REFERENCES "User"(id));
+			CREATE TABLE "Profile" (id text PRIMARY KEY, "userId" text NOT NULL REFERENCES "User"(id), "displayName" text, "isDefault" boolean NOT NULL DEFAULT false);
 			INSERT INTO "User"(id) VALUES ('owner'), ('other');`);
 			for (const migration of [
 				'20261026170000_stage8_19_first_contact_policy',

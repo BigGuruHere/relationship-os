@@ -108,3 +108,7 @@ Accepted by the user after the fixed-outline writing comparison. The Foundation 
 ## Dorian browser continuity pilot
 
 Accepted 2026-11-17. Move the Dorian entry point to Home for signed-in Foundation users. After consent, completed calls feed the existing topic-first LU pipeline. The operator reviews candidates during the pilot and subsequent calls use approved, eligible understanding. Participant-facing candidate and approval screens stay outside this flow. The contact-based experiment retains its independent analysis and history. See [browser continuity](foundation/DORIAN_BROWSER_CONTINUITY.md).
+
+## 2026-11-17: Reuse call startup transport for Foundation
+
+Accepted: provide first-message guidance, name, purpose, terms and conversational continuity to the current Home Dorian flow. Reuse transport and variable conventions with a Foundation-specific projection rather than merging legacy data or rewriting working adapters. Approved LU and partial source recap remain explicitly separate. No new persistence or production activation.

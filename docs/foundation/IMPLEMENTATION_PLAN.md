@@ -106,6 +106,19 @@ The `feature/people-recency-exchange` branch preserves pending exchange returns 
 
 On `feature/clean-exchange-followup`, the two participants can go directly to the existing private voice recorder or return Home. The Share screen polls only for a fresh receipt for the selected profile in the signed-in owner's active Foundation vault. Acceptance covers saved-contact and claim receipts, owner isolation and the two prompt variants in disposable database and render tests. Hosted two-device acceptance is pending. Rollback is a code revert. There is no migration or activation change.
 
+### Dorian web note intake
+
+On `feature/dorian-person-note-quality`, P-303 reuses transient draft-processing authorization and the existing summary provider to produce a person-centred note. Isolated acceptance covers per-call initiation, caller-only model input and editable fallback. Live DEV acceptance remains pending. No migration or activation change.
+
+
+P-303 gains an owner-only DEV conversation draft adapter on `feature/dorian-people-note`. Isolated tests cover the server-issued conversation, exact owner and person, review before save, save replay, and discard. Live provider and device testing remain pending. No migration. Revert the application change to remove the new entry point.
+
+### Living Understanding from saved notes
+
+`feature/note-understanding-review` connects P-303 notes to F-205 statements for owners on DEV. Accept when a general preference, reported view of the other person and relationship-specific want remain distinct, approved passages are exact, retries are idempotent and corrections make old support ineligible. No migration. Revert the application entry point to stop further writes while retaining versioned records. Hosted acceptance is pending.
+
+[LUR-1](LUR1_CONTRACTS.md) merged in PR #66 at `f79cd8af`. [LUR-2](LUR2_PERSISTENCE.md) merged in PR #67 at `b855aa45` with guarded conversation, presentation and topic persistence. Existing notes and approvals remain readable in their original form. [LUR-3](LUR3_SEMANTIC_ASSESSMENT.md) merged in PR #68 at `992a8121` and connects the semantic process to current source packets and snapshot repositories. [LUR-4](LUR4_OWNER_REVIEW.md) exposes owner review and history behind the DEV opt-in.
+
 ## Stage register
 
 | Stage | Designed | Implemented | Validated | Merged | DEV / PROD |
@@ -116,6 +129,10 @@ On `feature/clean-exchange-followup`, the two participants can go directly to th
 | 3 | Backlog and gates | P-301 through P-305 merged; P-306 DEV test login merged and operator-confirmed; hosted replay command on feature branch | Nine P-301 checks and 104 total foundation CI checks pass; P-302 included in 116 passing foundation CI checks, zero skips; P-303 included in 131 passing foundation CI checks; 37 local legacy/shared-audio checks and Svelte pass; P-304 included in 160 passing CI checks; P-305 included in 171 passing CI checks with disposable restore and PostgreSQL erasure; P-306 included in 178 passing CI checks; local disposable restore replay verified | P-301 PR #20; P-302 PR #21; P-303 PR #22; P-304 PR #23; P-305 PR #24; P-306 PRs #25-27 | DEV restore baseline matched; existing-account and internal pilot smoke operator-confirmed; hosted replay, detailed device/provider and closure evidence pending; no invited cohort activation |
 | 4 | S-405a design merged in PR #37 | S-405b-d merged in PRs #38-40; diagnostics in PR #41; S-405e planned | Isolated exchange tests and Chromium native-form checks pass | Development `61e3356` | DEV intake/SMS operator-reported; complete phone/email/device acceptance pending |
 | 5-7 | Direction and gates only | No | No | No | Not deployed |
+| LUR-1 | Preservation assessment in PR #65; physical handoff in [LUR-1](LUR1_CONTRACTS.md) | Shared validators, typed contracts and fixtures on `feature/lu-contracts-extraction`; zero schema changes | Focused deterministic checks and unchanged legacy baseline failures; see linked validation | PR #66, `f79cd8af` | Hosted verification pending |
+| LUR-2 | [Persistence and operation contract](LUR2_PERSISTENCE.md) | Private source and summary save/reload, topic revisions, approval transactions and erasure | Isolated migration, route and repository acceptance, including PostgreSQL CI | PR #67, `b855aa45` | Existing owner-only DEV entry point, hosted acceptance pending |
+| LUR-3 | [Semantic assessment and provenance](LUR3_SEMANTIC_ASSESSMENT.md) | Internal first and longitudinal assessment, audit, repair and candidate resume | Synthetic parity cases and guarded repository integration | PR #68, `992a8121` | Eight Railway DEV semantic tests passed per operator. Live quality replay pending. |
+| LUR-4 | [Owner review and history](LUR4_OWNER_REVIEW.md) | Grouped review, wording audit, explicit disposition and eligible history. Writing preview merged in PR #80. Topic-first self workflow on `feature/lu-self-topic-workflow`; acceptance below. | Disposable database and Chromium coverage for owner review. Synthetic comparison of identical outlines, evidence and audit. | PR #69, `b5f133b3`. Composition and citation repair in PRs #78 and #79. Writing preview PR #80, `fbf7bcec`; self workflow pending. | Three-case DEV quality replay pending. Production activation deferred. |
 
 S-403 DEV acceptance correction (2026-11-07): operator confirmed deployment and one-way intake, but claim native forms failed origin validation. `fix/profile-publish-exchange-origin` corrects referrer policy and improves publication visibility. Focused regressions and native Chromium CI cover the fix; no migration, schema rollback or live send. See [acceptance fixes and operational diagnosis](S403_DEV_FIXES.md). Both-direction live SMS acceptance remains pending.
 
@@ -154,3 +171,55 @@ S-405c implementation: [account channels and operations](S405C_ACCOUNT_CHANNELS.
 S-405d implementation: [guest assurance reuse and email setup](S405D_GUEST_ASSURANCE.md). PR #39/S-405c merged at `7205d53`. One additive migration (111 total / 24 Foundation tables), no historic proof backfill. Local service/route/auth tests and type checks pass; PostgreSQL/native Chromium CI is recorded in the PR. Resend key/sender/DEV allowlist and real delivery are operator setup/acceptance, not performed by this branch. S-405e combined recovery/device acceptance remains planned.
 
 S-405d verification diagnostics: operator reported add-stage HTTP 400 after configuring email. `fix/channel-verification-diagnostics` adds safe typed validation/access/storage/provider reasons and support-reference correlation, preserving scope and transport rules. Local 34 focused tests and Svelte pass; CI is recorded in the PR. No migration or schema rollback; application-only diagnostic change. Live cause remains unconfirmed until a fresh operator reproduction.
+
+### LUR-4 topic-first self-understanding slice, 2026-11-15
+
+Implemented on `feature/lu-self-topic-workflow` from `fbf7bcec`. Reuses the established semantic-area discovery/writing prompts and structural principles, connecting them to Foundation self-subject candidates and the existing DEV review. Acceptance evidence: 99 focused synthetic tests and eight disposable DB/route cases, also passed with Chromium native forms. Initial and subsequent self revisions, method-bound retries and unchanged other perspectives are covered. No schema migration; application rollback retains approved data. Owner-only DEV opt-in remains; hosted model-quality acceptance and deployment are pending, and production is not enabled. See [LUR-4 replay](LUR4_OWNER_REVIEW.md#topic-first-self-understanding-2026-11-15). Full restructuring, between-stage selection and additional perspective analysis are deferred.
+
+LUR-4 citation follow-up on `fix/lu-self-topic-citations` from `69419999`: the owner-only DEV workflow retries one out-of-scope citation per affected topic and retains valid sibling previews if the retry fails. Focused tests cover both recovery through structural review and a held run with usable diagnostics. Merged in PR #82 at `5a033344`; a hosted v2 run reached structural review and reported semantic issues. No migration or data rollback is needed.
+
+LUR-4 structural review follow-up on `fix/lu-self-topic-audit-repair` from `5a033344`: one targeted rewrite for supported audit findings, followed by complete validation and a fresh audit. 58 focused tests and eight isolated database tests passed, including persistence and manual approval of a repaired follow-up. Hosted acceptance is pending in the existing DEV cohort. Revert the application change to restore v2 behavior. No migration.
+
+LUR-4 follow-up replay on `feature/lu-dev-transcript-import` from `baa4744e`: add owner-only DEV transcript import to the existing My People review. The isolated database replay submitted two transcripts through the import action, approved the first, analysed the second against it and checked the same topic identity, prior version and both evidence links after manual approval. Eight isolated database cases and 64 focused checks passed. Two legacy source-pattern assertions also fail on the unchanged base. Hosted replay uses the existing DEV gate and remains pending. No migration. Remove the form/action to stop new imports while preserving the reader for saved imports.
+
+LUR-4 discovery validation follow-up on `fix/lu-dev-discovery-validation` from `5e8fc0e1`: restrict follow-up discovery to eligible saved-topic references and current owner turns, then retry at most once if validation rejects the result. Synthetic tests cover recovery and a held result after a second rejection; the isolated database replay verifies repair of a mistaken reference to the existing approved topic. The same DEV cohort applies. Hosted replay pending. No migration; application rollback restores the previous discovery behavior.
+
+LUR-4 excerpt follow-up on `fix/lu-evidence-excerpts` from `737b856c`: prefer exact statement-level excerpts in new topic-first analyses and make longer source context expandable. Synthetic tests cover separate exact spans and whole-turn fallback, and the isolated review replay checks an excerpt survives approval and appears in history. All 60 focused checks, eight isolated database checks (including a Chromium run) and Svelte type checking passed. Hosted replay is pending for the same DEV cohort. No migration. Reverting the application changes leaves stored spans readable.
+
+LUR-4 saved-topic rewrite follow-up on `fix/lu-audit-repair-topic-target` from `5d9f74a1`: apply only prose, meanings and optional new-topic titles in an audit rewrite, with Relish retaining revision metadata. The focused and isolated database replays exercise unexpected effect, time scope, retirement and saved-title fields, then verify a second audit and manual approval. Same DEV cohort. Hosted replay pending. No migration; revert the application behavior without changing persisted revisions.
+
+### LUR-5 browser continuity
+
+Implemented on `feature/dorian-foundation-continuity`. Connect consented Foundation browser calls to the existing topic-first pipeline and operator approval, then provide eligible continuity to the same caller. Verify the two-call and two-account paths and replay the saved v6 case in DEV before pilot activation. The additive call queue migration is required on DEV. Disable the feature to roll back the entry points and worker while retaining records. See [browser continuity](DORIAN_BROWSER_CONTINUITY.md).
+
+Feature branch validation passed with 34 focused tests on disposable databases and simulated providers. Coverage included two Dorian calls, same-account recall, cross-account isolation, operator-only review, evidence from both calls, and a synthetic second audit that held unresolved findings. Type checking passed. Hosted provider acceptance and the saved v6 transcript replay remain pending.
+
+### LUR-5 structural review reuse
+
+Implemented on `feature/lu-structural-repair-resume`. Reuse the earlier structural overlap guidance and area consolidation. The pilot supports a merge of new overlapping draft topics with explicit refs, combined source scope, a rewrite and a fresh audit. Already approved topic identities retain their existing revision semantics. Repeat browser assessments resume at structural review when a compatible encrypted draft checkpoint is available under the same transcript, baseline and current authority. Older failures can generate a checkpoint on their first retry. No migration. Revert the change to restore a full retry. Approved data stays in the existing Foundation stores.
+
+The synthetic regression covers distinct product purposes, an ambiguous reply, a draft merge with supporting evidence and a structural retry. The browser worker fixture covers an encrypted checkpoint that stays internal and an independent approval gate. Replay the same private Relish and Dorian conversation on DEV to compare topic coherence, temporal and speaker attribution, and retained QR exchange details against the earlier output.
+
+### LUR-5 automatic audit follow-up
+
+Implemented on `feature/lu-automatic-audit-followup`. The v8 self-topic assessment compares the second audit with its earlier repair instructions. If every blocker has an explicit plan for a newly found prose or evidence issue, it repairs the latest affected drafts automatically and checks the full result once more. This uses the existing source scope, audit and overall deadline. Persistent or unplanned findings remain held. The operator retry remains available when replaying a held analysis from its encrypted checkpoint. The browser pilot still requires operator approval to activate understanding. No migration. Rollback restores the earlier repair limit.
+
+Focused cases cover a new omission with the same issue code, held unresolved findings, and the automatic worker path through the approval boundary. A hosted replay of the held product-vision call should verify preservation of the full stated ambition and no claim of an already working capability.
+
+### LUR-5 workflow restoration
+
+| Stage | Status | Acceptance and remaining work |
+| --- | --- | --- |
+| Whole-inventory impact review and draft restructuring | Implemented on `feature/lu-workflow-restoration`, based on `54f17bc1` | Explicit saved-topic effects, reinforcement fidelity, complete draft-assertion mapping and independent audit; synthetic and isolated persistence checks. Hosted product-vision and successive-call replay pending. |
+
+See [workflow restoration](LUR5_WORKFLOW_RESTORATION.md) for reuse decisions, test scope, checkpoint compatibility, DEV acceptance and application-only rollback. No migration, cohort expansion, automatic approval or deployment accompanies this stage. Existing saved-topic identity restructuring remains deferred.
+
+### LUR-5 Dorian entry and shared policy acceptance
+
+Implemented on `feature/dorian-home-and-shared-terms`. Browser and voice reuse current policy acceptance for the same account. Isolated checks exercise reuse in both directions, a later browser session, account separation, stale terms, and cross-origin rejection. The legacy inbound phone path uses provisional caller identities. Hosted browser and QR signup acceptance remain pending. Revert the application changes to roll back. No migration, cohort change or deployment accompanies this stage. See [browser continuity](DORIAN_BROWSER_CONTINUITY.md).
+
+### LUR-5 Foundation startup context
+
+Implemented on `feature/dorian-foundation-call-context`: connect existing SDK initiation to approved Foundation LU and a bounded, separately labelled last-call recap. Preserve legacy engines and provenance. No new migration; rollback the app adapter while retaining stored calls. DEV-only cohort unchanged; no merge/deployment or live agent configuration claimed. See DORIAN_BROWSER_CONTINUITY.md for provider setup and acceptance. Validation results are recorded in the PR.
+
+Local validation: 12 focused projection, legacy compatibility and boundary tests passed; all 8 isolated LUR-2/LUR-3 integration tests passed, including the first/returning call, profile name, account isolation, source withdrawal and expired-launch assertions. `npm run check` passed with zero errors/warnings. Providers were simulated; no live API or database was used.

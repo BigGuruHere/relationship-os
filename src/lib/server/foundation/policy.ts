@@ -5,6 +5,15 @@ import { error } from '@sveltejs/kit';
 import { buildScopedMacToken } from '$lib/crypto';
 import { verifyContactCaptureToken } from '$lib/server/core/contactCaptureToken';
 import { lockFoundationAccount } from './provisioning';
+import { dorianConsentVersion, foundationDorianAgent } from './dorianCallConfig';
+
+type DorianGrant = { kind: 'worker'; lease: string } | { kind: 'operator'; actorId: string } | { kind: 'launch' };
+type DorianBinding = { id: string; subjectId: string; sourceId: string | null; candidateId: string | null; conversationId: string; agentId: string };
+const dorianOperations = {
+	worker: ['SAVE_CONVERSATION', 'PREPARE_LU', 'STORE_LU_CANDIDATE'],
+	operator: ['READ_CONVERSATION', 'STORE_LU_CANDIDATE', 'APPROVE_LU', 'READ_LU'],
+	launch: ['READ_LU', 'READ_CONVERSATION']
+} satisfies Record<DorianGrant['kind'], FoundationOperation[]>;
 // Match capture receipts to the exact shared profile within the owner's vault.
 export function captureProfilePrefix(profileId: string, vaultId: string) {
 	return 'exchange:v1:' + buildScopedMacToken(profileId, 'foundation:' + vaultId + ':capture-profile') + ':';
@@ -18,9 +27,18 @@ export type FoundationOperation =
 	| 'RECORD_STATEMENT'
 	| 'READ_STATEMENT'
 	| 'READ_NOTES'
-	| 'PROCESS_DRAFT';
+	| 'REVIEW_NOTE'
+	| 'PROCESS_DRAFT'
+	| 'SAVE_CONVERSATION'
+	| 'READ_CONVERSATION'
+	| 'REVISE_CONVERSATION_SOURCE'
+	| 'PREPARE_LU'
+	| 'STORE_LU_CANDIDATE'
+	| 'APPROVE_LU'
+	| 'READ_LU';
 export type FoundationAccess = Readonly<{
 	actorId: string;
+	dorian?: Readonly<DorianBinding>;
 	ownerUserId: string;
 	vaultId: string;
 	epoch: number;
@@ -31,7 +49,50 @@ export type FoundationAccess = Readonly<{
 		| 'PRIVATE_UNDERSTANDING'
 		| 'PRIVATE_DRAFT_PROCESSING';
 }>;
-const issued = new WeakMap<object, { prepared: boolean }>();
+const issued = new WeakMap<object, { prepared: boolean; grant?: DorianGrant }>();
+
+async function checkDorianGrant(tx: AppTransactionClient, id: string, ownerUserId: string,
+	root: { vaultId: string; epoch: number }, grant: DorianGrant) {
+	const call = await tx.dorianFoundationCall.findUnique({ where: { id } });
+	if (!foundationDorianAgent() || !call || call.consentVersion !== dorianConsentVersion ||
+		call.ownerUserId !== ownerUserId || call.vaultId !== root.vaultId || call.epoch !== root.epoch)
+		throw new FoundationDenied();
+	if (grant.kind === 'worker' &&
+		(call.lease !== grant.lease || call.state !== 'QUEUED'))
+		throw new FoundationDenied();
+	if (grant.kind === 'launch' && (call.agentId !== foundationDorianAgent() || Date.now() - call.createdAt.getTime() > 2 * 60 * 60_000))
+		throw new FoundationDenied();
+	if (grant.kind === 'operator') {
+		// Check the current account role at each use, including the approval transaction.
+		const actor = await tx.user.findUnique({ where: { id: grant.actorId }, select: { role: true } });
+		if (actor?.role !== 'owner' || !call.sourceId) throw new FoundationDenied();
+	}
+	return call;
+}
+
+// Issue access for a single consented launch. The scheduler lease or operator
+// identity is checked again under the participant's account lock on every use.
+export async function resolveDorianCallAccess(id: string, grant: DorianGrant, operation: FoundationOperation) {
+	const allowed: FoundationOperation[] = dorianOperations[grant.kind];
+	if (!allowed.includes(operation)) throw new FoundationDenied();
+	const target = await prisma.dorianFoundationCall.findUnique({ where: { id }, select: { ownerUserId: true } });
+	if (!target) throw new FoundationDenied();
+	const { ownerUserId } = target;
+	return runFoundationBoundary({ ownerUserId, mode: 'RESOLVE' }, () =>
+		prisma.$transaction(async (tx) => {
+			const root = await lockActiveFoundationRoot(tx, ownerUserId, false);
+			const call = await checkDorianGrant(tx, id, ownerUserId, root, grant);
+			const access = Object.freeze({
+				...root, ownerUserId, operation, purpose: purposeFor(operation),
+				actorId: grant.kind === 'operator' ? grant.actorId : 'DORIAN_FOUNDATION_SERVICE',
+				dorian: Object.freeze({ id, subjectId: call.subjectId, sourceId: call.sourceId, candidateId: call.candidateId,
+					conversationId: call.conversationId, agentId: call.agentId })
+			});
+			issued.set(access, { prepared: false, grant: Object.freeze({ ...grant }) });
+			return access;
+		})
+	);
+}
 
 export async function lockActiveFoundationRoot(
 	tx: AppTransactionClient,
@@ -64,6 +125,9 @@ function purposeFor(operation: FoundationOperation): FoundationAccess['purpose']
 			return 'PRIVATE_DIRECTORY';
 		case 'PROCESS_DRAFT':
 			return 'PRIVATE_DRAFT_PROCESSING';
+		case 'SAVE_CONVERSATION':
+		case 'READ_CONVERSATION':
+		case 'REVISE_CONVERSATION_SOURCE':
 		case 'READ_NOTES':
 		case 'READ_SEGMENT':
 		case 'RECORD_EVIDENCE':
@@ -88,7 +152,15 @@ async function resolve(
 			'RECORD_STATEMENT',
 			'READ_STATEMENT',
 			'READ_NOTES',
-			'PROCESS_DRAFT'
+			'REVIEW_NOTE',
+			'PROCESS_DRAFT',
+			'SAVE_CONVERSATION',
+			'READ_CONVERSATION',
+			'REVISE_CONVERSATION_SOURCE',
+			'PREPARE_LU',
+			'STORE_LU_CANDIDATE',
+			'APPROVE_LU',
+			'READ_LU'
 		].includes(operation)
 	)
 		throw new FoundationDenied();
@@ -128,7 +200,7 @@ export async function withFoundationAccess<T>(
 	fn: (tx: AppTransactionClient) => Promise<T>
 ) {
 	const record = access && issued.get(access);
-	if (!record || access.operation !== operation || access.actorId !== access.ownerUserId)
+	if (!record || access.operation !== operation || (!record.grant && access.actorId !== access.ownerUserId))
 		throw new FoundationDenied();
 	return runFoundationBoundary({ ownerUserId: access.ownerUserId, mode: 'RESOLVE' }, () =>
 		prisma.$transaction(
@@ -136,6 +208,11 @@ export async function withFoundationAccess<T>(
 				const root = await lockActiveFoundationRoot(tx, access.ownerUserId, record.prepared);
 				if (root.vaultId !== access.vaultId || root.epoch !== access.epoch)
 					throw new FoundationDenied();
+				if (record.grant && access.dorian) {
+					const current = await checkDorianGrant(tx, access.dorian.id, access.ownerUserId, root, record.grant);
+					if (current.sourceId !== access.dorian.sourceId || current.candidateId !== access.dorian.candidateId)
+						throw new FoundationDenied();
+				}
 				return runFoundationBoundary(
 					{ ownerUserId: access.ownerUserId, vaultId: access.vaultId, mode: operation },
 					() => fn(tx)

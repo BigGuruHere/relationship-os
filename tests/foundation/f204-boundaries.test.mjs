@@ -72,9 +72,20 @@ test('only reviewed modules may establish foundation authority or construct an O
 					if(name==='recordGoogleEmailProof') assert.equal(file,'src/routes/auth/google/callback/+server.ts');
                     if (name === 'withFoundationAccess')
 						assert.ok(
-							['subjects', 'evidence', 'drafts'].some(
+							// Only the reviewed repositories and consented Dorian call service may open these transactions.
+							['subjects', 'evidence', 'drafts', 'conversations', 'livingUnderstanding', 'dorianCalls'].some(
 								(name) => file === 'src/lib/server/foundation/' + name + '.ts'
 							),
+							file
+						);
+					// Dorian authority is issued for a specific consented call and operation.
+					if (name === 'resolveDorianCallAccess')
+						assert.ok(
+							[
+								'src/lib/server/foundation/dorianCalls.ts',
+								'src/routes/operator/dorian-foundation/[id]/+page.server.ts',
+								'src/routes/api/webhooks/elevenlabs/tools/foundation-memory/+server.ts'
+							].includes(file),
 							file
 						);
 					if (node.moduleSpecifier.text.endsWith('privacyOperations'))

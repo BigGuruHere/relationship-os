@@ -1,0 +1,544 @@
+// Owner-private conversation storage. Transcript and summary have independent lineages.
+import { randomUUID } from 'node:crypto';
+import { z } from 'zod';
+import { decrypt, encrypt } from '$lib/crypto';
+import type { AppTransactionClient } from '$lib/db';
+import { FoundationDenied } from './internal';
+import { withFoundationAccess, type FoundationAccess } from './policy';
+import { aad, FoundationConflict, lineage, mac, scope } from './evidenceRecords';
+import { parseDatingTranscript, transcriptTurnBody } from '../datingTranscriptImportPolicy';
+
+const turnSchema = z.strictObject({
+	id: z.string().min(1).max(200),
+	role: z.enum(['OWNER', 'AGENT', 'UNRESOLVED']),
+	text: z
+		.string()
+		.min(1)
+		.refine((text) => Boolean(text.trim()))
+});
+const turnsSchema = z
+	.array(turnSchema)
+	.min(1)
+	.max(10000)
+	.superRefine((turns, ctx) => {
+		if (
+			new Set(turns.map((t) => t.id)).size !== turns.length ||
+			turns.reduce((total, turn) => total + turn.text.length + 1, 0) > 1_000_000
+		)
+			ctx.addIssue({
+				code: 'custom',
+				message: 'Conversation turns are invalid or exceed the storage limit.'
+			});
+	});
+const bindingSchema = z.strictObject({
+	provider: z.literal('ELEVENLABS'),
+	conversationId: z.string().regex(/^conv_[a-z0-9_-]{1,235}$/i),
+	agentId: z.string().min(1).max(240)
+});
+const importBindingSchema = z.strictObject({
+	provider: z.literal('OWNER_IMPORT'),
+	importId: z.uuid()
+});
+const captureSchema = z.strictObject({
+	format: z.literal('conversation-v1'),
+	binding: z.discriminatedUnion('provider', [bindingSchema, importBindingSchema]),
+	occurredAt: z.iso.datetime().nullable(),
+	completeness: z.enum(['COMPLETE', 'INCOMPLETE']),
+	turns: turnsSchema
+});
+export type CapturedConversation = z.infer<typeof captureSchema>;
+type Binding = CapturedConversation['binding'];
+type ProviderBinding = z.infer<typeof bindingSchema>;
+export const conversationSummary = z.string().trim().min(1).max(20000);
+const importFields = z.strictObject({
+	importId: z.uuid(),
+	summary: conversationSummary,
+	occurredAt: z.iso.datetime(),
+	transcript: z.string().min(10).max(60000)
+});
+type SummaryOrigin =
+	| { kind: 'HUMAN_AUTHORED' | 'DORIAN_CALL_LABEL' }
+	| {
+			kind: 'MODEL_DRAFTED' | 'HUMAN_EDITED_MODEL_DRAFT';
+			model: string;
+			invocationId: string;
+	  };
+
+async function requirePerson(tx: AppTransactionClient, personId: string, access?: FoundationAccess) {
+	if (access?.dorian && access.dorian.subjectId !== personId) throw new FoundationDenied();
+	const person = await tx.foundationSubject.findFirst({
+		where: { id: personId, kind: 'PERSON', selfUserId: access?.dorian ? access.ownerUserId : null, state: 'ACTIVE' },
+		select: { id: true }
+	});
+	if (!person) throw new FoundationDenied();
+}
+const presentationTable = 'FoundationSourcePresentationVersion';
+const sourceVersionTable = 'FoundationSourceVersion';
+function sourceKey(access: FoundationAccess, binding: Binding) {
+	return mac(
+		access,
+		'conversation-ingest',
+		JSON.stringify([
+			binding.provider,
+			binding.provider === 'ELEVENLABS' ? binding.conversationId : binding.importId
+		])
+	);
+}
+function parseCapture(raw: unknown) {
+	const capture = captureSchema.parse(raw);
+	if (
+		capture.completeness === 'COMPLETE' &&
+		(!capture.turns.some((t) => t.role === 'OWNER') ||
+			(capture.binding.provider === 'ELEVENLABS' && !capture.turns.some((t) => t.role === 'AGENT')))
+	)
+		throw new FoundationDenied();
+	return capture;
+}
+
+async function replaySave(
+	tx: AppTransactionClient,
+	access: FoundationAccess,
+	personId: string,
+	binding: Binding,
+	requestMac: string
+) {
+	const source = await tx.foundationSource.findFirst({
+		where: { ingestKey: sourceKey(access, binding) }
+	});
+	if (!source) return null;
+	const first = await tx.foundationSourcePresentationVersion.findFirst({
+		where: { sourceId: source.id, subjectId: personId, version: 1 },
+		select: { requestMac: true }
+	});
+	if (!first || source.kind !== 'IMPORTED_CONVERSATION' || source.state !== 'ACTIVE')
+		throw new FoundationDenied();
+	if (first.requestMac !== requestMac) throw new FoundationConflict();
+	return { sourceId: source.id };
+}
+
+// A successful save can be retried even after ElevenLabs no longer retains the original.
+export function savedConversationReceipt(
+	access: FoundationAccess,
+	personId: string,
+	binding: ProviderBinding,
+	summary: string
+) {
+	return withFoundationAccess(access, 'SAVE_CONVERSATION', async (tx) => {
+		await requirePerson(tx, personId);
+		const provider = bindingSchema.parse(binding);
+		return replaySave(
+			tx,
+			access,
+			personId,
+			provider,
+			mac(
+				access,
+				'conversation-save',
+				JSON.stringify([provider, personId, conversationSummary.parse(summary)])
+			)
+		);
+	});
+}
+
+async function appendSourceVersion(
+	tx: AppTransactionClient,
+	access: FoundationAccess,
+	sourceId: string,
+	capture: CapturedConversation,
+	admission: 'STORED_ONLY' | 'PRIVATE_ANALYSIS',
+	previous: { id: string; version: number } | null,
+	provenance: object
+) {
+	const id = randomUUID();
+	const payload = JSON.stringify(capture);
+	return tx.foundationSourceVersion.create({
+		data: {
+			...scope(access),
+			id,
+			sourceId,
+			...lineage(previous),
+			processingAdmission: admission,
+			occurredAt: capture.occurredAt ? new Date(capture.occurredAt) : null,
+			recordedByKind: capture.binding.provider === 'OWNER_IMPORT' ? 'OWNER' : 'SERVICE',
+			contentMac: mac(access, 'conversation-content', payload),
+			payloadEnc: encrypt(payload, aad(access, sourceVersionTable, 'payloadEnc', id)),
+			provenanceEnc: encrypt(
+				JSON.stringify(provenance),
+				aad(access, sourceVersionTable, 'provenanceEnc', id)
+			)
+		}
+	});
+}
+async function appendSummary(
+	tx: AppTransactionClient,
+	access: FoundationAccess,
+	personId: string,
+	sourceVersion: { id: string; sourceId: string; version: number },
+	summary: string,
+	origin: SummaryOrigin,
+	requestMac: string,
+	previous: { id: string; version: number } | null
+) {
+	const id = randomUUID();
+	return tx.foundationSourcePresentationVersion.create({
+		data: {
+			...scope(access),
+			id,
+			subjectId: personId,
+			sourceId: sourceVersion.sourceId,
+			sourceVersionId: sourceVersion.id,
+			sourceVersionNumber: sourceVersion.version,
+			...lineage(previous),
+			summaryEnc: encrypt(summary, aad(access, presentationTable, 'summaryEnc', id)),
+			provenanceEnc: encrypt(
+				JSON.stringify({
+					...(origin.kind === 'DORIAN_CALL_LABEL' ? { service: access.actorId } : { editorUserId: access.actorId }),
+					origin: origin.kind,
+					...('model' in origin
+						? {
+								generator: 'OpenAI',
+								model: origin.model,
+								invocationId: origin.invocationId,
+								promptVersion: 'person-note-v1'
+							}
+						: {})
+				}),
+				aad(access, presentationTable, 'provenanceEnc', id)
+			),
+			requestMac
+		}
+	});
+}
+
+// Capture comes only from a server-verified provider response. The form supplies only its summary.
+export function savePersonConversation(
+	access: FoundationAccess,
+	personId: string,
+	rawCapture: CapturedConversation,
+	rawSummary: string,
+	origin: SummaryOrigin
+) {
+	const capture = parseCapture(rawCapture);
+	if (capture.binding.provider !== 'ELEVENLABS') throw new FoundationDenied();
+	const summary = conversationSummary.parse(rawSummary);
+	// Keep existing provider replay receipts compatible.
+	const requestMac = mac(
+		access,
+		'conversation-save',
+		JSON.stringify([capture.binding, personId, summary])
+	);
+	return persistConversation(access, personId, capture, summary, origin, requestMac);
+}
+
+export class InvalidConversationImport extends Error {}
+
+export function importPersonConversation(
+	access: FoundationAccess,
+	personId: string,
+	input: z.input<typeof importFields>
+) {
+	const fields = importFields.safeParse(input);
+	if (!fields.success)
+		throw new InvalidConversationImport(
+			'Enter a title, a valid conversation date and time, and a transcript of 10 to 60,000 characters.'
+		);
+	const { importId, summary, occurredAt, transcript } = fields.data;
+	let parsed;
+	try {
+		parsed = parseDatingTranscript(transcript);
+	} catch {
+		throw new InvalidConversationImport('Enter a labelled transcript with up to 600 turns.');
+	}
+	// Only an explicit You label becomes self evidence. Other text is background.
+	const turns = parsed.turns.map((turn) => {
+		const label = turn.speaker.toLowerCase();
+		if (label !== 'you' && label !== 'context')
+			throw new InvalidConversationImport(
+				'Use You: for your words and Context: for any other speaker.'
+			);
+		const text = transcriptTurnBody(turn);
+		if (!text.trim())
+			throw new InvalidConversationImport('Every speaker label needs transcript text.');
+		return {
+			id: turn.id,
+			role: label === 'you' ? ('OWNER' as const) : ('UNRESOLVED' as const),
+			text
+		};
+	});
+	if (!turns.some((turn) => turn.role === 'OWNER'))
+		throw new InvalidConversationImport('Include at least one turn beginning with You:.');
+	const capture = parseCapture({
+		format: 'conversation-v1',
+		binding: { provider: 'OWNER_IMPORT', importId },
+		occurredAt,
+		completeness: 'COMPLETE',
+		turns
+	});
+	const requestMac = mac(
+		access,
+		'conversation-owner-import',
+		JSON.stringify([capture, personId, summary])
+	);
+	return persistConversation(
+		access,
+		personId,
+		capture,
+		summary,
+		{ kind: 'HUMAN_AUTHORED' },
+		requestMac
+	);
+}
+
+// Reuse capture and source lineage. The presentation label is service-authored.
+export function saveDorianSelfConversation(access: FoundationAccess, rawCapture: CapturedConversation) {
+	const capture = parseCapture(rawCapture);
+	if (!access.dorian || access.dorian.sourceId || capture.binding.provider !== 'ELEVENLABS' ||
+		capture.binding.conversationId !== access.dorian.conversationId || capture.binding.agentId !== access.dorian.agentId)
+		throw new FoundationDenied();
+	const personId = access.dorian.subjectId;
+	return persistConversation(access, personId, capture, 'Talk to Dorian',
+		{ kind: 'DORIAN_CALL_LABEL' }, mac(access, 'dorian-call-save', JSON.stringify(capture.binding)));
+}
+
+function persistConversation(
+	access: FoundationAccess,
+	personId: string,
+	capture: CapturedConversation,
+	summary: string,
+	origin: SummaryOrigin,
+	requestMac: string
+) {
+	return withFoundationAccess(access, 'SAVE_CONVERSATION', async (tx) => {
+		await requirePerson(tx, personId, access);
+		const replay = await replaySave(tx, access, personId, capture.binding, requestMac);
+		if (replay) return replay;
+		const source = await tx.foundationSource.create({
+			data: {
+				...scope(access),
+				kind: 'IMPORTED_CONVERSATION',
+				ingestKey: sourceKey(access, capture.binding)
+			}
+		});
+		const version = await appendSourceVersion(tx, access, source.id, capture,
+			access.dorian && capture.completeness === 'COMPLETE' ? 'PRIVATE_ANALYSIS' : 'STORED_ONLY', null, {
+			...(access.dorian ? { capture: 'DORIAN_FOUNDATION_WEB', actor: access.actorId, callId: access.dorian.id } :
+				capture.binding.provider === 'OWNER_IMPORT'
+				? { capture: 'OWNER_IMPORT', actor: access.actorId }
+				: { capture: 'DORIAN_WEB' })
+		});
+		await appendSummary(tx, access, personId, version, summary, origin, requestMac, null);
+		return { sourceId: source.id };
+	});
+}
+
+export async function currentConversation(
+	tx: AppTransactionClient,
+	access: FoundationAccess,
+	personId: string,
+	sourceId: string
+) {
+	await requirePerson(tx, personId, access);
+	if (access.dorian && access.dorian.sourceId !== sourceId) throw new FoundationDenied();
+	const saved = await tx.foundationSourcePresentationVersion.findFirst({
+		where: { sourceId, subjectId: personId, version: 1 },
+		select: { id: true }
+	});
+	const source = await tx.foundationSource.findFirst({
+		where: { id: sourceId, state: 'ACTIVE', kind: 'IMPORTED_CONVERSATION' },
+		select: { id: true }
+	});
+	if (!saved || !source) throw new FoundationDenied();
+	const version = await tx.foundationSourceVersion.findFirst({
+		where: { sourceId },
+		orderBy: { version: 'desc' }
+	});
+	if (!version) throw new FoundationDenied();
+	const payload = decrypt(
+		version.payloadEnc,
+		aad(access, sourceVersionTable, 'payloadEnc', version.id)
+	);
+	if (version.contentMac !== mac(access, 'conversation-content', payload))
+		throw new FoundationDenied();
+	return { version, capture: parseCapture(JSON.parse(payload)) };
+}
+
+export function listPersonConversations(
+	access: FoundationAccess,
+	personId: string,
+	after?: string
+) {
+	return withFoundationAccess(access, 'READ_CONVERSATION', async (tx) => {
+		await requirePerson(tx, personId);
+		const base = { subjectId: personId, version: 1 };
+		const cursor = after
+			? await tx.foundationSourcePresentationVersion.findFirst({
+					where: { ...base, sourceId: after },
+					select: { createdAt: true, id: true }
+				})
+			: null;
+		if (after && !cursor) throw new FoundationDenied();
+		const rows = await tx.foundationSourcePresentationVersion.findMany({
+			where: {
+				...base,
+				...(cursor
+					? {
+							OR: [
+								{ createdAt: { lt: cursor.createdAt } },
+								{ createdAt: cursor.createdAt, id: { lt: cursor.id } }
+							]
+						}
+					: {})
+			},
+			orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+			take: 21,
+			select: { sourceId: true, createdAt: true }
+		});
+		const visible = await tx.foundationSource.findMany({
+			where: {
+				id: { in: rows.slice(0, 20).map((row) => row.sourceId) },
+				state: 'ACTIVE',
+				kind: 'IMPORTED_CONVERSATION'
+			},
+			select: { id: true }
+		});
+		const ids = new Set(visible.map((source) => source.id));
+		return {
+			items: rows
+				.slice(0, 20)
+				.filter((row) => ids.has(row.sourceId))
+				.map((row) => ({ id: row.sourceId, at: row.createdAt.toISOString() })),
+			next: rows.length > 20 ? rows[19].sourceId : null
+		};
+	});
+}
+export function readPersonConversation(
+	access: FoundationAccess,
+	personId: string,
+	sourceId: string
+) {
+	return withFoundationAccess(access, 'READ_CONVERSATION', async (tx) => {
+		const { version, capture } = await currentConversation(tx, access, personId, sourceId);
+		const latest = await tx.foundationSourcePresentationVersion.findFirst({
+			where: { sourceId, subjectId: personId },
+			orderBy: { version: 'desc' }
+		});
+		if (!latest) throw new FoundationDenied();
+		return {
+			id: sourceId,
+			at: (version.occurredAt ?? version.createdAt).toISOString(),
+			completeness: capture.completeness,
+			imported: capture.binding.provider === 'OWNER_IMPORT',
+			turns: capture.turns,
+			summary: decrypt(latest.summaryEnc, aad(access, presentationTable, 'summaryEnc', latest.id)),
+			summaryVersion: latest.version,
+			sourceVersion: version.version
+		};
+	});
+}
+export function editConversationSummary(
+	access: FoundationAccess,
+	personId: string,
+	sourceId: string,
+	expected: number,
+	rawSummary: string
+) {
+	const summary = conversationSummary.parse(rawSummary);
+	if (!Number.isSafeInteger(expected) || expected < 1 || expected >= 2147483647)
+		throw new FoundationConflict();
+	return withFoundationAccess(access, 'SAVE_CONVERSATION', async (tx) => {
+		const { version } = await currentConversation(tx, access, personId, sourceId);
+		const requestMac = mac(
+			access,
+			'conversation-summary-edit',
+			JSON.stringify([sourceId, expected, summary])
+		);
+		const replay = await tx.foundationSourcePresentationVersion.findFirst({
+			where: { sourceId, version: expected + 1 }
+		});
+		if (replay?.requestMac === requestMac) return { version: replay.version };
+		const latest = await tx.foundationSourcePresentationVersion.findFirst({
+			where: { sourceId },
+			orderBy: { version: 'desc' }
+		});
+		if (!latest || latest.version !== expected) throw new FoundationConflict();
+		return {
+			version: (
+				await appendSummary(
+					tx,
+					access,
+					personId,
+					version,
+					summary,
+					{ kind: 'HUMAN_AUTHORED' },
+					requestMac,
+					latest
+				)
+			).version
+		};
+	});
+}
+
+// A separate internal operation records explicit admission or an owner correction.
+// Draft summarisation and ordinary summary edits never call this operation.
+export function reviseConversationSource(
+	access: FoundationAccess,
+	personId: string,
+	sourceId: string,
+	expected: number,
+	admission: 'STORED_ONLY' | 'PRIVATE_ANALYSIS',
+	correction?: {
+		turns: CapturedConversation['turns'];
+		completeness: CapturedConversation['completeness'];
+		reason: string;
+	}
+) {
+	return withFoundationAccess(access, 'REVISE_CONVERSATION_SOURCE', async (tx) => {
+		const { version, capture } = await currentConversation(tx, access, personId, sourceId);
+		if (!Number.isSafeInteger(expected) || expected < 1 || version.version !== expected)
+			throw new FoundationConflict();
+		const next = correction
+			? parseCapture({ ...capture, turns: correction.turns, completeness: correction.completeness })
+			: capture;
+		if (admission === 'PRIVATE_ANALYSIS' && next.completeness !== 'COMPLETE')
+			throw new FoundationDenied();
+		if (!correction && version.processingAdmission === admission)
+			return { version: version.version, id: version.id };
+		if (correction && !z.string().trim().min(1).max(1000).safeParse(correction.reason).success)
+			throw new FoundationDenied();
+		const saved = await appendSourceVersion(tx, access, sourceId, next, admission, version, {
+			actor: access.actorId,
+			...(correction ? { correction: correction.reason } : { admission })
+		});
+		return { version: saved.version, id: saved.id };
+	});
+}
+
+// A bounded conversational recap is separate from approved LU. No agent speech,
+// pending candidate prose or rejected analysis is projected into this context.
+export function readDorianRecentConversation(access: FoundationAccess) {
+	if (!access.dorian) throw new FoundationDenied();
+	return withFoundationAccess(access, 'READ_CONVERSATION', async (tx) => {
+		const current = await tx.dorianFoundationCall.findUniqueOrThrow({ where: { id: access.dorian!.id } });
+		const calls = await tx.dorianFoundationCall.findMany({
+			where: { ownerUserId: access.ownerUserId, vaultId: access.vaultId, epoch: access.epoch,
+				subjectId: access.dorian!.subjectId, consentVersion: current.consentVersion,
+				createdAt: { lt: current.createdAt }, sourceId: { not: null } },
+			orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], take: 20
+		});
+		for (const call of calls) {
+			const source = await tx.foundationSource.findFirst({ where: { id: call.sourceId!, state: 'ACTIVE' } });
+			if (!source) continue;
+			// Rebind only inside this checked transaction, using the database-owned
+			// previous call. This object is never issued as a reusable capability.
+			const { version, capture } = await currentConversation(tx,
+				{ ...access, dorian: { ...access.dorian!, sourceId: call.sourceId } },
+				access.dorian!.subjectId, call.sourceId!);
+			if (version.processingAdmission !== 'PRIVATE_ANALYSIS' || capture.completeness !== 'COMPLETE') continue;
+			return { returning: true, lastCallAt: (version.occurredAt ?? version.createdAt).toISOString(),
+				lastCallSummary: 'Participant excerpts from the last saved call (partial recap, not approved LU):\n' +
+					capture.turns.filter(turn => turn.role === 'OWNER').slice(-6)
+						.map(turn => turn.id + ': ' + turn.text.slice(0, 400)).join('\n').slice(0, 1600) };
+		}
+		return { returning: false, lastCallAt: '', lastCallSummary: '' };
+	});
+}

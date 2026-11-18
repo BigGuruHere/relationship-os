@@ -7,6 +7,64 @@ Profile publishing cleanup is implemented on `feature/profile-publishing-cleanup
 
 Exchange and notes follow-up is implemented on `feature/exchange-voice-note-followup`. Sign-in with sufficient existing channel proof can finish the exchange and open the saved person’s voice-note invitation directly. Explicit proof and signed-in profile exchange use the same destination. Owner-private notes support text, summary and timestamp edits. Foundation edits append a revision. Existing stored-only legacy notes are updated within their owner’s contact workspace. No migration or deployment.
 
+## Context-neutral navigation
+
+`fix/context-neutral-navigation` removes the shared context picker and uses global navigation destinations on desktop and mobile, including Operator Tools and Manage Users. Context-specific workflows retain their own routes, permissions and data scope. The operator reports that DEV and PROD accounts were reset. No database change is required for this navigation update.
+
+## Dorian browser voice test
+
+`feature/dorian-webrtc-dev` adds an owner-only page at `/settings/dorian-voice-test` on the canonical DEV origin. It uses ElevenLabs' JavaScript SDK and WebRTC with a short-lived token issued by Relish. The page requires the existing server-only `ELEVENLABS_API_KEY` and a dedicated, private DEV agent in `RELISH_DORIAN_WEB_TEST_AGENT_ID`. Use an agent with no tools, Relish webhooks or memory ingestion and verify its provider retention settings before speaking. Use synthetic conversation details. Relish sends no contact data and saves no transcript or note in this test. No migration.
+
+Token requests now have a Relish reference visible on failure and in Railway logs. The logs distinguish provider rejection and its HTTP status, connection failures, timeouts, and invalid responses. Browser console stages distinguish token, SDK load and WebRTC failures. For this transport test, use a self-contained agent with static prompt and greeting or defaults for every required dynamic variable. The existing Dorian browser initiation webhook is a separate path that requires an authorized Relish session token.
+
+On real devices, sign in as owner, open the page, start and end a conversation twice, and check for repeat microphone permission prompts. Note whether Dorian plays through the earpiece, speaker or connected headphones. Repeat in iPhone Safari, Android Chrome and their installed Relish web apps. Check that ending the conversation releases the microphone. Hosted and handset acceptance is pending.
+
+## Living Understanding review from a note
+
+`feature/note-understanding-review` adds an owner-only DEV review to saved My People notes, including Dorian notes. The owner explicitly requests OpenAI suggestions, sees the exact supporting quotes and approves individual updates. General preferences belong under Me. Wishes tied to the selected relationship belong under Our relationship, even if only the owner expressed them. Person observations preserve reported speech or impressions. Approved statements record the owner's perspective.
+
+The first approved relationship statement creates a default private relationship reference for the pair. Later reviewed notes reuse it. The review page shows the approved statements for that note. Editing the note supersedes its evidence and opens the corrected version for a fresh review. One approval batch is supported per note version. Hosted DEV acceptance is pending. No migration.
+
+## LUR-1 shared validation contracts
+
+[LUR-1](foundation/LUR1_CONTRACTS.md) merged through PR #66 at `f79cd8af`. Existing validators moved into a shared module with typed source and candidate contracts.
+
+## LUR-2 private conversations and revision persistence
+
+[LUR-2](foundation/LUR2_PERSISTENCE.md) merged through PR #67 at `b855aa45`. It saves both speakers' turns and an independently versioned summary in the existing owner-only DEV Dorian flow. Hosted acceptance has not been recorded.
+
+## LUR-3 Foundation semantic assessment
+
+[LUR-3](foundation/LUR3_SEMANTIC_ASSESSMENT.md) merged into Development in PR #68 at `992a8121`. The operator ran all eight synthetic semantic assessment checks on Railway DEV successfully. This does not establish live model quality or hosted end-to-end acceptance.
+
+## Topic-first owner LU restoration
+
+`feature/lu-self-topic-workflow` adapts the established semantic-area discovery and topic-writing prompts to Foundation, initially for **Me**. The existing DEV review form uses this path; evidence, explicit approval, exact prior versions and private history use the existing writer. Other perspectives remain unchanged. Shared prompts and structural principles are reused; automatic restructuring and between-stage selection are not ported in this slice. No migration. 99 focused tests and eight isolated DB/route tests passed, including Chromium mobile-width forms. Hosted quality replay, merge and deployment remain pending. See [scope and realism replay](foundation/LUR4_OWNER_REVIEW.md#topic-first-self-understanding-2026-11-15).
+
+PR #81 merged at `69419999`. A hosted topic-first run reached composition and stopped before structural review because a citation exceeded its topic scope. PR #82 merged at `5a033344` and added a topic-specific citation retry. The hosted v2 replay passed citation validation and reached structural review, which held the draft for overlapping meaning, unsupported wording and omissions. On `fix/lu-self-topic-audit-repair`, v3 can revise named topics once and re-audit the full draft before offering it for approval. Hosted v3 replay is pending. No Prisma migration.
+
+PR #83 merged at `baa4744e`, and the operator reported suggested updates available for manual approval in hosted DEV. On `feature/lu-dev-transcript-import`, an owner can paste a dated follow-up on the My People page and use the same review and history to test revision continuity. Local isolated storage and review checks passed. Hosted import replay is pending. No migration or Dorian call test. See [DEV transcript replay](foundation/LUR4_OWNER_REVIEW.md#dev-follow-up-by-pasted-transcript-2026-11-15).
+
+PR #84 merged at `5e8fc0e1`. The first reported hosted pasted follow-up stopped at discovery validation. On `fix/lu-dev-discovery-validation`, the DEV review restricts discovery references to the current scope and retries a rejected discovery once. It records specific discovery reasons and an owner-only stage panel. The isolated follow-up replay passes with a deliberately wrong saved-topic reference on the first attempt. Hosted v4 replay is pending. No migration.
+
+PR #85 merged at `737b856c`. The operator reported a hosted follow-up reaching manual approval as a qualification of the existing topic with the earlier wording visible. The `fix/lu-evidence-excerpts` branch makes new topic-first analyses prefer exact supporting excerpts, with expandable source context. Saved evidence remains intact. Hosted excerpt replay is pending. No migration.
+
+PR #86 merged at `5d9f74a1`. A hosted v5 audit rewrite was held with `TOPIC_TARGET`. On `fix/lu-audit-repair-topic-target`, Relish fixes the topic identity and revision fields when applying a rewrite and re-audits the full draft. Hosted v6 replay pending. No migration.
+
+## LUR-4 Private Living Understanding review
+
+[LUR-4](foundation/LUR4_OWNER_REVIEW.md) merged in PR #69 at Development `b5f133b3`. PostgreSQL and Chromium CI passed. The My People conversation review groups updates by private subject, keeps the full transcript and summary separate, validates owner wording edits, and saves only selected updates. The same screen displays eligible current paragraphs, prior versions and source evidence. Writes require the existing owner-only DEV boundary and an explicit opt-in. No Prisma migration. The owner reached review on DEV and reported a live validation failure. Diagnostics merged in PR #70 and identified a citation failure in decomposition. The citation fix adds exact whole-turn anchors and server-resolved unique excerpts. A later hosted retry reached the audit and logged `BAD_SUBJECT`. The subject repair merged in PR #72. Subsequent DEV retries logged a model timeout and an attribution failure. PR #73 added stage timings, reason codes, an owner-only failure panel and structured attribution repair. The next hosted trace confirmed GPT-6 Luna hit the 45-second extraction deadline. The timeout patch extends extraction to 90 seconds and gives analysis a shared four-minute model budget. The hosted retry completed extraction and hit unsupported prose after the quote repair. The wording patch gives prose-only findings a separate repair and full re-audit inside the same deadline. Hosted verification remains pending. PR #76 added owner-only stage previews. A DEV review reopened after a failed run showed no panels. The recovery patch adds a migration and encrypted failed receipts so the latest failed preview can be recovered for one hour.
+
+PR #78 merged cross-subject topic link repair at `2900132b`. A hosted v6 run reached the audit after re-extraction for an invalid quote. The owner preview showed lost meanings and a timing detail assigned to the wrong person. On `fix/lu-preserve-extraction-on-citation-repair`, an unmatched excerpt is anchored to its original whole turn. The same extraction proceeds to composition and full audit. The audit can still request its bounded semantic repair. Hosted v7 replay remains pending. No Prisma migration.
+
+PR #79 merged citation repair at `83f91d90`. On `feature/lu-writing-comparison`, the DEV owner review can preview the current all-topics draft alongside a focused paragraph per changed topic. Both use the same extraction, outline, model and audit. The preview creates no candidate or revision. Synthetic checks cover the comparison. Live replay across three conversations remains pending. No Prisma migration.
+
+## Dorian notes in My People
+
+The owner-only DEV flow is live-tested by the operator through note save. The `feature/dorian-person-note-quality` branch replaces provider call recaps with a person-centred draft from caller speech through the existing OpenAI summariser. The user can still review, edit, save, or discard. If no draft is generated, the editor opens blank and offers the caller's own words as reference. Existing saved notes remain editable. No migration.
+
+On `fix/dorian-first-message`, My People sends the personalised greeting as a first-message override. On the dedicated ElevenLabs web test agent, enable **First message** under **Security** conversation overrides. Set the agent's regular First message to a static greeting such as “Hi, what would you like to remember?” for standalone calls. Keep defaults for `caller_name` (for example, “there”), `person_name` (for example, “this person”), and `call_intention` (for example, “Help the caller capture a short private note about someone.”). Reference `{{call_intention}}` in its system prompt and treat the names as labels. My People calls supply those variables from Relish. Keep the dedicated web agent's legacy tools and webhooks detached. DEV needs the existing OpenAI key for drafts. Hosted verification of the greeting is pending. No migration.
+
 ## QR exchange follow-up
 
 On `feature/people-recency-exchange`, My People lists the most recently modified contact records first. A pending guest exchange resumes after sign-in even from a generic auth URL. Completed exchanges open the voice-note choice once the required account proof is available. A share without a claim opens My People without an automatic reciprocal contact. The profile editor is separate from both share return paths. No migration or hosted configuration change.
@@ -274,3 +332,27 @@ PR #15 is merged at `2d6d1a3`. Operator confirmed DEV deployment and migration s
 - Operator chose `npm run start:with-migrations` for Railway development and reports adding it. This existing script runs `prisma migrate deploy && node scripts/start-relish.mjs`. The historical shadow-database replay issue remains unresolved, but does not block the rehearsed deploy workflow. Do not require `migrate dev` for this rollout.
 
 These are operator-reported Neon results, not direct agent database access or a full data-equivalence/schema-drift audit. DEV deployment and application smoke results are operator-reported; exact running SHA and post-deployment parent database counts have not been independently inspected. Retain the snapshot under the agreed retention policy. See [validation details](foundation/F202_INVARIANTS.md).
+
+### Dorian browser continuity
+
+Implemented on `feature/dorian-foundation-continuity` for Development review. The new Home entry runs the existing topic-first assessment after completed consented calls. Operator-approved topics become eligible for Dorian's next browser call. Includes an additive Prisma migration. Hosted configuration and provider acceptance are pending. See [browser continuity](foundation/DORIAN_BROWSER_CONTINUITY.md).
+
+### Dorian structural review reprise
+
+Implemented on `feature/lu-structural-repair-resume`. Dorian's Foundation assessment uses the earlier overlap rules to preserve topics with distinct purposes and can merge redundant new draft topics during one bounded repair. A queued browser retry can resume the structural review from an encrypted checkpoint after rechecking the source and prior understanding. See [LUR-5 structural repair](foundation/IMPLEMENTATION_PLAN.md#lur-5-structural-review-reuse). Hosted DEV replay is pending.
+
+### Automatic LU audit follow-up
+
+Implemented on `feature/lu-automatic-audit-followup`. When re-audit finds new, actionable prose or evidence issues, the worker can make one additional targeted repair in the same analysis and audit the result. Unresolved findings stay held for operator inspection. Operator approval still activates learning in the browser pilot. [Foundation implementation plan](foundation/IMPLEMENTATION_PLAN.md#lur-5-automatic-audit-follow-up)
+
+### LU workflow restoration (2026-11-17)
+
+Implemented on `feature/lu-workflow-restoration` from Development `54f17bc1`. The v9 self-topic path requires explicit whole-inventory impact dispositions and supports assertion-preserving structural remapping of new drafts with independent re-audit. Reinforcement preserves accepted prose; original drafts remain available through repairs. Older checkpoints regenerate under the new contract. Saved identities, other-perspective analysis and owner approval retain their behaviour. No Prisma migration. Synthetic and isolated persistence validation is recorded in [the stage notes](foundation/LUR5_WORKFLOW_RESTORATION.md); hosted model quality, merge and deployment remain pending.
+
+### Dorian entry and QR signup polish
+
+Implemented on `feature/dorian-home-and-shared-terms`. Home uses the same tile layout for Dorian as for the other actions. Browser launches reuse the existing versioned policy record and display a short return greeting for accounts that already accepted. Legacy inbound phone callers still use a separate provisional identity. QR verification guidance appears on the related account creation screen. No Prisma migration. Hosted acceptance is pending.
+
+## Dorian Foundation startup context
+
+`feature/dorian-foundation-call-context` adds a personalised first/returning greeting and bounded startup context to the existing SDK launch: default-profile name, call purpose, accepted terms, approved LU, and a separate partial last-call recap. Legacy flows remain intact. No migration or deployment. Dedicated agent prompt variables and first-message overrides must be configured for hosted acceptance. See [setup and limits](foundation/DORIAN_BROWSER_CONTINUITY.md#foundation-call-startup-context-2026-11-17).

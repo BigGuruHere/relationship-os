@@ -100,3 +100,15 @@ Supersedes the fresh-per-exchange verification expectation and manual details fo
 ## D-028 Configurable verification email and trusted callback proof
 
 Accepted implementation choice, 2026-11-08, for [S-405d](foundation/S405D_GUEST_ASSURANCE.md): use a default-disabled Resend adapter because the repository has no functioning email transport, retaining the existing encrypted dispatch/budget contract. Operator sender/provider configuration and authorised delivery remain pending. Newly validated Google callbacks may establish exact email assurance after strict issuer/audience/time/nonce/boolean checks; old OAuth rows and revoked channels are never silently promoted. Proof commits independently of an exchange's later settlement. No changes to credential matching, private custody or production approval.
+
+## 2026-11-15: Restore topic-first self-understanding on Foundation
+
+Accepted by the user after the fixed-outline writing comparison. The Foundation storage transition did not require claim-first discovery. Reuse the established semantic-area and topic development workflow, initially for the owner's own LU, with source-linked evidence and subsequent revisions. Subject/perspective storage remains extensible; separate analyses of another person or a relationship, including later analysis over several conversations, are deferred. Three full passes remain an option, not an implementation requirement. Existing saved other-perspective data is preserved. The first adapter provides structural review findings but does not port automatic split/merge operations. See LUR-4 for actual feature-branch status and acceptance.
+
+## Dorian browser continuity pilot
+
+Accepted 2026-11-17. Move the Dorian entry point to Home for signed-in Foundation users. After consent, completed calls feed the existing topic-first LU pipeline. The operator reviews candidates during the pilot and subsequent calls use approved, eligible understanding. Participant-facing candidate and approval screens stay outside this flow. The contact-based experiment retains its independent analysis and history. See [browser continuity](foundation/DORIAN_BROWSER_CONTINUITY.md).
+
+## 2026-11-17: Reuse call startup transport for Foundation
+
+Accepted: provide first-message guidance, name, purpose, terms and conversational continuity to the current Home Dorian flow. Reuse transport and variable conventions with a Foundation-specific projection rather than merging legacy data or rewriting working adapters. Approved LU and partial source recap remain explicitly separate. No new persistence or production activation.

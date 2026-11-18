@@ -29,7 +29,7 @@ The authoritative detailed backlog and stage register are in [foundation impleme
 | 2 | New-domain primitives, auth isolation, custody and evidence proof | F-202/F-203 merged and DEV operator-confirmed; F-204 merged; F-205 merged; F-206 internal rehearsal merged through PR #19. Stage 2 DEV verification is pending. P-301 directory and person details merged through PR #20 |
 | 3 | Ordinary users onboard, keep people and retrieve notes in production | P-301 through P-305 merged; P-306 internal DEV test operator-confirmed. Hosted DEV and launch acceptance for production-base onboarding are pending under D-029. No invited-cohort prerequisite; privacy, recovery and enabled-provider/device readiness remain. |
 | 4 | Secure exchange claiming and directional continuing sharing | S-403 and fixes merged through PR #36. S-405a corrects exchange/account-assurance design on feature branch; S-405b-e implementation and S-404 recovery/acceptance remain planned. |
-| 5 | Private understanding across people and relationships | Planned after evidence/correction readiness |
+| 5 | Private understanding across people and relationships | [LUR-1 contracts](foundation/LUR1_CONTRACTS.md) merged; [LUR-2 persistence](foundation/LUR2_PERSISTENCE.md) merged; [LUR-3 semantic assessment](foundation/LUR3_SEMANTIC_ASSESSMENT.md) merged in PR #68. [LUR-4 private review and history](foundation/LUR4_OWNER_REVIEW.md) on feature branch. LUR-5 integration and activation review follows. |
 | 6 | Relationship understanding from separately governed perspectives | Future gated release |
 | 7 | Cross-account discovery and approved introductions | Future gated release |
 
@@ -63,3 +63,19 @@ For each material change update the relevant living docs, backlog item and stage
 Select the next task from the earliest unmet gate. New capability replaces existing code only through a demonstrated gap and explicit compatibility plan. No production writes, migration execution or deployment follow automatically from this roadmap.
 
 The 2026-11-05 production deferral and invited-cohort launch policy are superseded by D-029. Prepare an ordinary production release with the full target diff/migration review, DEV evidence, recovery readiness and privacy controls appropriate to the enabled scope. Production execution still requires separate authorization; this roadmap is not a deployment record.
+
+## Immediate LU quality priority (2026-11-15)
+
+Restore and validate topic-first self-understanding on Foundation before extending three-perspective analysis. The first adapter is implemented on `feature/lu-self-topic-workflow`; hosted replay must establish coherent themes, supported depth, attribution and later revision quality on multiple conversations. Additional person/relationship analysis, multi-conversation processing and full structural transformations remain deferred. Three full perspective passes remain a possible experiment. No production activation follows from this stage.
+
+### Dorian browser continuity
+
+Validate Home to browser call, consented background analysis, operator approval and same-account recall in DEV using two ordinary accounts. Use the existing self-topic pipeline. Link inbound telephone calls to Foundation in a subsequent stage. See [browser continuity](foundation/DORIAN_BROWSER_CONTINUITY.md).
+
+### LU workflow restoration and acceptance (2026-11-17)
+
+The earlier deferral of structural transformations is narrowed by [LUR-5 restoration](foundation/LUR5_WORKFLOW_RESTORATION.md): new draft topic remapping and explicit successive-conversation impact review are implemented on a feature branch. Validate the held product-vision regression and varied multi-call sequences on DEV. Measure supported meaning retention, appropriate no-change results, contradictions, automatic completion and useful next-call continuity before removing routine owner approval. Saved-topic lifecycle restructuring and additional perspectives remain later work.
+
+## Foundation startup acceptance
+
+Validate first/returning greetings and natural use of startup context on the dedicated DEV agent, then verify two-account isolation and corrected/withdrawn source behavior. The implementation is on `feature/dorian-foundation-call-context`; provider prompt configuration and live acceptance remain pending. Telephone identity linking and production activation remain separate.

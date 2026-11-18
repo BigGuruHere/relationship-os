@@ -34,6 +34,14 @@ export function parseDatingTranscript(input: unknown): ParsedTranscript {
   return { text, turns, speakers: [...speakers] };
 }
 
+// The existing parser keeps the label in legacy excerpts. Foundation stores the
+// supplied speaker separately and only needs the original words as evidence.
+export function transcriptTurnBody(turn: TranscriptTurn) {
+  const [first, ...rest] = turn.text.split('\n');
+  const match = first.match(SPEAKER_LINE);
+  return match ? [match[2], ...rest].join('\n') : '';
+}
+
 // Each private excerpt contains only the selected speaker's verbatim turns, never other speakers' words.
 // The full original is retained separately and private; excerpts are bounded for the existing AI pathway.
 export function speakerExcerptChunks(turns: TranscriptTurn[], speaker: string, limit = 4800): string[] {

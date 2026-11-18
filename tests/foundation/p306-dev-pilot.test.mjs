@@ -1,5 +1,6 @@
 // Exercise the existing owner page, login and private People routes on a disposable database.
 import test from 'node:test';
+import { applyLuMigration } from './lu-migration-fixture.mjs';
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
@@ -46,6 +47,8 @@ test('Internal DEV setup and ordinary Foundation signup on an isolated database'
 		]) {
 			await db.exec(await readFile('prisma/migrations/' + name + '/migration.sql', 'utf8'));
 		}
+
+		await applyLuMigration(db);
 
 		process.env.DATABASE_URL =
 			'postgresql://postgres:postgres@' + socket.getServerConn() + '/postgres?connection_limit=1';
@@ -661,6 +664,205 @@ test('Internal DEV setup and ordinary Foundation signup on an isolated database'
 			assert.equal((await publicPage.load(publicCard)).profile.displayName, publicName);
 
 		});
+		await t.test('Dorian draft is bound to the owner session and person until explicit save', async () => {
+			const agentId = 'agent_dev_dorian';
+			process.env.RELISH_DORIAN_WEB_TEST_AGENT_ID = agentId;
+			const previousApiKey = process.env.ELEVENLABS_API_KEY;
+			process.env.ELEVENLABS_API_KEY = 'synthetic-dev-key';
+			const previousOpenAiKey = process.env.OPENAI_API_KEY;
+			process.env.OPENAI_API_KEY = 'synthetic-openai-key';
+			try {
+				const owner = { cookies: browser.cookies, locals: {
+					...browser.locals, env: 'dev', appOrigin: origin,
+					user: { ...browser.locals.user, role: 'owner' }
+				} };
+				const directory = await people.load(event(owner, '/people'));
+				const person = directory.people.find(row => row.name === 'QR visitor');
+				const other = directory.people.find(row => row.name === 'Manual visitor');
+				const path = '/people/' + person.id + '/notes/dorian';
+				const params = { id: person.id };
+				const voice = await load('routes/people/[id]/notes/dorian/+page.server');
+				const start = { ...event(owner, path, {}), params, fetch: async () =>
+					Response.json({ token: 'synthetic-token', conversation_id: 'conv_fixture' }) };
+				await assert.rejects(voice.load({ ...start, locals: browser.locals }), e => e.status === 404);
+				const issued = await voice.actions.start(start);
+				assert.equal(issued.initiation.firstMessage, 'Hi ' + publicName + '. What would you like to remember about QR visitor?');
+				assert.equal(issued.initiation.dynamicVariables.person_name, 'QR visitor');
+				assert.equal(issued.initiation.dynamicVariables.caller_name, publicName);
+				assert.match(issued.initiation.dynamicVariables.call_intention, /next step/);
+				assert.equal(issued.initiation.dynamicVariables.first_message, undefined);
+				assert.equal(issued.conversationId, undefined);
+				const providerConversation = { conversation_id: 'conv_fixture', agent_id: agentId, status: 'done',
+					transcript: [
+						{ role: 'agent', message: 'Unconfirmed suggestion from Dorian' },
+						{ role: 'user', message: 'Met at a conference' }
+					],
+					analysis: { transcript_summary: 'The user initiated a call.' }
+				};
+				let summaryPayload;
+				const draft = {
+					...event(owner, path, { reference: issued.reference }), params,
+					fetch: async (endpoint, options) => {
+						if (String(endpoint) === 'https://api.openai.com/v1/chat/completions') {
+							summaryPayload = JSON.parse(options.body);
+							return Response.json({ choices: [{ message: { content: JSON.stringify({
+								summary: publicName + ' met QR visitor at a conference.', tags: []
+							}) } }] });
+						}
+						assert.match(String(endpoint), /\/conversations\/conv_fixture\?format=json$/);
+						return Response.json(providerConversation);
+					}
+				};
+				const requestDraft = (input) => voice.actions.draft({ ...input, request: input.request.clone() });
+				const foreign = { ...draft, locals: { ...another.locals, user: {
+					...another.locals.user, role: 'owner'
+				} } };
+				await assert.rejects(requestDraft(foreign), e => e.status === 404);
+				assert.equal((await requestDraft({ ...draft, params: { id: other.id } })).status, 409);
+				assert.equal((await requestDraft({ ...draft, locals: { ...owner.locals, sessionId: 'other-session' } })).status, 409);
+				assert.deepEqual(await requestDraft({ ...draft, fetch: async () =>
+					Response.json({ conversation_id: 'conv_fixture', agent_id: agentId, status: 'processing' })
+				}), { state: 'pending' });
+				assert.equal((await requestDraft({ ...draft, fetch: async () =>
+					Response.json({ conversation_id: 'conv_other', agent_id: agentId, status: 'done' })
+				})).status, 502);
+				assert.deepEqual(await requestDraft(draft), {
+					state: 'ready', text: publicName + ' met QR visitor at a conference.'
+				});
+				assert.match(summaryPayload.messages[0].content, /Omit greetings, delays, call logistics/);
+				assert.deepEqual(JSON.parse(summaryPayload.messages[1].content), {
+					callerName: publicName, personName: 'QR visitor', callerSpeech: 'Met at a conference'
+				});
+				assert.deepEqual(await requestDraft({ ...draft, fetch: async endpoint =>
+					String(endpoint).includes('api.openai.com') ? new Response(null, { status: 503 }) :
+						Response.json(providerConversation)
+				}), { state: 'ready', text: '', callerSpeech: 'Met at a conference' });
+
+				const detail = () => personPage.load({ ...event(owner, '/people/' + person.id), params });
+				assert.ok(!(await detail()).notes.some(note => note.text.includes('conference')));
+				const save = (fetcher = draft.fetch, summary = 'Met at the conference on Tuesday.') => voice.actions.save({
+					...event(owner, path + '?/save', { reference: issued.reference, summary }),
+					params, fetch: fetcher
+				});
+				let savedLocation;
+				await assert.rejects(save(), error => {
+					savedLocation = error.location;
+					return error.status === 303 && savedLocation.startsWith('/people/' + person.id + '?conversation=');
+				});
+				await assert.rejects(save(async () => assert.fail('A replay must not call the provider.')), at(savedLocation));
+				assert.equal((await save(draft.fetch, 'Changed retry')).status, 409);
+				const summaryPage = () => personPage.load({ ...event(owner, savedLocation), params });
+				const saved = (await summaryPage()).conversations.selected;
+				assert.equal(saved.summary, 'Met at the conference on Tuesday.');
+				assert.deepEqual(saved.turns.map(t => [t.role, t.text]), [
+					['AGENT', 'Unconfirmed suggestion from Dorian'], ['OWNER', 'Met at a conference']
+				]);
+				assert.equal((await detail()).conversations.items.length, 1);
+				assert.equal((await detail()).conversations.selected, null);
+				await assert.rejects(personPage.actions.editConversation({
+					...event(owner, savedLocation + '&/editConversation', { summary: 'Edited summary', summaryVersion: '1' }), params
+				}), at(savedLocation));
+				const edited = (await summaryPage()).conversations.selected;
+				assert.equal(edited.summary, 'Edited summary');
+				assert.equal(edited.summaryVersion, 2);
+				assert.deepEqual(edited.turns, saved.turns);
+				await assert.rejects(voice.actions.discard({ ...event(owner, path, { reference: issued.reference }), params }), at('/people/' + person.id));
+				assert.equal((await requestDraft(draft)).status, 409);
+			} finally {
+				delete process.env.RELISH_DORIAN_WEB_TEST_AGENT_ID;
+				if (previousApiKey === undefined) delete process.env.ELEVENLABS_API_KEY;
+				else process.env.ELEVENLABS_API_KEY = previousApiKey;
+				if (previousOpenAiKey === undefined) delete process.env.OPENAI_API_KEY;
+				else process.env.OPENAI_API_KEY = previousOpenAiKey;
+			}
+		});
+
+		await t.test('review keeps general preferences and relationship-specific wishes separate', async () => {
+			const owner = { ...browser, locals: { ...browser.locals, env: 'dev', appOrigin: origin,
+				user: { ...browser.locals.user, role: 'owner' } } };
+			const directory = await people.load(event(owner, '/people'));
+			const person = directory.people.find(row => row.name === 'QR visitor');
+			const id = person.id;
+			const personPath = '/people/' + id;
+			const personDetail = () => personPage.load({ ...event(owner, personPath), params: { id } });
+			const draft = await notePage.load({ locals: owner.locals, params: { id } });
+			const text = 'I generally like to catch up every three weeks. I would like to spend more time with this person. They told me weekends are busy.';
+			await assert.rejects(notePage.actions.save({ ...event(owner, personPath + '/notes/new?/save', {
+				text, saveKey: draft.saveKey
+			}), params: { id } }), at(personPath));
+			const note = (await personDetail()).notes.find(row => row.text === text);
+			const path = personPath + '/notes/' + note.id + '/review';
+			const params = { id, noteId: note.id };
+			const page = await load('routes/people/[id]/notes/[noteId]/review/+page.server');
+			const before = await count('FoundationStatement');
+			const priorRelationships = (await db.query('SELECT count(*)::int AS n FROM "FoundationSubject" WHERE kind = $1', ['RELATIONSHIP'])).rows[0].n;
+			await assert.rejects(page.load({ ...event(browser, path), params }), e => e.status === 404);
+			const proposals = [
+				{ bucket: 'self', text: 'I generally prefer catching up every three weeks.', quote: 'I generally like to catch up every three weeks.', mode: 'OBSERVED' },
+				{ bucket: 'relationship', text: 'I would like to spend more time with this person.', quote: 'I would like to spend more time with this person.', mode: 'OBSERVED' },
+				{ bucket: 'person', text: 'They told me their weekends are busy.', quote: 'They told me weekends are busy.', mode: 'OBSERVED' },
+				{ bucket: 'person', text: 'They prefer Mondays.', quote: 'They prefer Mondays.', mode: 'INFERRED' }
+			];
+			const previous = process.env.OPENAI_API_KEY;
+			process.env.OPENAI_API_KEY = 'synthetic-key';
+			let generated;
+			try {
+				generated = await page.actions.analyse({ ...event(owner, path, {}), params,
+					fetch: async (endpoint, options) => {
+						assert.equal(String(endpoint), 'https://api.openai.com/v1/chat/completions');
+						const payload = JSON.parse(options.body);
+						assert.match(payload.messages[0].content, /spend more time with John.*belongs under relationship/);
+						assert.equal(JSON.parse(payload.messages[1].content).note, text);
+						return Response.json({ choices: [{ message: { content: JSON.stringify({ proposals }) } }] });
+					}
+				});
+			} finally {
+				if (previous === undefined) delete process.env.OPENAI_API_KEY;
+				else process.env.OPENAI_API_KEY = previous;
+			}
+			assert.deepEqual(generated.proposals, proposals.slice(0, 3));
+			assert.equal(await count('FoundationStatement'), before);
+			const submit = (client, fields) => page.actions.approve({ ...event(client, path, fields), params });
+			const selection = new URLSearchParams({ proposalToken: generated.token });
+			selection.append('selected', '0');
+			selection.append('selected', '1');
+			assert.equal((await submit(owner, { proposalToken: generated.token })).status, 400);
+			assert.equal((await submit({ ...owner, locals: { ...owner.locals, sessionId: 'different' } }, selection)).status, 409);
+			await assert.rejects(submit(owner, selection), at(path));
+			await assert.rejects(submit(owner, selection), at(path));
+			assert.equal(await count('FoundationStatement'), before + 2);
+			const result = await page.load({ ...event(owner, path), params });
+			assert.deepEqual(result.approved.map(row => [row.bucket, row.quote]), [
+				['self', proposals[0].quote], ['relationship', proposals[1].quote]
+			]);
+			const targets = (await db.query(`SELECT s.kind, s."selfUserId", p.kind AS perspective
+				FROM "FoundationStatementSubject" ss JOIN "FoundationSubject" s ON s.id = ss."subjectId"
+				JOIN "FoundationStatementVersion" v ON v.id = ss."statementVersionId"
+				JOIN "FoundationStatement" st ON st.id = v."statementId"
+				JOIN "FoundationPerspective" p ON p.id = st."perspectiveId"
+				WHERE ss."ownerUserId"=$1 ORDER BY s.kind`, [owner.locals.user.id])).rows;
+			assert.deepEqual(targets, [
+				{ kind: 'PERSON', selfUserId: owner.locals.user.id, perspective: 'OWNER_RECORDED' },
+				{ kind: 'RELATIONSHIP', selfUserId: null, perspective: 'OWNER_RECORDED' }
+			]);
+			assert.equal((await db.query('SELECT count(*)::int AS n FROM "FoundationSubject" WHERE kind = $1',
+				['RELATIONSHIP'])).rows[0].n, priorRelationships + 1);
+
+			const current = (await personDetail()).notes.find(row => row.id === note.id);
+			assert.equal(current.editable, true);
+			const { readNoteForReview, readCurrentStatement } = await load('lib/server/foundation/evidence');
+			const { resolveFoundationAccess } = await load('lib/server/foundation/policy');
+			const receipt = await readNoteForReview(await resolveFoundationAccess(owner.locals, 'READ_NOTES'), id, note.id);
+			await assert.rejects(personPage.actions.editNote({ ...event(owner, personPath + '?/editNote', {
+				noteId: note.id, version: String(current.version), text: 'Corrected note.',
+				occurredAt: current.at.slice(0, -1), channel: current.channel
+			}), params: { id } }), at(personPath));
+			const access = await resolveFoundationAccess(owner.locals, 'READ_STATEMENT');
+			for (const entry of receipt.review.entries)
+				await assert.rejects(readCurrentStatement(access, entry.statementId), /resource unavailable/);
+			assert.equal((await submit(owner, selection)).status, 409);
+		});
+
 		await t.test('guest signup first opens verification and saves the card without guest account proof', async () => {
 			process.env.RELISH_DEV_FOUNDATION_PILOT_TARGET = target;
 			process.env.RELISH_EXCHANGE_BROWSER_ENABLED = 'YES';
@@ -698,6 +900,7 @@ test('Internal DEV setup and ordinary Foundation signup on an isolated database'
 			}), at(register));
 			const registration = await registerPage.load(event(guest, register));
 			assert.equal(registration.draft.email, email);
+			assert.equal(registration.fromSharedDetails, true);
 			// A generic signup URL still resumes the pending exchange in this browser.
 			await assert.rejects(registerPage.actions.default(event(guest, '/auth/register', { email, password })), at('/exchange/claim'));
 			const session = await sessionFor(guest);

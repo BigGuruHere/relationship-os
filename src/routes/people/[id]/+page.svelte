@@ -16,7 +16,58 @@
 {#if data.contact.email}<p><a href={'mailto:' + data.contact.email}>{data.contact.email}</a></p>{/if}
 {#if data.contact.phone}<p><a href={'tel:' + data.contact.phone}>{data.contact.phone}</a></p>{/if}
 <a class="btn primary" href={'/people/' + data.contact.id + '/notes/new'}>Record voice note / Add note</a>
-<p class="muted">Your private observations. These notes are not shared or added to this person's understanding.</p>
+<p class="muted">Your private observations. You choose which suggestions to save to Living Understanding.</p>
+{#if data.transcriptImport}
+  <details class="transcript-import" open={Boolean(form?.importError)}>
+    <summary>Import transcript for Living Understanding</summary>
+    <p>Start each turn with <strong>You:</strong> for your words or <strong>Context:</strong> for anyone else's words. You can paste your own words alone.</p>
+    <form method="post" action="?/importTranscript">
+      <input type="hidden" name="importId" value={data.transcriptImport.id} />
+      <label>Title <input name="summary" required maxlength="20000" value={form?.importDraft?.summary ?? ''} /></label>
+      <label>Conversation date and time (UTC)
+        <input name="utcTime" type="datetime-local" required value={form?.importDraft?.utcTime ?? data.transcriptImport.utcTime} />
+      </label>
+      <label>Transcript <textarea name="transcript" rows="7" required maxlength="60000">{form?.importDraft?.transcript ?? ''}</textarea></label>
+      {#if form?.importError}<p role="alert">{form.importError}</p>{/if}
+      <button class="btn" type="submit">Save transcript and open review</button>
+    </form>
+  </details>
+{/if}
+{#if data.conversations?.items.length || data.conversations?.selected || data.conversations?.next}
+  <h2>Saved conversations</h2>
+  {#if data.conversations.selected}
+    {@const conversation = data.conversations.selected}
+    <article>
+      <h3>{conversation.imported ? 'Imported transcript' : 'Conversation summary'}</h3>
+      <p class="note-text">{conversation.summary}</p>
+      {#if data.conversationReviewAvailable}
+        <p><a href={'/people/' + data.contact.id + '/notes/' + conversation.id + '/review?conversation=1'} data-sveltekit-preload-data="off">Review conversation for Living Understanding</a></p>
+      {/if}
+      <details open={Boolean(form?.conversationError)}>
+        <summary>Edit summary</summary>
+        <form method="post" action={'?conversation=' + encodeURIComponent(conversation.id) + '&/editConversation'}>
+          <input type="hidden" name="summaryVersion" value={conversation.summaryVersion} />
+          <label>Summary <textarea name="summary" required maxlength="20000">{form && 'conversationDraft' in form ? form.conversationDraft : conversation.summary}</textarea></label>
+          {#if form?.conversationError}<p role="alert">{form.conversationError}</p>{/if}
+          <button class="btn" type="submit">Save summary</button>
+        </form>
+      </details>
+      <details open={data.transcriptRequested}>
+        <summary id="conversation-transcript">Full transcript</summary>
+        {#if conversation.completeness === 'INCOMPLETE'}<p>Only part of the transcript was available.</p>{/if}
+        {#each conversation.turns as turn (turn.id)}
+          <p class="note-text" id={'turn-' + turn.id}><strong>{turn.role === 'OWNER' ? 'You' : turn.role === 'AGENT' ? 'Dorian' : conversation.imported ? 'Context' : 'Unknown speaker'}:</strong> {turn.text}</p>
+        {/each}
+      </details>
+    </article>
+  {/if}
+  <ul>
+    {#each data.conversations.items as item (item.id)}
+      <li><a href={'?conversation=' + encodeURIComponent(item.id)}>Conversation saved <time datetime={item.at}>{new Date(item.at).toLocaleString()}</time></a></li>
+    {/each}
+  </ul>
+  {#if data.conversations.next}<a href={'?afterConversation=' + encodeURIComponent(data.conversations.next)}>More conversations</a>{/if}
+{/if}
 <h2>History</h2>{#if data.origin}<p>Details shared through your profile on {new Date(data.origin.submittedAt).toLocaleString()}.</p>{/if}{#each data.notes as note}<article><p><time datetime={note.at}>{new Date(note.at).toLocaleString()}</time> · {note.channel === 'OWNER_VOICE_NOTE' ? 'Your voice note' : 'Your note'}</p><p class="note-text">{note.text}</p>{#if note.summary}<h3>Summary</h3><p class="note-text">{note.summary}</p>{/if}{#if note.editable}
   <details open={form?.draft?.id === note.id}>
     <summary>Edit note</summary>
@@ -33,6 +84,8 @@
       <button class="btn" type="submit">Save changes</button>
     </form>
   </details>
+{/if}{#if data.noteReviewAvailable && note.editable}
+  <a class="btn" href={'/people/' + data.contact.id + '/notes/' + note.id + '/review'}>Review for Living Understanding</a>
 {/if}</article>{:else}<p>No notes yet. Record what you want to remember.</p>{/each}{#if data.nextNote}<a class="btn" href={'/people/' + data.contact.id + '?afterNote=' + encodeURIComponent(data.nextNote)}>More history</a>{/if}{#if data.foundation}
   <details>
     <summary>Remove from My People</summary>
@@ -44,4 +97,4 @@
 {/if}
 </div>
 {/if}
-<style>.person-page{max-width:760px;padding:20px;overflow-wrap:anywhere}article{border-top:1px solid var(--border);padding:16px 0}.note-text{white-space:pre-wrap}.btn{min-height:48px}article form,article label{display:grid;gap:8px}.followup{max-width:34rem;margin:10vh auto;text-align:center}.followup h1{font-size:1.6rem}.followup-actions{display:flex;gap:12px;justify-content:center;flex-wrap:wrap}</style>
+<style>.person-page{max-width:760px;padding:20px;overflow-wrap:anywhere}article{border-top:1px solid var(--border);padding:16px 0}.note-text{white-space:pre-wrap}.btn{min-height:48px}article form,article label,.transcript-import form,.transcript-import label{display:grid;gap:8px}.followup{max-width:34rem;margin:10vh auto;text-align:center}.followup h1{font-size:1.6rem}.followup-actions{display:flex;gap:12px;justify-content:center;flex-wrap:wrap}</style>

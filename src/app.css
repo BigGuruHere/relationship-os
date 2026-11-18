@@ -610,10 +610,6 @@ label { display: block; color: var(--muted); font-size: 0.95rem; margin-bottom: 
 .relish-header { grid-column:1/-1; grid-row:1; display:flex; align-items:center; gap:22px; border-bottom:1px solid #e1e7e6; padding:0 25px; background:#fff; position:sticky; top:0; z-index:20; }
 .relish-brand { display:flex; align-items:center; gap:9px; color:#132f30; font-size:1.24rem; text-decoration:none; white-space:nowrap; }
 .relish-brand img { width:36px; height:36px; object-fit:contain; }
-.relish-context-picker { display:flex; align-items:center; gap:10px; min-width:0; }
-.relish-context-picker label { font-size:.8rem; margin:0; }
-.relish-context-picker select { width:auto; min-width:154px; font-weight:650; padding:8px 29px 8px 12px; border:1px solid #d9e2e2; background:#fff; }
-.relish-context-only { border:1px solid #d9e2e2; padding:8px 12px; border-radius:10px; font-weight:650; }
 .relish-header-tools { margin-left:auto; color:var(--workspace-accent); font-weight:650; }
 .relish-sidebar { grid-column:1; grid-row:2; display:flex; flex-direction:column; padding:26px 14px 18px; border-right:1px solid #e1e7e6; background:#fff; min-width:0; }
 .relish-sidebar-title { color:var(--workspace-accent); text-transform:uppercase; letter-spacing:.09em; font-size:.77rem; font-weight:800; margin:0 11px 15px; }
@@ -657,9 +653,6 @@ label { display: block; color: var(--muted); font-size: 0.95rem; margin-bottom: 
   .relish-header { min-height:64px; padding:0 15px; gap:12px; }
   .relish-brand strong { font-size:1.05rem; }
   .relish-brand img { width:30px; height:30px; }
-  .relish-context-picker { margin-left:auto; }
-  .relish-context-picker label { display:none; }
-  .relish-context-picker select { min-width:120px; max-width:155px; }
   /* IT: Keep actions at the far right when a page has no context picker. */
   .relish-header-tools { margin-left:auto; font-size:.88rem; }
   .relish-sidebar { display:none; }
@@ -674,7 +667,6 @@ label { display: block; color: var(--muted); font-size: 0.95rem; margin-bottom: 
 }
 @media(max-width:420px) {
   .relish-brand strong { display:none; }
-  .relish-context-picker select { min-width:118px; }
   .workspace-tiles { grid-template-columns:1fr; }
   .workspace-tile { min-height:135px; }
 }

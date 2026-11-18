@@ -31,8 +31,7 @@ export function currentRelishPolicy() {
   return { version, legalUrl, termsUrl, privacyUrl, published, valid };
 }
 
-export async function callerHasAcceptedCurrentTerms(userId: string) {
-  const policy = currentRelishPolicy();
+export async function callerHasAcceptedCurrentTerms(userId: string, policy = currentRelishPolicy()) {
   if (!policy.valid) return false;
   const acceptance = await prisma.relishCallPolicyAcceptance.findFirst({
     where: { userId, policyVersion: policy.version, termsUrl: policy.termsUrl, privacyUrl: policy.privacyUrl },
@@ -67,15 +66,34 @@ export async function recordRelishVoicePolicyAcceptance(input: {
   if (!privateSpace) return { status: 'UNAUTHORISED' as const };
   const policy = currentRelishPolicy();
   if (!policy.valid) return { status: 'POLICY_UNAVAILABLE' as const };
-  await prisma.relishCallPolicyAcceptance.upsert({
-    where: { sessionId_policyVersion: { sessionId: session.id, policyVersion: policy.version } },
-    update: {},
-    create: { userId: session.userId, sessionId: session.id, conversationId,
-      policyVersion: policy.version, termsUrl: policy.termsUrl, privacyUrl: policy.privacyUrl,
-      method: 'VOICE_EXPLICIT' }
+  await savePolicyAcceptance(policy, {
+    userId: session.userId, sessionId: session.id, conversationId, method: 'VOICE_EXPLICIT'
   });
   // Only a status is returned to Dorian, never another participant's private data.
   return { status: 'ACCEPTED' as const, policy_version: policy.version };
+}
+
+// Browser callers supply only authenticated session IDs and server-issued conversation bindings.
+export function recordRelishBrowserPolicyAcceptance(
+  policy: ReturnType<typeof currentRelishPolicy>,
+  input: { userId: string; authSessionId: string; conversationId: string }
+) {
+  if (!policy.valid || !input.authSessionId) throw new Error('Browser policy acceptance unavailable.');
+  return savePolicyAcceptance(policy, {
+    userId: input.userId, sessionId: 'browser:' + input.authSessionId,
+    conversationId: input.conversationId, method: 'BROWSER_EXPLICIT'
+  });
+}
+
+function savePolicyAcceptance(
+  policy: ReturnType<typeof currentRelishPolicy>,
+  input: { userId: string; sessionId: string; conversationId: string; method: 'VOICE_EXPLICIT' | 'BROWSER_EXPLICIT' }
+) {
+  return prisma.relishCallPolicyAcceptance.upsert({
+    where: { sessionId_policyVersion: { sessionId: input.sessionId, policyVersion: policy.version } },
+    update: {},
+    create: { ...input, policyVersion: policy.version, termsUrl: policy.termsUrl, privacyUrl: policy.privacyUrl }
+  });
 }
 
 export function instructionForKnownPolicyStatus(accepted: boolean, smsStatus: string = 'NOT_AVAILABLE') {

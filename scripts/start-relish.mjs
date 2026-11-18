@@ -15,6 +15,8 @@ const webArgs = dev
 let stopping = false;
 let worker = null;
 let restartTimer = null;
+let foundationWorker = null;
+let foundationRestart = null;
 
 // Keep the web service in its original process mode; it has priority on shutdown.
 const web = spawn(process.execPath, webArgs, { stdio: 'inherit', env: process.env });
@@ -37,11 +39,27 @@ function launchWorker() {
   });
 }
 
+function launchFoundationWorker() {
+  if (stopping || process.env.RELISH_FOUNDATION_DORIAN !== 'YES' ||
+      !process.env.RELISH_FOUNDATION_DORIAN_AGENT_ID?.trim() ||
+      !process.env.RELISH_FOUNDATION_DORIAN_TOOL_SECRET?.trim()) return;
+  foundationWorker = spawn(process.execPath, [
+    '--import', 'tsx', resolve('scripts/process-dorian-foundation-calls.ts')
+  ], { stdio: 'inherit', env: process.env });
+  foundationWorker.on('error', () => console.error('[Dorian Foundation] Worker start failed.'));
+  foundationWorker.on('close', () => {
+    foundationWorker = null;
+    if (!stopping) foundationRestart = setTimeout(launchFoundationWorker, 10000);
+  });
+}
+
 function stop(signal = 'SIGTERM') {
   if (stopping) return;
   stopping = true;
   if (restartTimer) clearTimeout(restartTimer);
   if (worker && !worker.killed) worker.kill(signal);
+  if (foundationRestart) clearTimeout(foundationRestart);
+  if (foundationWorker && !foundationWorker.killed) foundationWorker.kill(signal);
   if (!web.killed) web.kill(signal);
 }
 
@@ -63,3 +81,5 @@ if (isWorkerEnabled) {
 } else {
   console.log('[Phone LU Supervisor] Auto worker disabled (RELISH_PHONE_AUTO_LU is not YES)');
 }
+
+launchFoundationWorker();

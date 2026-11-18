@@ -458,7 +458,17 @@ try {
     const html=render(Component,{props:{data}}).body;
     assert.match(html,/Share your details with Terence/);assert.match(html,/>Skip</);assert.match(html,/>Send</);assert.match(html,/name="contactConsent"/);assert.doesNotMatch(html,/Create my Relish profile|verify a phone number/);
     const enabled=render(Component,{props:{data:{...data,exchangeAvailable:true}}}).body;
-    assert.match(enabled,/confirm the mobile number/);
+    assert.doesNotMatch(enabled,/confirm the mobile number/);
+    assert.match(enabled,/Privacy notice/);
+  });
+  await test('account creation explains verification only for a QR exchange', async () => {
+    const registerCompiled = compile(readFileSync('src/routes/auth/register/+page.svelte', 'utf8'), {generate:'server'});
+    writeFileSync(out + '/register.mjs', registerCompiled.js.code);
+    const Register = (await import(out + '/register.mjs')).default;
+    const html = fromSharedDetails => render(Register, {props:{data:{next:null,fromSharedDetails}}}).body;
+    assert.match(html(true), /confirm the mobile number/);
+    assert.match(html(true), /Creating an account is optional/);
+    assert.doesNotMatch(html(false), /confirm the mobile number/);
   });
   await test('Send and Skip each show optional step three; preview escapes submitted markup',()=>{
     const html=render(Component,{props:{data,form:{shared:true,values:{name:'<script>Guest</script>',email:'guest@example.test',phone:''}}}}).body;

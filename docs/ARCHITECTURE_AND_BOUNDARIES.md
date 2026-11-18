@@ -28,6 +28,14 @@ Keep existing data and security boundaries during the deployment split. Brokerag
 
 See the [stage-2/3 backlog and migration gates](foundation/IMPLEMENTATION_PLAN.md). F-201 now specifies the [physical schema and transaction contracts](foundation/PHYSICAL_MODEL.md), with [source dependency and data inventory](foundation/DEPENDENCY_INVENTORY.md). F-202 adds the custody root and typed subjects to Prisma and an additive migration on its feature branch; [invariants and rehearsal](foundation/F202_INVARIANTS.md) document coverage. Target migration, auth isolation, access services and user-facing activation remain pending. The sections below describe current implementation, not the target schema.
 
+## Foundation conversation and understanding persistence
+
+LUR-2 introduces a full conversation source in the existing private vault. The source version binds speaker-labelled turns to the exact provider capture. Presentation versions link each editable summary to its source version and person. Understanding streams are scoped by subject and perspective. Each approved revision points to exact topic versions and their meaning and evidence dependencies. The preparation, approval and eligible-read operations recheck the current vault and source. See [LUR-2](foundation/LUR2_PERSISTENCE.md) for the feature branch, migration and acceptance status.
+
+LUR-3 connects the semantic assessment to these private sources. The model receives scoped transcript turns and eligible baseline prose through the shared model gateway. Only owner turns can support claims. Encrypted candidates retain the exact proposal, invocation provenance and the assessed baseline binding. Source or inherited evidence changes invalidate that binding before storage or approval. See [LUR-3](foundation/LUR3_SEMANTIC_ASSESSMENT.md).
+
+LUR-4 adds explicit transcript admission and review on the existing My People route. Review is bound to the owner, person, source and current evidence inventory. Wording edits keep the original evidence and record an independent audit. Eligible revision readers project exact excerpts after checking current custody and admission, and the DEV write opt-in does not change the storage path. See [LUR-4](foundation/LUR4_OWNER_REVIEW.md).
+
 ## Stack and environments
 
 - Main app: SvelteKit, TypeScript, Node 22, Prisma 6, PostgreSQL/Neon with pgvector, OpenAI integrations; Railway DEV and PROD.
@@ -122,6 +130,16 @@ Resolve the profile owner and check its enrollment under the account lock on the
 
 [Private notes](foundation/P303_NOTES.md) reuse existing People and recording surfaces. READ_NOTES opens owner-private current note text without widening segment-only readers. PROCESS_DRAFT grants no stored-data access. Provider calls recheck lifecycle and epoch before/after work; transcript jobs bind user/domain/vault/epoch. Storage is encrypted and STORED_ONLY. Audio transport remains process-local with one-hour expiry and explicit recovery limits. No activation or migration ships in this stage.
 
+## Dorian web note intake
+
+The DEV-only My People flow binds the conversation ID returned by ElevenLabs at token issuance to an encrypted, HTTP-only continuation for the exact signed-in session, person, vault epoch and agent. After the call, Relish retrieves the provider result server-to-server and verifies its ID and agent before returning an editable draft. A user-approved save goes through the existing P-303 owner-private note writer. This first slice uses the authenticated conversation read API, so it does not require an inbound webhook or a legacy workspace binding.
+
+Web note calls and telephone calls share the ElevenLabs provider adapter. The My People workflow supplies a per-session greeting and purpose, uses only caller speech for transient person-note drafting, and saves through the owner-approved note path. The telephone workflow retains its own identity, consent and ingestion rules. Neither channel needs a separate implementation of the provider transport.
+
+## Living Understanding note review
+
+A request to analyse an owner note is transient draft processing. Approval atomically records an admitted revision of that same note, exact evidence passages, owner-perspective statements and, if needed, the private relationship subject. The note's placement on a person's page does not determine the statement subject. A general cadence preference concerns the owner; wanting to spend more time with a specific person concerns that relationship from the owner's view. A future Relish interpretation or bridged view requires separate authority and perspective. Editing the source invalidates dependent current statements through F-205's existing revision checks.
+
 ## P-305 private vault operations
 
 The offline support service uses the same account/vault locks as foundation writers. Its review, control and erasure scopes are separated from browser authority. Suspension advances the epoch; transactional erasure removes the scoped graph and retains an empty locked vault and suspended enrollment. Archived subjects retain their content for review. The shared account and legacy/provider data require separately scoped closure actions. See [the support and restore runbook](foundation/P305_PRIVACY_OPERATIONS.md).
@@ -151,3 +169,15 @@ S-403 adds a fixed exchange auth return and encrypted browser continuation. New-
 ## S-405d exact claims reuse account proof
 
 [Guest assurance reuse](foundation/S405D_GUEST_ASSURANCE.md) adds immutable version-2 submitted-channel snapshots and resolves current account proof under settlement/revocation locks. Proof commits independently of reciprocal saving. Existing version-1 SMS continuations drain without backfill; new browser intake has one version-2 writer. Email uses a configurable, default-disabled Resend adapter through the existing encrypted outbox and shared budgets. Newly validated Google callbacks can record exact email proof after strict token/nonce validation; revoked channels stay revoked. Feature-branch implementation only, with one additive migration and no new tables.
+
+## Topic-first self-understanding adapter
+
+On `feature/lu-self-topic-workflow`, the DEV conversation review uses shared legacy semantic-area prompts with Foundation source packets and eligible self-topic baselines. Topic development precedes evidence assertion assembly. Exact anchors, generation provenance, scoped approval and immutable history reuse LUR-2/LUR-3 contracts. No Contact/ContextSpace LU writes or additional persistence system are introduced. Existing other-subject baselines remain unchanged. Analysis-method identity is part of the retry key and stored prompt provenance. The shared structure principles currently diagnose problems rather than moving saved topics automatically. See [LUR-4](foundation/LUR4_OWNER_REVIEW.md).
+
+### Dorian browser continuity
+
+The dedicated DEV browser agent uses a server-issued call record bound to one Foundation account, vault epoch and conversation ID. Post-call processing and temporary operator review derive limited authority from the consented call. The browser pilot uses an independent self perspective with the existing source, audit, evidence and revision repositories. The authenticated ElevenLabs tool reads approved eligible topics for that binding. See [browser continuity](foundation/DORIAN_BROWSER_CONTINUITY.md).
+
+## Foundation startup projection
+
+Foundation startup uses the existing browser SDK initiation transport with a separate provider projection. A registered call resolves scoped READ_LU and READ_CONVERSATION grants. Previous source reads are limited to the same account, vault, epoch and self subject, with current admission and active source checks. The browser receives its own bounded context but no review UI; no analysis candidate is exposed. Legacy identity, phone and contact-note paths are unchanged.

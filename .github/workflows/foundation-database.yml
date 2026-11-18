@@ -18,6 +18,10 @@ on:
       - 'tests/core/profile-share-selector.test.mjs'
       - 'tests/core/multi-profiles.test.mjs'
       - 'tests/core/exchange-browser.test.mjs'
+      - 'tests/core/lu-contracts.test.mjs'
+      - 'tests/core/lu-semantic-assessment.test.mjs'
+      - 'tests/core/lu-self-topics.test.mjs'
+      - 'tests/core/fixtures/lu/**'
       - 'src/routes/u/**'
       - 'src/routes/exchange/**'
       - 'src/routes/api/upload-chunk/**'
@@ -64,6 +68,13 @@ jobs:
           node-version: '22'
           cache: npm
       - run: npm ci
+      - run: >-
+          node --import tsx --test tests/core/dorian-foundation-context.test.mjs tests/core/lu-contracts.test.mjs
+          tests/core/lu-semantic-assessment.test.mjs
+          tests/core/lu-self-topics.test.mjs
+          tests/core/stage8-12-13-9-core-validation-suite.test.mjs
+          tests/core/stage8-14-0-initial-living-understanding-alignment.test.mjs
+          tests/core/stage8-14-0-5-structural-audit-consistency.test.mjs
       - run: node --test tests/core/profile-onboarding.test.mjs tests/core/profile-share-selector.test.mjs tests/core/multi-profiles.test.mjs tests/core/exchange-browser.test.mjs
       - run: node --test tests/foundation/p306-dev-pilot.test.mjs
       - run: npm run check:foundation:privacy
@@ -78,6 +89,14 @@ jobs:
       - run: node --test tests/foundation/f202-concurrency.test.mjs
         env:
           F202_TEST_DATABASE_URL: postgresql://postgres:f202-disposable-test-only@127.0.0.1:5432/relish_f202_ci
+
+      # Exercise real competing approvals and corrections in an empty PostgreSQL database.
+      - run: node --input-type=module -e 'import {Client} from "pg"; const c=new Client({connectionString:process.env.F202_TEST_DATABASE_URL}); await c.connect(); await c.query("CREATE DATABASE relish_lur2_ci"); await c.end();'
+        env:
+          F202_TEST_DATABASE_URL: postgresql://postgres:f202-disposable-test-only@127.0.0.1:5432/relish_f202_ci
+      - run: node --test tests/foundation/lur2-persistence.test.mjs
+        env:
+          LUR2_TEST_DATABASE_URL: postgresql://postgres:f202-disposable-test-only@127.0.0.1:5432/relish_lur2_ci
 
       # Use a separate empty database so F-202 fixtures cannot mask provisioning errors.
       - run: node --input-type=module -e 'import {Client} from "pg"; const c=new Client({connectionString:process.env.F202_TEST_DATABASE_URL}); await c.connect(); await c.query("CREATE DATABASE relish_f203_ci"); await c.end();'
@@ -127,3 +146,6 @@ jobs:
       - run: npm install --no-save --package-lock=false playwright@1.61.1
       - run: npx playwright install --with-deps chromium
       - run: node tests/browser/exchange-native-forms.mjs
+      - run: node --test tests/foundation/lur2-persistence.test.mjs
+        env:
+          RELISH_BROWSER_LU_TEST: YES

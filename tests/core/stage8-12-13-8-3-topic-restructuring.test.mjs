@@ -72,7 +72,8 @@ test('8.12.13.8.3.1 rejects missing structural audits and silent topic loss', ()
 });
 
 test('8.12.13.8.3.1 service forces contamination checks before KEEP and preserves provenance', () => {
-  const service = fs.readFileSync(new URL('../../src/lib/server/datingUnderstandingRevisionExperiment.ts', import.meta.url), 'utf8');
+  // Inspect imported shared principles as well as the legacy structural adapter.
+  const service = fs.readFileSync(new URL('../../src/lib/server/datingUnderstandingRevisionExperiment.ts', import.meta.url), 'utf8') + fs.readFileSync(new URL('../../src/lib/server/livingUnderstanding/topicPrompts.ts', import.meta.url), 'utf8');
   assert.match(service, /restructureLivingUnderstandingReadOnly/);
   assert.match(service, /STRUCTURAL ONLY/);
   assert.match(service, /structural contamination/);
@@ -131,7 +132,8 @@ test('8.12.13.8.3.2 rejects KEEP when the topic title no longer fits current sta
 });
 
 test('8.12.13.8.3.2 prompt explicitly checks current-state title fit and UI exposes it', () => {
-  const service = fs.readFileSync(new URL('../../src/lib/server/datingUnderstandingRevisionExperiment.ts', import.meta.url), 'utf8');
+  // Inspect imported shared principles as well as the legacy structural adapter.
+  const service = fs.readFileSync(new URL('../../src/lib/server/datingUnderstandingRevisionExperiment.ts', import.meta.url), 'utf8') + fs.readFileSync(new URL('../../src/lib/server/livingUnderstanding/topicPrompts.ts', import.meta.url), 'utf8');
   const page = fs.readFileSync(new URL('../../src/routes/dating/people/[id]/understanding/revision-experiment/+page.svelte', import.meta.url), 'utf8');
   assert.match(service, /TOPIC TITLE still fits the CURRENT state/);
   assert.match(service, /titleFitsCurrentState/);

@@ -9,7 +9,10 @@ test('Foundation startup distinguishes first and returning calls without inventi
   assert.equal(first.dynamicVariables.user_name, '');
   assert.equal(first.dynamicVariables.continuity_status, 'FIRST_SAVED_CALL');
   const returning = foundationCallInitiation({ name: ' Alex\n Smith ', topics: [{ title: 'Interests', prose: 'Enjoys music.' }], returning: true, lastCallAt: '2026-11-17T00:00:00Z', lastCallSummary: 'Participant excerpts: music' });
-  assert.match(returning.firstMessage, /^Hi Alex Smith\. Good to speak with you again/);
+  assert.match(returning.firstMessage, /^Hi Alex\. Good to speak with you again/);
+  for (const key of ['caller_name', 'user_name', 'participant_name']) {
+    assert.equal(returning.dynamicVariables[key], 'Alex');
+  }
   assert.equal(returning.dynamicVariables.relish_terms_status, 'ACCEPTED');
   assert.equal(returning.dynamicVariables.last_call_summary, 'Participant excerpts: music');
   assert.equal(JSON.parse(returning.dynamicVariables.living_understanding)[0].prose, 'Enjoys music.');

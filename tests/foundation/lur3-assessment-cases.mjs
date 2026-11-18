@@ -653,9 +653,10 @@ export async function runLuAssessmentCases({ db, load, vite, otherPersonId, gran
 		process.env.RELISH_FOUNDATION_DORIAN_AGENT_ID = 'synthetic-agent';
 		process.env.RELISH_FOUNDATION_DORIAN_TOOL_SECRET = 'synthetic-tool-secret';
 		process.env.ELEVENLABS_API_KEY = 'synthetic-elevenlabs-key';
-		// The Chromium fixture serves HTTP on localhost. The current published
-		// legal policy still uses the deployment's canonical HTTPS origin.
-		const policyOrigin = 'https://dev.relish.live';
+		// Exercise the full Dorian route flow on the canonical production origin.
+		const policyOrigin = 'https://app.relish.live';
+		origin = policyOrigin;
+		owner.env = 'prod';
 		process.env.APP_ORIGIN = policyOrigin;
 		process.env.RELISH_LEGAL_DOCUMENTS_PUBLISHED = 'YES';
 		process.env.RELISH_PILOT_TERMS_VERSION = 'fixture-v1';
@@ -685,7 +686,7 @@ export async function runLuAssessmentCases({ db, load, vite, otherPersonId, gran
 		}
 		async function memory(conversationId, secret = 'synthetic-tool-secret') {
 			const url = new URL('/api/webhooks/elevenlabs/tools/foundation-memory', origin);
-			return tool.POST({ url, locals: { env: 'dev' }, request: new Request(url, {
+			return tool.POST({ url, locals: { env: 'prod' }, request: new Request(url, {
 				method: 'POST', headers: { authorization: 'Bearer ' + secret }, body: JSON.stringify({ conversation_id: conversationId })
 			}) });
 		}

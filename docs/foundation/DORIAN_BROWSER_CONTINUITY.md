@@ -60,3 +60,5 @@ DEV acceptance: use two different signed-in accounts. First call should greet by
 The Home panel, call launch, memory endpoint and owner review support the canonical production origin once this change is deployed. Set the existing three Dorian variables on the production Railway service. Use a dedicated production ElevenLabs browser agent and a distinct tool secret. Point its memory tool at `https://app.relish.live/api/webhooks/elevenlabs/tools/foundation-memory` and apply the startup prompt configuration above. Confirm the existing ElevenLabs API key, published legal settings and production database migrations before enabling the flag.
 
 Verify a first and returning call and owner review on production. This change adds no Prisma migration. Set `RELISH_FOUNDATION_DORIAN=NO` and restart the service to disable the feature.
+
+See [Foundation Dorian call prompt history](DORIAN_PROMPT_HISTORY.md) for the exact Relish startup text and how to restore an earlier version.

@@ -1,4 +1,4 @@
-import { resolveOrigin } from '$lib/env';
+import { resolveOrigin, type RuntimeEnv } from '$lib/env';
 
 export const dorianConsentVersion = 1;
 
@@ -8,7 +8,12 @@ export function foundationDorianAgent() {
 		: null;
 }
 
+// Browser and provider requests must both target the canonical deployment origin.
+export function foundationDorianOriginAllowed(env: RuntimeEnv, url: URL) {
+	return (env === 'dev' || env === 'prod') && url.origin === resolveOrigin(env);
+}
+
 export function foundationDorianAvailable(locals: App.Locals, url: URL) {
-	return Boolean(locals.env === 'dev' && locals.user && locals.sessionId &&
-		url.origin === resolveOrigin('dev') && foundationDorianAgent());
+	return Boolean(locals.user && locals.sessionId &&
+		foundationDorianOriginAllowed(locals.env, url) && foundationDorianAgent());
 }

@@ -356,3 +356,5 @@ Implemented on `feature/dorian-home-and-shared-terms`. Home uses the same tile l
 ## Dorian Foundation startup context
 
 `feature/dorian-foundation-call-context` adds a personalised first/returning greeting and bounded startup context to the existing SDK launch: default-profile name, call purpose, accepted terms, approved LU, and a separate partial last-call recap. Legacy flows remain intact. No migration or deployment. Dedicated agent prompt variables and first-message overrides must be configured for hosted acceptance. See [setup and limits](foundation/DORIAN_BROWSER_CONTINUITY.md#foundation-call-startup-context-2026-11-17).
+
+Foundation Dorian production access is implemented on `feature/dorian-production-access` behind the existing feature configuration. Hosted activation and acceptance are pending. No new migration. See [production activation](foundation/DORIAN_BROWSER_CONTINUITY.md#production-activation).

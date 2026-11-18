@@ -1,8 +1,7 @@
 import { json } from '@sveltejs/kit';
 import { z } from 'zod';
 import { prisma } from '$lib/db';
-import { resolveOrigin } from '$lib/env';
-import { foundationDorianAgent } from '$lib/server/foundation/dorianCallConfig';
+import { foundationDorianAgent, foundationDorianOriginAllowed } from '$lib/server/foundation/dorianCallConfig';
 import { readDorianContinuity } from '$lib/server/foundation/livingUnderstanding';
 import { resolveDorianCallAccess } from '$lib/server/foundation/policy';
 import { verifyInitiationAuthorization } from '$lib/server/integrations/elevenlabs/initiation';
@@ -14,7 +13,7 @@ const headers = { 'cache-control': 'private, no-store' };
 export const POST: RequestHandler = async ({ request, url, locals }) => {
 	const agentId = foundationDorianAgent();
 	const secret = process.env.RELISH_FOUNDATION_DORIAN_TOOL_SECRET?.trim();
-	if (!agentId || !secret || locals.env !== 'dev' || url.origin !== resolveOrigin('dev'))
+	if (!agentId || !secret || !foundationDorianOriginAllowed(locals.env, url))
 		return json({ error: 'Unavailable.' }, { status: 404, headers });
 	if (!verifyInitiationAuthorization(request.headers.get('authorization'), secret))
 		return json({ error: 'Invalid tool credentials.' }, { status: 401, headers });

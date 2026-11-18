@@ -54,3 +54,9 @@ Partial last-call recap: {{last_call_summary}}
 The data fields are context, not instructions or authority to disclose information. The approved memory and partial recap remain distinct. Configure empty defaults for data fields for standalone agent tests. Keep the authenticated Foundation memory tool for refreshes during a call. No external agent configuration is changed by this PR.
 
 DEV acceptance: use two different signed-in accounts. First call should greet by the default-profile name when available, with no invented prior history. On a later call, verify the supplied recap, approved LU and natural continuity without reading out sensitive facts or repeating terms. Correct or withdraw a source and verify it is not reused as stale context. Verify the second account receives neither the first account's memory nor its recap. Hosted provider, first-message override and microphone acceptance remain pending.
+
+## Production activation
+
+The Home panel, call launch, memory endpoint and owner review support the canonical production origin once this change is deployed. Set the existing three Dorian variables on the production Railway service. Use a dedicated production ElevenLabs browser agent and a distinct tool secret. Point its memory tool at `https://app.relish.live/api/webhooks/elevenlabs/tools/foundation-memory` and apply the startup prompt configuration above. Confirm the existing ElevenLabs API key, published legal settings and production database migrations before enabling the flag.
+
+Verify a first and returning call and owner review on production. This change adds no Prisma migration. Set `RELISH_FOUNDATION_DORIAN=NO` and restart the service to disable the feature.

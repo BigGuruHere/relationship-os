@@ -9,6 +9,7 @@ import { randomInt, randomUUID } from 'node:crypto';
 import { prisma, type AppTransactionClient } from '$lib/db';
 import { encrypt, decrypt } from '$lib/crypto';
 import { FoundationDenied, runFoundationBoundary } from './internal';
+import { withDorianTelephoneAccount } from './policy';
 import { exchangeTransaction, exchangeRoots, requireClaimSession } from './exchangeAuthority';
 import { claimMac, verificationPhone, verificationEmail, sameMac } from './exchangeCrypto';
 import { budget } from './exchangeBudget';
@@ -27,8 +28,8 @@ function canonical(type:string,value:string){
 function hash(type: string, value: string) {
 	return claimMac(type + ':' + value, 'account-channel:lookup:v1');
 }
-// Called only for authenticated inbound Dorian initiation. A number identifies a
-// possible account. A separate call confirmation proves access to the handset.
+// Called only for authenticated inbound Dorian initiation. The incoming number
+// identifies a possible account provisionally and does not grant sign-in access.
 export async function lookupVerifiedDorianMobile(value: unknown) {
 	if (typeof value !== 'string') return null;
 	let phone: string;
@@ -68,6 +69,19 @@ export function dorianVerifiedMobile(
 		});
 		return proof ? decrypt(row.valueEnc, aad(ownerUserId, channelId, 'value')) : null;
 	});
+}
+
+// The SMS outbox can only resolve the destination for its recorded channel
+// generation, and only while the Foundation account is still active.
+export async function resolveDorianPolicySmsPhone(ownerUserId: string, channelId: string, generation: number) {
+	try {
+		return await withDorianTelephoneAccount(ownerUserId, (tx) =>
+			dorianVerifiedMobile(tx, ownerUserId, channelId, generation)
+		);
+	} catch (cause) {
+		if (cause instanceof FoundationDenied) return null;
+		throw cause;
+	}
 }
 
 async function scope<T>(

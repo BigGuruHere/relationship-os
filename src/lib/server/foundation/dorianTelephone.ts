@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { prisma, type AppTransactionClient } from '$lib/db';
+import { prisma } from '$lib/db';
 import {
 	callerHasAcceptedCurrentTerms, conversationalPolicyEnabled, currentRelishPolicy,
 	instructionForKnownPolicyStatus, savePolicyAcceptance, withConsentGate
@@ -10,8 +10,8 @@ import { verificationPhone, claimMac, sameMac } from './exchangeCrypto';
 import { dorianVerifiedMobile, lookupVerifiedDorianMobile } from './accountChannels';
 import { dorianConsentVersion, dorianProcessingMessage, dorianProviderWindowMs, foundationDorianPhoneAgent } from './dorianCallConfig';
 import { dorianCallProcessing, prepareDorianCall } from './dorianCalls';
-import { FoundationDenied, runFoundationBoundary } from './internal';
-import { lockActiveFoundationRoot } from './policy';
+import { FoundationDenied } from './internal';
+import { withDorianTelephoneAccount } from './policy';
 
 const conversationPattern = /^conv_[a-z0-9_-]{1,235}$/i;
 const registrationDelayMs = 20_000;
@@ -37,10 +37,6 @@ function sessionMac(call: { id: string; conversationId: string; agentId: string 
 	return claimMac(JSON.stringify([call.id, call.conversationId, call.agentId]), 'dorian-telephone-session');
 }
 
-function accountTransaction<T>(ownerUserId: string, run: (tx: AppTransactionClient) => Promise<T>) {
-	return runFoundationBoundary({ ownerUserId, mode: 'RESOLVE' }, () => prisma.$transaction(run));
-}
-
 // The authenticated inbound route supplies the provider's caller ID and resolved agent.
 // For this pilot the incoming verified number is provisional recognition. It grants
 // session-scoped private Dorian continuity and never creates an account or login.
@@ -57,8 +53,7 @@ export async function startFoundationTelephoneCall(input: {
 	if (!policy.valid || !conversationalPolicyEnabled()) return unavailable();
 	const { ownerUserId } = channel;
 	try {
-		const admission = await accountTransaction(ownerUserId, async (tx) => {
-			const root = await lockActiveFoundationRoot(tx, ownerUserId, false);
+		const admission = await withDorianTelephoneAccount(ownerUserId, async (tx, root) => {
 			const phone = await dorianVerifiedMobile(tx, ownerUserId, channel.id, channel.generation);
 			if (!phone || channel.phone !== phone)
 				throw new FoundationDenied();
@@ -132,8 +127,7 @@ export async function acceptFoundationTelephonePolicy(input: {
 	if (!conversationalPolicyEnabled() || !policy.valid || policy.version !== recorded.phonePolicyVersion)
 		return { status: 'POLICY_UNAVAILABLE' as const };
 	try {
-		const outcome = await accountTransaction(recorded.ownerUserId, async (tx) => {
-			const root = await lockActiveFoundationRoot(tx, recorded.ownerUserId, false);
+		const outcome = await withDorianTelephoneAccount(recorded.ownerUserId, async (tx, root) => {
 			const call = await tx.dorianFoundationCall.findUnique({ where: { id: recorded.id } });
 			if (!call?.phoneChannelId || call.phoneChannelGeneration === null ||
 				root.vaultId !== call.vaultId || root.epoch !== call.epoch ||

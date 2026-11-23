@@ -122,6 +122,17 @@ export async function lockActiveFoundationRoot(
 		throw new FoundationDenied();
 	return { vaultId: vault.id, epoch: enrollment.epoch };
 }
+// Only the telephone admission service and account-channel repository can
+// open this transaction. They verify the call or revalidate the exact channel.
+export function withDorianTelephoneAccount<T>(
+	ownerUserId: string,
+	run: (tx: AppTransactionClient, root: { vaultId: string; epoch: number }) => Promise<T>
+) {
+	return runFoundationBoundary({ ownerUserId, mode: 'RESOLVE' }, () =>
+		prisma.$transaction(async (tx) => run(tx, await lockActiveFoundationRoot(tx, ownerUserId, false)))
+	);
+}
+
 function purposeFor(operation: FoundationOperation): FoundationAccess['purpose'] {
 	switch (operation) {
 		case 'READ':

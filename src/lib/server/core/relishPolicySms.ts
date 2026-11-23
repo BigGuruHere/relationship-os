@@ -6,9 +6,7 @@ import { prisma } from '$lib/db';
 import { buildScopedIndexToken, decrypt } from '$lib/crypto';
 import { normalizePhoneForIdentity } from '$lib/server/integrations/elevenlabs/phone';
 import { sendTelnyxSms } from '$lib/server/integrations/telnyx/messaging';
-import { dorianVerifiedMobile } from '$lib/server/foundation/accountChannels';
-import { lockActiveFoundationRoot } from '$lib/server/foundation/policy';
-import { FoundationDenied, runFoundationBoundary } from '$lib/server/foundation/internal';
+import { resolveDorianPolicySmsPhone } from '$lib/server/foundation/accountChannels';
 import { currentRelishPolicy, conversationalPolicyEnabled } from './relishCallPolicy';
 
 export type TermsSmsStatus = 'SENT' | 'ALREADY_SENT' | 'FAILED' | 'PENDING' | 'NOT_REQUIRED' | 'NOT_AVAILABLE';
@@ -121,7 +119,7 @@ export async function drainQueuedPolicySms(limit = 5): Promise<number> {
       // A Foundation destination is revalidated on retry. A revoked or replaced
       // mobile can never receive a queued notice for its old generation.
       const phone = row.phoneChannelId && row.phoneChannelGeneration !== null
-        ? await foundationSmsPhone(row.userId, row.phoneChannelId, row.phoneChannelGeneration)
+        ? await resolveDorianPolicySmsPhone(row.userId, row.phoneChannelId, row.phoneChannelGeneration)
         : await provisionalSmsPhone(row.userId);
       if (!phone) {
         await prisma.relishPolicySmsDispatch.update({ where: { id: row.id },
@@ -162,18 +160,6 @@ export async function drainQueuedPolicySms(limit = 5): Promise<number> {
 async function provisionalSmsPhone(userId: string) {
   const caller = await prisma.networkPhoneCaller.findUnique({ where: { userId }, select: { phoneEnc: true } });
   return caller?.phoneEnc ? normalizePhoneForIdentity(decrypt(caller.phoneEnc, 'network.phone')) : null;
-}
-
-async function foundationSmsPhone(userId: string, channelId: string, generation: number) {
-  return runFoundationBoundary({ ownerUserId: userId, mode: 'RESOLVE' }, () =>
-    prisma.$transaction(async (tx) => {
-      await lockActiveFoundationRoot(tx, userId, false);
-      return dorianVerifiedMobile(tx, userId, channelId, generation);
-    })
-  ).catch((cause) => {
-    if (cause instanceof FoundationDenied) return null;
-    throw cause;
-  });
 }
 
 // This kick is non-blocking and useful in local/Railway Node processes.

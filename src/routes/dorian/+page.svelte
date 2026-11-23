@@ -30,7 +30,7 @@
 			{#if finished}
 				<p role="status">Conversation ended.</p>
 			{/if}
-			<DorianWebConversation action="?/start" disabled={!data.accepted && !consent}
+			<DorianWebConversation action="?/start" preloadVoice disabled={!data.accepted && !consent}
 				startFields={{ consent: consent ? '1' : '', policyVersion: data.policyVersion }}
 				onStarted={() => {
 					started = true;

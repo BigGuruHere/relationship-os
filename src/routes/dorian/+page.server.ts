@@ -1,9 +1,10 @@
+import { prisma } from '$lib/db';
 import { error, fail } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import { callerHasAcceptedCurrentTerms, currentRelishPolicy, recordRelishBrowserPolicyAcceptance } from '$lib/server/core/relishCallPolicy';
 import { accountDomain } from '$lib/server/foundation/provisioning';
-import { foundationDorianAgent, foundationDorianAvailable } from '$lib/server/foundation/dorianCallConfig';
-import { prepareDorianCall, registerDorianCall } from '$lib/server/foundation/dorianCalls';
+import { dorianProcessingMessage, foundationDorianAgent, foundationDorianAvailable } from '$lib/server/foundation/dorianCallConfig';
+import { dorianCallProcessing, DorianCallProcessing, prepareDorianCall, registerDorianCall } from '$lib/server/foundation/dorianCalls';
 import { resolveFoundationAccess } from '$lib/server/foundation/policy';
 import { issueDorianWebToken } from '$lib/server/integrations/elevenlabs/webToken';
 
@@ -43,6 +44,8 @@ export const actions: Actions = {
 				if (!locals.sessionId) return fail(403, { error: 'Sign in again to accept the terms.' });
 			}
 			const access = await resolveFoundationAccess(locals, 'READ');
+			if (await dorianCallProcessing(prisma, userId, access.vaultId, access.epoch))
+				return fail(409, { error: dorianProcessingMessage });
 			const issued = await issueDorianWebToken(agentId, fetch);
 			if (!('token' in issued)) return issued;
 			if (!issued.conversationId) return fail(502, { error: 'Dorian could not start the conversation.' });
@@ -53,7 +56,8 @@ export const actions: Actions = {
 			const call = await registerDorianCall(access, agentId, issued.conversationId);
 			const initiation = await prepareDorianCall(call.id);
 			return { token: issued.token, reference: issued.reference, initiation };
-		} catch {
+		} catch (cause) {
+			if (cause instanceof DorianCallProcessing) return fail(409, { error: dorianProcessingMessage });
 			return fail(503, { error: 'Dorian could not start the conversation. Try again.' });
 		}
 	}

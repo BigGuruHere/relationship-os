@@ -6,6 +6,9 @@ import { prisma } from '$lib/db';
 import { buildScopedIndexToken, decrypt } from '$lib/crypto';
 import { normalizePhoneForIdentity } from '$lib/server/integrations/elevenlabs/phone';
 import { sendTelnyxSms } from '$lib/server/integrations/telnyx/messaging';
+import { dorianVerifiedMobile } from '$lib/server/foundation/accountChannels';
+import { lockActiveFoundationRoot } from '$lib/server/foundation/policy';
+import { FoundationDenied, runFoundationBoundary } from '$lib/server/foundation/internal';
 import { currentRelishPolicy, conversationalPolicyEnabled } from './relishCallPolicy';
 
 export type TermsSmsStatus = 'SENT' | 'ALREADY_SENT' | 'FAILED' | 'PENDING' | 'NOT_REQUIRED' | 'NOT_AVAILABLE';
@@ -58,7 +61,10 @@ export async function dispatchCurrentPolicySms(input: { userId: string; phone: u
 // Stage 8.22.4: creating an outbox record never waits for Telnyx. A separate
 // worker (and a best-effort local kick) will deliver the link. Consent is never
 // inferred from the SMS being submitted, received or delivered.
-export async function enqueueCurrentPolicySms(input: { userId: string; phone: unknown; accepted: boolean }): Promise<TermsSmsStatus> {
+export async function enqueueCurrentPolicySms(input: {
+  userId: string; phone: unknown; accepted: boolean;
+  channel?: { phoneChannelId: string; phoneChannelGeneration: number };
+}): Promise<TermsSmsStatus> {
   if (!conversationalPolicyEnabled() || input.accepted) return 'NOT_REQUIRED';
   const policy = currentRelishPolicy();
   if (!policy.valid || !normalizePhoneForIdentity(input.phone)) return 'NOT_AVAILABLE';
@@ -68,13 +74,25 @@ export async function enqueueCurrentPolicySms(input: { userId: string; phone: un
   try {
     await prisma.relishPolicySmsDispatch.create({ data: {
       id: randomUUID(), userId: input.userId, policyVersion: policy.version,
-      legalUrl: policy.legalUrl, state: 'QUEUED'
+      legalUrl: policy.legalUrl, state: 'QUEUED', ...input.channel
     } });
     return 'PENDING';
   } catch (error) {
     if (!(error && typeof error === 'object' && 'code' in error && error.code === 'P2002')) throw error;
     const existing = await prisma.relishPolicySmsDispatch.findUnique({ where: key,
-      select: { state: true } });
+      select: { id: true, state: true, phoneChannelId: true, phoneChannelGeneration: true } });
+    const channel = input.channel;
+    // If the account re-verifies or changes its phone, a failed delivery must
+    // not stay pinned to the obsolete proof. Let a claimed send finish first.
+    if (existing && channel && existing.state !== 'SENT' && existing.state !== 'SENDING' &&
+        (existing.phoneChannelId !== channel.phoneChannelId ||
+          existing.phoneChannelGeneration !== channel.phoneChannelGeneration)) {
+      await prisma.relishPolicySmsDispatch.updateMany({
+        where: { id: existing.id, state: existing.state, phoneChannelId: existing.phoneChannelId,
+          phoneChannelGeneration: existing.phoneChannelGeneration },
+        data: { ...channel, state: 'QUEUED', lastErrorCode: null }
+      });
+    }
     return existing?.state === 'SENT' ? 'ALREADY_SENT' : 'PENDING';
   }
 }
@@ -100,13 +118,14 @@ export async function drainQueuedPolicySms(limit = 5): Promise<number> {
     });
     if (!claimed.count) continue;
     try {
-      const caller = await prisma.networkPhoneCaller.findUnique({
-        where: { userId: row.userId }, select: { phoneEnc: true }
-      });
-      const phone = caller?.phoneEnc ? normalizePhoneForIdentity(decrypt(caller.phoneEnc, 'network.phone')) : null;
+      // A Foundation destination is revalidated on retry. A revoked or replaced
+      // mobile can never receive a queued notice for its old generation.
+      const phone = row.phoneChannelId && row.phoneChannelGeneration !== null
+        ? await foundationSmsPhone(row.userId, row.phoneChannelId, row.phoneChannelGeneration)
+        : await provisionalSmsPhone(row.userId);
       if (!phone) {
         await prisma.relishPolicySmsDispatch.update({ where: { id: row.id },
-          data: { state: 'FAILED', lastErrorCode: 'NO_PROVISIONAL_PHONE' } });
+          data: { state: 'FAILED', lastErrorCode: row.phoneChannelId ? 'NO_CURRENT_PHONE' : 'NO_PROVISIONAL_PHONE' } });
         continue;
       }
       const idx = buildScopedIndexToken(phone, 'network:provisional-phone:v1');
@@ -138,6 +157,23 @@ export async function drainQueuedPolicySms(limit = 5): Promise<number> {
     }
   }
   return sent;
+}
+
+async function provisionalSmsPhone(userId: string) {
+  const caller = await prisma.networkPhoneCaller.findUnique({ where: { userId }, select: { phoneEnc: true } });
+  return caller?.phoneEnc ? normalizePhoneForIdentity(decrypt(caller.phoneEnc, 'network.phone')) : null;
+}
+
+async function foundationSmsPhone(userId: string, channelId: string, generation: number) {
+  return runFoundationBoundary({ ownerUserId: userId, mode: 'RESOLVE' }, () =>
+    prisma.$transaction(async (tx) => {
+      await lockActiveFoundationRoot(tx, userId, false);
+      return dorianVerifiedMobile(tx, userId, channelId, generation);
+    })
+  ).catch((cause) => {
+    if (cause instanceof FoundationDenied) return null;
+    throw cause;
+  });
 }
 
 // This kick is non-blocking and useful in local/Railway Node processes.

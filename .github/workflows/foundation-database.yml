@@ -69,7 +69,7 @@ jobs:
           cache: npm
       - run: npm ci
       - run: >-
-          node --import tsx --test tests/core/dorian-foundation-context.test.mjs tests/core/lu-contracts.test.mjs
+          node --import tsx --test tests/core/dorian-foundation-context.test.mjs tests/core/dorian-foundation-telephone.test.ts tests/core/lu-contracts.test.mjs
           tests/core/lu-semantic-assessment.test.mjs
           tests/core/lu-self-topics.test.mjs
           tests/core/stage8-12-13-9-core-validation-suite.test.mjs

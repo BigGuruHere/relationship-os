@@ -6,7 +6,7 @@ import {
 } from '$lib/server/integrations/resend/verification';
 // Account-owned proof service. No route can write channel status or choose another account.
 import { randomInt, randomUUID } from 'node:crypto';
-import type { AppTransactionClient } from '$lib/db';
+import { prisma, type AppTransactionClient } from '$lib/db';
 import { encrypt, decrypt } from '$lib/crypto';
 import { FoundationDenied, runFoundationBoundary } from './internal';
 import { exchangeTransaction, exchangeRoots, requireClaimSession } from './exchangeAuthority';
@@ -27,6 +27,49 @@ function canonical(type:string,value:string){
 function hash(type: string, value: string) {
 	return claimMac(type + ':' + value, 'account-channel:lookup:v1');
 }
+// Called only for authenticated inbound Dorian initiation. A number identifies a
+// possible account. A separate call confirmation proves access to the handset.
+export async function lookupVerifiedDorianMobile(value: unknown) {
+	if (typeof value !== 'string') return null;
+	let phone: string;
+	try {
+		// Inbound SIP providers can supply the Australian country code without +.
+		const compact = value.replace(/[ ()-]/g, '');
+		phone = canonical('PHONE', /^(?:00)?614[0-9]{8}$/.test(compact)
+			? '+' + compact.replace(/^00/, '') : value);
+	} catch {
+		return null;
+	}
+	const valueHash = hash('PHONE', phone);
+	const channels = await runFoundationBoundary(
+		{ ownerUserId: 'DORIAN_PHONE_ROUTING', mode: 'DORIAN_PHONE_LOOKUP' },
+		() => prisma.foundationAccountChannel.findMany({
+			where: { type: 'PHONE', status: 'VERIFIED', valueHash },
+			select: { id: true, ownerUserId: true, generation: true },
+			take: 2
+		})
+	);
+	return channels.length === 1 ? { ...channels[0], phone } : null;
+}
+
+// Re-read the current proof and destination in the caller's account transaction.
+export function dorianVerifiedMobile(
+	tx: AppTransactionClient, ownerUserId: string, channelId: string, generation: number
+) {
+	return runFoundationBoundary({ ownerUserId, mode: 'ACCOUNT_CHANNEL' }, async () => {
+		const row = await tx.foundationAccountChannel.findFirst({
+			where: { id: channelId, type: 'PHONE', status: 'VERIFIED', generation },
+			select: { valueEnc: true }
+		});
+		if (!row) return null;
+		const proof = await tx.foundationAccountChannelVerification.findFirst({
+			where: { channelId, generation, revokedAt: null, method: 'SMS_CODE' },
+			select: { id: true }
+		});
+		return proof ? decrypt(row.valueEnc, aad(ownerUserId, channelId, 'value')) : null;
+	});
+}
+
 async function scope<T>(
 	locals: Actor,
 	fn: (tx: AppTransactionClient, account: string) => Promise<T>,

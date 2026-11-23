@@ -321,7 +321,7 @@ function persistConversation(
 		});
 		const version = await appendSourceVersion(tx, access, source.id, capture,
 			access.dorian && capture.completeness === 'COMPLETE' ? 'PRIVATE_ANALYSIS' : 'STORED_ONLY', null, {
-			...(access.dorian ? { capture: 'DORIAN_FOUNDATION_WEB', actor: access.actorId, callId: access.dorian.id } :
+			...(access.dorian ? { capture: access.dorian.telephone ? 'DORIAN_FOUNDATION_TELEPHONE' : 'DORIAN_FOUNDATION_WEB', actor: access.actorId, callId: access.dorian.id } :
 				capture.binding.provider === 'OWNER_IMPORT'
 				? { capture: 'OWNER_IMPORT', actor: access.actorId }
 				: { capture: 'DORIAN_WEB' })

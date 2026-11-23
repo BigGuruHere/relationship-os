@@ -9,8 +9,8 @@ export const load: PageServerLoad = async ({ locals, url, setHeaders }) => {
 	setHeaders({ 'cache-control': 'private, no-store' });
 	const calls = await prisma.dorianFoundationCall.findMany({
 		orderBy: { createdAt: 'desc' }, take: 50,
-		select: { id: true, createdAt: true, state: true, sourceId: true }
+		select: { id: true, createdAt: true, state: true, sourceId: true, phoneChannelId: true }
 	});
-	return { calls: calls.map(({ id, createdAt, state, sourceId }) =>
-		({ id, at: createdAt.toISOString(), state, canReview: Boolean(sourceId) })) };
+	return { calls: calls.map(({ id, createdAt, state, sourceId, phoneChannelId }) =>
+		({ id, at: createdAt.toISOString(), state, channel: phoneChannelId ? 'Telephone' : 'App', canReview: Boolean(sourceId) })) };
 };

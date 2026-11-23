@@ -4,7 +4,7 @@ const contractDefaults = Object.freeze({
   memory_and_identity_context: '', call_instruction: '', call_type: 'INBOUND_PHONE',
   user_name: '', previous_calls: '0', last_call_summary: '', emotion_label: '',
   agent_website: '', agent_type: 'DORIAN', relish_terms_status: 'REQUIRED',
-  relish_terms_sms_status: 'NOT_AVAILABLE'
+  relish_terms_sms_status: 'NOT_AVAILABLE', terms_agreed: false
 });
 const sentinels = new Set(['PROCESSING_NO_SESSION', 'UNRESOLVED_NO_SESSION']);
 

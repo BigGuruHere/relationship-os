@@ -1,7 +1,7 @@
 // Stage 8.19 - A session-bound, explicit voice acceptance gate for Relish onboarding.
 // A signed ElevenLabs tool must call the acceptance endpoint after the caller says yes.
 // Never interpret a QR scan, SMS, silence or mere continuation as acceptance.
-import { prisma } from '$lib/db';
+import { prisma, type AppTransactionClient } from '$lib/db';
 import { activeSharedDorianBindingId, networkSessionHash, isAuthorizedSharedDorianBindingId } from '$lib/server/integrations/elevenlabs/networkSession';
 
 export const conversationalPolicyEnabled = () => process.env.RELISH_PILOT_CONVERSATIONAL_TERMS === 'YES';
@@ -31,9 +31,9 @@ export function currentRelishPolicy() {
   return { version, legalUrl, termsUrl, privacyUrl, published, valid };
 }
 
-export async function callerHasAcceptedCurrentTerms(userId: string, policy = currentRelishPolicy()) {
+export async function callerHasAcceptedCurrentTerms(userId: string, policy = currentRelishPolicy(), db: Pick<AppTransactionClient, 'relishCallPolicyAcceptance'> = prisma) {
   if (!policy.valid) return false;
-  const acceptance = await prisma.relishCallPolicyAcceptance.findFirst({
+  const acceptance = await db.relishCallPolicyAcceptance.findFirst({
     where: { userId, policyVersion: policy.version, termsUrl: policy.termsUrl, privacyUrl: policy.privacyUrl },
     select: { id: true }
   });
@@ -85,11 +85,13 @@ export function recordRelishBrowserPolicyAcceptance(
   });
 }
 
-function savePolicyAcceptance(
+export function savePolicyAcceptance(
   policy: ReturnType<typeof currentRelishPolicy>,
-  input: { userId: string; sessionId: string; conversationId: string; method: 'VOICE_EXPLICIT' | 'BROWSER_EXPLICIT' }
+  input: { userId: string; sessionId: string; conversationId: string; method: 'VOICE_EXPLICIT' | 'BROWSER_EXPLICIT' },
+  db: Pick<AppTransactionClient, 'relishCallPolicyAcceptance'> = prisma
 ) {
-  return prisma.relishCallPolicyAcceptance.upsert({
+  if (!policy.valid) throw new Error('Call policy acceptance unavailable.');
+  return db.relishCallPolicyAcceptance.upsert({
     where: { sessionId_policyVersion: { sessionId: input.sessionId, policyVersion: policy.version } },
     update: {},
     create: { ...input, policyVersion: policy.version, termsUrl: policy.termsUrl, privacyUrl: policy.privacyUrl }

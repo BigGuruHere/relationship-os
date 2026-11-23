@@ -112,3 +112,7 @@ Accepted 2026-11-17. Move the Dorian entry point to Home for signed-in Foundatio
 ## 2026-11-17: Reuse call startup transport for Foundation
 
 Accepted: provide first-message guidance, name, purpose, terms and conversational continuity to the current Home Dorian flow. Reuse transport and variable conventions with a Foundation-specific projection rather than merging legacy data or rewriting working adapters. Approved LU and partial source recap remain explicitly separate. No new persistence or production activation.
+
+## Dorian telephone recognition
+
+For the existing-account telephone pilot, use the incoming number to provisionally recognise an active account with a current verified mobile. Use the same Foundation call context, Living Understanding and legal acceptance history for the app and telephone. The app records checkbox acceptance. Telephone uses the policy notice SMS and explicit voice agreement when the current agreement is missing. Caller recognition is scoped to Dorian telephone continuity and does not establish a new account or verified channel. See [telephone continuity](foundation/DORIAN_TELEPHONE_CONTINUITY.md).

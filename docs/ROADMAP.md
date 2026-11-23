@@ -79,3 +79,7 @@ The earlier deferral of structural transformations is narrowed by [LUR-5 restora
 ## Foundation startup acceptance
 
 Validate first/returning greetings and natural use of startup context on the dedicated DEV agent, then verify two-account isolation and corrected/withdrawn source behavior. The implementation is on `feature/dorian-foundation-call-context`; provider prompt configuration and live acceptance remain pending. Telephone identity linking and production activation remain separate.
+
+### Dorian telephone continuity
+
+Validate app → phone → app in hosted DEV for two existing accounts with verified mobiles, including cross-channel consent, callbacks during processing, and exact source attribution. Phone-first Foundation provisioning and later account claims are a separate stage. See [telephone continuity](foundation/DORIAN_TELEPHONE_CONTINUITY.md).

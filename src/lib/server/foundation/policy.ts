@@ -5,10 +5,10 @@ import { error } from '@sveltejs/kit';
 import { buildScopedMacToken } from '$lib/crypto';
 import { verifyContactCaptureToken } from '$lib/server/core/contactCaptureToken';
 import { lockFoundationAccount } from './provisioning';
-import { dorianConsentVersion, foundationDorianAgent } from './dorianCallConfig';
+import { dorianConsentVersion, dorianProviderWindowMs, foundationDorianAgent, foundationDorianPhoneAgent } from './dorianCallConfig';
 
 type DorianGrant = { kind: 'worker'; lease: string } | { kind: 'operator'; actorId: string } | { kind: 'launch' };
-type DorianBinding = { id: string; subjectId: string; sourceId: string | null; candidateId: string | null; conversationId: string; agentId: string };
+type DorianBinding = { id: string; subjectId: string; sourceId: string | null; candidateId: string | null; conversationId: string; agentId: string; telephone: boolean };
 const dorianOperations = {
 	worker: ['SAVE_CONVERSATION', 'PREPARE_LU', 'STORE_LU_CANDIDATE'],
 	operator: ['READ_CONVERSATION', 'STORE_LU_CANDIDATE', 'APPROVE_LU', 'READ_LU'],
@@ -60,8 +60,12 @@ async function checkDorianGrant(tx: AppTransactionClient, id: string, ownerUserI
 	if (grant.kind === 'worker' &&
 		(call.lease !== grant.lease || call.state !== 'QUEUED'))
 		throw new FoundationDenied();
-	if (grant.kind === 'launch' && (call.agentId !== foundationDorianAgent() || Date.now() - call.createdAt.getTime() > 2 * 60 * 60_000))
-		throw new FoundationDenied();
+	if (grant.kind === 'launch') {
+		const agent = call.phoneChannelId ? foundationDorianPhoneAgent() : foundationDorianAgent();
+		if (call.agentId !== agent || Date.now() - call.createdAt.getTime() > dorianProviderWindowMs ||
+			(call.phoneChannelId && call.state !== 'QUEUED'))
+			throw new FoundationDenied();
+	}
 	if (grant.kind === 'operator') {
 		// Check the current account role at each use, including the approval transaction.
 		const actor = await tx.user.findUnique({ where: { id: grant.actorId }, select: { role: true } });
@@ -86,7 +90,7 @@ export async function resolveDorianCallAccess(id: string, grant: DorianGrant, op
 				...root, ownerUserId, operation, purpose: purposeFor(operation),
 				actorId: grant.kind === 'operator' ? grant.actorId : 'DORIAN_FOUNDATION_SERVICE',
 				dorian: Object.freeze({ id, subjectId: call.subjectId, sourceId: call.sourceId, candidateId: call.candidateId,
-					conversationId: call.conversationId, agentId: call.agentId })
+					conversationId: call.conversationId, agentId: call.agentId, telephone: Boolean(call.phoneChannelId) })
 			});
 			issued.set(access, { prepared: false, grant: Object.freeze({ ...grant }) });
 			return access;

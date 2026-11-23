@@ -4054,6 +4054,8 @@ model RelishPolicySmsDispatch {
   attemptedAt DateTime @default(now())
   acceptedAt DateTime?
   lastErrorCode String? @db.VarChar(80)
+  phoneChannelId String?
+  phoneChannelGeneration Int?
   @@unique([userId, policyVersion, legalUrl])
   @@index([attemptedAt])
 }
@@ -4967,7 +4969,7 @@ model FoundationLuRevisionTopic {
   @@unique([revisionId, position])
 }
 
-// A launch grants processing and operator review for one browser conversation.
+// A launch grants processing and operator review for one Foundation conversation.
 model DorianFoundationCall {
   id             String   @id @default(uuid())
   ownerUserId    String
@@ -4985,6 +4987,9 @@ model DorianFoundationCall {
   state          DorianFoundationCallState @default(QUEUED)
   sourceId       String?
   candidateId    String?
+  phoneChannelId String?
+  phoneChannelGeneration Int?
+  phonePolicyVersion String?
   owner          User     @relation(fields: [ownerUserId], references: [id], onDelete: Cascade)
 
   @@index([state, nextAttemptAt])
@@ -4992,6 +4997,7 @@ model DorianFoundationCall {
 }
 
 enum DorianFoundationCallState {
+  AWAITING_TERMS
   QUEUED
   READY
   NO_CHANGE

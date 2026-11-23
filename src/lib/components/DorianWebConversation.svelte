@@ -6,6 +6,7 @@
   export let onFinished: (reference?: string) => void = () => {};
   export let onStarted: () => void = () => {};
   export let disabled = false;
+  export let preloadVoice = false;
   export let startFields: Record<string, string> = {};
 
   let session: { endSession: () => Promise<void> } | null = null;
@@ -13,6 +14,15 @@
   let attempt = 0;
   let state: 'idle' | 'connecting' | 'connected' = 'idle';
   let message = '';
+  let voiceSdk: Promise<typeof import('@elevenlabs/client')> | undefined;
+
+  function loadVoiceSdk() {
+    // Let a later attempt retry if the browser could not preload the module.
+    return voiceSdk ??= import('@elevenlabs/client').catch(error => {
+      voiceSdk = undefined;
+      throw error;
+    });
+  }
 
   async function start() {
     if (disabled || state !== 'idle') return;
@@ -21,6 +31,22 @@
     message = '';
     let reference: string | undefined;
     let stage = 'token';
+    const tappedAt = performance.now();
+    // Begin loading even if the user taps before the page has preloaded the SDK.
+    if (preloadVoice) void loadVoiceSdk().catch(() => {});
+    let tokenReadyAt = 0;
+    let connectedAt: number | undefined;
+    let speakingAt: number | undefined;
+
+    function reportStartupTiming() {
+      if (!preloadVoice || connectedAt === undefined || speakingAt === undefined) return;
+      // Only log durations. Speaking mode approximates audio onset without capturing audio.
+      console.info('[Relish Dorian startup]', {
+        tapToTokenMs: Math.round(tokenReadyAt - tappedAt),
+        tokenToConnectedMs: Math.round(connectedAt - tokenReadyAt),
+        connectedToSpeakingMs: Math.round(speakingAt - connectedAt)
+      });
+    }
     // Log only the stage and Relish's diagnostic reference, never SDK payloads or errors.
     const report = (reason: string) => console.warn('[Relish Dorian voice test]', { stage, reason, reference });
     try {
@@ -44,9 +70,11 @@
         return;
       }
 
+      tokenReadyAt = performance.now();
+
       // Let the SDK request the microphone only after the user starts a conversation.
       stage = 'sdk_load';
-      const { Conversation } = await import('@elevenlabs/client');
+      const { Conversation } = await loadVoiceSdk();
       if (current !== attempt) return;
       stage = 'webrtc';
       const initiation = result.data.initiation as {
@@ -59,6 +87,18 @@
         ...(initiation ? {
           dynamicVariables: initiation.dynamicVariables,
           overrides: { agent: { firstMessage: initiation.firstMessage } }
+        } : {}),
+        ...(preloadVoice ? {
+          onConnect: () => {
+            if (current !== attempt || connectedAt !== undefined) return;
+            connectedAt = performance.now();
+            reportStartupTiming();
+          },
+          onModeChange: ({ mode }) => {
+            if (current !== attempt || mode !== 'speaking' || speakingAt !== undefined) return;
+            speakingAt = performance.now();
+            reportStartupTiming();
+          }
         } : {}),
         onError: () => {
           if (current === attempt) report('sdk_error');
@@ -111,7 +151,11 @@
     }
   }
 
-  onMount(() => () => { void end(false); });
+  onMount(() => {
+    // Preload code only. The start action and microphone still require a tap.
+    if (preloadVoice) void loadVoiceSdk().catch(() => {});
+    return () => { void end(false); };
+  });
 </script>
 
   <p role="status">{state === 'connected' ? 'Connected to Dorian' : state === 'connecting' ? 'Connecting…' : message}</p>

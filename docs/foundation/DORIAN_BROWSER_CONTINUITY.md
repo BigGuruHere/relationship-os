@@ -60,3 +60,8 @@ DEV acceptance: use two different signed-in accounts. First call should greet by
 The Home panel, call launch, memory endpoint and owner review support the canonical production origin once this change is deployed. Set the existing three Dorian variables on the production Railway service. Use a dedicated production ElevenLabs browser agent and a distinct tool secret. Point its memory tool at `https://app.relish.live/api/webhooks/elevenlabs/tools/foundation-memory` and apply the startup prompt configuration above. Confirm the existing ElevenLabs API key, published legal settings and production database migrations before enabling the flag.
 
 Verify a first and returning call and owner review on production. This change adds no Prisma migration. Set `RELISH_FOUNDATION_DORIAN=NO` and restart the service to disable the feature.
+
+
+## Measuring call startup
+
+The Talk to Dorian screen preloads the ElevenLabs browser library on mount. The call request and microphone activation still require a tap. After the first speaking event, look for `[Relish Dorian startup]` in the browser console. It reports tap to token response (including Relish call setup), token response to connection, and connection to the first SDK speaking event. The speaking event approximates when the greeting starts. Compare fresh and repeat visits on the same device and network. No new Prisma migration or configuration is required.

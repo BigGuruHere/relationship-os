@@ -881,6 +881,10 @@ export async function runLuAssessmentCases({ db, load, vite, otherPersonId, gran
 		assert.equal(firstPhone.mode, 'PARTICIPANT');
 		const phoneVars = firstPhone.payload.dynamic_variables;
 		assert.equal(phoneVars.terms_agreed, false);
+		assert.equal(phoneVars.relish_terms_status, 'REQUIRED');
+		assert.equal(phoneVars.relish_terms_sms_status, 'NOT_AVAILABLE');
+		assert.equal(phoneVars.call_instruction, undefined);
+		assert.equal(firstPhone.payload.conversation_config_override, undefined);
 		assert.equal(phoneVars.living_understanding, undefined);
 		const phoneRow = (await db.query('SELECT * FROM "DorianFoundationCall" WHERE "conversationId"=$1',
 			[phoneVars.conversation_id])).rows[0];

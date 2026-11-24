@@ -2,10 +2,9 @@ import { randomUUID } from 'node:crypto';
 import { prisma } from '$lib/db';
 import {
 	callerHasAcceptedCurrentTerms, conversationalPolicyEnabled, currentRelishPolicy,
-	instructionForKnownPolicyStatus, savePolicyAcceptance, withConsentGate
+	savePolicyAcceptance
 } from '$lib/server/core/relishCallPolicy';
 import { enqueueCurrentPolicySms, kickQueuedPolicySms } from '$lib/server/core/relishPolicySms';
-import { safeFirstMessage } from '$lib/server/integrations/elevenlabs/dorianControlPlane';
 import { verificationPhone, claimMac, sameMac } from './exchangeCrypto';
 import { dorianTelephoneMobile, resolveDorianTelephoneCaller } from './accountChannels';
 import { dorianConsentVersion, dorianPhoneFirstEnabled, dorianProcessingMessage, dorianProviderWindowMs, foundationDorianPhoneAgent } from './dorianCallConfig';
@@ -103,13 +102,16 @@ export async function startFoundationTelephoneCall(input: {
 			channel: { phoneChannelId: channel.id, phoneChannelGeneration: channel.generation }
 		}) : 'NOT_AVAILABLE';
 		if (smsStatus === 'PENDING') kickQueuedPolicySms();
-		const gate = instructionForKnownPolicyStatus(false, smsStatus);
-		const firstMessage = safeFirstMessage(null, gate)!;
-		return { mode: 'PARTICIPANT' as const, payload: phoneEnvelope(firstMessage, withConsentGate({
-			relish_network_session: session, conversation_id: conversationId,
-			relish_identity_status: 'PROVISIONAL_PHONE_ACCOUNT', call_type: 'FOUNDATION_SELF_PHONE',
-			call_instruction: 'On an ACCEPTED tool result, use startup_context as the approved call context and continue naturally. On PROCESSING, read the returned message and end the call.'
-		}, gate)) };
+		// ElevenLabs owns the consent wording and opening. Relish supplies the
+		// status and call credentials, then verifies explicit agreement server-side.
+		return { mode: 'PARTICIPANT' as const, payload: {
+			type: 'conversation_initiation_client_data',
+			dynamic_variables: {
+				relish_network_session: session, conversation_id: conversationId,
+				relish_identity_status: 'PROVISIONAL_PHONE_ACCOUNT', call_type: 'FOUNDATION_SELF_PHONE',
+				relish_terms_status: 'REQUIRED', terms_agreed: false, relish_terms_sms_status: smsStatus
+			}
+		} };
 	} catch (cause) {
 		if (cause instanceof FoundationDenied) return unavailable();
 		throw cause;

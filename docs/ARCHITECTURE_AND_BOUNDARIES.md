@@ -181,3 +181,7 @@ The dedicated DEV browser agent uses a server-issued call record bound to one Fo
 ## Foundation startup projection
 
 Foundation startup uses the existing browser SDK initiation transport with a separate provider projection. A registered call resolves scoped READ_LU and READ_CONVERSATION grants. Previous source reads are limited to the same account, vault, epoch and self subject, with current admission and active source checks. The browser receives its own bounded context but no review UI; no analysis candidate is exposed. Legacy identity, phone and contact-note paths are unchanged.
+
+### Dorian phone-first identity
+
+The inbound Dorian pilot can provision an active private Foundation root with no app credentials. An encrypted pending mobile routes later calls and has provisional telephone assurance. Browser-bound SMS verification and credential activation commit on the same account. Conversation custody and provenance follow that account throughout. See [telephone continuity](foundation/DORIAN_TELEPHONE_CONTINUITY.md#phone-first-accounts).

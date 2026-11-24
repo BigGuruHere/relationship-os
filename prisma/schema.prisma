@@ -4635,6 +4635,7 @@ model FoundationAccountChannel {
  valueEnc String
  valueHash String
  normalizationVersion Int @default(1)
+ dorianPhoneFirst Boolean @default(false)
  status String @default("PENDING")
  generation Int @default(0)
  failedAttempts Int @default(0)

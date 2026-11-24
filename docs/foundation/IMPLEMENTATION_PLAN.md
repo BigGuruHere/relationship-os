@@ -225,3 +225,9 @@ Implemented on `feature/dorian-foundation-call-context`: connect existing SDK in
 Local validation: 12 focused projection, legacy compatibility and boundary tests passed; all 8 isolated LUR-2/LUR-3 integration tests passed, including the first/returning call, profile name, account isolation, source withdrawal and expired-launch assertions. `npm run check` passed with zero errors/warnings. Providers were simulated; no live API or database was used.
 
 Foundation Dorian production access uses the existing feature switch and canonical origin, including the provider memory endpoint. Production route coverage uses a disposable database and simulated providers. No new migration. Disable the feature switch to roll back activation. Hosted verification pending.
+
+### Dorian phone-first onboarding
+
+- **Backlog and stage register:** Implemented on `feature/dorian-phone-first` for review. Follow-up to PR #101. Direct calls, voice terms, return recall and verified app activation share Foundation account ownership.
+- **Migration and rollback:** Apply `20261124020000_dorian_phone_first` before enabling `RELISH_DORIAN_PHONE_FIRST`. Disable the flag to roll back intake. Retain stored accounts and provenance. There is no legacy call history import.
+- **Acceptance:** Exercise first-call LU, returning recall and browser-bound verification in disposable tests. Hosted DEV and production verification remain pending. [Setup and replay](DORIAN_TELEPHONE_CONTINUITY.md#phone-first-accounts)

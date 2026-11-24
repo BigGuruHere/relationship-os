@@ -116,3 +116,7 @@ Accepted: provide first-message guidance, name, purpose, terms and conversationa
 ## Dorian telephone recognition
 
 For the existing-account telephone pilot, use the incoming number to provisionally recognise an active account with a current verified mobile. Use the same Foundation call context, Living Understanding and legal acceptance history for the app and telephone. The app records checkbox acceptance. Telephone uses the policy notice SMS and explicit voice agreement when the current agreement is missing. Caller recognition is scoped to Dorian telephone continuity and does not establish a new account or verified channel. See [telephone continuity](foundation/DORIAN_TELEPHONE_CONTINUITY.md).
+
+### Phone-first Foundation accounts
+
+Accepted 2026-11-24. Provision complete private Foundation roots for a first direct call from a supported mobile in the opted-in pilot. The number provides provisional telephone routing. A browser-bound SMS proof allows email/password activation on that same account and records standard verified-channel assurance. Direct phone calls can use the shared Foundation LU with no transfer of old call history. [Telephone continuity](foundation/DORIAN_TELEPHONE_CONTINUITY.md#phone-first-accounts)

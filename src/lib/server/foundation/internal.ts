@@ -262,14 +262,16 @@ export function guardFoundationQuery(model: string | undefined, operation: strin
 		return args;
 	}
 	if (!scope?.ownerUserId) throw new FoundationDenied();
-	// The authenticated inbound adapter may resolve a single exact verified mobile.
+	// Resolve an exact verified mobile or a phone-first routing record.
 	// Return only routing metadata. Private content still requires an account lock and call proof.
 	if (scope.mode === 'DORIAN_PHONE_LOOKUP') {
 		const where = args?.where;
 		const select = args?.select;
+		const verified = where?.status === 'VERIFIED' && Object.keys(where).length === 3;
+		const phoneFirst = where?.status === 'PENDING' && where.dorianPhoneFirst === true &&
+			Object.keys(where).length === 4;
 		if (model !== 'FoundationAccountChannel' || operation !== 'findMany' ||
-			!where || Object.keys(where).length !== 3 || where.type !== 'PHONE' ||
-			where.status !== 'VERIFIED' || typeof where.valueHash !== 'string' ||
+			(!verified && !phoneFirst) || where.type !== 'PHONE' || typeof where.valueHash !== 'string' ||
 			!/^[0-9a-f]{64}$/.test(where.valueHash) || !select ||
 			Object.keys(select).length !== 3 || select.id !== true ||
 			select.ownerUserId !== true || select.generation !== true || args.take !== 2 ||

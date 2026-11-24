@@ -7,8 +7,8 @@ import {
 import { enqueueCurrentPolicySms, kickQueuedPolicySms } from '$lib/server/core/relishPolicySms';
 import { safeFirstMessage } from '$lib/server/integrations/elevenlabs/dorianControlPlane';
 import { verificationPhone, claimMac, sameMac } from './exchangeCrypto';
-import { dorianVerifiedMobile, lookupVerifiedDorianMobile } from './accountChannels';
-import { dorianConsentVersion, dorianProcessingMessage, dorianProviderWindowMs, foundationDorianPhoneAgent } from './dorianCallConfig';
+import { dorianTelephoneMobile, resolveDorianTelephoneCaller } from './accountChannels';
+import { dorianConsentVersion, dorianPhoneFirstEnabled, dorianProcessingMessage, dorianProviderWindowMs, foundationDorianPhoneAgent } from './dorianCallConfig';
 import { dorianCallProcessing, prepareDorianCall } from './dorianCalls';
 import { FoundationDenied } from './internal';
 import { withDorianTelephoneAccount } from './policy';
@@ -38,23 +38,29 @@ function sessionMac(call: { id: string; conversationId: string; agentId: string 
 }
 
 // The authenticated inbound route supplies the provider's caller ID and resolved agent.
-// For this pilot the incoming verified number is provisional recognition. It grants
-// session-scoped private Dorian continuity and never creates an account or login.
+// Incoming caller ID grants session-scoped Dorian continuity. The opted-in
+// phone-first pilot can create an account without granting browser sign-in.
 export async function startFoundationTelephoneCall(input: {
 	agentId: string; callerId: unknown; conversationId: unknown; development: boolean;
 }) {
-	if (input.agentId !== foundationDorianPhoneAgent() ||
-		typeof input.conversationId !== 'string' || !conversationPattern.test(input.conversationId)) return null;
-	const conversationId = input.conversationId;
-	const channel = await lookupVerifiedDorianMobile(input.callerId);
-	if (!channel) return null;
+	if (input.agentId !== foundationDorianPhoneAgent()) return null;
+	const phoneFirst = dorianPhoneFirstEnabled();
 	const unavailable = () => closedPhoneCall('Dorian is temporarily unavailable. Please try again shortly.', false);
+	if (typeof input.conversationId !== 'string' || !conversationPattern.test(input.conversationId))
+		return phoneFirst ? unavailable() : null;
+	const conversationId = input.conversationId;
 	const policy = currentRelishPolicy();
-	if (!policy.valid || !conversationalPolicyEnabled()) return unavailable();
-	const { ownerUserId } = channel;
+	const policyAvailable = policy.valid && conversationalPolicyEnabled();
+	if (phoneFirst && !policyAvailable) return unavailable();
 	try {
+		const channel = await resolveDorianTelephoneCaller(input.callerId);
+		if (!channel) return phoneFirst
+			? closedPhoneCall('Please call back from an Australian mobile with caller ID enabled.', false)
+			: null;
+		if (!policyAvailable) return unavailable();
+		const { ownerUserId } = channel;
 		const admission = await withDorianTelephoneAccount(ownerUserId, async (tx, root) => {
-			const phone = await dorianVerifiedMobile(tx, ownerUserId, channel.id, channel.generation);
+			const phone = await dorianTelephoneMobile(tx, ownerUserId, channel.id, channel.generation);
 			if (!phone || channel.phone !== phone)
 				throw new FoundationDenied();
 			const known = await tx.dorianFoundationCall.findUnique({ where: { conversationId } });
@@ -133,7 +139,7 @@ export async function acceptFoundationTelephonePolicy(input: {
 				root.vaultId !== call.vaultId || root.epoch !== call.epoch ||
 				Date.now() - call.createdAt.getTime() >= dorianProviderWindowMs ||
 				!['AWAITING_TERMS', 'QUEUED'].includes(call.state) ||
-				!await dorianVerifiedMobile(tx, call.ownerUserId, call.phoneChannelId, call.phoneChannelGeneration))
+				!await dorianTelephoneMobile(tx, call.ownerUserId, call.phoneChannelId, call.phoneChannelGeneration))
 				return 'UNAUTHORISED';
 			if (call.state === 'QUEUED')
 				return await callerHasAcceptedCurrentTerms(call.ownerUserId, policy, tx) ? 'ACCEPTED' : 'UNAUTHORISED';

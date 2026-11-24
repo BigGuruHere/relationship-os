@@ -138,7 +138,7 @@ export const POST: RequestHandler = async ({ request, locals, url }) => {
           ...(browserFirstMessage ? { conversation_config_override: { agent: { first_message: browserFirstMessage } } } : {})
         }, 'BROWSER');
       }
-      // Route a verified Foundation mobile before provisioning any legacy identity.
+      // Route direct Foundation calls before provisioning any legacy identity.
       if (foundationDorianOriginAllowed(locals.env, url) && typeof body?.agent_id === 'string' && body?.called_number) {
         const foundation = await startFoundationTelephoneCall({
           agentId: body.agent_id, callerId: body.caller_id,

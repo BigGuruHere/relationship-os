@@ -50,15 +50,19 @@ function databaseMatches(expected: string) {
 
 // Production has a separate opt-in and database binding. DEV still requires its
 // existing pilot boundary and keeps destination allowlists at dispatch.
-export function productionExchangeEnabled(locals: Pick<App.Locals, 'env'>, origin: string) {
+export function productionAccountSmsEnabled(locals: Pick<App.Locals, 'env'>, origin: string) {
 	const target = process.env.RELISH_PROD_EXCHANGE_TARGET;
 	const canonicalOrigin = resolveOrigin('prod');
 	return Boolean(
 		locals.env === 'prod' && canonicalOrigin.startsWith('https://') && origin === canonicalOrigin &&
 		process.env.RELISH_PROD_EXCHANGE_ENABLED === 'YES' && target && databaseMatches(target) &&
 		/^[a-z0-9-]{3,50}$/.test(process.env.RELISH_EXCHANGE_REALM ?? '') &&
-		emailVerificationConfigured() && process.env.TELNYX_API_KEY && process.env.RELISH_DORIAN_SMS_NUMBER
+		process.env.TELNYX_API_KEY && process.env.RELISH_DORIAN_SMS_NUMBER
 	);
+}
+
+export function productionExchangeEnabled(locals: Pick<App.Locals, 'env'>, origin: string) {
+	return productionAccountSmsEnabled(locals, origin) && emailVerificationConfigured();
 }
 
 export function exchangeBrowserEnabled(locals: Pick<App.Locals, 'env'>, origin: string) {

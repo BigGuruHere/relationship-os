@@ -7,7 +7,7 @@ import { PGlite } from '@electric-sql/pglite';
 import { PGLiteSocketServer } from '@electric-sql/pglite-socket';
 import { createServer } from 'vite';
 import { runLuAssessmentCases } from './lur3-assessment-cases.mjs';
-import { applyLuMigration } from './lu-migration-fixture.mjs';
+import { applyDorianPhoneFirstMigration, applyLuMigration } from './lu-migration-fixture.mjs';
 
 const endpoint = process.env.LUR2_TEST_DATABASE_URL;
 function capture(id, text) {
@@ -135,10 +135,21 @@ test(
 					0
 				);
 			} else db = await PGlite.create();
-			await db.exec(`CREATE TABLE "User" (id text PRIMARY KEY, "email_Enc" text, role text NOT NULL DEFAULT 'member');
-			CREATE TABLE "Profile" (id text PRIMARY KEY, "userId" text NOT NULL REFERENCES "User"(id), "displayName" text, "isDefault" boolean NOT NULL DEFAULT false);
+			await db.exec(`CREATE TYPE "ProfileKind" AS ENUM ('business');
+			CREATE TYPE "UserRole" AS ENUM ('member', 'owner', 'guest');
+			CREATE TABLE "Person" (id text PRIMARY KEY, "createdAt" timestamp, "updatedAt" timestamp);
+			CREATE TABLE "User" (id text PRIMARY KEY, "email_Enc" text, "email_Idx" bytea UNIQUE,
+				"passwordHash" text, "createdAt" timestamp, "updatedAt" timestamp,
+				"personId" text REFERENCES "Person"(id), role "UserRole" NOT NULL DEFAULT 'member');
+			CREATE TABLE "Profile" (id text PRIMARY KEY, "userId" text NOT NULL REFERENCES "User"(id),
+				"displayName" text, "isDefault" boolean NOT NULL DEFAULT false, "kind" "ProfileKind" DEFAULT 'business',
+				"label" text, "slug" text, "avatarUrl" text, "isPublished" boolean, "qrReady" boolean,
+				"createdAt" timestamp, "updatedAt" timestamp);
+			CREATE TABLE "OAuthAccount" (id text PRIMARY KEY, "userId" text);
+			CREATE TABLE "Session" (id text PRIMARY KEY, "userId" text REFERENCES "User"(id), "tokenHash" text, "createdAt" timestamp, "expiresAt" timestamp);
 			INSERT INTO "User"(id) VALUES ('owner'), ('other');`);
 			for (const migration of [
+				'20260924120000_stage8_10_2_password_login_throttle',
 				'20261026170000_stage8_19_first_contact_policy',
 				'20261031110000_stage8_22_unified_policy_sms',
 				'20261104010000_f202_foundation_schema',
@@ -163,7 +174,12 @@ test(
 			vite = await createServer({
 				configFile: false,
 				server: { middlewareMode: true, hmr: false },
-				resolve: { alias: { $lib: resolve('src/lib') } }
+				resolve: { alias: { $lib: resolve('src/lib') } },
+				plugins: [{
+					name: 'synthetic-svelte-environment',
+					resolveId(id) { if (id === '$app/environment') return '\0lur-environment'; },
+					load(id) { if (id === '\0lur-environment') return 'export const dev = true;'; }
+				}]
 			});
 			const load = (name) => vite.ssrLoadModule('/src/lib/' + name + '.ts');
 			({ prisma } = await load('db'));
@@ -209,6 +225,7 @@ test(
 			);
 			// Apply against data made using the prior schema, then confirm compatibility.
 			await applyLuMigration(db);
+			await applyDorianPhoneFirstMigration(db);
 			// This fixture also exercises the Dorian call route with the current Prisma schema.
 			await db.exec(await readFile(
 				'prisma/migrations/20261124010000_dorian_foundation_telephone/migration.sql', 'utf8'

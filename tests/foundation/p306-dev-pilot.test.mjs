@@ -1,6 +1,6 @@
 // Exercise the existing owner page, login and private People routes on a disposable database.
 import test from 'node:test';
-import { applyLuMigration } from './lu-migration-fixture.mjs';
+import { applyDorianPhoneFirstMigration, applyLuMigration } from './lu-migration-fixture.mjs';
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
@@ -49,6 +49,7 @@ test('Internal DEV setup and ordinary Foundation signup on an isolated database'
 		}
 
 		await applyLuMigration(db);
+		await applyDorianPhoneFirstMigration(db);
 
 		process.env.DATABASE_URL =
 			'postgresql://postgres:postgres@' + socket.getServerConn() + '/postgres?connection_limit=1';

@@ -1,3 +1,4 @@
+import { dorianPhoneSignupAvailable } from '$lib/server/foundation/accountChannels';
 import { provisionNewFoundationAccount } from '$lib/server/foundation/provisioning';
 import { EXCHANGE_RETURN, exchangeAuthReturn, readExchange, startExchangeAfterAuth } from '$lib/server/exchangeOnboarding';
 // src/routes/auth/register/+page.server.ts
@@ -26,6 +27,7 @@ export const load: PageServerLoad = async ({ locals, url, cookies, setHeaders })
   setHeaders({ 'cache-control': 'private, no-store', 'referrer-policy': 'same-origin' });
   return {
     next,
+    phoneSignup: dorianPhoneSignupAvailable(locals),
     draft: (next === PROFILE_ONBOARDING_RETURN || next === EXCHANGE_RETURN || next === '/people') ? readProfileDraft(cookies) : null,
     fromSharedDetails: next === EXCHANGE_RETURN && readExchange(cookies)?.version === 2
   };

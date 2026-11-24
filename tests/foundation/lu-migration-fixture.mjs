@@ -7,3 +7,7 @@ export async function applyLuMigration(db) {
 	await db.exec(await readFile('prisma/migrations/20261112070000_lu_failed_stage_review/migration.sql', 'utf8'));
 	await db.exec(await readFile('prisma/migrations/20261116010000_dorian_foundation_calls/migration.sql', 'utf8'));
 }
+
+export async function applyDorianPhoneFirstMigration(db) {
+	await db.exec(await readFile('prisma/migrations/20261124020000_dorian_phone_first/migration.sql', 'utf8'));
+}

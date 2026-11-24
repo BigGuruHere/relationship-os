@@ -220,3 +220,17 @@ export async function provisionNewFoundationAccount(tx: AppTransactionClient, us
 		await tx.foundationEnrollment.create({ data: { userId, state: 'ACTIVE' } });
 	});
 }
+
+// The caller has passed authenticated telephony ingress and the phone-first
+// repository holds the number's provisioning lock. Create no browser credential.
+export async function provisionDorianPhoneFirstAccount(tx: AppTransactionClient) {
+	const account = await tx.user.create({
+		data: {
+			person: { create: {} },
+			profiles: { create: defaultProfileData({ isPublished: false }) }
+		},
+		select: { id: true }
+	});
+	await provisionNewFoundationAccount(tx, account.id);
+	return account.id;
+}

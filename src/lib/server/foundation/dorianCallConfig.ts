@@ -25,5 +25,8 @@ export function foundationDorianPhoneAgent() {
 	return browserAgent && phoneAgent && phoneAgent !== browserAgent ? phoneAgent : null;
 }
 
+export const dorianPhoneFirstEnabled = () => process.env.RELISH_DORIAN_PHONE_FIRST === 'YES';
+export const dorianUnverifiedPhoneGeneration = -1;
+
 export const dorianProcessingMessage = 'I’m still processing our last conversation. Please try again shortly.';
 export const dorianProviderWindowMs = 2 * 60 * 60_000;

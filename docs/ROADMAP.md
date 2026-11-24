@@ -82,4 +82,4 @@ Validate first/returning greetings and natural use of startup context on the ded
 
 ### Dorian telephone continuity
 
-Validate app → phone → app in hosted DEV for two existing accounts with verified mobiles, including cross-channel consent, callbacks during processing, and exact source attribution. Phone-first Foundation provisioning and later account claims are a separate stage. See [telephone continuity](foundation/DORIAN_TELEPHONE_CONTINUITY.md).
+Validate app → phone → app in hosted DEV for two existing accounts with verified mobiles, including cross-channel consent, callbacks during processing, and exact source attribution. Replay first call → returning call → verified app activation for phone-first Foundation accounts. Exercise the existing SMS invitation and callback path independently. See [telephone continuity](foundation/DORIAN_TELEPHONE_CONTINUITY.md).

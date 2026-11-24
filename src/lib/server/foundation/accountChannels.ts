@@ -10,10 +10,13 @@ import { prisma, type AppTransactionClient } from '$lib/db';
 import { encrypt, decrypt } from '$lib/crypto';
 import { FoundationDenied, runFoundationBoundary } from './internal';
 import { withDorianTelephoneAccount } from './policy';
+import { provisionDorianPhoneFirstAccount } from './provisioning';
+import { dorianPhoneFirstEnabled, dorianUnverifiedPhoneGeneration } from './dorianCallConfig';
+import { encryptedUserEmailFields } from '$lib/server/userEmail';
 import { exchangeTransaction, exchangeRoots, requireClaimSession } from './exchangeAuthority';
 import { claimMac, verificationPhone, verificationEmail, sameMac } from './exchangeCrypto';
 import { budget } from './exchangeBudget';
-import { exchangeBrowserEnabled, productionExchangeEnabled } from './devPilotGate';
+import { exchangeBrowserEnabled, productionAccountSmsEnabled, productionExchangeEnabled } from './devPilotGate';
 import { sendTelnyxSms } from '$lib/server/integrations/telnyx/messaging';
 type Actor = Pick<App.Locals, 'user' | 'sessionId' | 'env' | 'appOrigin'>;
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
@@ -28,46 +31,96 @@ function canonical(type:string,value:string){
 function hash(type: string, value: string) {
 	return claimMac(type + ':' + value, 'account-channel:lookup:v1');
 }
-// Called only for authenticated inbound Dorian initiation. The incoming number
-// identifies a possible account provisionally and does not grant sign-in access.
-export async function lookupVerifiedDorianMobile(value: unknown) {
-	if (typeof value !== 'string') return null;
-	let phone: string;
+// Canonicalise authenticated SIP caller ID using the same mobile format as account verification.
+function inboundMobile(value: unknown) {
+	if (typeof value !== 'string' || value.length > 40) return null;
 	try {
-		// Inbound SIP providers can supply the Australian country code without +.
 		const compact = value.replace(/[ ()-]/g, '');
-		phone = canonical('PHONE', /^(?:00)?614[0-9]{8}$/.test(compact)
+		return verificationPhone(/^(?:00)?614[0-9]{8}$/.test(compact)
 			? '+' + compact.replace(/^00/, '') : value);
 	} catch {
 		return null;
 	}
-	const valueHash = hash('PHONE', phone);
+}
+
+async function exactDorianMobile(tx: Pick<AppTransactionClient, 'foundationAccountChannel'>, phone: string, pending: boolean) {
 	const channels = await runFoundationBoundary(
 		{ ownerUserId: 'DORIAN_PHONE_ROUTING', mode: 'DORIAN_PHONE_LOOKUP' },
-		() => prisma.foundationAccountChannel.findMany({
-			where: { type: 'PHONE', status: 'VERIFIED', valueHash },
+		() => tx.foundationAccountChannel.findMany({
+			where: { type: 'PHONE', valueHash: hash('PHONE', phone),
+				...(pending ? { status: 'PENDING', dorianPhoneFirst: true } : { status: 'VERIFIED' }) },
 			select: { id: true, ownerUserId: true, generation: true },
 			take: 2
 		})
 	);
-	return channels.length === 1 ? { ...channels[0], phone } : null;
+	if (channels.length > 1) throw new FoundationDenied();
+	return channels[0] ?? null;
 }
 
-// Re-read the current proof and destination in the caller's account transaction.
-export function dorianVerifiedMobile(
+// Called by authenticated telephone ingress. Use the verified owner first and
+// serialize a first-call enrollment with verification and other new calls.
+export async function resolveDorianTelephoneCaller(value: unknown) {
+	const phone = inboundMobile(value);
+	if (!phone) return null;
+	const verified = await exactDorianMobile(prisma, phone, false);
+	if (verified) return { ...verified, phone };
+	if (!dorianPhoneFirstEnabled()) return null;
+	return exchangeTransaction('DORIAN_PHONE_ROUTING', async (tx) => {
+		const nowVerified = await exactDorianMobile(tx, phone, false);
+		if (nowVerified) return { ...nowVerified, phone };
+		const pending = await exactDorianMobile(tx, phone, true);
+		if (pending) return { ...pending, generation: dorianUnverifiedPhoneGeneration, phone };
+		// Bound provider-driven creation even when every call uses a different number.
+		if (!(await budget(tx, 'DORIAN_PHONE_ROUTING', [['dorian-phone-first:provision', 300]])))
+			throw new FoundationDenied();
+		const ownerUserId = await provisionDorianPhoneFirstAccount(tx);
+		const id = randomUUID();
+		await runFoundationBoundary({ ownerUserId, mode: 'ACCOUNT_CHANNEL' }, () =>
+			tx.foundationAccountChannel.create({
+				data: { id, ownerUserId, type: 'PHONE', valueHash: hash('PHONE', phone),
+					valueEnc: encrypt(phone, aad(ownerUserId, id, 'value')), dorianPhoneFirst: true }
+			})
+		);
+		return { id, ownerUserId, generation: dorianUnverifiedPhoneGeneration, phone };
+	});
+}
+
+// A provisional call binding uses the reserved marker so sending a signup code
+// doesn't invalidate the call. Once claimed it can survive only the first proof.
+export function dorianTelephoneMobile(
 	tx: AppTransactionClient, ownerUserId: string, channelId: string, generation: number
 ) {
 	return runFoundationBoundary({ ownerUserId, mode: 'ACCOUNT_CHANNEL' }, async () => {
+		const provisional = generation === dorianUnverifiedPhoneGeneration;
 		const row = await tx.foundationAccountChannel.findFirst({
-			where: { id: channelId, type: 'PHONE', status: 'VERIFIED', generation },
-			select: { valueEnc: true }
+			where: { id: channelId, type: 'PHONE', ...(provisional
+				? { dorianPhoneFirst: true, status: { in: ['PENDING', 'VERIFIED'] } }
+				: { status: 'VERIFIED', generation }) },
+			select: { valueEnc: true, status: true, generation: true }
 		});
 		if (!row) return null;
+		const phone = decrypt(row.valueEnc, aad(ownerUserId, channelId, 'value'));
+		if (provisional) {
+			// Never fall through to a provisional record if the number is now
+			// verified by another account.
+			const verified = await exactDorianMobile(tx, phone, false);
+			if (verified && verified.ownerUserId !== ownerUserId) return null;
+			if (row.status === 'PENDING') {
+				const previousProof = await tx.foundationAccountChannelVerification.findFirst({
+					where: { channelId }, select: { id: true }
+				});
+				return previousProof ? null : phone;
+			}
+			const retiredProof = await tx.foundationAccountChannelVerification.findFirst({
+				where: { channelId, revokedAt: { not: null } }, select: { id: true }
+			});
+			if (retiredProof) return null;
+		}
 		const proof = await tx.foundationAccountChannelVerification.findFirst({
-			where: { channelId, generation, revokedAt: null, method: 'SMS_CODE' },
+			where: { channelId, generation: row.generation, revokedAt: null, method: 'SMS_CODE' },
 			select: { id: true }
 		});
-		return proof ? decrypt(row.valueEnc, aad(ownerUserId, channelId, 'value')) : null;
+		return proof ? phone : null;
 	});
 }
 
@@ -76,7 +129,7 @@ export function dorianVerifiedMobile(
 export async function resolveDorianPolicySmsPhone(ownerUserId: string, channelId: string, generation: number) {
 	try {
 		return await withDorianTelephoneAccount(ownerUserId, (tx) =>
-			dorianVerifiedMobile(tx, ownerUserId, channelId, generation)
+			dorianTelephoneMobile(tx, ownerUserId, channelId, generation)
 		);
 	} catch (cause) {
 		if (cause instanceof FoundationDenied) return null;
@@ -200,152 +253,162 @@ export async function requestAccountChannelCode(
 	address: string
 ) {
 	if (!uuid.test(requestId) || !address || address.length > 200) throw new FoundationDenied();
-	return scope(locals, async (tx, account) => {
-		await expire(tx);
-		let c = await channel(tx, id);
-		if (c.type === 'EMAIL' && !emailVerificationConfigured()) throw new ChannelDenied('EMAIL_NOT_CONFIGURED');
-		const destination = canonical(c.type, decrypt(c.valueEnc, aad(account, id, 'value')));
-		if (c.status === 'VERIFIED') {
-			const proof = await tx.foundationAccountChannelVerification.findFirst({
-				where: { channelId: id, generation: c.generation, revokedAt: null }
-			});
-			if (usableProof(proof, destination)) return { status: 'VERIFIED' as const };
-		}
-		const prior = await tx.foundationAccountChannelChallenge.findFirst({
-			where: { id: requestId }
+	return scope(locals, (tx, account) => requestAccountChannelCodeInScope(tx, account, locals.sessionId!, id, requestId, address));
+}
+
+async function requestAccountChannelCodeInScope(
+	tx: AppTransactionClient, account: string, browserBinding: string, id: string, requestId: string, address: string
+) {
+	await expire(tx);
+	let c = await channel(tx, id);
+	if (c.type === 'EMAIL' && !emailVerificationConfigured()) throw new ChannelDenied('EMAIL_NOT_CONFIGURED');
+	const destination = canonical(c.type, decrypt(c.valueEnc, aad(account, id, 'value')));
+	if (c.status === 'VERIFIED') {
+		const proof = await tx.foundationAccountChannelVerification.findFirst({
+			where: { channelId: id, generation: c.generation, revokedAt: null }
 		});
-		if (prior) {
-			if (
-				prior.channelId !== id ||
-				prior.sessionHash !== claimMac(locals.sessionId!, 'session') ||
-				prior.status !== 'PENDING' ||
-				prior.generation !== c.generation
-			)
-				throw new FoundationDenied();
-			return { status: 'QUEUED' as const, challengeId: prior.id };
-		}
-		const latest = await tx.foundationAccountChannelChallenge.findFirst({
-			where: { channelId: id },
-			orderBy: { createdAt: 'desc' }
-		});
-		if (latest && Date.now() - latest.createdAt.getTime() < 60000)
-			return { status: 'LIMITED' as const };
-		// An hourly channel window preserves failed attempts and sends across resends and revocation.
-		if (Date.now() - c.windowAt.getTime() >= 3600000) {
-			await tx.foundationAccountChannel.updateMany({
-				where: { id },
-				data: { windowAt: new Date(), failedAttempts: 0, sendCount: 0 }
-			});
-			c = await channel(tx, id);
-		}
-		if (c.failedAttempts >= 5 || c.sendCount >= 5) return { status: 'LIMITED' as const };
-		const phone = destination;
+		if (usableProof(proof, destination)) return { status: 'VERIFIED' as const };
+	}
+	const prior = await tx.foundationAccountChannelChallenge.findFirst({
+		where: { id: requestId }
+	});
+	if (prior) {
 		if (
-			!(await budget(tx, account, [
-				['send:account:' + account, 10],
-				[(c.type === 'PHONE' ? 'send:phone:' : 'send:email:') + phone, 5],
-				['send:origin:' + address, 30],
-				['send:global', 100]
-			]))
+			prior.channelId !== id ||
+			prior.sessionHash !== claimMac(browserBinding, 'session') ||
+			prior.status !== 'PENDING' ||
+			prior.generation !== c.generation
 		)
-			return { status: 'LIMITED' as const };
-		await cancel(tx, id);
-		if (c.status === 'VERIFIED') await retireOldGoogleProof(tx, id);
-		const code = String(randomInt(0, 1000000)).padStart(6, '0'),
-			expiresAt = new Date(Date.now() + 900000);
+			throw new FoundationDenied();
+		return { status: 'QUEUED' as const, challengeId: prior.id };
+	}
+	const latest = await tx.foundationAccountChannelChallenge.findFirst({
+		where: { channelId: id },
+		orderBy: { createdAt: 'desc' }
+	});
+	if (latest && Date.now() - latest.createdAt.getTime() < 60000)
+		return { status: 'LIMITED' as const };
+	// An hourly channel window preserves failed attempts and sends across resends and revocation.
+	if (Date.now() - c.windowAt.getTime() >= 3600000) {
 		await tx.foundationAccountChannel.updateMany({
 			where: { id },
-			data: { generation: { increment: 1 }, status: 'PENDING', sendCount: { increment: 1 } }
+			data: { windowAt: new Date(), failedAttempts: 0, sendCount: 0 }
 		});
-		await tx.foundationAccountChannelChallenge.create({
-			data: {
-				id: requestId,
-				ownerUserId: account,
-				channelId: id,
-				generation: c.generation + 1,
-				sessionHash: claimMac(locals.sessionId!, 'session'),
-				codeMac: claimMac(code, 'account-channel:code:' + requestId),
-				expiresAt
-			}
-		});
-		const dispatchId = randomUUID();
-		await tx.foundationAccountChannelDispatch.create({
-			data: {
-				id: dispatchId,
-				ownerUserId: account,
-				challengeId: requestId,
-				expiresAt,
-				payloadEnc: encrypt(
-					JSON.stringify({ phone, code, type: c.type }),
-					aad(account, dispatchId, 'dispatch')
-				)
-			}
-		});
-		return { status: 'QUEUED' as const, challengeId: requestId };
+		c = await channel(tx, id);
+	}
+	if (c.failedAttempts >= 5 || c.sendCount >= 5) return { status: 'LIMITED' as const };
+	const phone = destination;
+	if (
+		!(await budget(tx, account, [
+			['send:account:' + account, 10],
+			[(c.type === 'PHONE' ? 'send:phone:' : 'send:email:') + phone, 5],
+			['send:origin:' + address, 30],
+			['send:global', 100]
+		]))
+	)
+		return { status: 'LIMITED' as const };
+	await cancel(tx, id);
+	if (c.status === 'VERIFIED') await retireOldGoogleProof(tx, id);
+	const code = String(randomInt(0, 1000000)).padStart(6, '0'),
+		expiresAt = new Date(Date.now() + 900000);
+	await tx.foundationAccountChannel.updateMany({
+		where: { id },
+		data: { generation: { increment: 1 }, status: 'PENDING', sendCount: { increment: 1 } }
 	});
+	await tx.foundationAccountChannelChallenge.create({
+		data: {
+			id: requestId,
+			ownerUserId: account,
+			channelId: id,
+			generation: c.generation + 1,
+			sessionHash: claimMac(browserBinding, 'session'),
+			codeMac: claimMac(code, 'account-channel:code:' + requestId),
+			expiresAt
+		}
+	});
+	const dispatchId = randomUUID();
+	await tx.foundationAccountChannelDispatch.create({
+		data: {
+			id: dispatchId,
+			ownerUserId: account,
+			challengeId: requestId,
+			expiresAt,
+			payloadEnc: encrypt(
+				JSON.stringify({ phone, code, type: c.type }),
+				aad(account, dispatchId, 'dispatch')
+			)
+		}
+	});
+	return { status: 'QUEUED' as const, challengeId: requestId };
 }
+
 export async function dispatchAccountChannelCode(locals: Actor, challengeId: string, onFailure?:(reference:string)=>void) {
 	// Production delivery only needs this account's session and root locks.
 	// Keep provider latency out of the global settlement lock.
 	const production = productionExchangeEnabled(locals, locals.appOrigin);
-	return scope(locals, async (tx, account) => {
-		await expire(tx);
-		const challenge = await tx.foundationAccountChannelChallenge.findFirst({
-			where: { id: challengeId, status: 'PENDING' }
+	return scope(locals, (tx, account) => dispatchAccountChannelCodeInScope(tx, account, locals.sessionId!, challengeId, production, onFailure), !production);
+}
+
+async function dispatchAccountChannelCodeInScope(
+	tx: AppTransactionClient, account: string, browserBinding: string, challengeId: string, production: boolean, onFailure?: (reference: string) => void
+) {
+	await expire(tx);
+	const challenge = await tx.foundationAccountChannelChallenge.findFirst({
+		where: { id: challengeId, status: 'PENDING' }
+	});
+	if (!challenge || challenge.sessionHash !== claimMac(browserBinding, 'session'))
+		throw new FoundationDenied();
+	const c = await channel(tx, challenge.channelId);
+	const d = await tx.foundationAccountChannelDispatch.findFirst({ where: { challengeId } });
+	if (!d || c.status !== 'PENDING' || c.generation !== challenge.generation)
+		throw new FoundationDenied();
+	if (d.status === 'SENT') return 'SENT';
+	if (!d.payloadEnc || !['QUEUED', 'FAILED'].includes(d.status) || d.attempts >= 3) throw new ChannelDenied('DELIVERY_EXHAUSTED');
+	const payload = JSON.parse(decrypt(d.payloadEnc, aad(account, d.id, 'dispatch')));
+	const allowed = (
+		c.type === 'PHONE'
+			? process.env.RELISH_EXCHANGE_TEST_PHONES || ''
+			: process.env.RELISH_EXCHANGE_TEST_EMAILS || ''
+	)
+		.split(',')
+		.some((p) => {
+			try {
+				return canonical(c.type, p.trim()) === payload.phone;
+			} catch {
+				return false;
+			}
 		});
-		if (!challenge || challenge.sessionHash !== claimMac(locals.sessionId!, 'session'))
-			throw new FoundationDenied();
-		const c = await channel(tx, challenge.channelId);
-		const d = await tx.foundationAccountChannelDispatch.findFirst({ where: { challengeId } });
-		if (!d || c.status !== 'PENDING' || c.generation !== challenge.generation)
-			throw new FoundationDenied();
-		if (d.status === 'SENT') return 'SENT';
-		if (!d.payloadEnc || !['QUEUED', 'FAILED'].includes(d.status) || d.attempts >= 3) throw new ChannelDenied('DELIVERY_EXHAUSTED');
-		const payload = JSON.parse(decrypt(d.payloadEnc, aad(account, d.id, 'dispatch')));
-		const allowed = (
-			c.type === 'PHONE'
-				? process.env.RELISH_EXCHANGE_TEST_PHONES || ''
-				: process.env.RELISH_EXCHANGE_TEST_EMAILS || ''
-		)
-			.split(',')
-			.some((p) => {
-				try {
-					return canonical(c.type, p.trim()) === payload.phone;
-				} catch {
-					return false;
-				}
-			});
-		if (!allowed && !production)
-			throw new ChannelDenied('DESTINATION_NOT_APPROVED');
+	if (!allowed && !production)
+		throw new ChannelDenied('DESTINATION_NOT_APPROVED');
+	await tx.foundationAccountChannelDispatch.updateMany({
+		where: { id: d.id },
+		data: { attempts: { increment: 1 } }
+	});
+	try {
+		if (c.type === 'EMAIL') await sendVerificationEmail(payload.phone, payload.code, d.id);
+		else
+			await sendTelnyxSms(
+				payload.phone,
+				`Your Relish verification code: ${payload.code}. It expires in 15 minutes.`
+			);
 		await tx.foundationAccountChannelDispatch.updateMany({
 			where: { id: d.id },
-			data: { attempts: { increment: 1 } }
+			data: { status: 'SENT', payloadEnc: null }
 		});
-		try {
-			if (c.type === 'EMAIL') await sendVerificationEmail(payload.phone, payload.code, d.id);
-			else
-				await sendTelnyxSms(
-					payload.phone,
-					`Your Relish verification code: ${payload.code}. It expires in 15 minutes.`
-				);
-			await tx.foundationAccountChannelDispatch.updateMany({
-				where: { id: d.id },
-				data: { status: 'SENT', payloadEnc: null }
-			});
-			return 'SENT';
-		} catch(failure) {
+		return 'SENT';
+	} catch(failure) {
             const diagnostic=reportChannelFailure('dispatch',failure instanceof ChannelDenied?failure:new ChannelDenied('DELIVERY_FAILED'));onFailure?.(diagnostic.reference);
-			await tx.foundationAccountChannelDispatch.updateMany({
-				where: { id: d.id },
-				data: {
-					status: d.attempts >= 2 ? 'CANCELLED' : 'FAILED',
-					...(d.attempts >= 2 ? { payloadEnc: null } : {})
-				}
-			});
-			return 'FAILED';
-		}
-	}, !production);
+		await tx.foundationAccountChannelDispatch.updateMany({
+			where: { id: d.id },
+			data: {
+				status: d.attempts >= 2 ? 'CANCELLED' : 'FAILED',
+				...(d.attempts >= 2 ? { payloadEnc: null } : {})
+			}
+		});
+		return 'FAILED';
+	}
 }
+
 export async function verifyAccountChannelCode(
 	locals: Actor,
 	challengeId: string,
@@ -353,73 +416,148 @@ export async function verifyAccountChannelCode(
 	address: string
 ) {
 	if (!address || address.length > 200 || code.length > 100) throw new FoundationDenied();
-	return scope(locals, async (tx, account) => {
-		await expire(tx);
-		const ch = await tx.foundationAccountChannelChallenge.findFirst({ where: { id: challengeId } });
-		if (!ch || ch.sessionHash !== claimMac(locals.sessionId!, 'session'))
-			throw new FoundationDenied();
-		const c = await channel(tx, ch.channelId);
-		if (ch.generation !== c.generation) throw new FoundationDenied();
-		if (ch.status === 'CONSUMED' && c.status === 'VERIFIED') return 'VERIFIED';
-		if (ch.status !== 'PENDING' || c.status !== 'PENDING' || c.failedAttempts >= 5)
-			throw new FoundationDenied();
-		const phone = canonical(c.type, decrypt(c.valueEnc, aad(account, c.id, 'value')));
-		if (
-			!(await budget(tx, account, [
-				['verify:account:' + account, 20],
-				[(c.type === 'PHONE' ? 'verify:phone:' : 'verify:email:') + phone, 20],
-				['verify:origin:' + address, 100]
-			]))
-		)
-			return 'LIMITED';
-		if (
-			!/^[0-9]{6}$/.test(code) ||
-			!sameMac(ch.codeMac, claimMac(code, 'account-channel:code:' + ch.id))
-		) {
-			await tx.foundationAccountChannelChallenge.updateMany({
-				where: { id: ch.id },
-				data: { attempts: { increment: 1 } }
-			});
-			await tx.foundationAccountChannel.updateMany({
-				where: { id: c.id },
-				data: { failedAttempts: { increment: 1 } }
-			});
-			return 'INVALID';
-		}
-		const now = new Date();
-		await tx.foundationAccountChannelVerification.create({
-			data: {
-				ownerUserId: account,
-				channelId: c.id,
-				generation: c.generation,
-				method: c.type === 'PHONE' ? 'SMS_CODE' : 'EMAIL_CODE',
-				proofRef: ch.id,
-				verifiedAt: now
-			}
-		});
+	return scope(locals, (tx, account) => verifyAccountChannelCodeInScope(tx, account, locals.sessionId!, challengeId, code, address));
+}
+
+async function verifyAccountChannelCodeInScope(
+	tx: AppTransactionClient, account: string, browserBinding: string, challengeId: string, code: string, address: string
+) {
+	await expire(tx);
+	const ch = await tx.foundationAccountChannelChallenge.findFirst({ where: { id: challengeId } });
+	if (!ch || ch.sessionHash !== claimMac(browserBinding, 'session'))
+		throw new FoundationDenied();
+	const c = await channel(tx, ch.channelId);
+	if (ch.generation !== c.generation) throw new FoundationDenied();
+	if (ch.status === 'CONSUMED' && c.status === 'VERIFIED') return 'VERIFIED';
+	if (ch.status !== 'PENDING' || c.status !== 'PENDING' || c.failedAttempts >= 5)
+		throw new FoundationDenied();
+	const phone = canonical(c.type, decrypt(c.valueEnc, aad(account, c.id, 'value')));
+	if (
+		!(await budget(tx, account, [
+			['verify:account:' + account, 20],
+			[(c.type === 'PHONE' ? 'verify:phone:' : 'verify:email:') + phone, 20],
+			['verify:origin:' + address, 100]
+		]))
+	)
+		return 'LIMITED';
+	if (
+		!/^[0-9]{6}$/.test(code) ||
+		!sameMac(ch.codeMac, claimMac(code, 'account-channel:code:' + ch.id))
+	) {
 		await tx.foundationAccountChannelChallenge.updateMany({
 			where: { id: ch.id },
-			data: { status: 'CONSUMED', consumedAt: now }
+			data: { attempts: { increment: 1 } }
 		});
-		await tx.foundationAccountChannelDispatch.updateMany({
-			where: { challengeId: ch.id, status: { in: ['QUEUED', 'FAILED'] } },
-			data: { status: 'CANCELLED', payloadEnc: null }
+		await tx.foundationAccountChannel.updateMany({
+			where: { id: c.id },
+			data: { failedAttempts: { increment: 1 } }
 		});
-		// This status-only update can collide with the verified-channel unique index.
-		// Throw out of the transaction so a conflict cannot consume the code or create proof.
-		try {
-			await tx.foundationAccountChannel.updateMany({
-				where: { id: c.id },
-				data: { status: 'VERIFIED' }
-			});
-		} catch (failure) {
-			if ((failure as { code?: unknown })?.code === 'P2002')
-				throw new ChannelDenied('CHANNEL_ALREADY_VERIFIED');
-			throw failure;
+		return 'INVALID';
+	}
+	const now = new Date();
+	await tx.foundationAccountChannelVerification.create({
+		data: {
+			ownerUserId: account,
+			channelId: c.id,
+			generation: c.generation,
+			method: c.type === 'PHONE' ? 'SMS_CODE' : 'EMAIL_CODE',
+			proofRef: ch.id,
+			verifiedAt: now
 		}
-		return 'VERIFIED';
+	});
+	await tx.foundationAccountChannelChallenge.updateMany({
+		where: { id: ch.id },
+		data: { status: 'CONSUMED', consumedAt: now }
+	});
+	await tx.foundationAccountChannelDispatch.updateMany({
+		where: { challengeId: ch.id, status: { in: ['QUEUED', 'FAILED'] } },
+		data: { status: 'CANCELLED', payloadEnc: null }
+	});
+	// This status-only update can collide with the verified-channel unique index.
+	// Throw out of the transaction so a conflict cannot consume the code or create proof.
+	try {
+		await tx.foundationAccountChannel.updateMany({
+			where: { id: c.id },
+			data: { status: 'VERIFIED' }
+		});
+	} catch (failure) {
+		if ((failure as { code?: unknown })?.code === 'P2002')
+			throw new ChannelDenied('CHANNEL_ALREADY_VERIFIED');
+		throw failure;
+	}
+	return 'VERIFIED';
+}
+
+// Signup actions grant only access to SMS challenges for the pending phone-first
+// channel. The browser binding is random and never represents an authenticated session.
+export function dorianPhoneSignupAvailable(locals: Pick<Actor, 'env' | 'appOrigin'>) {
+	return dorianPhoneFirstEnabled() && (productionAccountSmsEnabled(locals, locals.appOrigin) ||
+		exchangeBrowserEnabled(locals, locals.appOrigin));
+}
+
+type PhoneSignupActor = Pick<Actor, 'env' | 'appOrigin'>;
+type PhoneSignupBinding = { phone: string; browserBinding: string; challengeId: string };
+
+function phoneSignupScope<T>(
+	locals: PhoneSignupActor, ownerUserId: string, channelId: string,
+	run: (tx: AppTransactionClient) => Promise<T>, lockGlobal = true
+) {
+	if (!dorianPhoneSignupAvailable(locals)) throw new FoundationDenied();
+	return exchangeTransaction(ownerUserId, async (tx) => {
+		await exchangeRoots(tx, [ownerUserId]);
+		return runFoundationBoundary({ ownerUserId, mode: 'ACCOUNT_CHANNEL' }, async () => {
+			const pending = await tx.foundationAccountChannel.findFirst({
+				where: { id: channelId, type: 'PHONE', status: 'PENDING', dorianPhoneFirst: true },
+				select: { id: true }
+			});
+			if (!pending) throw new FoundationDenied();
+			return run(tx);
+		});
+	}, lockGlobal);
+}
+
+export async function sendDorianPhoneSignupCode(locals: PhoneSignupActor, binding: PhoneSignupBinding, address: string) {
+	if (!dorianPhoneSignupAvailable(locals) || !uuid.test(binding.challengeId) || !address || address.length > 200)
+		throw new FoundationDenied();
+	const phone = verificationPhone(binding.phone);
+	const pending = await exactDorianMobile(prisma, phone, true);
+	if (!pending) return false;
+	const { ownerUserId, id } = pending;
+	const result = await phoneSignupScope(locals, ownerUserId, id, (tx) =>
+		requestAccountChannelCodeInScope(tx, ownerUserId, binding.browserBinding, id, binding.challengeId, address)
+	);
+	if (result.status !== 'QUEUED') return false;
+	const production = productionAccountSmsEnabled(locals, locals.appOrigin);
+	await phoneSignupScope(locals, ownerUserId, id, (tx) =>
+		dispatchAccountChannelCodeInScope(tx, ownerUserId, binding.browserBinding, binding.challengeId, production),
+		!production);
+	return true;
+}
+
+export async function activateDorianPhoneSignup(
+	locals: PhoneSignupActor, binding: PhoneSignupBinding, code: string,
+	address: string, email: string, passwordHash: string
+) {
+	if (!dorianPhoneSignupAvailable(locals) || !uuid.test(binding.challengeId) || !address || address.length > 200)
+		throw new FoundationDenied();
+	const pending = await exactDorianMobile(prisma, verificationPhone(binding.phone), true);
+	if (!pending) return null;
+	const { ownerUserId, id } = pending;
+	return phoneSignupScope(locals, ownerUserId, id, async (tx) => {
+		const proof = await verifyAccountChannelCodeInScope(
+			tx, ownerUserId, binding.browserBinding, binding.challengeId, code, address
+		);
+		if (proof !== 'VERIFIED') return null;
+		// A conflicting email or stale account rolls back the proof and credentials together.
+		const activated = await tx.user.updateMany({
+			where: { id: ownerUserId, email_Idx: null, passwordHash: null, oauthAccounts: { none: {} } },
+			data: { ...encryptedUserEmailFields(email), passwordHash }
+		});
+		if (activated.count !== 1) throw new FoundationDenied();
+		return ownerUserId;
 	});
 }
+
 export async function revokeAccountChannel(locals: Actor, id: string) {
 	return scope(locals, async (tx) => {
 		await channel(tx, id);

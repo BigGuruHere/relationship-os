@@ -1,6 +1,6 @@
 <!-- PURPOSE: simple register form that immediately signs in -->
 <script lang="ts">
-    export let data: { next: string | null; fromSharedDetails?: boolean; draft?: { email: string } | null };
+    export let data: { next: string | null; fromSharedDetails?: boolean; phoneSignup?: boolean; draft?: { email: string } | null };
     export let form;
   </script>
 
@@ -8,6 +8,11 @@
     <div class="card" style="padding:22px;">
       <h1 style="margin:0 0 14px 0;">Create account</h1>
 
+      {#if data.phoneSignup}
+        <p style="margin-top:14px;">
+          Already called Dorian? <a href={data.next ? '/auth/register/phone?next=' + encodeURIComponent(data.next) : '/auth/register/phone'}>Activate app access</a>
+        </p>
+      {/if}
       {#if form?.error}
         <div class="card" style="padding:10px; margin-bottom:12px; border-color: var(--danger);">
           <div style="color:#ffdada;">{form.error}</div>

@@ -85,7 +85,10 @@ export async function runLuAssessmentCases({ db, load, vite, otherPersonId, gran
 	const env = ['DATING_REVISION_MODEL', 'OPENAI_API_KEY', 'RELISH_FOUNDATION_LU_REVIEW', 'APP_ORIGIN_DEV',
 		'RELISH_FOUNDATION_DORIAN', 'RELISH_FOUNDATION_DORIAN_AGENT_ID', 'RELISH_FOUNDATION_DORIAN_TOOL_SECRET',
 		'ELEVENLABS_API_KEY', 'APP_ORIGIN', 'RELISH_LEGAL_DOCUMENTS_PUBLISHED',
-		'RELISH_PILOT_TERMS_VERSION', 'RELISH_PILOT_CONVERSATIONAL_TERMS'];
+		'RELISH_PILOT_TERMS_VERSION', 'RELISH_PILOT_CONVERSATIONAL_TERMS', 'RELISH_FOUNDATION_DORIAN_PHONE_AGENT_ID',
+		'RELISH_DORIAN_PHONE_FIRST', 'RELISH_EXCHANGE_REALM', 'RELISH_EXCHANGE_TEST_PHONES', 'RELISH_EXCHANGE_BROWSER_ENABLED',
+		'RELISH_DEV_FOUNDATION_PILOT_TARGET', 'TELNYX_API_KEY', 'RELISH_DORIAN_SMS_NUMBER',
+		'LOGIN_THROTTLE_SECRET', 'SESSION_COOKIE_SECRET', 'SESSION_DAYS'];
 	const previousEnv = Object.fromEntries(env.map((key) => [key, process.env[key]]));
 	let phase = 'initial';
 	let beforeResponse;
@@ -839,6 +842,112 @@ export async function runLuAssessmentCases({ db, load, vite, otherPersonId, gran
 			[new Date(0), withdrawn.conversationId]);
 		const expired = (await db.query('SELECT id FROM "DorianFoundationCall" WHERE "conversationId"=$1', [withdrawn.conversationId])).rows[0];
 		await assert.rejects(prepareDorianCall(expired.id), /unavailable/);
+
+
+		// Exercise a fresh direct caller through durable LU, provisional recall and
+		// the real browser activation action. Stub provider transports only.
+		const { startFoundationTelephoneCall, acceptFoundationTelephonePolicy } = await load('server/foundation/dorianTelephone');
+		const { resolveDorianPolicySmsPhone } = await load('server/foundation/accountChannels');
+		const { encryptedUserEmailFields } = await load('server/userEmail');
+		const accountByEmail = async (email) => (await db.query('SELECT id FROM "User" WHERE "email_Idx"=$1',
+			[encryptedUserEmailFields(email).email_Idx])).rows[0]?.id ?? null;
+		const sms = [];
+		const modelFetch = globalThis.fetch;
+		globalThis.fetch = async (url, init) => {
+			if (String(url) !== 'https://api.telnyx.com/v2/messages') return modelFetch(url, init);
+			sms.push(JSON.parse(init.body));
+			return Response.json({});
+		};
+		process.env.RELISH_DORIAN_PHONE_FIRST = 'YES';
+		process.env.RELISH_EXCHANGE_REALM = 'fixture-phone';
+		process.env.RELISH_FOUNDATION_DORIAN_PHONE_AGENT_ID = 'synthetic-phone-agent';
+		process.env.RELISH_EXCHANGE_BROWSER_ENABLED = 'YES';
+		process.env.APP_ORIGIN_DEV = 'https://dev.relish.live';
+		const database = new URL(process.env.DATABASE_URL);
+		process.env.RELISH_DEV_FOUNDATION_PILOT_TARGET = database.host + database.pathname;
+		process.env.LOGIN_THROTTLE_SECRET = 'synthetic-phone-signup-throttle-secret';
+		process.env.SESSION_COOKIE_SECRET = 'synthetic-phone-session-cookie-secret';
+		process.env.SESSION_DAYS = '7';
+		const signup = await vite.ssrLoadModule('/src/routes/auth/register/phone/+page.server.ts');
+		// Keep the existing participant's unfinished web call out of the queue fixture.
+		await db.query(`UPDATE "DorianFoundationCall" SET state='INCOMPLETE' WHERE "conversationId"=$1`,
+			[withdrawn.conversationId]);
+		const mobile = '+61491579972';
+		const startTelephone = (id, callerId = mobile) => startFoundationTelephoneCall({
+			agentId: 'synthetic-phone-agent', callerId, conversationId: id, development: true
+		});
+		assert.equal((await startTelephone('conv_unknown_phone', '')).mode, 'UNRESOLVED');
+		const firstPhone = await startTelephone('conv_phone_first_stage');
+		assert.equal(firstPhone.mode, 'PARTICIPANT');
+		const phoneVars = firstPhone.payload.dynamic_variables;
+		assert.equal(phoneVars.terms_agreed, false);
+		assert.equal(phoneVars.living_understanding, undefined);
+		const phoneRow = (await db.query('SELECT * FROM "DorianFoundationCall" WHERE "conversationId"=$1',
+			[phoneVars.conversation_id])).rows[0];
+		const phoneOwner = phoneRow.ownerUserId;
+		assert.equal(phoneRow.state, 'AWAITING_TERMS');
+		assert.equal((await db.query('SELECT "passwordHash" FROM "User" WHERE id=$1', [phoneOwner])).rows[0].passwordHash, null);
+		assert.equal((await db.query('SELECT status FROM "FoundationAccountChannel" WHERE id=$1',
+			[phoneRow.phoneChannelId])).rows[0].status, 'PENDING');
+		assert.equal(await resolveDorianPolicySmsPhone(phoneOwner, phoneRow.phoneChannelId, phoneRow.phoneChannelGeneration), mobile);
+		assert.equal((await acceptFoundationTelephonePolicy({
+			token: phoneVars.relish_network_session, conversationId: phoneVars.conversation_id, agreement: true
+		})).status, 'ACCEPTED');
+		assert.equal((await startTelephone('conv_phone_first_busy')).mode, 'PROCESSING_ONLY');
+		await makeCallDue(phoneVars.conversation_id);
+		phase = 'initial';
+		assert.equal(await processDorianFoundationCall(async () => ({
+			conversation_id: phoneVars.conversation_id, agent_id: 'synthetic-phone-agent', status: 'done',
+			transcript: [{ role: 'agent', message: 'When works for you?' }, { role: 'user', message: 'Mornings are best for me.' }]
+		})), true);
+		const firstAnalysed = (await db.query('SELECT * FROM "DorianFoundationCall" WHERE id=$1', [phoneRow.id])).rows[0];
+		assert.equal(firstAnalysed.state, 'READY');
+		const telephoneReview = {
+			locals: owner, params: { id: phoneRow.id }, setHeaders() {},
+			url: new URL('/operator/dorian-foundation/' + phoneRow.id + '?candidate=' + firstAnalysed.candidateId, origin)
+		};
+		const firstReview = await operator.load(telephoneReview);
+		const firstTopic = firstReview.candidate.groups[0].topics[0];
+		assert.equal(firstTopic.meanings[0].evidence[0].quote, 'Mornings are best for me.');
+		await redirectTo(operator.actions.decide({ ...telephoneReview, request: new Request(telephoneReview.url, {
+			method: 'POST', headers: { origin }, body: new URLSearchParams({ decision: 'APPROVE', selected: firstTopic.key })
+		}) }));
+		const returningPhone = await startTelephone('conv_phone_first_return');
+		assert.equal(returningPhone.payload.dynamic_variables.terms_agreed, true);
+		assert.match(returningPhone.payload.dynamic_variables.living_understanding, /Prefers mornings/);
+		assert.match(returningPhone.payload.dynamic_variables.last_call_summary, /Mornings are best/);
+
+		process.env.TELNYX_API_KEY = 'synthetic-telnyx-key';
+		process.env.RELISH_DORIAN_SMS_NUMBER = '+61491570000';
+		process.env.RELISH_EXCHANGE_TEST_PHONES = mobile;
+		const signupUrl = new URL('https://dev.relish.live/auth/register/phone');
+		const cookieJar = new Map();
+		const cookies = {
+			get: (k) => cookieJar.get(k), set: (k, v) => cookieJar.set(k, v), delete: (k) => cookieJar.delete(k)
+		};
+		const signupAction = (name, fields, jar = cookies) => signup.actions[name]({
+			locals: { env: 'dev', appOrigin: signupUrl.origin, sessionCookie: { name: 'fixture-session', options: { path: '/' } } }, url: signupUrl, cookies: jar, getClientAddress: () => '127.0.0.1',
+			request: new Request(signupUrl, { method: 'POST', headers: { origin: signupUrl.origin }, body: new URLSearchParams(fields) })
+		});
+		assert.deepEqual(await signupAction('send', { mobile }), { codeRequested: true });
+		assert.equal(sms.length, 1);
+		assert.equal(sms[0].to, mobile);
+		const code = sms[0].text.match(/code: (\d{6})/)[1];
+		const credentials = { email: 'phone-first@example.invalid', password: 'synthetic-phone-password' };
+		assert.equal((await signupAction('activate', { ...credentials, code }, { get: () => undefined })).status, 400);
+		assert.equal((await signupAction('activate', { ...credentials, code: code === '000000' ? '000001' : '000000' })).status, 400);
+		assert.equal(await accountByEmail(credentials.email), null);
+		assert.equal((await redirectTo(signupAction('activate', { ...credentials, code }))).pathname, '/profiles');
+		assert.equal(await accountByEmail(credentials.email), phoneOwner);
+		assert.equal((await db.query('SELECT status FROM "FoundationAccountChannel" WHERE id=$1',
+			[phoneRow.phoneChannelId])).rows[0].status, 'VERIFIED');
+		assert.equal((await db.query('SELECT "userId" FROM "Session" WHERE "userId"=$1', [phoneOwner])).rows.length, 1);
+		assert.equal((await signupAction('activate', { ...credentials, code })).status, 400);
+		await db.query(`UPDATE "DorianFoundationCall" SET state='INCOMPLETE' WHERE "conversationId"=$1`, ['conv_phone_first_return']);
+		const appContinuation = await launch('phone-activated', { ...participant, user: { id: phoneOwner } });
+		assert.equal(appContinuation.response.initiation.dynamicVariables.terms_agreed, true);
+		assert.match(appContinuation.response.initiation.dynamicVariables.living_understanding, /Prefers mornings/);
+		assert.match(appContinuation.response.initiation.dynamicVariables.last_call_summary, /Mornings are best/);
 
 
 

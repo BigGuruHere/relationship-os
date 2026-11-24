@@ -5,7 +5,7 @@ import { guardFoundationQuery, runFoundationBoundary } from '../../src/lib/serve
 import { finishDorianInitiationData } from '../../src/lib/server/integrations/elevenlabs/voiceInitiationContract.mjs';
 
 // Exact routing can read the account binding, never the destination or proof relationship.
-test('telephone lookup admits only exact verified mobile metadata', async () => {
+test('telephone lookup admits only exact verified or phone-first mobile metadata', async () => {
 	const args = {
 		where: { type: 'PHONE', status: 'VERIFIED', valueHash: 'a'.repeat(64) },
 		select: { id: true, ownerUserId: true, generation: true },
@@ -15,9 +15,12 @@ test('telephone lookup admits only exact verified mobile metadata', async () => 
 	assert.throws(lookup);
 	await runFoundationBoundary({ ownerUserId: 'telephone-test', mode: 'DORIAN_PHONE_LOOKUP' }, async () => {
 		assert.deepEqual(lookup(), args);
+		const pending = { ...args, where: { ...args.where, status: 'PENDING', dorianPhoneFirst: true } };
+		assert.deepEqual(guardFoundationQuery('FoundationAccountChannel', 'findMany', pending), pending);
 		for (const query of [
 			{ ...args, select: { ...args.select, valueEnc: true } },
 			{ ...args, where: { ...args.where, status: 'PENDING' } },
+			{ ...pending, where: { ...pending.where, dorianPhoneFirst: false } },
 			{ ...args, where: { ...args.where, valueHash: { startsWith: 'a' } } },
 			{ ...args, include: { proofs: true } }
 		]) {

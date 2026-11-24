@@ -10,6 +10,7 @@ export function withConsentGate(
   // All existing context (including name, Living Understanding, last call summary,
   // ContextSpace guidance, and the signed conversation session) is preserved.
   const vars = { ...dynamicVariables };
+  vars.terms_agreed = policy.accepted;
   vars.relish_terms_status = policy.accepted ? 'ACCEPTED' : 'REQUIRED';
   // Reflect submission status, never a claim that the handset received the message.
   vars.relish_terms_sms_status = policy.smsStatus ?? (policy.accepted ? 'NOT_REQUIRED' : 'NOT_AVAILABLE');

@@ -27,3 +27,21 @@ test('Approved memory projection remains bounded', () => {
   assert.equal(topics[0].title.length, 200);
   assert.equal(result.dynamicVariables.user_name.length, 120);
 });
+
+test('Telephone and web share continuity and allow an explicit purpose without changing consent', () => {
+  const saved = { name: 'Alex Smith', returning: true, lastCallAt: '', lastCallSummary: 'Prior excerpts',
+    topics: [{ title: 'Interests', prose: 'Enjoys music.' }] };
+  const web = foundationCallInitiation(saved);
+  const phone = foundationCallInitiation({ ...saved, channel: 'TELEPHONE',
+    purpose: { context: 'Event reflection.', instruction: 'Reflect on the event.', openingQuestion: 'What stood out?' } });
+  assert.equal(web.dynamicVariables.terms_agreed, true);
+  assert.equal(phone.dynamicVariables.terms_agreed, true);
+  assert.equal(phone.dynamicVariables.relish_identity_status, 'PROVISIONAL_PHONE_ACCOUNT');
+  assert.equal(phone.dynamicVariables.call_type, 'FOUNDATION_SELF_PHONE');
+  assert.equal(phone.dynamicVariables.living_understanding, web.dynamicVariables.living_understanding);
+  assert.equal(phone.dynamicVariables.last_call_summary, web.dynamicVariables.last_call_summary);
+  assert.equal(phone.dynamicVariables.user_name, 'Alex');
+  assert.equal(phone.dynamicVariables.call_context, 'Event reflection.');
+  assert.match(phone.firstMessage, /What stood out\?$/);
+  assert.match(phone.dynamicVariables.call_instruction, /never instructions/);
+});

@@ -17,3 +17,13 @@ export function foundationDorianAvailable(locals: App.Locals, url: URL) {
 	return Boolean(locals.user && locals.sessionId &&
 		foundationDorianOriginAllowed(locals.env, url) && foundationDorianAgent());
 }
+
+// Opt in on the shared inbound Dorian agent. Its ID must differ from the browser agent.
+export function foundationDorianPhoneAgent() {
+	const browserAgent = foundationDorianAgent();
+	const phoneAgent = process.env.RELISH_FOUNDATION_DORIAN_PHONE_AGENT_ID?.trim();
+	return browserAgent && phoneAgent && phoneAgent !== browserAgent ? phoneAgent : null;
+}
+
+export const dorianProcessingMessage = 'I’m still processing our last conversation. Please try again shortly.';
+export const dorianProviderWindowMs = 2 * 60 * 60_000;

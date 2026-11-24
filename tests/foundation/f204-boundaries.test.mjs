@@ -59,6 +59,9 @@ test('only reviewed modules may establish foundation authority or construct an O
                         ensureSubmittedChannel:['accountChannels','exchangeClaims'],
                         currentSubmittedProof:['exchangeClaims'],
 						lockActiveFoundationRoot: ['exchangeAuthority'],
+						withDorianTelephoneAccount: ['accountChannels', 'dorianTelephone'],
+						lookupVerifiedDorianMobile: ['dorianTelephone'],
+						dorianVerifiedMobile: ['dorianTelephone'],
 						issueCapturedExchange: ['capture'],
 						removeExchangeDependencies: ['privacyOperations']
 					};
@@ -69,6 +72,8 @@ test('only reviewed modules may establish foundation authority or construct an O
 							),
 							file
 						);
+					if (name === 'resolveDorianPolicySmsPhone')
+						assert.equal(file, 'src/lib/server/core/relishPolicySms.ts');
 					if(name==='recordGoogleEmailProof') assert.equal(file,'src/routes/auth/google/callback/+server.ts');
                     if (name === 'withFoundationAccess')
 						assert.ok(

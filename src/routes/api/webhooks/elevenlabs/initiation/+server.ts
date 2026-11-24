@@ -1,3 +1,5 @@
+import { foundationDorianOriginAllowed } from '$lib/server/foundation/dorianCallConfig';
+import { startFoundationTelephoneCall } from '$lib/server/foundation/dorianTelephone';
 import { finishPhoneUnderstanding } from '$lib/server/core/phoneUnderstandingAutomation';
 import { recordDorianCallInitiation } from '$lib/server/core/dorianVoiceCallLifecycle';
 import { enqueueCurrentPolicySms, kickQueuedPolicySms } from '$lib/server/core/relishPolicySms';
@@ -17,7 +19,7 @@ import { resolveElevenLabsAgentDeployment } from '$lib/server/integrations/eleve
 import { elevenLabsErrorLog, elevenLabsLog, elevenLabsPayloadLog, elevenLabsTraceId } from '$lib/server/integrations/elevenlabs/debug';
 import { finishDorianInitiationData, initiationContractDiagnostics } from '$lib/server/integrations/elevenlabs/voiceInitiationContract.mjs';
 
-export const POST: RequestHandler = async ({ request }) => {
+export const POST: RequestHandler = async ({ request, locals, url }) => {
   const traceId = elevenLabsTraceId('el-init');
   const initiationStarted = performance.now();
   // An application response log is not proof ElevenLabs accepted it.
@@ -135,6 +137,14 @@ export const POST: RequestHandler = async ({ request }) => {
           dynamic_variables: withConsentGate(browserProjection.dynamicVariables, browserPolicy),
           ...(browserFirstMessage ? { conversation_config_override: { agent: { first_message: browserFirstMessage } } } : {})
         }, 'BROWSER');
+      }
+      // Route a verified Foundation mobile before provisioning any legacy identity.
+      if (foundationDorianOriginAllowed(locals.env, url) && typeof body?.agent_id === 'string' && body?.called_number) {
+        const foundation = await startFoundationTelephoneCall({
+          agentId: body.agent_id, callerId: body.caller_id,
+          conversationId: body.conversation_id, development: locals.env === 'dev'
+        });
+        if (foundation) return phoneResponse(foundation.payload, foundation.mode);
       }
       // Preflight before issuing a provisional phone session or claiming IN_CALL.
       const publishedDorian = await readPublishedDorianConfigSnapshot(String(body.agent_id || ''));

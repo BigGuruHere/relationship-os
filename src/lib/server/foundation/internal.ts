@@ -9,6 +9,7 @@ type Boundary = {
 	vaultId?: string;
 	mode:
 		| 'ACCOUNT_CHANNEL'
+		| 'DORIAN_PHONE_LOOKUP'
 		| 'EXCHANGE'
 		| 'EXCHANGE_LOOKUP'
 		| 'EXCHANGE_BUDGET'
@@ -261,6 +262,20 @@ export function guardFoundationQuery(model: string | undefined, operation: strin
 		return args;
 	}
 	if (!scope?.ownerUserId) throw new FoundationDenied();
+	// The authenticated inbound adapter may resolve a single exact verified mobile.
+	// Return only routing metadata. Private content still requires an account lock and call proof.
+	if (scope.mode === 'DORIAN_PHONE_LOOKUP') {
+		const where = args?.where;
+		const select = args?.select;
+		if (model !== 'FoundationAccountChannel' || operation !== 'findMany' ||
+			!where || Object.keys(where).length !== 3 || where.type !== 'PHONE' ||
+			where.status !== 'VERIFIED' || typeof where.valueHash !== 'string' ||
+			!/^[0-9a-f]{64}$/.test(where.valueHash) || !select ||
+			Object.keys(select).length !== 3 || select.id !== true ||
+			select.ownerUserId !== true || select.generation !== true || args.take !== 2 ||
+			Object.keys(args).length !== 3) throw new FoundationDenied();
+		return args;
+	}
     // Account channels have account custody, never a relationship vault or cross-account lookup.
     if(model.startsWith('FoundationAccountChannel')) {
       if(scope.mode!=='ACCOUNT_CHANNEL' || !['findFirst','findMany','count','create','updateMany','deleteMany'].includes(operation)) throw new FoundationDenied();

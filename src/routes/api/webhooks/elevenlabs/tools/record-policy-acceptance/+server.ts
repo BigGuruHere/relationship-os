@@ -1,3 +1,5 @@
+import { acceptFoundationTelephonePolicy } from '$lib/server/foundation/dorianTelephone';
+import { foundationDorianOriginAllowed } from '$lib/server/foundation/dorianCallConfig';
 import { requiredEnv } from '$lib/server/config/requiredEnv';
 // Stage 8.19 - Session-scoped terms acceptance. Configure this tool in ElevenLabs.
 // All values except the Boolean consent assertion are independently verified server-side.
@@ -13,19 +15,23 @@ function authenticProvider(header: string | null) {
   return expected.length === actual.length && timingSafeEqual(expected, actual);
 }
 
-export const POST: RequestHandler = async ({ request }) => {
+export const POST: RequestHandler = async ({ request, locals, url }) => {
   if (!authenticProvider(request.headers.get('authorization'))) return json({ status: 'UNAUTHORISED' }, { status: 401 });
   let body: any;
   try { body = await request.json(); } catch { return json({ status: 'INVALID_REQUEST' }, { status: 400 }); }
   if (!body || typeof body !== 'object' || Array.isArray(body)) return json({ status: 'INVALID_REQUEST' }, { status: 400 });
   try {
-    const result = await recordRelishVoicePolicyAcceptance({
+    const input = {
       token: body.relish_network_session, conversationId: body.conversation_id, agreement: body.agreement
-    });
+    };
+    const foundation = foundationDorianOriginAllowed(locals.env, url)
+      ? await acceptFoundationTelephonePolicy(input)
+      : null;
+    const result = foundation ?? await recordRelishVoicePolicyAcceptance(input);
     const status = result.status === 'UNAUTHORISED' ? 403 : result.status === 'NOT_ACCEPTED' ? 409 : 200;
     // Only result/status are logged. Never log raw prompts, names or tokens.
     console.info('[relish-policy-tool]', { status: result.status, httpStatus: status });
-    return json(result, { status });
+    return json(result, { status, headers: { 'cache-control': 'private, no-store' } });
   } catch {
     console.error('[relish-policy-tool] failed');
     return json({ status: 'ERROR' }, { status: 500 });

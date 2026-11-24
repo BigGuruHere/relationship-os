@@ -1,3 +1,4 @@
+import { finishFoundationTelephoneCall } from '$lib/server/foundation/dorianTelephone';
 import { recordVerifiedVoiceCallEnded } from '$lib/server/core/voiceCallEvents';
 import { conversationalPolicyEnabled, callerHasAcceptedCurrentTerms } from '$lib/server/core/relishCallPolicy';
 // PURPOSE: Receive ElevenLabs post-call transcription webhooks into the ContextSpace selected by the stable Relish agent deployment.
@@ -83,6 +84,8 @@ export const POST: RequestHandler = async ({ request }) => {
       const eventSeconds = Number(event?.event_timestamp);
       const endedAt = Number.isFinite(eventSeconds) && eventSeconds > 1_500_000_000 &&
         eventSeconds * 1000 <= Date.now() ? new Date(eventSeconds * 1000) : new Date();
+      if (await finishFoundationTelephoneCall(failedConversationId, event?.data?.agent_id, false))
+        return json({ status: 'foundation_call_incomplete' });
       await recordVerifiedVoiceCallEnded({ conversationId: failedConversationId,
         endedAt, hasParticipantSpeech: false });
       await releasePhoneContinuityWithoutUnderstanding(failedConversationId);
@@ -105,6 +108,9 @@ export const POST: RequestHandler = async ({ request }) => {
   const hasParticipantSpeech = Array.isArray(event?.data?.transcript)
     ? event.data.transcript.some((row: any) => row?.role === 'user' && String(row?.message ?? '').trim())
     : false;
+  if (await finishFoundationTelephoneCall(event?.data?.conversation_id, event?.data?.agent_id, hasParticipantSpeech))
+    return json({ status: 'foundation_call_recorded' });
+
   // Prefer the signed provider's actual hang-up time so a delayed webhook does
   // not restart the ten-minute continuity window from the delivery time.
   const rawEndTime = event?.data?.metadata?.end_time_unix_secs;

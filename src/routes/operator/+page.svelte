@@ -7,7 +7,7 @@
   <p class="workspace-intro">Review private understanding and measure the pilot. These screens are not part of the participant navigation.</p>
   <div class="workspace-tiles">
     {#if data.dorianReview}
-      <a class="workspace-panel workspace-tile" href="/operator/dorian-foundation"><h2>Dorian browser conversation reviews</h2><p>Review suggested updates for future calls</p></a>
+      <a class="workspace-panel workspace-tile" href="/operator/dorian-foundation"><h2>Dorian conversation reviews</h2><p>Review suggested updates for future calls</p></a>
     {/if}
     <a class="workspace-panel workspace-tile" href="/general/admin/product-intelligence"><h2>Product intelligence</h2><p>Pilot journeys, conversion and return visits</p><span class="workspace-tile-action">Open →</span></a>
     <a class="workspace-panel workspace-tile" href="/general/admin/dorian-conversations"><h2>Dorian conversation monitor</h2><p>Calls, transcripts, processing and Living Understanding outcomes</p><span class="workspace-tile-action">Open →</span></a>

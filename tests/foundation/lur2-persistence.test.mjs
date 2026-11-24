@@ -140,6 +140,7 @@ test(
 			INSERT INTO "User"(id) VALUES ('owner'), ('other');`);
 			for (const migration of [
 				'20261026170000_stage8_19_first_contact_policy',
+				'20261031110000_stage8_22_unified_policy_sms',
 				'20261104010000_f202_foundation_schema',
 				'20261107010000_s402_exchange_claims',
 				'20261107020000_s402b_exchange_service',
@@ -208,6 +209,10 @@ test(
 			);
 			// Apply against data made using the prior schema, then confirm compatibility.
 			await applyLuMigration(db);
+			// This fixture also exercises the Dorian call route with the current Prisma schema.
+			await db.exec(await readFile(
+				'prisma/migrations/20261124010000_dorian_foundation_telephone/migration.sql', 'utf8'
+			));
 			assert.equal(
 				(await evidence.listPersonNotes(await grant('READ_NOTES'), person.id)).notes[0].id,
 				oldNote.sourceId

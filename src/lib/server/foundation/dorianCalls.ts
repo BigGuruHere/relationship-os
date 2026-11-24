@@ -1,21 +1,34 @@
 import { randomUUID } from 'node:crypto';
-import { prisma } from '$lib/db';
+import { prisma, type AppTransactionClient } from '$lib/db';
 import { fetchElevenLabsConversation } from '$lib/server/integrations/elevenlabs/conversation';
 import { capturedPeopleConversation } from '$lib/server/integrations/elevenlabs/peopleWebNote';
 import { AssessmentError, type AssessmentStagePanel } from '$lib/server/livingUnderstanding/semanticAssessment';
 import { readDorianRecentConversation, saveDorianSelfConversation } from './conversations';
-import { dorianConsentVersion, foundationDorianAgent } from './dorianCallConfig';
+import { dorianConsentVersion, dorianProviderWindowMs, foundationDorianAgent } from './dorianCallConfig';
 import { FoundationConflict } from './evidenceRecords';
 import { FoundationDenied } from './internal';
 import { runFoundationConversationAssessment } from './luAssessment';
 import { readDorianContinuity } from './livingUnderstanding';
-import { foundationCallInitiation } from '../integrations/elevenlabs/foundationCallContext';
+import { foundationCallInitiation, type FoundationCallPurpose } from '../integrations/elevenlabs/foundationCallContext';
 import { resolveDorianCallAccess, withFoundationAccess, type FoundationAccess } from './policy';
+
+// Used for both transports. The final check runs under the Foundation account lock.
+export function dorianCallProcessing(db: Pick<AppTransactionClient, 'dorianFoundationCall'>, ownerUserId: string, vaultId: string, epoch: number) {
+	return db.dorianFoundationCall.findFirst({
+		where: { ownerUserId, vaultId, epoch, state: 'QUEUED',
+			OR: [{ sourceId: { not: null } }, { createdAt: { gt: new Date(Date.now() - dorianProviderWindowMs) } }] },
+		select: { id: true }
+	});
+}
+
+export class DorianCallProcessing extends Error {}
 
 export function registerDorianCall(access: FoundationAccess, agentId: string, conversationId: string) {
 	return withFoundationAccess(access, 'READ', async (tx) => {
 		if (agentId !== foundationDorianAgent() || !/^conv_[a-z0-9_-]{1,235}$/i.test(conversationId))
 			throw new FoundationDenied();
+		if (await dorianCallProcessing(tx, access.ownerUserId, access.vaultId, access.epoch))
+			throw new DorianCallProcessing();
 		const self = await tx.foundationSubject.findFirst({
 			where: { selfUserId: access.ownerUserId, kind: 'PERSON', state: 'ACTIVE' }, select: { id: true }
 		});
@@ -30,7 +43,7 @@ export function registerDorianCall(access: FoundationAccess, agentId: string, co
 	});
 }
 
-const providerWindowMs = 2 * 60 * 60_000;
+const unconnectedLaunchWindowMs = 2 * 60_000;
 const retryableAssessment = new Set(['MODEL_TIMEOUT', 'MODEL_UNAVAILABLE', 'MODEL_FAILURE', 'MODEL_ERROR']);
 
 export async function processDorianFoundationCall(fetchConversation = fetchElevenLabsConversation) {
@@ -54,7 +67,11 @@ export async function processDorianFoundationCall(fetchConversation = fetchEleve
 		if (!sourceId) {
 			const access = await resolveDorianCallAccess(call.id, grant, 'SAVE_CONVERSATION');
 			const data = await fetchConversation(call.conversationId, undefined, fetch, AbortSignal.timeout(8000));
-			const expired = Date.now() - call.createdAt.getTime() >= providerWindowMs;
+			const age = Date.now() - call.createdAt.getTime();
+			// A browser token can be abandoned before WebRTC connects. Release
+			// that reservation without waiting out the full transcript window.
+			const expired = age >= dorianProviderWindowMs ||
+				(data.status === 'initiated' && age >= unconnectedLaunchWindowMs);
 			if (data.status !== 'done') {
 				await prisma.dorianFoundationCall.updateMany({ where, data: {
 					lease: null, failures: 0, nextAttemptAt: after(30_000),
@@ -114,7 +131,7 @@ export function requeueDorianAnalysis(access: FoundationAccess) {
 }
 
 // Only a server-registered, consented call can select the account and private context.
-export async function prepareDorianCall(id: string) {
+export async function prepareDorianCall(id: string, purpose?: FoundationCallPurpose) {
 	const access = await resolveDorianCallAccess(id, { kind: 'launch' }, 'READ_LU');
 	const topics = await readDorianContinuity(access);
 	const recent = await readDorianRecentConversation(
@@ -123,5 +140,6 @@ export async function prepareDorianCall(id: string) {
 		where: { userId: access.ownerUserId, isDefault: true },
 		select: { displayName: true }, orderBy: { id: 'asc' }
 	});
-	return foundationCallInitiation({ name: profile?.displayName ?? '', topics, ...recent });
+	return foundationCallInitiation({ name: profile?.displayName ?? '', topics, ...recent,
+		channel: access.dorian?.telephone ? 'TELEPHONE' : 'WEB', purpose });
 }

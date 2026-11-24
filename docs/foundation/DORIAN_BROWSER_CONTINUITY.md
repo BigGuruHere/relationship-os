@@ -1,5 +1,7 @@
 # Dorian browser continuity
 
+For the shared app and telephone flow for existing accounts, see [Dorian telephone continuity](DORIAN_TELEPHONE_CONTINUITY.md).
+
 Signed-in users with active Foundation accounts can open **Talk to Dorian - to build my network** on Home. Normal profile and QR exchange can return them to Home using the existing navigation. The call is exploratory and focuses on what matters to the participant and the connections they would like to develop.
 
 After the participant accepts the current Terms and acknowledges the Privacy Notice, Relish binds the ElevenLabs launch to their private vault, self subject and enrollment epoch before returning the browser token. The worker fetches the completed transcript even if the browser closes. It saves the exact speaker-labelled turns and runs the existing topic-first discovery, writing, evidence checks, repair and audit. An incomplete or held analysis produces no approved understanding.

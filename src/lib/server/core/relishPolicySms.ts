@@ -7,7 +7,7 @@ import { buildScopedIndexToken, decrypt } from '$lib/crypto';
 import { normalizePhoneForIdentity } from '$lib/server/integrations/elevenlabs/phone';
 import { sendTelnyxSms } from '$lib/server/integrations/telnyx/messaging';
 import { resolveDorianPolicySmsPhone } from '$lib/server/foundation/accountChannels';
-import { currentRelishPolicy, conversationalPolicyEnabled } from './relishCallPolicy';
+import { currentDorianTelephonePolicy, currentRelishPolicy, conversationalPolicyEnabled } from './relishCallPolicy';
 
 export type TermsSmsStatus = 'SENT' | 'ALREADY_SENT' | 'FAILED' | 'PENDING' | 'NOT_REQUIRED' | 'NOT_AVAILABLE';
 
@@ -61,10 +61,11 @@ export async function dispatchCurrentPolicySms(input: { userId: string; phone: u
 // inferred from the SMS being submitted, received or delivered.
 export async function enqueueCurrentPolicySms(input: {
   userId: string; phone: unknown; accepted: boolean;
+  policy?: ReturnType<typeof currentRelishPolicy>;
   channel?: { phoneChannelId: string; phoneChannelGeneration: number };
 }): Promise<TermsSmsStatus> {
   if (!conversationalPolicyEnabled() || input.accepted) return 'NOT_REQUIRED';
-  const policy = currentRelishPolicy();
+  const policy = input.policy ?? currentRelishPolicy();
   if (!policy.valid || !normalizePhoneForIdentity(input.phone)) return 'NOT_AVAILABLE';
   const key = { userId_policyVersion_legalUrl: {
     userId: input.userId, policyVersion: policy.version, legalUrl: policy.legalUrl
@@ -98,17 +99,28 @@ export async function enqueueCurrentPolicySms(input: {
 // Durable outbox delivery. A failed send is retried after five minutes;
 // a process crash during SENDING can also be recovered after the lease.
 export async function drainQueuedPolicySms(limit = 5): Promise<number> {
-  const current = currentRelishPolicy();
-  if (!conversationalPolicyEnabled() || !current.valid) return 0;
+  if (!conversationalPolicyEnabled()) return 0;
+  const relish = currentRelishPolicy();
+  const dorian = currentDorianTelephonePolicy();
+  // The existing phone-channel binding identifies Foundation dispatches.
+  // After switching documents, queued notices for an older policy are skipped.
+  const policies = [
+    { ...relish, phoneChannelId: null },
+    { ...dorian, phoneChannelId: { not: null } }
+  ].filter(policy => policy.valid);
+  if (!policies.length) return 0;
   const retryCutoff = new Date(Date.now() - 5 * 60 * 1000);
   const rows = await prisma.relishPolicySmsDispatch.findMany({
-    where: { policyVersion: current.version, legalUrl: current.legalUrl,
+    where: { AND: [{ OR: policies.map(policy => ({
+      policyVersion: policy.version, legalUrl: policy.legalUrl, phoneChannelId: policy.phoneChannelId
+    })) }],
       OR: [{ state: 'QUEUED' },
         { state: { in: ['FAILED', 'SENDING', 'PENDING'] }, attemptedAt: { lt: retryCutoff } }] },
     orderBy: { attemptedAt: 'asc' }, take: Math.max(1, Math.min(20, limit))
   });
   let sent = 0;
   for (const row of rows) {
+    const current = row.phoneChannelId ? dorian : relish;
     const claimed = await prisma.relishPolicySmsDispatch.updateMany({
       where: { id: row.id, OR: [{ state: 'QUEUED' },
         { state: { in: ['FAILED', 'SENDING', 'PENDING'] }, attemptedAt: { lt: retryCutoff } }] },
@@ -143,7 +155,10 @@ export async function drainQueuedPolicySms(limit = 5): Promise<number> {
           data: { state: 'SENT', lastErrorCode: 'ALREADY_ACCEPTED_NO_SMS' } });
         continue;
       }
-      await sendTelnyxSms(phone, `Relish: Please review the current Terms of Use and Privacy Notice before speaking with Dorian: ${current.legalUrl} Calls may be recorded, transcribed and privately processed with your agreement. Reply STOP to opt out of texts.`);
+      const message = current.legalUrl === relish.legalUrl
+        ? `Relish: Please review the current Terms of Use and Privacy Notice before speaking with Dorian: ${current.legalUrl} Calls may be recorded, transcribed and privately processed with your agreement. Reply STOP to opt out of texts.`
+        : `Dorian Kreed: Please review our Terms and Privacy Policy before your AI call: ${current.legalUrl} Reply STOP to opt out of texts.`;
+      await sendTelnyxSms(phone, message);
       await prisma.relishPolicySmsDispatch.update({ where: { id: row.id },
         data: { state: 'SENT', acceptedAt: new Date() } });
       sent++;

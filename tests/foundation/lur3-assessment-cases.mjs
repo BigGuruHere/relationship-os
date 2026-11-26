@@ -86,6 +86,7 @@ export async function runLuAssessmentCases({ db, load, vite, otherPersonId, gran
 		'RELISH_FOUNDATION_DORIAN', 'RELISH_FOUNDATION_DORIAN_AGENT_ID', 'RELISH_FOUNDATION_DORIAN_TOOL_SECRET',
 		'ELEVENLABS_API_KEY', 'APP_ORIGIN', 'RELISH_LEGAL_DOCUMENTS_PUBLISHED',
 		'RELISH_PILOT_TERMS_VERSION', 'RELISH_PILOT_CONVERSATIONAL_TERMS', 'RELISH_FOUNDATION_DORIAN_PHONE_AGENT_ID',
+		'DORIAN_PHONE_POLICY_VERSION',
 		'RELISH_DORIAN_PHONE_FIRST', 'RELISH_EXCHANGE_REALM', 'RELISH_EXCHANGE_TEST_PHONES', 'RELISH_EXCHANGE_BROWSER_ENABLED',
 		'RELISH_DEV_FOUNDATION_PILOT_TARGET', 'TELNYX_API_KEY', 'RELISH_DORIAN_SMS_NUMBER',
 		'LOGIN_THROTTLE_SECRET', 'SESSION_COOKIE_SECRET', 'SESSION_DAYS'];
@@ -848,6 +849,8 @@ export async function runLuAssessmentCases({ db, load, vite, otherPersonId, gran
 		// the real browser activation action. Stub provider transports only.
 		const { startFoundationTelephoneCall, acceptFoundationTelephonePolicy } = await load('server/foundation/dorianTelephone');
 		const { resolveDorianPolicySmsPhone } = await load('server/foundation/accountChannels');
+		const { currentDorianTelephonePolicy, currentRelishPolicy } = await load('server/core/relishCallPolicy');
+		const { enqueueCurrentPolicySms, drainQueuedPolicySms } = await load('server/core/relishPolicySms');
 		const { encryptedUserEmailFields } = await load('server/userEmail');
 		const accountByEmail = async (email) => (await db.query('SELECT id FROM "User" WHERE "email_Idx"=$1',
 			[encryptedUserEmailFields(email).email_Idx])).rows[0]?.id ?? null;
@@ -859,6 +862,7 @@ export async function runLuAssessmentCases({ db, load, vite, otherPersonId, gran
 			return Response.json({});
 		};
 		process.env.RELISH_DORIAN_PHONE_FIRST = 'YES';
+		process.env.DORIAN_PHONE_POLICY_VERSION = 'dorian-kreed-2026-11-25-v1';
 		process.env.RELISH_EXCHANGE_REALM = 'fixture-phone';
 		process.env.RELISH_FOUNDATION_DORIAN_PHONE_AGENT_ID = 'synthetic-phone-agent';
 		process.env.RELISH_EXCHANGE_BROWSER_ENABLED = 'YES';
@@ -894,9 +898,29 @@ export async function runLuAssessmentCases({ db, load, vite, otherPersonId, gran
 		assert.equal((await db.query('SELECT status FROM "FoundationAccountChannel" WHERE id=$1',
 			[phoneRow.phoneChannelId])).rows[0].status, 'PENDING');
 		assert.equal(await resolveDorianPolicySmsPhone(phoneOwner, phoneRow.phoneChannelId, phoneRow.phoneChannelGeneration), mobile);
+		// Exercise the existing durable worker with both an old queued notice and the new one.
+		process.env.TELNYX_API_KEY = 'synthetic-telnyx-key';
+		process.env.RELISH_DORIAN_SMS_NUMBER = '+61491570000';
+		const smsInput = { userId: phoneOwner, phone: mobile, accepted: false, channel: {
+			phoneChannelId: phoneRow.phoneChannelId, phoneChannelGeneration: phoneRow.phoneChannelGeneration
+		} };
+		assert.equal(await enqueueCurrentPolicySms({ ...smsInput, policy: currentRelishPolicy() }), 'PENDING');
+		assert.equal(await enqueueCurrentPolicySms({ ...smsInput, policy: currentDorianTelephonePolicy() }), 'PENDING');
+		assert.equal(await drainQueuedPolicySms(), 1);
+		assert.equal(sms.length, 1);
+		assert.equal(sms[0].to, mobile);
+		assert.match(sms[0].text, /^Dorian Kreed:.*https:\/\/doriankreed\.com\/legal\//);
+		sms.length = 0;
 		assert.equal((await acceptFoundationTelephonePolicy({
 			token: phoneVars.relish_network_session, conversationId: phoneVars.conversation_id, agreement: true
 		})).status, 'ACCEPTED');
+		const { rows: phoneAcceptances } = await db.query(
+			'SELECT "policyVersion", "termsUrl", "privacyUrl" FROM "RelishCallPolicyAcceptance" WHERE "userId"=$1', [phoneOwner]);
+		assert.deepEqual(phoneAcceptances, [{
+			policyVersion: 'dorian-kreed-2026-11-25-v1',
+			termsUrl: 'https://doriankreed.com/legal/terms/',
+			privacyUrl: 'https://doriankreed.com/legal/privacy/'
+		}]);
 		assert.equal((await startTelephone('conv_phone_first_busy')).mode, 'PROCESSING_ONLY');
 		await makeCallDue(phoneVars.conversation_id);
 		phase = 'initial';
@@ -921,8 +945,6 @@ export async function runLuAssessmentCases({ db, load, vite, otherPersonId, gran
 		assert.match(returningPhone.payload.dynamic_variables.living_understanding, /Prefers mornings/);
 		assert.match(returningPhone.payload.dynamic_variables.last_call_summary, /Mornings are best/);
 
-		process.env.TELNYX_API_KEY = 'synthetic-telnyx-key';
-		process.env.RELISH_DORIAN_SMS_NUMBER = '+61491570000';
 		process.env.RELISH_EXCHANGE_TEST_PHONES = mobile;
 		const signupUrl = new URL('https://dev.relish.live/auth/register/phone');
 		const cookieJar = new Map();
@@ -948,7 +970,10 @@ export async function runLuAssessmentCases({ db, load, vite, otherPersonId, gran
 		assert.equal((await db.query('SELECT "userId" FROM "Session" WHERE "userId"=$1', [phoneOwner])).rows.length, 1);
 		assert.equal((await signupAction('activate', { ...credentials, code })).status, 400);
 		await db.query(`UPDATE "DorianFoundationCall" SET state='INCOMPLETE' WHERE "conversationId"=$1`, ['conv_phone_first_return']);
-		const appContinuation = await launch('phone-activated', { ...participant, user: { id: phoneOwner } });
+		const activatedParticipant = { ...participant, user: { id: phoneOwner } };
+		assert.equal((await termsState(activatedParticipant)).accepted, false);
+		assert.equal((await launch('phone-policy-only', activatedParticipant)).response.status, 400);
+		const appContinuation = await launch('phone-activated', activatedParticipant, '1');
 		assert.equal(appContinuation.response.initiation.dynamicVariables.terms_agreed, true);
 		assert.match(appContinuation.response.initiation.dynamicVariables.living_understanding, /Prefers mornings/);
 		assert.match(appContinuation.response.initiation.dynamicVariables.last_call_summary, /Mornings are best/);

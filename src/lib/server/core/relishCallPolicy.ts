@@ -31,6 +31,19 @@ export function currentRelishPolicy() {
   return { version, legalUrl, termsUrl, privacyUrl, published, valid };
 }
 
+// This version is enabled only after the branded pages are live. Use fixed URLs
+// so the caller, SMS and voice acceptance refer to the same published documents.
+export function currentDorianTelephonePolicy() {
+  const version = process.env.DORIAN_PHONE_POLICY_VERSION ?? '';
+  if (!version) return currentRelishPolicy();
+  const legalUrl = 'https://doriankreed.com/legal/';
+  const published = /^dorian-kreed-\d{4}-\d{2}-\d{2}-v\d+$/.test(version);
+  return {
+    version, legalUrl, termsUrl: legalUrl + 'terms/', privacyUrl: legalUrl + 'privacy/',
+    published, valid: published
+  };
+}
+
 export async function callerHasAcceptedCurrentTerms(userId: string, policy = currentRelishPolicy(), db: Pick<AppTransactionClient, 'relishCallPolicyAcceptance'> = prisma) {
   if (!policy.valid) return false;
   const acceptance = await db.relishCallPolicyAcceptance.findFirst({

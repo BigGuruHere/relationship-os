@@ -363,6 +363,10 @@ Foundation Dorian production access is implemented on `feature/dorian-production
 
 Implemented for Development review on `feature/dorian-foundation-telephone`. The shared inbound agent can route an existing account's verified mobile to the same Foundation call context, legal acceptance history and Living Understanding as the app. The feature uses provisional caller recognition, the existing policy SMS and voice acceptance tool, and a shared processing check. Requires an additive Prisma migration and hosted DEV acceptance. See [telephone continuity](foundation/DORIAN_TELEPHONE_CONTINUITY.md).
 
+### Dorian telephone policy
+
+Implemented on `feature/dorian-phone-policy` for Development review. The existing Foundation phone SMS and voice acceptance can use the separate Dorian Kreed documents. Enable the new version after confirming the custom domain serves all three legal pages. No migration. Hosted DEV SMS and cross-channel consent verification are pending. See [telephone setup](foundation/DORIAN_TELEPHONE_CONTINUITY.md#hosted-dev-setup).
+
 ### Dorian phone-first signup
 
 Implemented on `feature/dorian-phone-first` after PR #101. Direct callers can start a private Foundation LU and later activate app access on that same account with SMS verification. The feature defaults off and requires the additive phone-first migration. Hosted call, SMS and app acceptance remain pending. [Setup and acceptance](foundation/DORIAN_TELEPHONE_CONTINUITY.md#phone-first-accounts)

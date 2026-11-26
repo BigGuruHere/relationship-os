@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { prisma } from '$lib/db';
 import {
-	callerHasAcceptedCurrentTerms, conversationalPolicyEnabled, currentRelishPolicy,
+	callerHasAcceptedCurrentTerms, conversationalPolicyEnabled, currentDorianTelephonePolicy,
 	savePolicyAcceptance
 } from '$lib/server/core/relishCallPolicy';
 import { enqueueCurrentPolicySms, kickQueuedPolicySms } from '$lib/server/core/relishPolicySms';
@@ -48,7 +48,7 @@ export async function startFoundationTelephoneCall(input: {
 	if (typeof input.conversationId !== 'string' || !conversationPattern.test(input.conversationId))
 		return phoneFirst ? unavailable() : null;
 	const conversationId = input.conversationId;
-	const policy = currentRelishPolicy();
+	const policy = currentDorianTelephonePolicy();
 	const policyAvailable = policy.valid && conversationalPolicyEnabled();
 	if (phoneFirst && !policyAvailable) return unavailable();
 	try {
@@ -98,7 +98,7 @@ export async function startFoundationTelephoneCall(input: {
 		const mayText = !input.development || (process.env.RELISH_EXCHANGE_TEST_PHONES ?? '').split(',').some(value => {
 			try { return verificationPhone(value.trim()) === phone; } catch { return false; }
 		});
-		const smsStatus = mayText ? await enqueueCurrentPolicySms({ userId: ownerUserId, phone, accepted: false,
+		const smsStatus = mayText ? await enqueueCurrentPolicySms({ userId: ownerUserId, phone, accepted: false, policy,
 			channel: { phoneChannelId: channel.id, phoneChannelGeneration: channel.generation }
 		}) : 'NOT_AVAILABLE';
 		if (smsStatus === 'PENDING') kickQueuedPolicySms();
@@ -131,7 +131,7 @@ export async function acceptFoundationTelephonePolicy(input: {
 		!sameMac(input.token, sessionMac(recorded))) return unavailable;
 	if (input.agreement !== true && input.agreement !== 'yes' && input.agreement !== 'accepted')
 		return { status: 'NOT_ACCEPTED' as const };
-	const policy = currentRelishPolicy();
+	const policy = currentDorianTelephonePolicy();
 	if (!conversationalPolicyEnabled() || !policy.valid || policy.version !== recorded.phonePolicyVersion)
 		return { status: 'POLICY_UNAVAILABLE' as const };
 	try {

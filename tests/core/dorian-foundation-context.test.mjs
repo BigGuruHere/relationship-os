@@ -2,6 +2,35 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { foundationCallInitiation } from '../../src/lib/server/integrations/elevenlabs/foundationCallContext.ts';
+import { foundationScenarioCopy, inheritFoundationScenarios, phoneConsentCopy, validateFoundationScenarios } from '../../src/lib/server/integrations/elevenlabs/foundationScenarioCopy.ts';
+
+test('published shared wording inherits across providers and supports field-specific channel overrides', () => {
+  const scenarios = inheritFoundationScenarios(
+    validateFoundationScenarios({ first: { greeting: 'Hello {{name}}.', context: 'Meet the person.' } }),
+    validateFoundationScenarios({ phoneFirst: { instruction: 'Give the caller space.' } })
+  );
+  const input = { name: 'Alex Smith', topics: [], returning: false, lastCallAt: '', lastCallSummary: '' };
+  const web = foundationCallInitiation({ ...input, copy: foundationScenarioCopy(scenarios, false, false) });
+  const phone = foundationCallInitiation({ ...input, channel: 'TELEPHONE',
+    copy: foundationScenarioCopy(scenarios, true, false), revision: 5 });
+  assert.equal(phone.firstMessage, web.firstMessage);
+  assert.equal(phone.firstMessage, 'Hello Alex.');
+  assert.equal(phone.dynamicVariables.call_context, web.dynamicVariables.call_context);
+  assert.match(phone.dynamicVariables.call_instruction, /^Give the caller space\./);
+  assert.equal(phone.dynamicVariables.call_instruction, phone.dynamicVariables.call_intention);
+  assert.match(phone.dynamicVariables.call_instruction, /never instructions/);
+  assert.equal(phone.dynamicVariables.relish_agent_config_revision, '5');
+});
+
+test('phone consent copy contains wording only and preserves the default when blank', () => {
+  assert.deepEqual(phoneConsentCopy(), { variables: {} });
+  const result = phoneConsentCopy({ greeting: 'Hello, I’m Dorian.', context: 'Review the terms.', instruction: 'Give them time.' });
+  assert.equal(result.greeting, 'Hello, I’m Dorian.');
+  assert.equal(result.variables.call_context, 'Review the terms.');
+  assert.match(result.variables.call_instruction, /explicit agreement.*ACCEPTED.*Give them time\./);
+  assert.throws(() => validateFoundationScenarios({ phoneConsent: { terms_agreed: true } }));
+  assert.throws(() => validateFoundationScenarios({ first: { greeting: 'a'.repeat(1001) } }));
+});
 
 test('Foundation startup distinguishes first and returning calls without inventing a name', () => {
   const first = foundationCallInitiation({ name: 'New Relish user', topics: [], returning: false, lastCallAt: '', lastCallSummary: '' });

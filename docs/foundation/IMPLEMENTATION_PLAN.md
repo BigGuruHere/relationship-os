@@ -228,6 +228,8 @@ Foundation Dorian production access uses the existing feature switch and canonic
 
 ### Dorian phone-first onboarding
 
+- **Conversation wording follow-up:** Foundation calls can use versioned Agent Management copy with channel overrides. Existing consent, account access and routing checks remain in Relish. No migration. [Setup and DEV acceptance](DORIAN_CONSOLE_SCENARIOS.md)
+
 - **Phone policy follow-up:** `feature/dorian-phone-policy` adds a configurable separate Dorian Kreed policy to the existing Foundation telephone SMS and consent flow. It reuses the account, queue and acceptance tables. No migration. Verify the public policy pages before setting the version, then test the SMS and both channels on hosted DEV. [Telephone setup](DORIAN_TELEPHONE_CONTINUITY.md#hosted-dev-setup)
 
 - **Backlog and stage register:** Implemented on `feature/dorian-phone-first` for review. Follow-up to PR #101. Direct calls, voice terms, return recall and verified app activation share Foundation account ownership.

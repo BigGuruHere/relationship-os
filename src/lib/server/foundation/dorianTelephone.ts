@@ -11,6 +11,8 @@ import { dorianConsentVersion, dorianPhoneFirstEnabled, dorianProcessingMessage,
 import { dorianCallProcessing, prepareDorianCall } from './dorianCalls';
 import { FoundationDenied } from './internal';
 import { withDorianTelephoneAccount } from './policy';
+import { readFoundationDorianScenarios } from '../integrations/elevenlabs/dorianControlPlane';
+import { phoneConsentCopy } from '../integrations/elevenlabs/foundationScenarioCopy';
 
 const conversationPattern = /^conv_[a-z0-9_-]{1,235}$/i;
 const registrationDelayMs = 20_000;
@@ -102,11 +104,16 @@ export async function startFoundationTelephoneCall(input: {
 			channel: { phoneChannelId: channel.id, phoneChannelGeneration: channel.generation }
 		}) : 'NOT_AVAILABLE';
 		if (smsStatus === 'PENDING') kickQueuedPolicySms();
-		// ElevenLabs owns the consent wording and opening. Relish supplies the
-		// status and call credentials, then verifies explicit agreement server-side.
+		// When published wording is absent, ElevenLabs supplies the opening.
+		// Relish verifies explicit agreement and withholds memory until then.
+		const scenario = await readFoundationDorianScenarios(call.agentId);
+		const copy = phoneConsentCopy(scenario?.scenarios.phoneConsent);
 		return { mode: 'PARTICIPANT' as const, payload: {
 			type: 'conversation_initiation_client_data',
+			...(copy.greeting ? { conversation_config_override: { agent: { first_message: copy.greeting } } } : {}),
 			dynamic_variables: {
+				...copy.variables,
+				...(scenario?.scenarios.phoneConsent ? { relish_agent_config_revision: String(scenario.revision) } : {}),
 				relish_network_session: session, conversation_id: conversationId,
 				relish_identity_status: 'PROVISIONAL_PHONE_ACCOUNT', call_type: 'FOUNDATION_SELF_PHONE',
 				relish_terms_status: 'REQUIRED', terms_agreed: false, relish_terms_sms_status: smsStatus

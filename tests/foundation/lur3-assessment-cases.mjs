@@ -88,7 +88,7 @@ export async function runLuAssessmentCases({ db, load, vite, otherPersonId, gran
 		'RELISH_PILOT_TERMS_VERSION', 'RELISH_PILOT_CONVERSATIONAL_TERMS', 'RELISH_FOUNDATION_DORIAN_PHONE_AGENT_ID',
 		'DORIAN_PHONE_POLICY_VERSION',
 		'RELISH_DORIAN_PHONE_FIRST', 'RELISH_EXCHANGE_REALM', 'RELISH_EXCHANGE_TEST_PHONES', 'RELISH_EXCHANGE_BROWSER_ENABLED',
-		'RELISH_DEV_FOUNDATION_PILOT_TARGET', 'TELNYX_API_KEY', 'RELISH_DORIAN_SMS_NUMBER',
+		'RELISH_DEV_FOUNDATION_PILOT_TARGET', 'TELNYX_API_KEY', 'RELISH_DORIAN_SMS_NUMBER', 'TELEPHONY_DEFAULT_COUNTRY',
 		'LOGIN_THROTTLE_SECRET', 'SESSION_COOKIE_SECRET', 'SESSION_DAYS'];
 	const previousEnv = Object.fromEntries(env.map((key) => [key, process.env[key]]));
 	let phase = 'initial';
@@ -899,6 +899,7 @@ export async function runLuAssessmentCases({ db, load, vite, otherPersonId, gran
 			[phoneRow.phoneChannelId])).rows[0].status, 'PENDING');
 		assert.equal(await resolveDorianPolicySmsPhone(phoneOwner, phoneRow.phoneChannelId, phoneRow.phoneChannelGeneration), mobile);
 		// Exercise the existing durable worker with both an old queued notice and the new one.
+		process.env.TELEPHONY_DEFAULT_COUNTRY = 'AU';
 		process.env.TELNYX_API_KEY = 'synthetic-telnyx-key';
 		process.env.RELISH_DORIAN_SMS_NUMBER = '+61491570000';
 		const smsInput = { userId: phoneOwner, phone: mobile, accepted: false, channel: {

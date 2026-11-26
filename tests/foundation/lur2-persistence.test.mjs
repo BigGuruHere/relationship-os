@@ -150,6 +150,8 @@ test(
 			INSERT INTO "User"(id) VALUES ('owner'), ('other');`);
 			for (const migration of [
 				'20260924120000_stage8_10_2_password_login_throttle',
+				// The policy SMS worker checks opt-out before calling the provider.
+				'20261023130000_stage8_18_sms_context_callback',
 				'20261026170000_stage8_19_first_contact_policy',
 				'20261031110000_stage8_22_unified_policy_sms',
 				'20261104010000_f202_foundation_schema',

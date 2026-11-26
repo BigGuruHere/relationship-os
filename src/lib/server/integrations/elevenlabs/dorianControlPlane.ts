@@ -303,18 +303,28 @@ export async function syncActiveDorianConfigSnapshots(): Promise<number> {
     validFrom: { lte: new Date() }, OR: [{ validTo: null }, { validTo: { gt: new Date() } }],
     agentDefinition: { key: 'DORIAN', userId: owner, category: 'conversation', deploymentScope: 'external_voice' }
   }, select: { providerAgentIdEnc: true } }) : [];
-  const ids = new Set<string>();
-  // Browser agents use Foundation's configured ID rather than a legacy binding.
-  if (foundationConsoleEnabled()) {
-    for (const agentId of [foundationDorianAgent(), foundationDorianPhoneAgent()])
-      if (agentId) ids.add(agentId);
-  }
+  const foundationIds = foundationConsoleAgentIds();
+  let synced = 0;
   for (const item of bindings) {
     if (!item.providerAgentIdEnc) continue;
-    ids.add(decrypt(item.providerAgentIdEnc, 'agentProviderBinding.providerAgentId'));
+    const id = decrypt(item.providerAgentIdEnc, 'agentProviderBinding.providerAgentId');
+    if (foundationIds.includes(id)) continue; // Its Foundation worker owns refresh.
+    await fetchPublishedDorianConfig(id);
+    synced++;
   }
+  return synced;
+}
+
+function foundationConsoleAgentIds() {
+  return foundationConsoleEnabled()
+    ? [foundationDorianAgent(), foundationDorianPhoneAgent()].filter((id): id is string => Boolean(id))
+    : [];
+}
+
+// Resolve the browser and phone IDs from Foundation's own deployment config.
+export async function syncFoundationDorianConfigSnapshots(): Promise<number> {
   // One unpublished agent must not block refresh of the other agents.
-  const results = await Promise.allSettled([...ids].map(agentId => fetchPublishedDorianConfig(agentId)));
+  const results = await Promise.allSettled(foundationConsoleAgentIds().map(agentId => fetchPublishedDorianConfig(agentId)));
   if (results.some(result => result.status === 'rejected'))
     throw new Error('[Relish control plane] One or more agent snapshots could not be refreshed.');
   return results.length;

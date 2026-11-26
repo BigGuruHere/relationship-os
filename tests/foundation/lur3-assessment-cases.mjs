@@ -1,7 +1,7 @@
 // Runs inside the disposable LUR-2 fixture and exercises the real model gateway
 // through a synthetic transport. All repository operations use the guarded client.
 import assert from 'node:assert/strict';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { reviewBrowser } from '../browser/lu-review-forms.mjs';
 
 function turnCapture(id, date, text) {
@@ -87,6 +87,7 @@ export async function runLuAssessmentCases({ db, load, vite, otherPersonId, gran
 		'ELEVENLABS_API_KEY', 'APP_ORIGIN', 'RELISH_LEGAL_DOCUMENTS_PUBLISHED',
 		'RELISH_PILOT_TERMS_VERSION', 'RELISH_PILOT_CONVERSATIONAL_TERMS', 'RELISH_FOUNDATION_DORIAN_PHONE_AGENT_ID',
 		'DORIAN_PHONE_POLICY_VERSION',
+		'RELISH_CONTROL_PLANE_ENABLED', 'RELISH_CONTROL_PLANE_ENV', 'RELISH_FOUNDATION_DORIAN_CONSOLE',
 		'RELISH_DORIAN_PHONE_FIRST', 'RELISH_EXCHANGE_REALM', 'RELISH_EXCHANGE_TEST_PHONES', 'RELISH_EXCHANGE_BROWSER_ENABLED',
 		'RELISH_DEV_FOUNDATION_PILOT_TARGET', 'TELNYX_API_KEY', 'RELISH_DORIAN_SMS_NUMBER', 'TELEPHONY_DEFAULT_COUNTRY',
 		'LOGIN_THROTTLE_SECRET', 'SESSION_COOKIE_SECRET', 'SESSION_DAYS'];
@@ -872,6 +873,24 @@ export async function runLuAssessmentCases({ db, load, vite, otherPersonId, gran
 		process.env.LOGIN_THROTTLE_SECRET = 'synthetic-phone-signup-throttle-secret';
 		process.env.SESSION_COOKIE_SECRET = 'synthetic-phone-session-cookie-secret';
 		process.env.SESSION_DAYS = '7';
+		// Exercise the real call paths against published snapshots. The provider
+		// and analysis stubs also reject any unexpected remote console request.
+		process.env.RELISH_CONTROL_PLANE_ENABLED = 'YES';
+		process.env.RELISH_CONTROL_PLANE_ENV = 'dev';
+		process.env.RELISH_FOUNDATION_DORIAN_CONSOLE = 'YES';
+		const legacyFields = Object.fromEntries(['personaInstruction', 'openingNew', 'instructionNew',
+			'openingReturningUnnamed', 'instructionReturningUnnamed', 'openingReturningNamed',
+			'instructionReturningNamed', 'contextBusiness', 'contextGeneral', 'contextDating'].map(key => [key, 'Legacy copy']));
+		for (const [agentId, foundationScenarios] of [
+			['synthetic-agent', { first: { context: 'Shared first-call purpose.' },
+				returning: { greeting: 'Welcome back from the console.' } }],
+			['synthetic-phone-agent', { phoneConsent: { greeting: 'Hello, this is Dorian. Let us review the terms.',
+				instruction: 'Give the caller time.' }, phoneReturning: { instruction: 'Keep the return call relaxed.' } }]
+		]) {
+			const key = 'A' + createHash('sha256').update(agentId).digest('hex').slice(0, 22);
+			await db.query('INSERT INTO "DorianAgentConfigSnapshot" (id, environment, "agentKey", revision, content) VALUES ($1,$2,$3,$4,$5)',
+				[randomUUID(), 'dev', key, 3, JSON.stringify({ ...legacyFields, agentId, foundationScenarios })]);
+		}
 		const signup = await vite.ssrLoadModule('/src/routes/auth/register/phone/+page.server.ts');
 		// Keep the existing participant's unfinished web call out of the queue fixture.
 		await db.query(`UPDATE "DorianFoundationCall" SET state='INCOMPLETE' WHERE "conversationId"=$1`,
@@ -887,8 +906,9 @@ export async function runLuAssessmentCases({ db, load, vite, otherPersonId, gran
 		assert.equal(phoneVars.terms_agreed, false);
 		assert.equal(phoneVars.relish_terms_status, 'REQUIRED');
 		assert.equal(phoneVars.relish_terms_sms_status, 'NOT_AVAILABLE');
-		assert.equal(phoneVars.call_instruction, undefined);
-		assert.equal(firstPhone.payload.conversation_config_override, undefined);
+		assert.match(phoneVars.call_instruction, /explicit agreement.*Give the caller time/);
+		assert.equal(firstPhone.payload.conversation_config_override.agent.first_message, 'Hello, this is Dorian. Let us review the terms.');
+		assert.doesNotMatch(phoneVars.call_instruction, /Legacy copy/);
 		assert.equal(phoneVars.living_understanding, undefined);
 		const phoneRow = (await db.query('SELECT * FROM "DorianFoundationCall" WHERE "conversationId"=$1',
 			[phoneVars.conversation_id])).rows[0];
@@ -912,9 +932,11 @@ export async function runLuAssessmentCases({ db, load, vite, otherPersonId, gran
 		assert.equal(sms[0].to, mobile);
 		assert.match(sms[0].text, /^Dorian Kreed:.*https:\/\/doriankreed\.com\/legal\//);
 		sms.length = 0;
-		assert.equal((await acceptFoundationTelephonePolicy({
+		const acceptedPhone = await acceptFoundationTelephonePolicy({
 			token: phoneVars.relish_network_session, conversationId: phoneVars.conversation_id, agreement: true
-		})).status, 'ACCEPTED');
+		});
+		assert.equal(acceptedPhone.status, 'ACCEPTED');
+		assert.equal(acceptedPhone.startup_context.call_context, 'Shared first-call purpose.');
 		const { rows: phoneAcceptances } = await db.query(
 			'SELECT "policyVersion", "termsUrl", "privacyUrl" FROM "RelishCallPolicyAcceptance" WHERE "userId"=$1', [phoneOwner]);
 		assert.deepEqual(phoneAcceptances, [{
@@ -943,6 +965,8 @@ export async function runLuAssessmentCases({ db, load, vite, otherPersonId, gran
 		}) }));
 		const returningPhone = await startTelephone('conv_phone_first_return');
 		assert.equal(returningPhone.payload.dynamic_variables.terms_agreed, true);
+		assert.equal(returningPhone.payload.conversation_config_override.agent.first_message, 'Welcome back from the console.');
+		assert.match(returningPhone.payload.dynamic_variables.call_instruction, /^Keep the return call relaxed\./);
 		assert.match(returningPhone.payload.dynamic_variables.living_understanding, /Prefers mornings/);
 		assert.match(returningPhone.payload.dynamic_variables.last_call_summary, /Mornings are best/);
 

@@ -153,6 +153,7 @@ test(
 				// The policy SMS worker checks opt-out before calling the provider.
 				'20261023130000_stage8_18_sms_context_callback',
 				'20261026170000_stage8_19_first_contact_policy',
+				'20261028093000_stage8_20_dorian_agent_config_snapshot',
 				'20261031110000_stage8_22_unified_policy_sms',
 				'20261104010000_f202_foundation_schema',
 				'20261107010000_s402_exchange_claims',

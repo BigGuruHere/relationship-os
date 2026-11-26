@@ -10,6 +10,8 @@ import { FoundationDenied } from './internal';
 import { runFoundationConversationAssessment } from './luAssessment';
 import { readDorianContinuity } from './livingUnderstanding';
 import { foundationCallInitiation, type FoundationCallPurpose } from '../integrations/elevenlabs/foundationCallContext';
+import { readFoundationDorianScenarios } from '../integrations/elevenlabs/dorianControlPlane';
+import { foundationScenarioCopy } from '../integrations/elevenlabs/foundationScenarioCopy';
 import { resolveDorianCallAccess, withFoundationAccess, type FoundationAccess } from './policy';
 
 // Used for both transports. The final check runs under the Foundation account lock.
@@ -140,6 +142,10 @@ export async function prepareDorianCall(id: string, purpose?: FoundationCallPurp
 		where: { userId: access.ownerUserId, isDefault: true },
 		select: { displayName: true }, orderBy: { id: 'asc' }
 	});
+	const telephone = access.dorian?.telephone ?? false;
+	const published = access.dorian && await readFoundationDorianScenarios(access.dorian.agentId);
 	return foundationCallInitiation({ name: profile?.displayName ?? '', topics, ...recent,
-		channel: access.dorian?.telephone ? 'TELEPHONE' : 'WEB', purpose });
+		channel: telephone ? 'TELEPHONE' : 'WEB', purpose,
+		...(published ? { copy: foundationScenarioCopy(published.scenarios, telephone, recent.returning),
+			revision: published.revision } : {}) });
 }

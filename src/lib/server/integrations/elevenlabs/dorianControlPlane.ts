@@ -6,6 +6,8 @@ import { createHash } from 'node:crypto';
 import { requiredEnv } from '$lib/server/config/requiredEnv';
 import { prisma } from '$lib/db';
 import { decrypt } from '$lib/crypto';
+import { foundationDorianAgent, foundationDorianPhoneAgent } from '$lib/server/foundation/dorianCallConfig';
+import { inheritFoundationScenarios, validateFoundationScenarios, type FoundationScenarios } from './foundationScenarioCopy';
 
 type Scenario = 'new' | 'returningUnnamed' | 'returningNamed';
 type Domain = 'business' | 'general' | 'dating';
@@ -16,6 +18,7 @@ type ControlConfig = {
   openingReturningUnnamed: string; instructionReturningUnnamed: string;
   openingReturningNamed: string; instructionReturningNamed: string;
   contextBusiness: string; contextGeneral: string; contextDating: string;
+  foundationScenarios?: FoundationScenarios;
 };
 export type DorianCallProjection = {
   dynamicVariables: Record<string, unknown>;
@@ -46,6 +49,7 @@ function mandatoryConfig(value: unknown): ControlConfig {
       throw new Error(`[Relish control plane] Invalid published field: ${key}`);
     }
   }
+  if (config.foundationScenarios !== undefined) validateFoundationScenarios(config.foundationScenarios);
   return config as ControlConfig;
 }
 function scenarioFor(previousCalls: number, preferredName: string): Scenario {
@@ -54,7 +58,11 @@ function scenarioFor(previousCalls: number, preferredName: string): Scenario {
   return previousCalls < 1 ? 'new' : named ? 'returningNamed' : 'returningUnnamed';
 }
 function sameConfigContent(a: ControlConfig, b: ControlConfig): boolean {
-  const normalised = (value: ControlConfig) => JSON.stringify(Object.entries(value).sort(([left],[right]) => left.localeCompare(right)));
+  // The revision now includes nested copy. JSONB and HTTP can order keys differently.
+  const normalised = (value: ControlConfig) => JSON.stringify(value, (_key, item) =>
+    item && typeof item === 'object' && !Array.isArray(item)
+      ? Object.fromEntries(Object.entries(item).sort(([left], [right]) => left.localeCompare(right)))
+      : item);
   return normalised(a) === normalised(b);
 }
 function safeName(value: string) { return value.replace(/[\r\n\x00-\x1f]/g,'').trim().slice(0,80); }
@@ -189,6 +197,37 @@ export async function readPublishedDorianConfigSnapshot(providerAgentId: string)
   return { revision: snapshot.revision, config };
 }
 
+const foundationConsoleEnabled = () => process.env.RELISH_CONTROL_PLANE_ENABLED === 'YES' &&
+  process.env.RELISH_FOUNDATION_DORIAN_CONSOLE === 'YES';
+
+// Foundation calls retain their existing defaults before the first sync or if
+// no Foundation copy is published. Never wait for the console during a call.
+async function readFoundationAgentScenarios(agentId: string) {
+  try {
+    const snapshot = await readPublishedDorianConfigSnapshot(agentId);
+    return snapshot?.config.foundationScenarios
+      ? { revision: snapshot.revision, scenarios: validateFoundationScenarios(snapshot.config.foundationScenarios) }
+      : null;
+  } catch {
+    console.warn('[Relish control plane] Foundation scenario snapshot unavailable; using built-in wording.');
+    return null;
+  }
+}
+
+export async function readFoundationDorianScenarios(agentId: string) {
+  if (!foundationConsoleEnabled()) return null;
+  const sharedAgentId = foundationDorianAgent();
+  if (!sharedAgentId || sharedAgentId === agentId) return readFoundationAgentScenarios(agentId);
+  const [shared, assigned] = await Promise.all([
+    readFoundationAgentScenarios(sharedAgentId), readFoundationAgentScenarios(agentId)
+  ]);
+  if (!shared || !assigned) return assigned ?? shared;
+  return {
+    revision: assigned.revision,
+    scenarios: inheritFoundationScenarios(shared.scenarios, assigned.scenarios)
+  };
+}
+
 // When enabled, missing or invalid configuration fails explicitly. The last
 // authenticated published snapshot is permitted during management outages.
 // Calls with a processing-only or unresolved identity never reach this function.
@@ -259,18 +298,34 @@ export function safeFirstMessage(firstMessage:string | null, policy:{accepted:bo
 export async function syncActiveDorianConfigSnapshots(): Promise<number> {
   if (process.env.RELISH_CONTROL_PLANE_ENABLED === 'NO') return 0;
   const owner = process.env.RELISH_DORIAN_DEPLOYMENT_OWNER_USER_ID?.trim();
-  if (!owner) return 0; // Legacy single-agent deployments require explicit setup.
-  const bindings = await prisma.agentProviderBinding.findMany({ where: {
+  const bindings = owner ? await prisma.agentProviderBinding.findMany({ where: {
     userId: owner, provider: 'ELEVENLABS', isActive: true,
     validFrom: { lte: new Date() }, OR: [{ validTo: null }, { validTo: { gt: new Date() } }],
     agentDefinition: { key: 'DORIAN', userId: owner, category: 'conversation', deploymentScope: 'external_voice' }
-  }, select: { providerAgentIdEnc: true } });
+  }, select: { providerAgentIdEnc: true } }) : [];
+  const foundationIds = foundationConsoleAgentIds();
   let synced = 0;
   for (const item of bindings) {
     if (!item.providerAgentIdEnc) continue;
-    const agentId = decrypt(item.providerAgentIdEnc, 'agentProviderBinding.providerAgentId');
-    await fetchPublishedDorianConfig(agentId);
+    const id = decrypt(item.providerAgentIdEnc, 'agentProviderBinding.providerAgentId');
+    if (foundationIds.includes(id)) continue; // Its Foundation worker owns refresh.
+    await fetchPublishedDorianConfig(id);
     synced++;
   }
   return synced;
+}
+
+function foundationConsoleAgentIds() {
+  return foundationConsoleEnabled()
+    ? [foundationDorianAgent(), foundationDorianPhoneAgent()].filter((id): id is string => Boolean(id))
+    : [];
+}
+
+// Resolve the browser and phone IDs from Foundation's own deployment config.
+export async function syncFoundationDorianConfigSnapshots(): Promise<number> {
+  // One unpublished agent must not block refresh of the other agents.
+  const results = await Promise.allSettled(foundationConsoleAgentIds().map(agentId => fetchPublishedDorianConfig(agentId)));
+  if (results.some(result => result.status === 'rejected'))
+    throw new Error('[Relish control plane] One or more agent snapshots could not be refreshed.');
+  return results.length;
 }

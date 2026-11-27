@@ -541,6 +541,28 @@ test('a rejected discovery records bounded private diagnostics and never reaches
 	assert.ok(panels.every((panel) => panel.reason === 'DISCOVERY_MISSING_LABEL'));
 });
 
+test('discovery review explains missed turns, invalid mentions and which stages never ran', async () => {
+	const input = fixture();
+	const { model, calls } = modelFor(input, {
+		change({ request, output, data }) {
+			if (request.stage !== 'decompose') return;
+			if (!data.correction) output.exclusions = [];
+			else output.unresolvedMentions.push({ turnId: 'T1', text: 'Samuel was my teacher' });
+		}
+	});
+	const panels = [];
+	const trace = { stages: [], repairs: [], audits: [] };
+	await assert.rejects(assessSelfTopics(input, model, allow, undefined, trace, panels),
+		(error) => error.reason === 'DISCOVERY_INVALID_MENTION');
+	assert.deepEqual(calls.map(({ stage }) => stage), ['decompose', 'decompose']);
+	assert.match(calls[1].data.correction, /omitted owner turns: T4/);
+	assert.ok(panels[0].items.some(({ title, text }) => title.includes('T4') && text === 'Maybe, but I really do not know.'));
+	assert.ok(panels[1].items.some(({ title, text }) => title.includes('T1') &&
+		text.includes('Model proposed: Samuel was my teacher') && text.includes('Cited owner turn: Sam was my mentor')));
+	assert.ok(panels[1].items.some(({ title }) => title === 'Stages not run'));
+	assert.doesNotMatch(JSON.stringify(trace), /Samuel was my teacher|Sam was my mentor/);
+});
+
 test('topic drafting grounds separate exact excerpts and falls back when the proposed wording is not verbatim', async () => {
 	const input = fixture([
 		['agent', 'What do you recall?'],

@@ -29,3 +29,9 @@ test('mobile actions stay right-aligned and account dropdown is right-anchored',
   assert.match(css, /\.relish-header-tools \{ margin-left:auto; font-size:\.88rem; \}/);
   assert.match(css, /\.relish-more-menu \{ position:absolute; right:0;/);
 });
+
+test('signed-in mobile Home offers Share and the existing Add Person route', () => {
+  assert.match(layout, /\{#if data\.user\}\s*\{#if isPeople\}\s*<a class="relish-header-tools" href="\/people\/new">Add Person<\/a>\s*\{:else\}\s*<a class="relish-header-tools" href="\/share">Share<\/a>\s*\{#if path === '\/'\}\s*<a class="relish-header-tools relish-header-add-person" href="\/people\/new">Add Person<\/a>/);
+  assert.match(css, /\.relish-header-add-person \{ display:none; \}/);
+  assert.match(css, /@media\(max-width:850px\) \{[\s\S]*?\.relish-header-add-person \{ display:inline-flex;/);
+});

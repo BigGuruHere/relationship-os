@@ -24,8 +24,8 @@ import {
 	type AssessmentStagePanel
 } from './semanticAssessment';
 
-const previousSelfTopicPromptVersion = 'foundation-self-topics-v8';
-export const selfTopicPromptVersion = 'foundation-self-topics-v9';
+const previousSelfTopicPromptVersion = 'foundation-self-topics-v9';
+export const selfTopicPromptVersion = 'foundation-self-topics-v10';
 export function isSelfTopicPromptVersion(version: string) {
 	return [
 		'foundation-self-topics-v1',
@@ -35,6 +35,7 @@ export function isSelfTopicPromptVersion(version: string) {
 		'foundation-self-topics-v5',
 		'foundation-self-topics-v6',
 		'foundation-self-topics-v7',
+		'foundation-self-topics-v8',
 		previousSelfTopicPromptVersion,
 		selfTopicPromptVersion
 	].includes(version);
@@ -137,6 +138,15 @@ function requireValue(value: unknown, reason: string): asserts value {
 	if (!value) throw new AssessmentError(reason);
 }
 
+// Excerpts belong only in the existing encrypted review panels. Traces use
+// the inherited reason code, and the correction sent to the model uses IDs.
+class DiscoveryCoverageError extends AssessmentError {
+	constructor(reason: string, readonly correction: string,
+		readonly items: { title: string; text: string }[]) {
+		super(reason);
+	}
+}
+
 export async function assessSelfTopics(
 	input: AssessmentInput,
 	model: AssessmentModel,
@@ -162,7 +172,7 @@ export async function assessSelfTopics(
 	const panels = stageReview ?? [];
 	const checkpointVersion = resume?.checkpoint?.version;
 	// Older checkpoints lack the complete impact review required by this workflow.
-	const saved = checkpointVersion === selfTopicPromptVersion
+	const saved = checkpointVersion === selfTopicPromptVersion || checkpointVersion === previousSelfTopicPromptVersion
 		? resume?.checkpoint : undefined;
 	if (saved) {
 		signal?.throwIfAborted();
@@ -290,6 +300,15 @@ export async function assessSelfTopics(
 		DISCOVERY_POLICY:
 			'Recheck all existing topic references, new topic labels and owner turn IDs against the supplied data.'
 	};
+	function discoveryAreaPreview(
+		area: z.infer<typeof discoverySchema>['areas'][number], prefix: string
+	) {
+		return {
+			title: prefix + (prior.find((topic) => topic.ref === area.existingTopicId)?.title ?? area.suggestedTopic),
+			text: area.reason + '\nSource turns: ' + area.relevantTurnIds.join(', ')
+		};
+	}
+
 	function discover(attempt: number, correction?: string) {
 		return invoke(
 			'decompose',
@@ -306,6 +325,7 @@ export async function assessSelfTopics(
 					'Use an empty existingTopicId only for a new topic, with both a realm and topic name. A turn may support several areas.',
 					'Use ownerTurnIds for citations, exclusions and unresolved mentions. Context can inform interpretation.',
 					'Account for every OWNER turn through an area or an exclusion. Use NO_DURABLE_MEANING for material outside this self-understanding scope.',
+					'Before answering, check that every ID in ownerTurnIds appears in an area or an exclusion. For an unresolved mention, copy a verbatim span from its cited turn. Leave unresolvedMentions empty when none are supported.',
 					'Return at most 12 areas. If the source needs more, do not silently omit meaning; the structural review must hold the draft.'
 				].join('\n'),
 			{
@@ -340,6 +360,7 @@ export async function assessSelfTopics(
 							covered.add(id);
 						}
 					}
+					const citedCount = covered.size;
 					for (const { turnId } of draft.exclusions) {
 						requireValue(
 							allowedTurns.has(turnId) && !covered.has(turnId),
@@ -347,15 +368,39 @@ export async function assessSelfTopics(
 						);
 						covered.add(turnId);
 					}
-					requireValue(
-						ownerTurnIds.every((id) => covered.has(id)),
-						'DISCOVERY_OMITTED_OWNER_TURN'
+					const missing = ownerTurnIds.filter((id) => !covered.has(id));
+					const invalid = draft.unresolvedMentions.filter(
+						(mention) => !ownerText.get(mention.turnId)?.includes(mention.text)
 					);
-					for (const mention of draft.unresolvedMentions)
-						requireValue(
-							ownerText.get(mention.turnId)?.includes(mention.text),
-							'DISCOVERY_INVALID_MENTION'
+					if (missing.length || invalid.length) {
+						const preview = (value: string) => value.length > 800 ? value.slice(0, 800) + '…' : value;
+						const mentionTurns = [...new Set(invalid.map(({ turnId }) => turnId))]
+							.filter((id) => allowedTurns.has(id)).slice(0, 36);
+						const correction = [
+							missing.length && `Account for the omitted owner turns: ${missing.slice(0, 36).join(', ')}. Check the complete ownerTurnIds list for coverage.`,
+							mentionTurns.length && `Review the unresolved mentions on: ${mentionTurns.join(', ')}.`,
+							invalid.length && 'For unresolved mentions, use a verbatim span in the cited owner turn or omit the unsupported mention.'
+						].filter(Boolean).join(' ');
+						throw new DiscoveryCoverageError(
+							missing.length ? 'DISCOVERY_OMITTED_OWNER_TURN' : 'DISCOVERY_INVALID_MENTION',
+							correction,
+							[
+								{ title: 'Turn and mention checks',
+									text: `${ownerTurnIds.length} owner turns. ${citedCount} cited, ${covered.size - citedCount} excluded, ${missing.length} unaccounted for. ${invalid.length} of ${draft.unresolvedMentions.length} unresolved mentions failed the exact-text check.` },
+								{ title: 'What discovery produced',
+									text: `${draft.areas.length} draft areas passed the owner-turn ID and topic reference checks. This preview has not passed full discovery validation or evidence review.` },
+								...draft.areas.map((area) => discoveryAreaPreview(area, 'Provisional area: ')),
+								...invalid.map(({ turnId, text }) => ({
+									title: 'Unresolved mention failed · ' + turnId,
+									text: `Model proposed: ${preview(text)}\nCited owner turn: ${preview(ownerText.get(turnId) ?? 'No matching owner turn.')}`
+								})),
+								...missing.map((id) => ({
+									title: 'Owner turn missed · ' + id,
+									text: preview(ownerText.get(id) ?? '')
+								}))
+							]
 						);
+					}
 					if (prior.length) {
 						const effects = draft.topicEffects ?? [];
 						requireValue(effects.length === prior.length && new Set(effects.map((e) => e.existingTopicId)).size === prior.length, 'IMPACT_COVERAGE');
@@ -395,6 +440,8 @@ export async function assessSelfTopics(
 			if (!(cause instanceof AssessmentError) || !Object.hasOwn(discoveryNotes, cause.reason))
 				throw cause;
 			correction = discoveryNotes[cause.reason as keyof typeof discoveryNotes];
+			const details = cause instanceof DiscoveryCoverageError ? cause.items : [];
+			if (cause instanceof DiscoveryCoverageError) correction += ' ' + cause.correction;
 			recordStagePanel(
 				panels,
 				'decompose',
@@ -403,7 +450,12 @@ export async function assessSelfTopics(
 					{
 						title: discoveryAttempt === 1 ? 'Discovery needs correction' : 'Discovery held',
 						text: correction
-					}
+					},
+					...(discoveryAttempt === 2 ? [{
+						title: 'Stages not run',
+						text: 'Topic writing and audit never started. No proposed update was created from this run.'
+					}] : []),
+					...details
 				],
 				cause.reason
 			);
@@ -424,12 +476,7 @@ export async function assessSelfTopics(
 	]);
 	recordStagePanel(panels, 'decompose', discoveryAttempt, [
 		...(discovery.data.topicEffects ?? []).map((e) => ({ title: 'Impact: ' + prior.find((p) => p.ref === e.existingTopicId)?.title, text: e.effect + ': ' + e.reason })),
-		...areas.map((a) => ({
-			title:
-				'Area of understanding: ' +
-				(prior.find((p) => p.ref === a.existingTopicId)?.title ?? a.suggestedTopic),
-			text: a.reason + '\nSource turns: ' + a.relevantTurnIds.join(', ')
-		})),
+		...areas.map((area) => discoveryAreaPreview(area, 'Area of understanding: ')),
 		...discovery.data.exclusions.map((e) => ({ title: 'Excluded turn ' + e.turnId, text: e.reason }))
 	]);
 

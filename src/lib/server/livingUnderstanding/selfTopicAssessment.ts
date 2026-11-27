@@ -300,6 +300,15 @@ export async function assessSelfTopics(
 		DISCOVERY_POLICY:
 			'Recheck all existing topic references, new topic labels and owner turn IDs against the supplied data.'
 	};
+	function discoveryAreaPreview(
+		area: z.infer<typeof discoverySchema>['areas'][number], prefix: string
+	) {
+		return {
+			title: prefix + (prior.find((topic) => topic.ref === area.existingTopicId)?.title ?? area.suggestedTopic),
+			text: area.reason + '\nSource turns: ' + area.relevantTurnIds.join(', ')
+		};
+	}
+
 	function discover(attempt: number, correction?: string) {
 		return invoke(
 			'decompose',
@@ -378,6 +387,9 @@ export async function assessSelfTopics(
 							[
 								{ title: 'Turn and mention checks',
 									text: `${ownerTurnIds.length} owner turns. ${citedCount} cited, ${covered.size - citedCount} excluded, ${missing.length} unaccounted for. ${invalid.length} of ${draft.unresolvedMentions.length} unresolved mentions failed the exact-text check.` },
+								{ title: 'What discovery produced',
+									text: `${draft.areas.length} draft areas passed the owner-turn ID and topic reference checks. This preview has not passed full discovery validation or evidence review.` },
+								...draft.areas.map((area) => discoveryAreaPreview(area, 'Provisional area: ')),
 								...invalid.map(({ turnId, text }) => ({
 									title: 'Unresolved mention failed · ' + turnId,
 									text: `Model proposed: ${preview(text)}\nCited owner turn: ${preview(ownerText.get(turnId) ?? 'No matching owner turn.')}`
@@ -464,12 +476,7 @@ export async function assessSelfTopics(
 	]);
 	recordStagePanel(panels, 'decompose', discoveryAttempt, [
 		...(discovery.data.topicEffects ?? []).map((e) => ({ title: 'Impact: ' + prior.find((p) => p.ref === e.existingTopicId)?.title, text: e.effect + ': ' + e.reason })),
-		...areas.map((a) => ({
-			title:
-				'Area of understanding: ' +
-				(prior.find((p) => p.ref === a.existingTopicId)?.title ?? a.suggestedTopic),
-			text: a.reason + '\nSource turns: ' + a.relevantTurnIds.join(', ')
-		})),
+		...areas.map((area) => discoveryAreaPreview(area, 'Area of understanding: ')),
 		...discovery.data.exclusions.map((e) => ({ title: 'Excluded turn ' + e.turnId, text: e.reason }))
 	]);
 

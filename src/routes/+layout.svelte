@@ -45,7 +45,14 @@
         <strong>Relish</strong>
       </a>
       {#if data.user}
-        {#if isPeople}<a class="relish-header-tools" href="/people/new">Add Person</a>{:else}<a class="relish-header-tools" href="/share">Share</a>{/if}
+        {#if isPeople}
+          <a class="relish-header-tools" href="/people/new">Add Person</a>
+        {:else}
+          <a class="relish-header-tools" href="/share">Share</a>
+          {#if path === '/'}
+            <a class="relish-header-tools relish-header-add-person" href="/people/new">Add Person</a>
+          {/if}
+        {/if}
         <details class="relish-more" bind:open={moreMenuOpen}>
           <summary aria-label="More account options">•••</summary>
           <div class="relish-more-menu">

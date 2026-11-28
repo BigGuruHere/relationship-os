@@ -235,3 +235,7 @@ Foundation Dorian production access uses the existing feature switch and canonic
 - **Backlog and stage register:** Implemented on `feature/dorian-phone-first` for review. Follow-up to PR #101. Direct calls, voice terms, return recall and verified app activation share Foundation account ownership.
 - **Migration and rollback:** Apply `20261124020000_dorian_phone_first` before enabling `RELISH_DORIAN_PHONE_FIRST`. Disable the flag to roll back intake. Retain stored accounts and provenance. There is no legacy call history import.
 - **Acceptance:** Exercise first-call LU, returning recall and browser-bound verification in disposable tests. Hosted DEV and production verification remain pending. [Setup and replay](DORIAN_TELEPHONE_CONTINUITY.md#phone-first-accounts)
+
+### LUR-4 unsupported owner pronoun repair
+
+Implemented on `fix/lu-owner-pronoun-repair`. The synthetic regression covers neutral owner wording, preservation of another person's pronouns in evidence, restoration of omitted meaning and a clean re-audit within the same run. No migration or cohort change. Reverting the app patch restores the previous prompts and audit behavior. Hosted verification is pending. [Owner review](LUR4_OWNER_REVIEW.md#unsupported-owner-pronouns)

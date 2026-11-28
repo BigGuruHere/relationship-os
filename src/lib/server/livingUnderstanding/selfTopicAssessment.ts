@@ -24,8 +24,12 @@ import {
 	type AssessmentStagePanel
 } from './semanticAssessment';
 
-const previousSelfTopicPromptVersion = 'foundation-self-topics-v9';
-export const selfTopicPromptVersion = 'foundation-self-topics-v10';
+export const selfTopicPromptVersion = 'foundation-self-topics-v11';
+const checkpointVersions = [
+	'foundation-self-topics-v9',
+	'foundation-self-topics-v10',
+	selfTopicPromptVersion
+] as const;
 export function isSelfTopicPromptVersion(version: string) {
 	return [
 		'foundation-self-topics-v1',
@@ -36,8 +40,7 @@ export function isSelfTopicPromptVersion(version: string) {
 		'foundation-self-topics-v6',
 		'foundation-self-topics-v7',
 		'foundation-self-topics-v8',
-		previousSelfTopicPromptVersion,
-		selfTopicPromptVersion
+		...checkpointVersions
 	].includes(version);
 }
 const label = z.string().trim().min(1).max(100);
@@ -84,7 +87,10 @@ const draftSchema = z.strictObject({
 		.min(1)
 		.max(32)
 });
-const repairIssueSchema = z.enum(['DUPLICATE_TOPIC', 'UNSUPPORTED_PROSE', 'OMITTED_MEANING', 'LOST_QUALIFICATION', 'TEMPORAL_LOSS']);
+// Unsupported owner pronouns are editable wording. Misattributing a claim to
+// the wrong person still requires a separate subject review.
+const ownerPronounIssue = 'UNSUPPORTED_OWNER_PRONOUN';
+const repairIssueSchema = z.enum(['DUPLICATE_TOPIC', 'UNSUPPORTED_PROSE', 'OMITTED_MEANING', 'LOST_QUALIFICATION', 'TEMPORAL_LOSS', ownerPronounIssue]);
 const topicReference = z.string().regex(/^A(?:[1-9]|1[0-2])$/);
 const topicRepairSchema = z.strictObject({
 	issue: repairIssueSchema,
@@ -96,6 +102,7 @@ const topicRepairSchema = z.strictObject({
 	newFinding: z.boolean().optional()
 });
 const structureSchema = audit.extend({
+	issues: z.array(z.enum([...audit.shape.issues.element.options, ownerPronounIssue])).max(16),
 	findings: z.array(z.string().trim().min(1).max(1000)).max(24),
 	topicRepairs: z.array(topicRepairSchema).max(24).optional(),
 	// Restructure draft-only topics by mapping every existing assertion to a new home.
@@ -118,7 +125,7 @@ type ModelResult<T> = { data: T; invocationId: string; model: string };
 
 // The checkpoint contains validated input drafts, so it stays in encrypted server storage.
 export type SelfTopicCheckpoint = {
-	version: typeof selfTopicPromptVersion | typeof previousSelfTopicPromptVersion;
+	version: (typeof checkpointVersions)[number];
 	discovery: ModelResult<z.infer<typeof discoverySchema>>;
 	discoveryAttempt: number;
 	written: { index: number; attempt: number; result: ModelResult<z.infer<typeof draftSchema>> }[];
@@ -130,6 +137,8 @@ const scopeInstructions = [
 	"Develop only the owner's Living Understanding in this run. Preserve their personal history, experiences, needs, wants and uncertainty, including specific people as context where supported.",
 	'Do not infer a general trait from a relationship-specific experience or wish. Do not create an independent profile of another person or assert shared relationship intent.',
 	'A name or ambiguous pronoun does not establish identity. Keep uncertain referents uncertain.',
+	'In generated wording, refer to the OWNER as "the owner" or "the participant" unless their own account or retained supported understanding establishes their pronouns. Do not infer owner pronouns from their name, family role, or the way another speaker addresses them.',
+	'Preserve source-supported references to other people, including their pronouns. Leave pronouns in exact source excerpts as spoken.',
 	'Do not treat a request to record a note, greetings, or agent instructions as enduring understanding.',
 	'The three-perspective experiment is not being run. Other saved perspectives are outside this analysis.'
 ].join('\n');
@@ -172,7 +181,7 @@ export async function assessSelfTopics(
 	const panels = stageReview ?? [];
 	const checkpointVersion = resume?.checkpoint?.version;
 	// Older checkpoints lack the complete impact review required by this workflow.
-	const saved = checkpointVersion === selfTopicPromptVersion || checkpointVersion === previousSelfTopicPromptVersion
+	const saved = checkpointVersions.some((version) => version === checkpointVersion)
 		? resume?.checkpoint : undefined;
 	if (saved) {
 		signal?.throwIfAborted();
@@ -854,13 +863,14 @@ export async function assessSelfTopics(
 				'Check depth and omissions against the full conversation, not just the supporting assertions. Nuance may remain in topic prose, but each substantive assertion needs source or retained prior support.',
 				'When mergedFrom is supplied, verify the rewrite preserves all supported material and qualifiers from those drafts against the transcript. The earlier drafts are not source evidence.',
 				'Check attribution, facts versus opinions/reports, uncertainty, temporal scope, topic effects, and preservation of unaffected prior understanding.',
+				'For an unsupported pronoun referring to the owner in generated wording, use UNSUPPORTED_OWNER_PRONOUN and specify neutral wording for the affected prose, assertions or new topic title. Preserve exact source excerpts and supported pronouns referring to other people. Use BAD_SUBJECT when a claim is actually attributed to the wrong person.',
 				'No AGENT suggestion becomes owner knowledge without clear owner endorsement. A whole-turn citation is not evidence for every possible interpretation of that turn.',
 				'Check the cited excerpts jointly support the claim, including qualifiers and who is speaking. Read surrounding text to catch missing negation, uncertainty or context. For a missing supporting span, use UNSUPPORTED_PROSE and specify the citation to repair within that topic.',
 				'Only self-understanding is in scope. Do not report omissions merely because independent person or relationship streams were not developed.',
 				'Return issues and specific findings identifying the affected topic and missing or unsupported meaning. Empty issues means this is eligible for owner review, not authoritative.',
 				'Put a meaningful assertion in one primary topic. Accept a brief reference in another topic when it is necessary context. Flag duplication only when it repeats the primary meaning or fragments a coherent topic.',
 				'Flag omissions that materially change the understanding of the owner, including relevant context that explains an intention. Incidental detail alone is not grounds to hold a draft.',
-				'For DUPLICATE_TOPIC, UNSUPPORTED_PROSE, OMITTED_MEANING, LOST_QUALIFICATION or TEMPORAL_LOSS, include topicRepairs when the issue can be fixed by editing one or more of the existing draft topics in their current source scope. Each item lists the issue, the precise instruction, and only the topicRef values to edit. For duplication, say where the primary meaning belongs and edit only topics that need changes.',
+				`For ${repairIssueSchema.options.join(', ')}, include topicRepairs when the issue can be fixed by editing one or more of the existing draft topics in their current source scope. Each item lists the issue, the precise instruction, and only the topicRef values to edit. For duplication, say where the primary meaning belongs and edit only topics that need changes.`,
 				'Use topicMerge only when truly redundant NEW topics should become one. Specify one keep ref, the distinct absorb refs and how to preserve supported material. Report DUPLICATE_TOPIC. Never merge a saved topic, or merge topics that serve distinct purposes.',
 				'For draft-only restructuring you may instead supply topicRestructure: the complete replacement set for ALL NEW draft topics. Split, narrow, move, merge, rename or reclassify them using exact A1M1-style meaningRefs supplied in meanings. Map every new-draft assertion exactly once. Preserve all supported prose nuance and time qualifiers, including meaning beyond those assertions. Never include assertions from a saved topic. Keep saved identities unchanged. Each replacement supplies its full prose, realm, title and timeScope. Use this only for DUPLICATE_TOPIC structural findings and do not combine it with topicMerge.',
 				'For each blocking issue supply topicRepairs, topicRestructure or a topicMerge that resolves it. Direct any prose or evidence fixes for an absorbed topic to the surviving topic. Otherwise leave the issue without a repair plan.',

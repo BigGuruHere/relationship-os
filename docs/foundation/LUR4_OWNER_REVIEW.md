@@ -153,3 +153,7 @@ Rerun the same transcript in DEV. If an audit requests a rewrite, look for its u
 ## Private discovery diagnostics
 
 For new self-topic analyses, a held discovery review can show coverage counts, missed owner turn IDs and excerpts, and rejected unresolved mentions alongside their cited source text. On those coverage or mention failures, it also shows the provisional areas and their source turn IDs, so an operator can inspect what discovery produced before full validation. If discovery ends without a valid result, the review identifies topic writing and audit as stages that did not run. The existing bounded automatic correction receives the reported turn IDs without weakening the coverage or exact-text checks. The details use the existing encrypted private review and do not enter operational traces. Previously held runs contain only the diagnostics captured when they ran.
+
+### Unsupported owner pronouns
+
+In v11, generated self-topic wording uses “the owner” or “the participant” when the evidence does not establish their pronouns. References to other people keep their supported pronouns, and source excerpts remain verbatim. A scoped `UNSUPPORTED_OWNER_PRONOUN` finding can be corrected in the existing automatic repair and re-audit, alongside supported omissions or other editable findings. A finding that assigns a claim to the wrong person still holds the draft for inspection. No Prisma migration is required.

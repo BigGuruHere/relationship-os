@@ -442,10 +442,63 @@ test('structural review repairs only named topics and re-audits the full draft',
 	);
 });
 
+test('unsupported owner pronouns and omitted detail are repaired together without altering third-party evidence', async () => {
+	const input = fixture();
+	const thirdPartyQuote = 'so I can support her.';
+	const issue = 'UNSUPPORTED_OWNER_PRONOUN';
+	const issues = [issue, 'OMITTED_MEANING'];
+	const { model, calls } = modelFor(input, {
+		change({ request, data, output }) {
+			if (request.stage === 'compose' && data.area.title === 'Supporting my daughter') {
+				assert.match(request.systemPrompt, /Preserve source-supported references to other people/);
+				const repaired = Boolean(data.auditRepair);
+				if (repaired) assert.deepEqual(data.auditRepair.findings.map((plan) => plan.issue), issues);
+				output.prose = repaired
+					? 'The owner wants to understand their daughter’s options so they can support her as she applies to music colleges.'
+					: 'He wants to support his daughter as she applies to music colleges.';
+				output.meanings = [meaning(
+					repaired ? 'The owner wants to support their daughter.' : 'He wants to support his daughter.',
+					'T2'
+				)];
+				output.meanings[0].evidence[0].quote = thirdPartyQuote;
+				if (repaired) {
+					const detail = meaning('The owner wants to understand their daughter’s options.', 'T2');
+					detail.evidence[0].quote = 'I want to understand her options';
+					output.meanings.push(detail);
+				}
+			}
+			if (request.stage !== 'audit') return;
+			assert.match(request.systemPrompt, /Use BAD_SUBJECT when a claim is actually attributed to the wrong person/);
+			if (!data.previousRepairs) {
+				assert.match(data.draft[1].prose, /He wants/);
+				output.issues = issues;
+				output.topicRepairs = [
+					{ issue, editTopics: ['A2'], instruction: 'Use neutral wording for the owner and keep the daughter’s pronouns.' },
+					{ issue: 'OMITTED_MEANING', editTopics: ['A2'], instruction: 'Restore the wish to understand her options from T2.' }
+				];
+			} else {
+				assert.match(data.draft[0].prose, /Meeting his family again felt meaningful/);
+				assert.match(data.draft[1].prose, /The owner wants to understand .* support her as she applies/);
+				assert.ok(data.meanings.some((claim) => claim.evidence.some((citation) => citation.quote === thirdPartyQuote)));
+			}
+		}
+	});
+	const trace = { stages: [], audits: [], repairs: [] };
+	const { candidate } = await assessSelfTopics(input, model, allow, undefined, trace);
+	assert.deepEqual(calls.map((call) => call.stage), ['decompose', 'compose', 'compose', 'audit', 'compose', 'audit']);
+	assert.deepEqual(trace.audits.map((audit) => audit.issues), [issues, []]);
+	assert.ok(candidate.meanings.some((claim) => claim.text === 'The owner wants to understand their daughter’s options.'));
+	const evidence = candidate.meanings.flatMap((claim) => claim.evidence)
+		.find((citation) => citation.turnId === 'T2' && citation.quote === thirdPartyQuote);
+	assert.ok(evidence);
+	assert.equal(input.packet.text.slice(evidence.start, evidence.end), thirdPartyQuote);
+});
+
 test('unknown, incomplete, and out-of-scope audit plans leave the draft held', async () => {
 	for (const { issues, target } of [
 		{ issues: ['UNSUPPORTED_PROSE'], target: 'A3' },
 		{ issues: ['UNSUPPORTED_PROSE', 'MISATTRIBUTION'], target: 'A2' },
+		{ issues: ['UNSUPPORTED_PROSE', 'BAD_SUBJECT'], target: 'A2' },
 		{ issues: ['UNSUPPORTED_PROSE', 'OMITTED_MEANING'], target: 'A2' }
 	]) {
 		const input = fixture();
@@ -682,6 +735,8 @@ test('a held structural review resumes without repeating successful discovery an
 		save(value) { checkpoint = JSON.parse(JSON.stringify(value)); }
 	}), /MISATTRIBUTION/);
 	assert.ok(checkpoint);
+	// A draft written before the pronoun fix can use the current audit without rewriting first.
+	checkpoint.version = 'foundation-self-topics-v10';
 	const resumed = modelFor(input);
 	const result = await assessSelfTopics(input, resumed.model, allow, undefined, undefined, [], {
 		checkpoint, save() {}
